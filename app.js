@@ -1,0 +1,374 @@
+document.addEventListener('DOMContentLoaded', () => {
+
+    // ==========================================
+    // 1. 数据持久化 (LocalStorage 初始化)
+    // ==========================================
+    // --- 周记数据 ---
+    const DEFAULT_DATA = [
+        {
+            id: 1,
+            category: "🌸",
+            title: "2023-W42: 记忆切片",
+            summary: "在这个节奏极快的秋周里，抓住了一些微小的确幸：黑塞、坂本龙一、和一碗完美的意面。",
+            date: "2023年10月22日",
+            cover: "https://images.unsplash.com/photo-1505909182942-e2f09aee3e89?q=80&w=800&auto=format&fit=crop",
+            weeklyData: {
+                music: { title: "Merry Christmas Mr. Lawrence", artist: "坂本龙一", lyric: "无需歌词，唯有宁静跨越时间。" },
+                media: [{ icon: "🎬", title: "《奥本海默》", desc: "在 IMAX 厅感受了极其震撼的音效与人类群星闪耀的矛盾。" }],
+                life: { image: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?q=80&w=600&auto=format&fit=crop", caption: "周五晚上的完美意面 🍝" },
+                podcast: "在《Huberman Lab》里学到了，早晨醒来后不要立刻看手机，而是先去接触自然光 10 分钟，能够完美重置昼夜节律。",
+                work: { title: "Next.js App Router 迁移", desc: "本周踩完了 Server Actions 的坑。结论：将复杂的数据验证逻辑全部移到单独的 API 路由。" }
+            },
+            content: "<p>时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。所以决定用这样的方式，把每周值得记住的时刻切片保存下来。</p>"
+        }
+    ];
+
+    let database = JSON.parse(localStorage.getItem('gardenData'));
+    if (!database) {
+        database = DEFAULT_DATA;
+        localStorage.setItem('gardenData', JSON.stringify(database));
+    }
+    const saveDatabase = () => localStorage.setItem('gardenData', JSON.stringify(database));
+
+    // --- 备忘录数据 ---
+    let notesDatabase = JSON.parse(localStorage.getItem('gardenNotes'));
+    if (!notesDatabase) {
+        notesDatabase = [
+            { id: 101, title: "下周购物清单", content: "1. 咖啡豆\n2. 全脂牛奶\n3. 极简风马克杯\n4. 绿植（龟背竹）", date: "2023年10月23日" },
+            { id: 102, title: "零碎灵感", content: "也许可以尝试给博客加上深色模式？\n颜色方案可以参考 GitHub 的 Dark Dimmed。", date: "2023年10月24日" }
+        ];
+        localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
+    }
+    const saveNotesDatabase = () => localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
+
+    // --- 收藏夹数据 ---
+    let bookmarksDatabase = JSON.parse(localStorage.getItem('gardenBookmarks'));
+    if (!bookmarksDatabase) {
+        bookmarksDatabase = [
+            { id: 201, type: "🛠️ 工具", title: "Notion", url: "https://notion.so", desc: "极致的块状编辑器，灵感的发源地。" },
+            { id: 202, type: "🌐 网站", title: "Vercel", url: "https://vercel.com", desc: "前端项目一键部署的神仙平台。" },
+            { id: 203, type: "🎬 电影", title: "豆瓣电影", url: "https://movie.douban.com", desc: "找冷门好片的唯一去处。" }
+        ];
+        localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+    }
+    const saveBookmarksDatabase = () => localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+
+    let currentArticleId = null;
+    let currentNoteId = null;
+    let currentActiveNavView = 'home'; 
+
+    // ==========================================
+    // 2. DOM 元素获取
+    // ==========================================
+    const views = document.querySelectorAll('.view-section');
+    const navItems = document.querySelectorAll('.nav-item');
+    const btnBack = document.getElementById('btn-back');
+    const navMenu = document.getElementById('nav-menu');
+    const fabBtn = document.getElementById('btn-create-new');
+
+    // Home / Weekly
+    const galleryContainer = document.getElementById('gallery-container');
+    const filterBtns = document.querySelectorAll('.filter-btn');
+    const articleCategory = document.getElementById('article-category');
+    const articleDate = document.getElementById('article-date');
+    const articleTitle = document.getElementById('article-title');
+    const articleCoverContainer = document.getElementById('article-cover-container');
+    const articleBody = document.getElementById('article-body');
+    const btnEditArticle = document.getElementById('btn-edit-article');
+    const btnDeleteArticle = document.getElementById('btn-delete-article');
+    const editorForm = document.getElementById('editor-form');
+    const btnCancelEdit = document.getElementById('btn-cancel-edit');
+    const editorPageTitle = document.getElementById('editor-page-title');
+
+    // Notes
+    const notesListContainer = document.getElementById('notes-list-container');
+    const editNoteTitle = document.getElementById('edit-note-title');
+    const editNoteContent = document.getElementById('edit-note-content');
+    const editNoteId = document.getElementById('edit-note-id');
+    const btnSaveNote = document.getElementById('btn-save-note');
+    const btnDeleteNote = document.getElementById('btn-delete-note');
+    const noteEditorDate = document.getElementById('note-editor-date');
+
+    // Bookmarks
+    const bookmarkListContainer = document.getElementById('bookmark-list-container');
+    const bookmarkEditorForm = document.getElementById('bookmark-editor-form');
+    const btnCancelBookmark = document.getElementById('btn-cancel-bookmark');
+    const editBookmarkId = document.getElementById('edit-bookmark-id');
+    const editBookmarkType = document.getElementById('edit-bookmark-type');
+    const editBookmarkTitle = document.getElementById('edit-bookmark-title');
+    const editBookmarkUrl = document.getElementById('edit-bookmark-url');
+    const editBookmarkDesc = document.getElementById('edit-bookmark-desc');
+
+
+    const autoResizeTextarea = (el) => {
+        el.style.height = 'auto';
+        el.style.height = el.scrollHeight + 'px';
+    };
+    editNoteContent.addEventListener('input', () => autoResizeTextarea(editNoteContent));
+
+
+    // ==========================================
+    // 3. 视图切换逻辑
+    // ==========================================
+    const switchView = (targetViewId) => {
+        views.forEach(view => view.classList.remove('active'));
+        document.getElementById(`view-${targetViewId}`).classList.add('active');
+        
+        if (targetViewId === 'home' || targetViewId === 'notes' || targetViewId === 'bookmarks') {
+            currentActiveNavView = targetViewId;
+            navItems.forEach(item => item.classList.remove('active'));
+            const activeNav = document.querySelector(`.nav-item[data-view="${targetViewId}"]`);
+            if(activeNav) activeNav.classList.add('active');
+        }
+
+        if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor') {
+            navMenu.style.display = 'none';
+            btnBack.style.display = 'block';
+            fabBtn.classList.add('hidden');
+        } else {
+            navMenu.style.display = 'flex';
+            btnBack.style.display = 'none';
+            fabBtn.classList.remove('hidden');
+        }
+        window.scrollTo(0, 0); 
+    };
+
+    navItems.forEach(item => {
+        item.addEventListener('click', (e) => {
+            e.preventDefault();
+            const view = e.target.dataset.view;
+            if(view) switchView(view);
+        });
+    });
+
+    btnBack.addEventListener('click', () => {
+        switchView(currentActiveNavView);
+        currentArticleId = null;
+        currentNoteId = null;
+    });
+
+    fabBtn.addEventListener('click', () => {
+        if (currentActiveNavView === 'home') openWeeklyEditor(null);
+        else if (currentActiveNavView === 'notes') openNoteEditor(null);
+        else if (currentActiveNavView === 'bookmarks') openBookmarkEditor();
+    });
+
+    const getChineseDate = () => {
+        const date = new Date();
+        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
+    };
+
+    // ==========================================
+    // 4. 周记画廊逻辑 (Weekly Recaps)
+    // ==========================================
+    const renderCards = (filter = "all") => {
+        galleryContainer.innerHTML = ''; 
+        const sortedDB = [...database].sort((a, b) => b.id - a.id);
+        sortedDB.forEach(item => {
+            if (filter !== "all" && item.category !== filter) return;
+            const card = document.createElement('div');
+            card.className = "notion-collection-card";
+            card.dataset.id = item.id;
+            let coverHtml = item.cover ? `<img src="${item.cover}" alt="Cover" class="notion-collection-card__cover">` : '';
+            card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${item.category}</div><div class="card-title">${item.title}</div><div class="card-summary">${item.summary}</div><div class="card-date">${item.date}</div></div>`;
+            card.addEventListener('click', () => openArticle(item));
+            galleryContainer.appendChild(card);
+        });
+    };
+
+    const generateWeeklyWidgetsHtml = (data) => {
+        if (!data) return '';
+        let html = '';
+        if (data.music && data.music.title) html += `<h2>🎵 本周循环</h2><div class="widget-music"><div class="widget-music-disk"></div><div class="widget-music-info"><div class="widget-music-title">${data.music.title}</div><div class="widget-music-artist">${data.music.artist || ''}</div>${data.music.lyric ? `<div class="widget-music-lyric">"${data.music.lyric}"</div>` : ''}</div></div>`;
+        if (data.media && data.media.length > 0 && data.media[0].title) html += `<h2>🎬 影音书影</h2><div class="widget-media">${data.media.map(m => `<div class="widget-media-item"><div class="widget-media-icon">${m.icon || '🎬'}</div><div class="widget-media-content"><div class="widget-media-title">${m.title}</div><div class="widget-media-desc">${m.desc || ''}</div></div></div>`).join('')}</div>`;
+        if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${data.life.image}" alt="Life Snapshot"><div class="widget-polaroid-caption">${data.life.caption || ''}</div></div>`;
+        if (data.podcast) html += `<h2>🎙️ 播客新知</h2><div class="widget-callout"><div class="widget-callout-icon">💡</div><div class="widget-callout-text">${data.podcast}</div></div>`;
+        if (data.work && data.work.title) html += `<h2>💻 工作切片</h2><div class="widget-work"><div class="widget-work-title">${data.work.title}</div><div class="widget-work-desc">${data.work.desc || ''}</div></div>`;
+        return html;
+    };
+
+    const openArticle = (item) => {
+        currentArticleId = item.id;
+        articleCategory.innerText = item.category;
+        articleDate.innerText = item.date;
+        articleTitle.innerText = item.title;
+        let finalHtml = item.content || '';
+        if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
+        articleBody.innerHTML = finalHtml;
+        articleCoverContainer.innerHTML = item.cover ? `<img src="${item.cover}" alt="Cover">` : '';
+        switchView('article');
+    };
+
+    const openWeeklyEditor = (editId = null) => {
+        editorForm.reset();
+        if (editId) {
+            editorPageTitle.innerText = "编辑记忆";
+            const item = database.find(d => d.id === editId);
+            if (item) {
+                document.getElementById('edit-id').value = item.id;
+                document.getElementById('edit-category').value = item.category;
+                document.getElementById('edit-title').value = item.title;
+                document.getElementById('edit-summary').value = item.summary;
+                document.getElementById('edit-cover').value = item.cover || '';
+                document.getElementById('edit-content').value = item.content || '';
+                if (item.weeklyData) {
+                    if(item.weeklyData.music) { document.getElementById('edit-music-title').value = item.weeklyData.music.title || ''; document.getElementById('edit-music-artist').value = item.weeklyData.music.artist || ''; document.getElementById('edit-music-lyric').value = item.weeklyData.music.lyric || ''; }
+                    if(item.weeklyData.media && item.weeklyData.media.length > 0) { document.getElementById('edit-media-icon').value = item.weeklyData.media[0].icon || '🎬'; document.getElementById('edit-media-title').value = item.weeklyData.media[0].title || ''; document.getElementById('edit-media-desc').value = item.weeklyData.media[0].desc || ''; }
+                    if(item.weeklyData.life) { document.getElementById('edit-life-image').value = item.weeklyData.life.image || ''; document.getElementById('edit-life-caption').value = item.weeklyData.life.caption || ''; }
+                    if(item.weeklyData.podcast) document.getElementById('edit-podcast').value = item.weeklyData.podcast || '';
+                    if(item.weeklyData.work) { document.getElementById('edit-work-title').value = item.weeklyData.work.title || ''; document.getElementById('edit-work-desc').value = item.weeklyData.work.desc || ''; }
+                }
+            }
+        } else {
+            editorPageTitle.innerText = "新增记忆";
+            document.getElementById('edit-id').value = '';
+        }
+        switchView('editor');
+    };
+
+    btnEditArticle.addEventListener('click', () => openWeeklyEditor(currentArticleId));
+    btnCancelEdit.addEventListener('click', () => { if(currentArticleId) switchView('article'); else switchView('home'); });
+
+    editorForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const idStr = document.getElementById('edit-id').value;
+        const isEdit = !!idStr;
+        const newData = {
+            id: isEdit ? parseInt(idStr) : Date.now(), category: document.getElementById('edit-category').value, title: document.getElementById('edit-title').value, summary: document.getElementById('edit-summary').value, cover: document.getElementById('edit-cover').value, content: document.getElementById('edit-content').value,
+            date: isEdit ? database.find(d => d.id === parseInt(idStr)).date : getChineseDate(),
+            weeklyData: {
+                music: { title: document.getElementById('edit-music-title').value, artist: document.getElementById('edit-music-artist').value, lyric: document.getElementById('edit-music-lyric').value },
+                media: [{ icon: document.getElementById('edit-media-icon').value, title: document.getElementById('edit-media-title').value, desc: document.getElementById('edit-media-desc').value }],
+                life: { image: document.getElementById('edit-life-image').value, caption: document.getElementById('edit-life-caption').value },
+                podcast: document.getElementById('edit-podcast').value,
+                work: { title: document.getElementById('edit-work-title').value, desc: document.getElementById('edit-work-desc').value }
+            }
+        };
+        if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
+        if (isEdit) { const index = database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) database[index] = newData; } else { database.push(newData); }
+        saveDatabase(); renderCards(document.querySelector('.filter-btn.active').dataset.filter); switchView('home');
+    });
+
+    btnDeleteArticle.addEventListener('click', () => {
+        if(confirm("确定要永久删除这篇记忆吗？")) { database = database.filter(d => d.id !== currentArticleId); saveDatabase(); renderCards(); switchView('home'); }
+    });
+
+    filterBtns.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            filterBtns.forEach(b => b.classList.remove('active')); e.target.classList.add('active'); renderCards(e.target.dataset.filter);
+        });
+    });
+
+    // ==========================================
+    // 5. 极简备忘录逻辑 (Notes)
+    // ==========================================
+    const renderNotes = () => {
+        notesListContainer.innerHTML = '';
+        const sortedNotes = [...notesDatabase].sort((a, b) => b.id - a.id);
+        sortedNotes.forEach(note => {
+            const el = document.createElement('div');
+            el.className = 'note-item';
+            const previewText = note.content ? note.content.substring(0, 30).replace(/\n/g, ' ') + '...' : '无正文内容';
+            el.innerHTML = `<div class="note-item-content"><div class="note-item-title">${note.title || '无标题笔记'}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${note.date}</div>`;
+            el.addEventListener('click', () => openNoteEditor(note.id));
+            notesListContainer.appendChild(el);
+        });
+    };
+
+    const openNoteEditor = (noteId = null) => {
+        if (noteId) {
+            currentNoteId = noteId; const note = notesDatabase.find(n => n.id === noteId);
+            if (note) { editNoteId.value = note.id; editNoteTitle.value = note.title; editNoteContent.value = note.content; noteEditorDate.innerText = note.date; btnDeleteNote.style.display = 'inline-block'; }
+        } else {
+            currentNoteId = null; editNoteId.value = ''; editNoteTitle.value = ''; editNoteContent.value = ''; noteEditorDate.innerText = getChineseDate(); btnDeleteNote.style.display = 'none';
+        }
+        switchView('note-editor');
+        autoResizeTextarea(editNoteContent);
+    };
+
+    btnSaveNote.addEventListener('click', () => {
+        const idStr = editNoteId.value; const isEdit = !!idStr; const titleVal = editNoteTitle.value.trim(); const contentVal = editNoteContent.value.trim();
+        if (!titleVal && !contentVal) { switchView('notes'); return; }
+        const newNote = { id: isEdit ? parseInt(idStr) : Date.now(), title: titleVal || '无标题笔记', content: contentVal, date: isEdit ? notesDatabase.find(n => n.id === parseInt(idStr)).date : getChineseDate() };
+        if (isEdit) { const index = notesDatabase.findIndex(n => n.id === parseInt(idStr)); if(index !== -1) notesDatabase[index] = newNote; } else { notesDatabase.push(newNote); }
+        saveNotesDatabase(); renderNotes(); switchView('notes');
+    });
+
+    btnDeleteNote.addEventListener('click', () => {
+        if(confirm("确定删除这条笔记吗？")) { notesDatabase = notesDatabase.filter(n => n.id !== currentNoteId); saveNotesDatabase(); renderNotes(); switchView('notes'); }
+    });
+
+    // ==========================================
+    // 6. 收藏夹逻辑 (Bookmarks)
+    // ==========================================
+    const renderBookmarks = () => {
+        bookmarkListContainer.innerHTML = '';
+        const sortedBookmarks = [...bookmarksDatabase].sort((a, b) => b.id - a.id);
+        
+        sortedBookmarks.forEach(bm => {
+            const card = document.createElement('a');
+            card.className = 'bookmark-card';
+            card.href = bm.url;
+            card.target = '_blank'; // 新标签页打开
+
+            card.innerHTML = `
+                <div class="bookmark-card-type">${bm.type}</div>
+                <div class="bookmark-card-title">${bm.title}</div>
+                <div class="bookmark-card-desc">${bm.desc || '暂无描述...'}</div>
+                <button class="bookmark-card-delete" data-id="${bm.id}" title="删除收藏">×</button>
+            `;
+
+            // 删除按钮的独立逻辑，阻止默认的 a 标签跳转
+            const deleteBtn = card.querySelector('.bookmark-card-delete');
+            deleteBtn.addEventListener('click', (e) => {
+                e.preventDefault(); 
+                e.stopPropagation();
+                if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
+                    bookmarksDatabase = bookmarksDatabase.filter(b => b.id !== bm.id);
+                    saveBookmarksDatabase();
+                    renderBookmarks();
+                }
+            });
+
+            bookmarkListContainer.appendChild(card);
+        });
+    };
+
+    const openBookmarkEditor = () => {
+        bookmarkEditorForm.reset();
+        editBookmarkId.value = '';
+        switchView('bookmark-editor');
+    };
+
+    btnCancelBookmark.addEventListener('click', () => switchView('bookmarks'));
+
+    bookmarkEditorForm.addEventListener('submit', (e) => {
+        e.preventDefault();
+        const newBookmark = {
+            id: Date.now(),
+            type: editBookmarkType.value,
+            title: editBookmarkTitle.value.trim(),
+            url: editBookmarkUrl.value.trim(),
+            desc: editBookmarkDesc.value.trim()
+        };
+        bookmarksDatabase.push(newBookmark);
+        saveBookmarksDatabase();
+        renderBookmarks();
+        switchView('bookmarks');
+    });
+
+
+    // ==========================================
+    // 7. 全局事件
+    // ==========================================
+    const navbar = document.getElementById('navbar');
+    window.addEventListener('scroll', () => {
+        if (window.scrollY > 20) navbar.classList.add('scrolled');
+        else navbar.classList.remove('scrolled');
+    });
+
+    // 初始化渲染
+    renderCards();
+    renderNotes();
+    renderBookmarks();
+});
