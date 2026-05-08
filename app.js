@@ -55,28 +55,42 @@ document.addEventListener('DOMContentLoaded', () => {
     // 初始化：优先从 API 拉数据，失败则用本地缓存，再失败用默认数据
     let database, notesDatabase, bookmarksDatabase;
 
-    const initData = async () => {
+    // 立即从本地缓存加载，保证页面秒开
+    const loadLocalData = () => {
+        database = JSON.parse(localStorage.getItem('gardenData')) || DEFAULT_WEEKLY;
+        notesDatabase = JSON.parse(localStorage.getItem('gardenNotes')) || DEFAULT_NOTES;
+        bookmarksDatabase = JSON.parse(localStorage.getItem('gardenBookmarks')) || DEFAULT_BOOKMARKS;
+    };
+
+    // 后台尝试从 API 同步最新数据，成功后自动刷新
+    const syncFromApi = async () => {
         // 周记
         try {
-            database = await apiRequest('/api/weeklies');
-            localStorage.setItem('gardenData', JSON.stringify(database));
-        } catch {
-            database = JSON.parse(localStorage.getItem('gardenData')) || DEFAULT_WEEKLY;
-        }
+            const apiData = await apiRequest('/api/weeklies');
+            if (apiData && apiData.length > 0) {
+                database = apiData;
+                localStorage.setItem('gardenData', JSON.stringify(database));
+                renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
+            }
+        } catch {}
         // 笔记
         try {
-            notesDatabase = await apiRequest('/api/notes');
-            localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
-        } catch {
-            notesDatabase = JSON.parse(localStorage.getItem('gardenNotes')) || DEFAULT_NOTES;
-        }
+            const apiData = await apiRequest('/api/notes');
+            if (apiData) {
+                notesDatabase = apiData;
+                localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
+                renderNotes();
+            }
+        } catch {}
         // 收藏
         try {
-            bookmarksDatabase = await apiRequest('/api/bookmarks');
-            localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
-        } catch {
-            bookmarksDatabase = JSON.parse(localStorage.getItem('gardenBookmarks')) || DEFAULT_BOOKMARKS;
-        }
+            const apiData = await apiRequest('/api/bookmarks');
+            if (apiData) {
+                bookmarksDatabase = apiData;
+                localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+                renderBookmarks();
+            }
+        } catch {}
     };
 
     const saveDatabase = () => localStorage.setItem('gardenData', JSON.stringify(database));
@@ -433,11 +447,12 @@ document.addEventListener('DOMContentLoaded', () => {
         else navbar.classList.remove('scrolled');
     });
 
-    // 初始化渲染（先拉取 API 数据，再渲染）
-    (async () => {
-        await initData();
-        renderCards();
-        renderNotes();
-        renderBookmarks();
-    })();
+    // 1. 立即用本地缓存渲染（秒开）
+    loadLocalData();
+    renderCards();
+    renderNotes();
+    renderBookmarks();
+
+    // 2. 后台静默同步 API 数据（有变化则自动刷新）
+    syncFromApi();
 });
