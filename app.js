@@ -1,57 +1,100 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // ==========================================
-    // 1. 数据持久化 (LocalStorage 初始化)
+    // 1. 数据持久化 (API 优先 + LocalStorage 兜底)
     // ==========================================
-    // --- 周记数据 ---
-    const DEFAULT_DATA = [
-        {
-            id: 1,
-            category: "🌸",
-            title: "2023-W42: 记忆切片",
-            summary: "在这个节奏极快的秋周里，抓住了一些微小的确幸：黑塞、坂本龙一、和一碗完美的意面。",
-            date: "2023年10月22日",
-            cover: "https://images.unsplash.com/photo-1505909182942-e2f09aee3e89?q=80&w=800&auto=format&fit=crop",
-            weeklyData: {
-                music: { title: "Merry Christmas Mr. Lawrence", artist: "坂本龙一", lyric: "无需歌词，唯有宁静跨越时间。" },
-                media: [{ icon: "🎬", title: "《奥本海默》", desc: "在 IMAX 厅感受了极其震撼的音效与人类群星闪耀的矛盾。" }],
-                life: { image: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?q=80&w=600&auto=format&fit=crop", caption: "周五晚上的完美意面 🍝" },
-                podcast: "在《Huberman Lab》里学到了，早晨醒来后不要立刻看手机，而是先去接触自然光 10 分钟，能够完美重置昼夜节律。",
-                work: { title: "Next.js App Router 迁移", desc: "本周踩完了 Server Actions 的坑。结论：将复杂的数据验证逻辑全部移到单独的 API 路由。" }
-            },
-            content: "<p>时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。所以决定用这样的方式，把每周值得记住的时刻切片保存下来。</p>"
-        }
+    const API_BASE = (typeof CHILLIN_API_URL !== 'undefined') ? CHILLIN_API_URL : '';
+    const API_KEY = (typeof CHILLIN_API_KEY !== 'undefined') ? CHILLIN_API_KEY : '';
+
+    const apiRequest = async (path, options = {}) => {
+        if (!API_BASE) throw new Error('API not configured');
+        const res = await fetch(`${API_BASE}${path}`, {
+            ...options,
+            headers: {
+                'Content-Type': 'application/json',
+                'X-API-Key': API_KEY,
+                ...(options.headers || {})
+            }
+        });
+        if (!res.ok) throw new Error(`API error: ${res.status}`);
+        return res.json();
+    };
+
+    // 默认兜底数据
+    const DEFAULT_WEEKLY = [{
+        id: 1, category: "🌸", title: "2023-W42: 记忆切片",
+        summary: "在这个节奏极快的秋周里，抓住了一些微小的确幸：黑塞、坂本龙一、和一碗完美的意面。",
+        date: "2023年10月22日",
+        cover: "https://images.unsplash.com/photo-1505909182942-e2f09aee3e89?q=80&w=800&auto=format&fit=crop",
+        weeklyData: {
+            music: { title: "Merry Christmas Mr. Lawrence", artist: "坂本龙一", lyric: "无需歌词，唯有宁静跨越时间。" },
+            media: [{ icon: "🎬", title: "《奥本海默》", desc: "在 IMAX 厅感受了极其震撼的音效与人类群星闪耀的矛盾。" }],
+            life: { image: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?q=80&w=600&auto=format&fit=crop", caption: "周五晚上的完美意面 🍝" },
+            podcast: "在《Huberman Lab》里学到了，早晨醒来后不要立刻看手机，而是先去接触自然光 10 分钟，能够完美重置昼夜节律。",
+            work: { title: "Next.js App Router 迁移", desc: "本周踩完了 Server Actions 的坑。结论：将复杂的数据验证逻辑全部移到单独的 API 路由。" }
+        },
+        content: "<p>时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。所以决定用这样的方式，把每周值得记住的时刻切片保存下来。</p>"
+    }];
+    const DEFAULT_NOTES = [
+        { id: 101, title: "下周购物清单", content: "1. 咖啡豆\n2. 全脂牛奶\n3. 极简风马克杯\n4. 绿植（龟背竹）", date: "2023年10月23日" },
+        { id: 102, title: "零碎灵感", content: "也许可以尝试给博客加上深色模式？\n颜色方案可以参考 GitHub 的 Dark Dimmed。", date: "2023年10月24日" }
+    ];
+    const DEFAULT_BOOKMARKS = [
+        { id: 201, type: "🛠️ 工具", title: "Notion", url: "https://notion.so", desc: "极致的块状编辑器，灵感的发源地。" },
+        { id: 202, type: "🌐 网站", title: "Vercel", url: "https://vercel.com", desc: "前端项目一键部署的神仙平台。" },
+        { id: 203, type: "🎬 电影", title: "豆瓣电影", url: "https://movie.douban.com", desc: "找冷门好片的唯一去处。" }
     ];
 
-    let database = JSON.parse(localStorage.getItem('gardenData'));
-    if (!database) {
-        database = DEFAULT_DATA;
-        localStorage.setItem('gardenData', JSON.stringify(database));
-    }
+    // 初始化：优先从 API 拉数据，失败则用本地缓存，再失败用默认数据
+    let database, notesDatabase, bookmarksDatabase;
+
+    const initData = async () => {
+        // 周记
+        try {
+            database = await apiRequest('/api/weeklies');
+            localStorage.setItem('gardenData', JSON.stringify(database));
+        } catch {
+            database = JSON.parse(localStorage.getItem('gardenData')) || DEFAULT_WEEKLY;
+        }
+        // 笔记
+        try {
+            notesDatabase = await apiRequest('/api/notes');
+            localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
+        } catch {
+            notesDatabase = JSON.parse(localStorage.getItem('gardenNotes')) || DEFAULT_NOTES;
+        }
+        // 收藏
+        try {
+            bookmarksDatabase = await apiRequest('/api/bookmarks');
+            localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+        } catch {
+            bookmarksDatabase = JSON.parse(localStorage.getItem('gardenBookmarks')) || DEFAULT_BOOKMARKS;
+        }
+    };
+
     const saveDatabase = () => localStorage.setItem('gardenData', JSON.stringify(database));
-
-    // --- 备忘录数据 ---
-    let notesDatabase = JSON.parse(localStorage.getItem('gardenNotes'));
-    if (!notesDatabase) {
-        notesDatabase = [
-            { id: 101, title: "下周购物清单", content: "1. 咖啡豆\n2. 全脂牛奶\n3. 极简风马克杯\n4. 绿植（龟背竹）", date: "2023年10月23日" },
-            { id: 102, title: "零碎灵感", content: "也许可以尝试给博客加上深色模式？\n颜色方案可以参考 GitHub 的 Dark Dimmed。", date: "2023年10月24日" }
-        ];
-        localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
-    }
     const saveNotesDatabase = () => localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
-
-    // --- 收藏夹数据 ---
-    let bookmarksDatabase = JSON.parse(localStorage.getItem('gardenBookmarks'));
-    if (!bookmarksDatabase) {
-        bookmarksDatabase = [
-            { id: 201, type: "🛠️ 工具", title: "Notion", url: "https://notion.so", desc: "极致的块状编辑器，灵感的发源地。" },
-            { id: 202, type: "🌐 网站", title: "Vercel", url: "https://vercel.com", desc: "前端项目一键部署的神仙平台。" },
-            { id: 203, type: "🎬 电影", title: "豆瓣电影", url: "https://movie.douban.com", desc: "找冷门好片的唯一去处。" }
-        ];
-        localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
-    }
     const saveBookmarksDatabase = () => localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+
+    // API 同步辅助函数（静默失败，不阻塞 UI）
+    const apiSyncWeekly = (item, method) => {
+        if (!API_BASE) return;
+        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
+        const id = method === 'POST' ? '' : `/${item.id}`;
+        apiRequest(`/api/weeklies${id}`, bm).catch(() => {});
+    };
+    const apiSyncNote = (item, method) => {
+        if (!API_BASE) return;
+        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
+        const id = method === 'POST' ? '' : `/${item.id}`;
+        apiRequest(`/api/notes${id}`, bm).catch(() => {});
+    };
+    const apiSyncBookmark = (item, method) => {
+        if (!API_BASE) return;
+        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
+        const id = method === 'POST' ? '' : `/${item.id}`;
+        apiRequest(`/api/bookmarks${id}`, bm).catch(() => {});
+    };
 
     let currentArticleId = null;
     let currentNoteId = null;
@@ -246,11 +289,11 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
         if (isEdit) { const index = database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) database[index] = newData; } else { database.push(newData); }
-        saveDatabase(); renderCards(document.querySelector('.filter-btn.active').dataset.filter); switchView('home');
+        saveDatabase(); apiSyncWeekly(newData, isEdit ? 'PUT' : 'POST'); renderCards(document.querySelector('.filter-btn.active').dataset.filter); switchView('home');
     });
 
     btnDeleteArticle.addEventListener('click', () => {
-        if(confirm("确定要永久删除这篇记忆吗？")) { database = database.filter(d => d.id !== currentArticleId); saveDatabase(); renderCards(); switchView('home'); }
+        if(confirm("确定要永久删除这篇记忆吗？")) { const deletedId = currentArticleId; database = database.filter(d => d.id !== currentArticleId); saveDatabase(); apiSyncWeekly({id: deletedId}, 'DELETE'); renderCards(); switchView('home'); }
     });
 
     filterBtns.forEach(btn => {
@@ -291,11 +334,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!titleVal && !contentVal) { switchView('notes'); return; }
         const newNote = { id: isEdit ? parseInt(idStr) : Date.now(), title: titleVal || '无标题笔记', content: contentVal, date: isEdit ? notesDatabase.find(n => n.id === parseInt(idStr)).date : getChineseDate() };
         if (isEdit) { const index = notesDatabase.findIndex(n => n.id === parseInt(idStr)); if(index !== -1) notesDatabase[index] = newNote; } else { notesDatabase.push(newNote); }
-        saveNotesDatabase(); renderNotes(); switchView('notes');
+        saveNotesDatabase(); apiSyncNote(newNote, isEdit ? 'PUT' : 'POST'); renderNotes(); switchView('notes');
     });
 
     btnDeleteNote.addEventListener('click', () => {
-        if(confirm("确定删除这条笔记吗？")) { notesDatabase = notesDatabase.filter(n => n.id !== currentNoteId); saveNotesDatabase(); renderNotes(); switchView('notes'); }
+        if(confirm("确定删除这条笔记吗？")) { const deletedId = currentNoteId; notesDatabase = notesDatabase.filter(n => n.id !== currentNoteId); saveNotesDatabase(); apiSyncNote({id: deletedId}, 'DELETE'); renderNotes(); switchView('notes'); }
     });
 
     // ==========================================
@@ -324,8 +367,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.preventDefault(); 
                 e.stopPropagation();
                 if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
+                    const deletedId = bm.id;
                     bookmarksDatabase = bookmarksDatabase.filter(b => b.id !== bm.id);
                     saveBookmarksDatabase();
+                    apiSyncBookmark({id: deletedId}, 'DELETE');
                     renderBookmarks();
                 }
             });
@@ -353,6 +398,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         bookmarksDatabase.push(newBookmark);
         saveBookmarksDatabase();
+        apiSyncBookmark(newBookmark, 'POST');
         renderBookmarks();
         switchView('bookmarks');
     });
@@ -367,8 +413,11 @@ document.addEventListener('DOMContentLoaded', () => {
         else navbar.classList.remove('scrolled');
     });
 
-    // 初始化渲染
-    renderCards();
-    renderNotes();
-    renderBookmarks();
+    // 初始化渲染（先拉取 API 数据，再渲染）
+    (async () => {
+        await initData();
+        renderCards();
+        renderNotes();
+        renderBookmarks();
+    })();
 });
