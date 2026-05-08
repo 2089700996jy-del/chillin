@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chillin</title>
+    <!-- 引入 Inter 字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+    <!-- 导航栏 -->
+    <nav class="super-navbar" id="navbar">
+        <div class="super-navbar__content">
+            <div class="super-navbar__menu" id="nav-menu">
+                <a href="#" class="nav-item active" data-view="home">首页</a>
+                <a href="#" class="nav-item" data-view="notes">笔记</a>
+                <a href="#" class="nav-item" data-view="bookmarks">收藏</a>
+            </div>
+            <!-- 阅读模式/编辑模式下的返回按钮 (默认隐藏) -->
+            <button id="btn-back" class="nav-btn-back" style="display: none;">
+                ← 返回
+            </button>
+        </div>
+    </nav>
+
+    <!-- 悬浮添加按钮 (FAB) -->
+    <button class="fab-btn" id="btn-create-new">
+        <span style="font-size: 20px;">+</span> 记录新片段
+    </button>
+
+    <!-- 主容器 -->
+    <main class="notion-app">
+
+        <!-- ========================================== -->
+        <!-- VIEW 1: HOME (Gallery View) -->
+        <!-- ========================================== -->
+        <section id="view-home" class="view-section active">
+            <header class="page-header">
+                <h1 class="page-title">Chillin.</h1>
+                <p class="page-description">
+                    一个极简的数字空间，用来记录我每周的记忆切片、工作总结、播客新知和代码片段。<br>
+                    用心培育，保持简单。
+                </p>
+                <div class="filter-container">
+                    <button class="filter-btn active" data-filter="all">全部</button>
+                    <button class="filter-btn" data-filter="⚪️">⚪️ 技术</button>
+                    <button class="filter-btn" data-filter="🌸">🌸 生活</button>
+                </div>
+            </header>
+            <div class="notion-collection-gallery" id="gallery-container"></div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 2: ARTICLE (Reading View) -->
+        <!-- ========================================== -->
+        <section id="view-article" class="view-section">
+            <article class="article-content">
+                <div class="article-meta">
+                    <span id="article-category" class="article-category"></span>
+                    <span id="article-date" class="article-date"></span>
+                    <div class="article-actions" style="margin-left: auto;">
+                        <button id="btn-edit-article" class="btn-text">编辑</button>
+                        <button id="btn-delete-article" class="btn-text text-danger">删除</button>
+                    </div>
+                </div>
+                <h1 id="article-title" class="article-title"></h1>
+                <div id="article-cover-container" class="article-cover-container"></div>
+                <div id="article-body" class="article-body"></div>
+            </article>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 3: EDITOR (Form View for Weekly Recaps) -->
+        <!-- ========================================== -->
+        <section id="view-editor" class="view-section">
+            <div class="editor-container">
+                <h1 class="page-title" id="editor-page-title">新增记忆</h1>
+                <p class="page-description">填写以下字段，自动生成一篇精美的记忆切片排版。</p>
+                
+                <form id="editor-form" class="editor-form">
+                    <input type="hidden" id="edit-id">
+
+                    <h3 class="editor-section-title">基础信息</h3>
+                    <div class="form-group">
+                        <label>分类标签</label>
+                        <select id="edit-category" required>
+                            <option value="🌸">🌸 人间烟火 (生活/播客/书单)</option>
+                            <option value="⚪️">⚪️ 极客生活 (代码/工作/运维)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>标题</label>
+                        <input type="text" id="edit-title" placeholder="例：2023-W42：秋天的第一杯咖啡" required>
+                    </div>
+                    <div class="form-group">
+                        <label>一句话摘要 (用于主页卡片展示)</label>
+                        <input type="text" id="edit-summary" placeholder="用一句话总结这一周..." required>
+                    </div>
+                    <div class="form-group">
+                        <label>封面图链接 (选填)</label>
+                        <input type="text" id="edit-cover" placeholder="https://images.unsplash.com/...">
+                    </div>
+
+                    <hr class="editor-divider">
+
+                    <h3 class="editor-section-title">周记精美微件 (选填)</h3>
+                    <p class="editor-section-desc">如果某项没有内容，直接留空即可，系统会自动隐藏该模块。</p>
+
+                    <div class="widget-form-group">
+                        <label>🎵 本周循环单曲</label>
+                        <input type="text" id="edit-music-title" placeholder="歌曲名">
+                        <input type="text" id="edit-music-artist" placeholder="歌手">
+                        <input type="text" id="edit-music-lyric" placeholder="最喜欢的一句歌词">
+                    </div>
+
+                    <div class="widget-form-group">
+                        <label>🎬 影音与书单</label>
+                        <input type="text" id="edit-media-icon" placeholder="图标 (如：🎬, 📖)" value="🎬">
+                        <input type="text" id="edit-media-title" placeholder="作品名称">
+                        <input type="text" id="edit-media-desc" placeholder="观后感/读后感...">
+                    </div>
+
+                    <div class="widget-form-group">
+                        <label>🍳 烟火日常 (晚餐/实拍图)</label>
+                        <input type="text" id="edit-life-image" placeholder="图片链接">
+                        <input type="text" id="edit-life-caption" placeholder="给图片加一句手写感说明...">
+                    </div>
+
+                    <div class="widget-form-group">
+                        <label>💡 播客新知 (高亮标注)</label>
+                        <textarea id="edit-podcast" rows="3" placeholder="我学到了..."></textarea>
+                    </div>
+
+                    <div class="widget-form-group">
+                        <label>💻 工作切片</label>
+                        <input type="text" id="edit-work-title" placeholder="项目名称 / 任务">
+                        <textarea id="edit-work-desc" rows="3" placeholder="完成了什么，解决了什么..."></textarea>
+                    </div>
+
+                    <hr class="editor-divider">
+
+                    <h3 class="editor-section-title">自由书写 (选填)</h3>
+                    <div class="form-group">
+                        <label>正文内容 (支持 HTML 标签)</label>
+                        <textarea id="edit-content" rows="6" placeholder="<p>在这里自由地写点什么吧...</p>"></textarea>
+                    </div>
+
+                    <div class="editor-actions">
+                        <button type="button" class="btn-secondary" id="btn-cancel-edit">取消</button>
+                        <button type="submit" class="btn-primary" id="btn-save-edit">保存记忆</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 4: NOTES LIST -->
+        <!-- ========================================== -->
+        <section id="view-notes" class="view-section">
+            <header class="page-header">
+                <h1 class="page-title">备忘录.</h1>
+                <p class="page-description">
+                    随时捕捉脑海中的一闪而过。绝对纯粹，无需排版。
+                </p>
+            </header>
+            
+            <div class="notes-list" id="notes-list-container"></div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 5: NOTE EDITOR (Ruled Paper) -->
+        <!-- ========================================== -->
+        <section id="view-note-editor" class="view-section">
+            <div class="article-meta">
+                <span id="note-editor-date" class="article-date" style="margin-bottom: 20px; display: block;"></span>
+                <div class="article-actions" style="margin-left: auto;">
+                    <button id="btn-delete-note" class="btn-text text-danger" style="margin-top: -30px;">删除笔记</button>
+                </div>
+            </div>
+            
+            <div class="note-paper">
+                <input type="hidden" id="edit-note-id">
+                <input type="text" id="edit-note-title" class="note-paper-title" placeholder="笔记标题..." autocomplete="off">
+                <textarea id="edit-note-content" class="note-paper-content" placeholder="开始写下你的灵感..."></textarea>
+            </div>
+            
+            <div class="editor-actions">
+                <button type="button" class="btn-primary" id="btn-save-note">保存笔记</button>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 6: BOOKMARKS LIST -->
+        <!-- ========================================== -->
+        <section id="view-bookmarks" class="view-section">
+            <header class="page-header">
+                <h1 class="page-title">收藏.</h1>
+                <p class="page-description">
+                    散落在赛博空间的碎片和宝藏店铺，点击即可直达。
+                </p>
+            </header>
+            
+            <div class="bookmark-grid" id="bookmark-list-container">
+                <!-- 收藏卡片由 JavaScript 动态渲染 -->
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 7: BOOKMARK EDITOR -->
+        <!-- ========================================== -->
+        <section id="view-bookmark-editor" class="view-section">
+            <div class="editor-container">
+                <h1 class="page-title" id="bookmark-editor-page-title">新增收藏</h1>
+                
+                <form id="bookmark-editor-form" class="editor-form">
+                    <input type="hidden" id="edit-bookmark-id">
+
+                    <div class="form-group">
+                        <label>分类标签</label>
+                        <select id="edit-bookmark-type" required>
+                            <option value="🌐 网站">🌐 网站</option>
+                            <option value="🛠️ 工具">🛠️ 工具</option>
+                            <option value="🛒 店铺">🛒 店铺</option>
+                            <option value="🎬 电影">🎬 电影</option>
+                            <option value="📖 书籍">📖 书籍</option>
+                            <option value="🎵 音乐">🎵 音乐</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>名称 / 标题</label>
+                        <input type="text" id="edit-bookmark-title" placeholder="例如：Apple 官网" required>
+                    </div>
+                    <div class="form-group">
+                        <label>链接 (URL)</label>
+                        <input type="url" id="edit-bookmark-url" placeholder="https://..." required>
+                    </div>
+                    <div class="form-group">
+                        <label>推荐语 (选填)</label>
+                        <input type="text" id="edit-bookmark-desc" placeholder="为什么收藏它？">
+                    </div>
+
+                    <div class="editor-actions">
+                        <button type="button" class="btn-secondary" id="btn-cancel-bookmark">取消</button>
+                        <button type="submit" class="btn-primary" id="btn-save-bookmark">保存收藏</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+    </main>
+
+    <script src="app.js"></script>
+</body>
+</html>
