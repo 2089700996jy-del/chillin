@@ -1,0 +1,19 @@
+name = "chillin-api"
+main = "workers/api.js"
+compatibility_date = "2025-05-08"
+
+# D1 数据库 — 部署后需要把 database_id 替换为实际值
+[[d1_databases]]
+binding = "DB"
+database_name = "chillin-db"
+database_id = "59ad83a1-35f2-4e8c-b181-14d064627f1b"
+
+# API Key — 部署后设为你的密钥
+[vars]
+API_KEY = "20103cfc7f044a51e7c8c65484abe830"
+
+# Workers 路由 (如果绑定到 Pages 域名)
+[env.production]
+routes = [
+    { pattern = "api.chillin-bfc.workers.dev", zone_id = "PLACEHOLDER" }
+]
