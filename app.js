@@ -150,6 +150,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const editBookmarkDesc = document.getElementById('edit-bookmark-desc');
 
 
+    const escapeHtml = (str) => {
+        if (!str) return '';
+        return String(str)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    };
+
     const autoResizeTextarea = (el) => {
         el.style.height = 'auto';
         el.style.height = el.scrollHeight + 'px';
@@ -212,15 +222,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // 4. 周记画廊逻辑 (Weekly Recaps)
     // ==========================================
     const renderCards = (filter = "all") => {
-        galleryContainer.innerHTML = ''; 
+        galleryContainer.innerHTML = '';
         const sortedDB = [...database].sort((a, b) => b.id - a.id);
         sortedDB.forEach(item => {
             if (filter !== "all" && item.category !== filter) return;
             const card = document.createElement('div');
             card.className = "notion-collection-card";
             card.dataset.id = item.id;
-            let coverHtml = item.cover ? `<img src="${item.cover}" alt="Cover" class="notion-collection-card__cover">` : '';
-            card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${item.category}</div><div class="card-title">${item.title}</div><div class="card-summary">${item.summary}</div><div class="card-date">${item.date}</div></div>`;
+            let coverHtml = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover" class="notion-collection-card__cover">` : '';
+            card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${escapeHtml(item.category)}</div><div class="card-title">${escapeHtml(item.title)}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`;
             card.addEventListener('click', () => openArticle(item));
             galleryContainer.appendChild(card);
         });
@@ -229,11 +239,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const generateWeeklyWidgetsHtml = (data) => {
         if (!data) return '';
         let html = '';
-        if (data.music && data.music.title) html += `<h2>🎵 本周循环</h2><div class="widget-music"><div class="widget-music-disk"></div><div class="widget-music-info"><div class="widget-music-title">${data.music.title}</div><div class="widget-music-artist">${data.music.artist || ''}</div>${data.music.lyric ? `<div class="widget-music-lyric">"${data.music.lyric}"</div>` : ''}</div></div>`;
-        if (data.media && data.media.length > 0 && data.media[0].title) html += `<h2>🎬 影音书影</h2><div class="widget-media">${data.media.map(m => `<div class="widget-media-item"><div class="widget-media-icon">${m.icon || '🎬'}</div><div class="widget-media-content"><div class="widget-media-title">${m.title}</div><div class="widget-media-desc">${m.desc || ''}</div></div></div>`).join('')}</div>`;
-        if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${data.life.image}" alt="Life Snapshot"><div class="widget-polaroid-caption">${data.life.caption || ''}</div></div>`;
-        if (data.podcast) html += `<h2>🎙️ 播客新知</h2><div class="widget-callout"><div class="widget-callout-icon">💡</div><div class="widget-callout-text">${data.podcast}</div></div>`;
-        if (data.work && data.work.title) html += `<h2>💻 工作切片</h2><div class="widget-work"><div class="widget-work-title">${data.work.title}</div><div class="widget-work-desc">${data.work.desc || ''}</div></div>`;
+        if (data.music && data.music.title) html += `<h2>🎵 本周循环</h2><div class="widget-music"><div class="widget-music-disk"></div><div class="widget-music-info"><div class="widget-music-title">${escapeHtml(data.music.title)}</div><div class="widget-music-artist">${escapeHtml(data.music.artist)}</div>${data.music.lyric ? `<div class="widget-music-lyric">"${escapeHtml(data.music.lyric)}"</div>` : ''}</div></div>`;
+        if (data.media && data.media.length > 0 && data.media[0].title) html += `<h2>🎬 影音书影</h2><div class="widget-media">${data.media.map(m => `<div class="widget-media-item"><div class="widget-media-icon">${escapeHtml(m.icon || '🎬')}</div><div class="widget-media-content"><div class="widget-media-title">${escapeHtml(m.title)}</div><div class="widget-media-desc">${escapeHtml(m.desc)}</div></div></div>`).join('')}</div>`;
+        if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${escapeHtml(data.life.image)}" alt="Life Snapshot"><div class="widget-polaroid-caption">${escapeHtml(data.life.caption)}</div></div>`;
+        if (data.podcast) html += `<h2>🎙️ 播客新知</h2><div class="widget-callout"><div class="widget-callout-icon">💡</div><div class="widget-callout-text">${escapeHtml(data.podcast)}</div></div>`;
+        if (data.work && data.work.title) html += `<h2>💻 工作切片</h2><div class="widget-work"><div class="widget-work-title">${escapeHtml(data.work.title)}</div><div class="widget-work-desc">${escapeHtml(data.work.desc)}</div></div>`;
         return html;
     };
 
@@ -245,7 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let finalHtml = item.content || '';
         if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
         articleBody.innerHTML = finalHtml;
-        articleCoverContainer.innerHTML = item.cover ? `<img src="${item.cover}" alt="Cover">` : '';
+        articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover">` : '';
         switchView('article');
     };
 
@@ -277,7 +287,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     btnEditArticle.addEventListener('click', () => openWeeklyEditor(currentArticleId));
-    btnCancelEdit.addEventListener('click', () => { if(currentArticleId) switchView('article'); else switchView('home'); });
+    btnCancelEdit.addEventListener('click', () => {
+        const isNew = !document.getElementById('edit-id').value;
+        switchView(isNew ? 'home' : 'article');
+    });
 
     editorForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -318,8 +331,8 @@ document.addEventListener('DOMContentLoaded', () => {
         sortedNotes.forEach(note => {
             const el = document.createElement('div');
             el.className = 'note-item';
-            const previewText = note.content ? note.content.substring(0, 30).replace(/\n/g, ' ') + '...' : '无正文内容';
-            el.innerHTML = `<div class="note-item-content"><div class="note-item-title">${note.title || '无标题笔记'}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${note.date}</div>`;
+            const previewText = note.content ? escapeHtml(note.content.substring(0, 30)).replace(/\n/g, ' ') + '...' : '无正文内容';
+            el.innerHTML = `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${escapeHtml(note.date)}</div>`;
             el.addEventListener('click', () => openNoteEditor(note.id));
             notesListContainer.appendChild(el);
         });
@@ -362,10 +375,10 @@ document.addEventListener('DOMContentLoaded', () => {
             card.target = '_blank'; // 新标签页打开
 
             card.innerHTML = `
-                <div class="bookmark-card-type">${bm.type}</div>
-                <div class="bookmark-card-title">${bm.title}</div>
-                <div class="bookmark-card-desc">${bm.desc || '暂无描述...'}</div>
-                <button class="bookmark-card-delete" data-id="${bm.id}" title="删除收藏">×</button>
+                <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
+                <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
+                <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
+                <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
             `;
 
             // 删除按钮的独立逻辑，阻止默认的 a 标签跳转
