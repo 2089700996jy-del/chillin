@@ -8,16 +8,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const apiRequest = async (path, options = {}) => {
         if (!API_BASE) throw new Error('API not configured');
-        const res = await fetch(`${API_BASE}${path}`, {
-            ...options,
-            headers: {
-                'Content-Type': 'application/json',
-                'X-API-Key': API_KEY,
-                ...(options.headers || {})
-            }
-        });
-        if (!res.ok) throw new Error(`API error: ${res.status}`);
-        return res.json();
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 5000);
+        try {
+            const res = await fetch(`${API_BASE}${path}`, {
+                ...options,
+                signal: controller.signal,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': API_KEY,
+                    ...(options.headers || {})
+                }
+            });
+            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            return res.json();
+        } finally {
+            clearTimeout(timeout);
+        }
     };
 
     // 默认兜底数据
