@@ -1,4 +1,4 @@
-// Chillin API Worker — REST API for weeklies, notes, bookmarks
+// Chillin API Worker — REST API for auth, weeklies, notes, bookmarks
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -8,12 +8,6 @@ export default {
         // CORS 预检
         if (method === 'OPTIONS') {
             return corsResponse(null, 204);
-        }
-
-        // API Key 鉴权
-        const apiKey = request.headers.get('X-API-Key');
-        if (apiKey !== env.API_KEY) {
-            return jsonResponse({ error: 'Unauthorized' }, 401);
         }
 
         try {
@@ -28,7 +22,7 @@ function corsResponse(body, status) {
     const headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-API-Key'
+        'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Authorization'
     };
     if (!body) return new Response(null, { status, headers });
     return new Response(JSON.stringify(body), {
@@ -41,12 +35,103 @@ function jsonResponse(body, status) {
     return corsResponse(body, status);
 }
 
+// 密码哈希加密
+async function hashPassword(password) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+// 解析 Token 鉴权
+async function authenticate(request, db) {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.split(' ')[1];
+    
+    // 检查 session 是否有效且未过期
+    const session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
+        .bind(token, Date.now()).first();
+        
+    return session ? session.user_id : null;
+}
+
 async function router(path, method, request, env) {
     const db = env.DB;
 
+    // ==================== AUTH 认证 ====================
+    if (path === '/api/auth/register' && method === 'POST') {
+        const { username, password } = await request.json();
+        if (!username || !password || username.length < 3 || password.length < 6) {
+            return jsonResponse({ error: '账号必须大于3位，密码必须大于6位' }, 400);
+        }
+
+        const existing = await db.prepare('SELECT id FROM users WHERE username = ?1').bind(username).first();
+        if (existing) {
+            return jsonResponse({ error: '该账号已被注册' }, 400);
+        }
+
+        const hashedPassword = await hashPassword(password);
+        
+        // 插入用户
+        const insertResult = await db.prepare('INSERT INTO users (username, password_hash) VALUES (?1, ?2) RETURNING id')
+            .bind(username, hashedPassword).first();
+            
+        const userId = insertResult.id;
+        
+        // 自动登录生成 Token
+        const token = crypto.randomUUID();
+        const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+        await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
+            .bind(token, userId, expiresAt).run();
+
+        return jsonResponse({ token, username, userId }, 201);
+    }
+
+    if (path === '/api/auth/login' && method === 'POST') {
+        const { username, password } = await request.json();
+        if (!username || !password) return jsonResponse({ error: '请输入账号和密码' }, 400);
+
+        const user = await db.prepare('SELECT id, password_hash FROM users WHERE username = ?1').bind(username).first();
+        if (!user) return jsonResponse({ error: '账号或密码错误' }, 401);
+
+        const hashedPassword = await hashPassword(password);
+        if (user.password_hash !== hashedPassword) {
+            return jsonResponse({ error: '账号或密码错误' }, 401);
+        }
+
+        const token = crypto.randomUUID();
+        const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+        await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
+            .bind(token, user.id, expiresAt).run();
+
+        return jsonResponse({ token, username, userId: user.id }, 200);
+    }
+
+    // ========== 需要鉴权的路由 ==========
+    const userId = await authenticate(request, db);
+    if (!userId) {
+        return jsonResponse({ error: '未登录或登录已过期' }, 401);
+    }
+
+    if (path === '/api/auth/logout' && method === 'POST') {
+        const authHeader = request.headers.get('Authorization');
+        const token = authHeader.split(' ')[1];
+        await db.prepare('DELETE FROM sessions WHERE token = ?1').bind(token).run();
+        return jsonResponse({ success: true }, 200);
+    }
+
+    if (path === '/api/auth/me' && method === 'GET') {
+        const user = await db.prepare('SELECT id, username FROM users WHERE id = ?1').bind(userId).first();
+        return jsonResponse(user, 200);
+    }
+
     // ==================== WEEKLY 周记 ====================
     if (path === '/api/weeklies' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM weeklies ORDER BY id DESC').all();
+        const result = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
         const rows = result.results.map(formatWeekly);
         return jsonResponse(rows, 200);
     }
@@ -55,10 +140,10 @@ async function router(path, method, request, env) {
         const body = await request.json();
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
         await db.prepare(
-            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now'))`
-        ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '').run();
-        const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1').bind(body.id).first();
+            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, user_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))`
+        ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', userId).run();
+        const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(formatWeekly(row), 201);
     }
 
@@ -69,31 +154,31 @@ async function router(path, method, request, env) {
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
         await db.prepare(
             `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, updated_at=datetime('now')
-             WHERE id=?8`
-        ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', id).run();
-        const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1').bind(id).first();
+             WHERE id=?8 AND user_id=?9`
+        ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', id, userId).run();
+        const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
         return jsonResponse(formatWeekly(row), 200);
     }
 
     if (weeklyMatch && method === 'DELETE') {
         const id = parseInt(weeklyMatch[1]);
-        await db.prepare('DELETE FROM weeklies WHERE id = ?1').bind(id).run();
+        await db.prepare('DELETE FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
     // ==================== NOTES 备忘录 ====================
     if (path === '/api/notes' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM notes ORDER BY id DESC').all();
+        const result = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
         return jsonResponse(result.results, 200);
     }
 
     if (path === '/api/notes' && method === 'POST') {
         const body = await request.json();
         await db.prepare(
-            `INSERT OR REPLACE INTO notes (id, title, content, date, updated_at)
-             VALUES (?1, ?2, ?3, ?4, datetime('now'))`
-        ).bind(body.id, body.title, body.content || '', body.date).run();
-        const row = await db.prepare('SELECT * FROM notes WHERE id = ?1').bind(body.id).first();
+            `INSERT OR REPLACE INTO notes (id, title, content, date, user_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))`
+        ).bind(body.id, body.title, body.content || '', body.date, userId).run();
+        const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(row, 201);
     }
 
@@ -102,38 +187,38 @@ async function router(path, method, request, env) {
         const id = parseInt(noteMatch[1]);
         const body = await request.json();
         await db.prepare(
-            `UPDATE notes SET title=?1, content=?2, date=?3, updated_at=datetime('now') WHERE id=?4`
-        ).bind(body.title, body.content || '', body.date, id).run();
-        const row = await db.prepare('SELECT * FROM notes WHERE id = ?1').bind(id).first();
+            `UPDATE notes SET title=?1, content=?2, date=?3, updated_at=datetime('now') WHERE id=?4 AND user_id=?5`
+        ).bind(body.title, body.content || '', body.date, id, userId).run();
+        const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
         return jsonResponse(row, 200);
     }
 
     if (noteMatch && method === 'DELETE') {
         const id = parseInt(noteMatch[1]);
-        await db.prepare('DELETE FROM notes WHERE id = ?1').bind(id).run();
+        await db.prepare('DELETE FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
     // ==================== BOOKMARKS 收藏 ====================
     if (path === '/api/bookmarks' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM bookmarks ORDER BY id DESC').all();
+        const result = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
         return jsonResponse(result.results, 200);
     }
 
     if (path === '/api/bookmarks' && method === 'POST') {
         const body = await request.json();
         await db.prepare(
-            `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description)
-             VALUES (?1, ?2, ?3, ?4, ?5)`
-        ).bind(body.id, body.type, body.title, body.url, body.desc || '').run();
-        const row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1').bind(body.id).first();
+            `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+        ).bind(body.id, body.type, body.title, body.url, body.desc || '', userId).run();
+        const row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(row, 201);
     }
 
     const bmMatch = path.match(/^\/api\/bookmarks\/(\d+)$/);
     if (bmMatch && method === 'DELETE') {
         const id = parseInt(bmMatch[1]);
-        await db.prepare('DELETE FROM bookmarks WHERE id = ?1').bind(id).run();
+        await db.prepare('DELETE FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
@@ -141,6 +226,7 @@ async function router(path, method, request, env) {
 }
 
 function formatWeekly(row) {
+    if (!row) return null;
     return {
         id: row.id,
         category: row.category,
