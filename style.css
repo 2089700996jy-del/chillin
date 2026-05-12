@@ -283,3 +283,35 @@ body, .notion-app {
 }
 .bookmark-card:hover .bookmark-card-delete { opacity: 1; }
 .bookmark-card-delete:hover { background: #fee2e2; color: #dc2626; }
+
+/* ========================================== */
+/* AUTH OVERLAY */
+/* ========================================== */
+.auth-overlay {
+  position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(249, 249, 249, 0.85); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+  z-index: 1000; display: flex; justify-content: center; align-items: center;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+.auth-overlay.hidden {
+  opacity: 0; visibility: hidden; pointer-events: none;
+}
+.auth-card {
+  background: #FFFFFF; border-radius: 20px; padding: 40px; width: 100%; max-width: 400px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.08); border: 1px solid rgba(0, 0, 0, 0.04);
+  text-align: center;
+}
+.auth-title { font-size: 32px; font-weight: 700; margin-bottom: 8px; letter-spacing: -0.5px; }
+.auth-desc { font-size: 14px; color: var(--text-color-light); margin-bottom: 30px; line-height: 1.5; }
+.auth-form { display: flex; flex-direction: column; gap: 16px; margin-bottom: 24px; }
+.auth-input {
+  width: 100%; padding: 14px 16px; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px;
+  background: #F9F9F9; font-family: var(--font-family); font-size: 15px; color: var(--text-color);
+  transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+}
+.auth-input:focus { border-color: rgba(0,0,0,0.3); box-shadow: 0 0 0 3px rgba(0,0,0,0.05); background: #FFF; }
+.auth-error { color: #d93025; font-size: 13px; text-align: left; padding: 0 4px; }
+.auth-btn { width: 100%; padding: 14px; border-radius: 12px; font-size: 16px; margin-top: 8px; }
+.auth-switch { font-size: 14px; color: var(--text-color-light); }
+.auth-switch button { margin-left: 4px; font-weight: 500; color: var(--text-color); }
+

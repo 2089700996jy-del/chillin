@@ -1,25 +1,117 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // ==========================================
-    // 1. 数据持久化 (API 优先 + LocalStorage 兜底)
+    // 1. 数据持久化与认证逻辑
     // ==========================================
     const API_BASE = (typeof CHILLIN_API_URL !== 'undefined') ? CHILLIN_API_URL : '';
     const API_KEY = (typeof CHILLIN_API_KEY !== 'undefined') ? CHILLIN_API_KEY : '';
 
+    let authToken = localStorage.getItem('chillin_token') || '';
+    let authUser = JSON.parse(localStorage.getItem('chillin_user') || 'null');
+
+    // DOM Elements for Auth
+    const authOverlay = document.getElementById('auth-overlay');
+    const authForm = document.getElementById('auth-form');
+    const authErrorMsg = document.getElementById('auth-error-msg');
+    const btnAuthSwitch = document.getElementById('btn-auth-switch');
+    const authSwitchText = document.getElementById('auth-switch-text');
+    const btnLogout = document.getElementById('btn-logout');
+    const navUsername = document.getElementById('nav-username');
+
+    let isRegisterMode = false;
+
+    // 显示/隐藏认证覆盖层
+    const checkAuth = () => {
+        if (!authToken) {
+            authOverlay.classList.remove('hidden');
+            return false;
+        }
+        authOverlay.classList.add('hidden');
+        if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
+        return true;
+    };
+
+    const logout = () => {
+        if (authToken) {
+            apiRequest('/api/auth/logout', { method: 'POST' }).catch(() => {});
+        }
+        authToken = '';
+        authUser = null;
+        localStorage.removeItem('chillin_token');
+        localStorage.removeItem('chillin_user');
+        checkAuth();
+    };
+
+    btnLogout.addEventListener('click', logout);
+
+    btnAuthSwitch.addEventListener('click', () => {
+        isRegisterMode = !isRegisterMode;
+        if (isRegisterMode) {
+            document.querySelector('.auth-btn').innerText = '注册并进入';
+            authSwitchText.innerText = '已有账号？';
+            btnAuthSwitch.innerText = '直接登录';
+        } else {
+            document.querySelector('.auth-btn').innerText = '登录';
+            authSwitchText.innerText = '还没有账号？';
+            btnAuthSwitch.innerText = '立即注册';
+        }
+        authErrorMsg.style.display = 'none';
+    });
+
+    authForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('auth-username').value.trim();
+        const password = document.getElementById('auth-password').value.trim();
+        authErrorMsg.style.display = 'none';
+
+        try {
+            const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+            const res = await fetch(`${API_BASE}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || 'Authentication failed');
+
+            authToken = data.token;
+            authUser = { id: data.userId, username: data.username };
+            localStorage.setItem('chillin_token', authToken);
+            localStorage.setItem('chillin_user', JSON.stringify(authUser));
+            
+            checkAuth();
+            loadLocalData(); // Reload local cache for new user
+            syncFromApi();   // Fetch new API data
+        } catch (err) {
+            authErrorMsg.innerText = err.message;
+            authErrorMsg.style.display = 'block';
+        }
+    });
+
     const apiRequest = async (path, options = {}) => {
         if (!API_BASE) throw new Error('API not configured');
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 5000);
+        const timeout = setTimeout(() => controller.abort(), 8000);
         try {
+            const headers = {
+                'Content-Type': 'application/json',
+                'X-API-Key': API_KEY,
+                ...(options.headers || {})
+            };
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
             const res = await fetch(`${API_BASE}${path}`, {
                 ...options,
                 signal: controller.signal,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-API-Key': API_KEY,
-                    ...(options.headers || {})
-                }
+                headers
             });
+            
+            if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') {
+                logout();
+                throw new Error('Unauthorized or token expired');
+            }
             if (!res.ok) throw new Error(`API error: ${res.status}`);
             return res.json();
         } finally {
@@ -55,21 +147,29 @@ document.addEventListener('DOMContentLoaded', () => {
     // 初始化：优先从 API 拉数据，失败则用本地缓存，再失败用默认数据
     let database, notesDatabase, bookmarksDatabase;
 
+    // 缓存前缀函数 (按用户隔离)
+    const getLocalKey = (key) => authUser ? `${authUser.id}_${key}` : `default_${key}`;
+
     // 立即从本地缓存加载，保证页面秒开
     const loadLocalData = () => {
-        database = JSON.parse(localStorage.getItem('gardenData')) || DEFAULT_WEEKLY;
-        notesDatabase = JSON.parse(localStorage.getItem('gardenNotes')) || DEFAULT_NOTES;
-        bookmarksDatabase = JSON.parse(localStorage.getItem('gardenBookmarks')) || DEFAULT_BOOKMARKS;
+        if (!checkAuth()) return; // 未登录时不加载数据
+        database = JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || DEFAULT_WEEKLY;
+        notesDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || DEFAULT_NOTES;
+        bookmarksDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || DEFAULT_BOOKMARKS;
+        renderCards();
+        renderNotes();
+        renderBookmarks();
     };
 
     // 后台尝试从 API 同步最新数据，成功后自动刷新
     const syncFromApi = async () => {
+        if (!authToken) return;
         // 周记
         try {
             const apiData = await apiRequest('/api/weeklies');
-            if (apiData && apiData.length > 0) {
+            if (apiData) {
                 database = apiData;
-                localStorage.setItem('gardenData', JSON.stringify(database));
+                localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
                 renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
             }
         } catch {}
@@ -78,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const apiData = await apiRequest('/api/notes');
             if (apiData) {
                 notesDatabase = apiData;
-                localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
+                localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(notesDatabase));
                 renderNotes();
             }
         } catch {}
@@ -87,15 +187,15 @@ document.addEventListener('DOMContentLoaded', () => {
             const apiData = await apiRequest('/api/bookmarks');
             if (apiData) {
                 bookmarksDatabase = apiData;
-                localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+                localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(bookmarksDatabase));
                 renderBookmarks();
             }
         } catch {}
     };
 
-    const saveDatabase = () => localStorage.setItem('gardenData', JSON.stringify(database));
-    const saveNotesDatabase = () => localStorage.setItem('gardenNotes', JSON.stringify(notesDatabase));
-    const saveBookmarksDatabase = () => localStorage.setItem('gardenBookmarks', JSON.stringify(bookmarksDatabase));
+    const saveDatabase = () => localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
+    const saveNotesDatabase = () => localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(notesDatabase));
+    const saveBookmarksDatabase = () => localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(bookmarksDatabase));
 
     // API 同步辅助函数（静默失败，不阻塞 UI）
     const apiSyncWeekly = (item, method) => {
@@ -449,9 +549,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 1. 立即用本地缓存渲染（秒开）
     loadLocalData();
-    renderCards();
-    renderNotes();
-    renderBookmarks();
 
     // 2. 后台静默同步 API 数据（有变化则自动刷新）
     syncFromApi();
