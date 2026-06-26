@@ -10,6 +10,12 @@ export default {
             return corsResponse(null, 204);
         }
 
+        // 校验 API Key
+        const apiKey = request.headers.get('X-API-Key');
+        if (apiKey !== env.API_KEY) {
+            return jsonResponse({ error: 'Forbidden: Invalid API Key' }, 403);
+        }
+
         try {
             return await router(path, method, request, env);
         } catch (err) {
@@ -64,6 +70,11 @@ async function router(path, method, request, env) {
 
     // ==================== AUTH 认证 ====================
     if (path === '/api/auth/register' && method === 'POST') {
+        // 校验是否允许注册
+        if (env.ALLOW_REGISTRATION !== 'true') {
+            return jsonResponse({ error: '注册功能已关闭，请联系管理员。' }, 403);
+        }
+
         const { username, password } = await request.json();
         if (!username || !password || username.length < 3 || password.length < 6) {
             return jsonResponse({ error: '账号必须大于3位，密码必须大于6位' }, 400);
