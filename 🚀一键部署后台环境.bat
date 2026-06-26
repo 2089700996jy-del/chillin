@@ -1,19 +1,18 @@
 @echo off
-chcp 65001 >nul
 echo ==============================================
-echo 🚀 正在为您更新 Cloudflare 后端数据库与代码...
+echo Updating Cloudflare database and code...
 echo ==============================================
 echo.
 
-echo [1/2] 正在更新数据库结构...
+echo [1/2] Applying database migrations...
 call npx -y wrangler d1 migrations apply DB --remote
 
 echo.
-echo [2/2] 正在发布最新的后端 API...
+echo [2/2] Deploying backend API...
 call npx -y wrangler deploy
 
 echo.
 echo ==============================================
-echo ✅ 所有后台服务部署完成！
+echo Deployment completed!
 echo ==============================================
 pause
