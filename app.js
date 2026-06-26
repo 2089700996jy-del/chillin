@@ -98,7 +98,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const apiRequest = async (path, options = {}) => {
-        if (!API_BASE) throw new Error('API not configured');
         const controller = new AbortController();
         const timeout = setTimeout(() => controller.abort(), 8000);
         try {
@@ -208,19 +207,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // API 同步辅助函数（静默失败，不阻塞 UI）
     const apiSyncWeekly = (item, method) => {
-        if (!API_BASE) return;
         const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
         const id = method === 'POST' ? '' : `/${item.id}`;
         apiRequest(`/api/weeklies${id}`, bm).catch(() => {});
     };
     const apiSyncNote = (item, method) => {
-        if (!API_BASE) return;
         const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
         const id = method === 'POST' ? '' : `/${item.id}`;
         apiRequest(`/api/notes${id}`, bm).catch(() => {});
     };
     const apiSyncBookmark = (item, method) => {
-        if (!API_BASE) return;
         const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
         const id = method === 'POST' ? '' : `/${item.id}`;
         apiRequest(`/api/bookmarks${id}`, bm).catch(() => {});
