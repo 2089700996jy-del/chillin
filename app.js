@@ -3,7 +3,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 1. 数据持久化与认证逻辑
     // ==========================================
-    const API_BASE = (typeof CHILLIN_API_URL !== 'undefined') ? CHILLIN_API_URL : '';
+    let API_BASE = (typeof CHILLIN_API_URL !== 'undefined') ? CHILLIN_API_URL : '';
+    // 如果是本地 file 协议或者 localhost 调试，且 API_BASE 为空，自动指回云端 API 地址
+    if (!API_BASE && (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        API_BASE = 'https://chillin-api.2089700996jy.workers.dev';
+    }
     const API_KEY = (typeof CHILLIN_API_KEY !== 'undefined') ? CHILLIN_API_KEY : '';
 
     let authToken = localStorage.getItem('chillin_token') || '';
