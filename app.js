@@ -680,4 +680,58 @@ document.addEventListener('DOMContentLoaded', () => {
         // 3. 后台静默同步 API 数据（有变化则自动刷新）
         syncFromApi();
     });
+
+    // 图片上传处理
+    const globalImageUploader = document.getElementById('global-image-uploader');
+    let currentUploadTargetInput = null;
+
+    document.querySelectorAll('.btn-upload-image').forEach(btn => {
+        btn.addEventListener('click', () => {
+            currentUploadTargetInput = document.getElementById(btn.dataset.target);
+            if (globalImageUploader) {
+                globalImageUploader.click();
+            }
+        });
+    });
+
+    if (globalImageUploader) {
+        globalImageUploader.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !currentUploadTargetInput) return;
+
+            const uploadBtn = document.querySelector(`.btn-upload-image[data-target="${currentUploadTargetInput.id}"]`);
+            const originalBtnText = uploadBtn ? uploadBtn.innerText : '📷 上传';
+            if (uploadBtn) {
+                uploadBtn.innerText = '⏳...';
+                uploadBtn.disabled = true;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            try {
+                const res = await fetch('/api/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (!res.ok) throw new Error('上传接口返回异常');
+                const data = await res.json();
+                if (data && data[0] && data[0].src) {
+                    currentUploadTargetInput.value = data[0].src;
+                    currentUploadTargetInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    alert('图片上传成功！已填入链接。');
+                } else {
+                    throw new Error('解析上传结果失败');
+                }
+            } catch (err) {
+                alert('图片上传失败，请重试：' + err.message);
+            } finally {
+                if (uploadBtn) {
+                    uploadBtn.innerText = originalBtnText;
+                    uploadBtn.disabled = false;
+                }
+                globalImageUploader.value = '';
+            }
+        });
+    }
 });

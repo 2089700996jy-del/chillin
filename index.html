@@ -131,7 +131,10 @@
                     </div>
                     <div class="form-group">
                         <label>封面图链接 (选填)</label>
-                        <input type="text" id="edit-cover" placeholder="https://images.unsplash.com/...">
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="edit-cover" placeholder="https://images.unsplash.com/..." style="flex-grow: 1;">
+                            <button type="button" class="btn-secondary btn-upload-image" data-target="edit-cover" style="padding: 10px 14px; white-space: nowrap;">📷 上传</button>
+                        </div>
                     </div>
 
                     <hr class="editor-divider">
@@ -155,7 +158,10 @@
 
                     <div class="widget-form-group">
                         <label>🍳 烟火日常 (晚餐/实拍图)</label>
-                        <input type="text" id="edit-life-image" placeholder="图片链接">
+                        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
+                            <input type="text" id="edit-life-image" placeholder="图片链接" style="flex-grow: 1; margin-bottom: 0;">
+                            <button type="button" class="btn-secondary btn-upload-image" data-target="edit-life-image" style="padding: 10px 14px; white-space: nowrap;">📷 上传</button>
+                        </div>
                         <input type="text" id="edit-life-caption" placeholder="给图片加一句手写感说明...">
                     </div>
 
@@ -281,6 +287,9 @@
         </section>
 
     </main>
+
+    <!-- 全局隐藏的文件上传器 -->
+    <input type="file" id="global-image-uploader" accept="image/*" style="display: none;">
 
     <!-- Cloudflare Worker API 配置 -->
     <script>
