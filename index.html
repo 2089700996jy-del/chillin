@@ -74,10 +74,15 @@
                     一个极简的数字空间，用来记录我每周的记忆切片、工作总结、播客新知和代码片段。<br>
                     用心培育，保持简单。
                 </p>
-                <div class="filter-container">
-                    <button class="filter-btn active" data-filter="all">全部</button>
-                    <button class="filter-btn" data-filter="⚪️">⚪️ 技术</button>
-                    <button class="filter-btn" data-filter="🌸">🌸 生活</button>
+                <div class="search-filter-row">
+                    <div class="filter-container">
+                        <button class="filter-btn active" data-filter="all">全部</button>
+                        <button class="filter-btn" data-filter="⚪️">⚪️ 技术</button>
+                        <button class="filter-btn" data-filter="🌸">🌸 生活</button>
+                    </div>
+                    <div class="search-wrapper">
+                        <input type="text" id="search-home" class="search-input" placeholder="🔍 搜索周记标题、摘要或正文...">
+                    </div>
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
@@ -201,6 +206,9 @@
                 <p class="page-description">
                     随时捕捉脑海中的一闪而过。绝对纯粹，无需排版。
                 </p>
+                <div class="search-wrapper" style="margin-top: 16px;">
+                    <input type="text" id="search-notes" class="search-input" placeholder="🔍 搜索笔记标题或内容...">
+                </div>
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
@@ -237,6 +245,9 @@
                 <p class="page-description">
                     散落在赛博空间的碎片和宝藏店铺，点击即可直达。
                 </p>
+                <div class="search-wrapper" style="margin-top: 16px;">
+                    <input type="text" id="search-bookmarks" class="search-input" placeholder="🔍 搜索收藏标题、描述或类型...">
+                </div>
             </header>
             
             <div class="bookmark-grid" id="bookmark-list-container">
