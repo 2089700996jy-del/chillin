@@ -21,6 +21,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const authSwitchText = document.getElementById('auth-switch-text');
     const btnLogout = document.getElementById('btn-logout');
     const navUsername = document.getElementById('nav-username');
+    const btnForceUpload = document.getElementById('btn-force-upload');
 
     let isRegisterMode = false;
 
@@ -28,10 +29,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const checkAuth = () => {
         if (!authToken) {
             authOverlay.classList.remove('hidden');
+            if (btnForceUpload) btnForceUpload.style.display = 'none';
             return false;
         }
         authOverlay.classList.add('hidden');
         if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
+        if (btnForceUpload) btnForceUpload.style.display = 'inline-block';
         return true;
     };
 
@@ -84,8 +87,10 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('chillin_user', JSON.stringify(authUser));
             
             checkAuth();
-            loadLocalData(); // Reload local cache for new user
-            syncFromApi();   // Fetch new API data
+            checkAndMergeGuestData().then(() => {
+                loadLocalData(); // Reload local cache for new user
+                syncFromApi();   // Fetch new API data
+            });
         } catch (err) {
             authErrorMsg.innerText = err.message;
             authErrorMsg.style.display = 'block';
@@ -543,7 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
     // ==========================================
-    // 7. 全局事件
+    // 7. 全局事件与同步备份
     // ==========================================
     const navbar = document.getElementById('navbar');
     window.addEventListener('scroll', () => {
@@ -551,9 +556,131 @@ document.addEventListener('DOMContentLoaded', () => {
         else navbar.classList.remove('scrolled');
     });
 
+    // 备份本地数据到云端按钮事件
+    if (btnForceUpload) {
+        btnForceUpload.addEventListener('click', async () => {
+            if (!confirm('确定要将当前电脑上的所有周记、笔记和收藏备份覆盖到云端吗？\n如果在其他设备（如手机）上有新写的数据，可能会被覆盖，请谨慎操作。')) {
+                return;
+            }
+            
+            const originalText = btnForceUpload.innerText;
+            btnForceUpload.innerText = '正在备份...';
+            btnForceUpload.disabled = true;
+            
+            try {
+                // 备份周记
+                for (const item of database) {
+                    if (database.length > 1 && item.id === 1) continue; // 排除默认的示例
+                    await apiRequest('/api/weeklies', {
+                        method: 'POST',
+                        body: JSON.stringify(item)
+                    });
+                }
+                
+                // 备份笔记
+                for (const item of notesDatabase) {
+                    if (notesDatabase.length > 2 && (item.id === 101 || item.id === 102)) continue;
+                    await apiRequest('/api/notes', {
+                        method: 'POST',
+                        body: JSON.stringify(item)
+                    });
+                }
+                
+                // 备份收藏
+                for (const item of bookmarksDatabase) {
+                    if (bookmarksDatabase.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
+                    await apiRequest('/api/bookmarks', {
+                        method: 'POST',
+                        body: JSON.stringify(item)
+                    });
+                }
+                
+                alert('备份成功！当前电脑上的数据已成功同步至云端。你现在可以在手机上刷新页面同步了。');
+            } catch (err) {
+                alert('备份失败: ' + err.message);
+            } finally {
+                btnForceUpload.innerText = originalText;
+                btnForceUpload.disabled = false;
+            }
+        });
+    }
+
+    // 检测并合并游客/未登录状态下的本地数据
+    const checkAndMergeGuestData = async () => {
+        if (!authUser) return;
+        
+        const guestData = JSON.parse(localStorage.getItem('default_gardenData')) || [];
+        const guestNotes = JSON.parse(localStorage.getItem('default_gardenNotes')) || [];
+        const guestBookmarks = JSON.parse(localStorage.getItem('default_gardenBookmarks')) || [];
+        
+        const hasGuestData = guestData.length > 0 && !(guestData.length === 1 && guestData[0].id === 1);
+        const hasGuestNotes = guestNotes.length > 0 && !guestNotes.every(n => n.id === 101 || n.id === 102);
+        const hasGuestBookmarks = guestBookmarks.length > 0 && !guestBookmarks.every(b => b.id === 201 || b.id === 202 || b.id === 203);
+        
+        if (hasGuestData || hasGuestNotes || hasGuestBookmarks) {
+            if (confirm('检测到您在未登录时在当前电脑上创建了本地数据（周记/笔记/收藏）。是否将这些数据导入并同步到您当前的账号中？')) {
+                try {
+                    // 1. 合并周记到当前用户的本地缓存
+                    const userKey = getLocalKey('gardenData');
+                    let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];
+                    userDatabase = [...userDatabase, ...guestData].filter((item, index, self) => 
+                        self.findIndex(t => t.id === item.id) === index
+                    );
+                    localStorage.setItem(userKey, JSON.stringify(userDatabase));
+                    database = userDatabase;
+                    
+                    for (const item of guestData) {
+                        if (item.id === 1) continue;
+                        await apiSyncWeekly(item, 'POST');
+                    }
+
+                    // 2. 合并笔记到当前用户的本地缓存
+                    const userNotesKey = getLocalKey('gardenNotes');
+                    let userNotesDatabase = JSON.parse(localStorage.getItem(userNotesKey)) || [];
+                    userNotesDatabase = [...userNotesDatabase, ...guestNotes].filter((item, index, self) => 
+                        self.findIndex(t => t.id === item.id) === index
+                    );
+                    localStorage.setItem(userNotesKey, JSON.stringify(userNotesDatabase));
+                    notesDatabase = userNotesDatabase;
+                    
+                    for (const item of guestNotes) {
+                        if (item.id === 101 || item.id === 102) continue;
+                        await apiSyncNote(item, 'POST');
+                    }
+
+                    // 3. 合并收藏到当前用户的本地缓存
+                    const userBMKey = getLocalKey('gardenBookmarks');
+                    let userBMDatabase = JSON.parse(localStorage.getItem(userBMKey)) || [];
+                    userBMDatabase = [...userBMDatabase, ...guestBookmarks].filter((item, index, self) => 
+                        self.findIndex(t => t.id === item.id) === index
+                    );
+                    localStorage.setItem(userBMKey, JSON.stringify(userBMDatabase));
+                    bookmarksDatabase = userBMDatabase;
+                    
+                    for (const item of guestBookmarks) {
+                        if (item.id === 201 || item.id === 202 || item.id === 203) continue;
+                        await apiSyncBookmark(item, 'POST');
+                    }
+
+                    // 清空游客数据，防止重复提示
+                    localStorage.removeItem('default_gardenData');
+                    localStorage.removeItem('default_gardenNotes');
+                    localStorage.removeItem('default_gardenBookmarks');
+                    
+                    alert('本地数据已成功合并并同步至云端！');
+                } catch (e) {
+                    alert('合并同步部分数据失败，请重试：' + e.message);
+                }
+            }
+        }
+    };
+
     // 1. 立即用本地缓存渲染（秒开）
     loadLocalData();
 
-    // 2. 后台静默同步 API 数据（有变化则自动刷新）
-    syncFromApi();
+    // 2. 检测合并游客数据
+    checkAndMergeGuestData().then(() => {
+        // 3. 后台静默同步 API 数据（有变化则自动刷新）
+        syncFromApi();
+    });
 });
