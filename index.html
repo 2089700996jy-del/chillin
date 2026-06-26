@@ -45,16 +45,20 @@
                 ← 返回
             </button>
             <div class="nav-right" style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
-                <span id="nav-username" style="font-size: 13px; color: #a1a1aa; font-weight: 500;"></span>
-                <button id="btn-force-upload" class="btn-text text-primary" style="font-size: 13px; display: none;">☁️ 备份到云端</button>
-                <button id="btn-logout" class="btn-text text-danger" style="font-size: 13px;">退出</button>
+                <span id="nav-username" class="nav-username" style="font-size: 13px; color: #a1a1aa; font-weight: 500;"></span>
+                <button id="btn-force-upload" class="btn-text text-primary btn-icon-text" style="font-size: 13px; display: none;">
+                    <span class="btn-icon">☁️</span><span class="btn-label">备份到云端</span>
+                </button>
+                <button id="btn-logout" class="btn-text text-danger btn-icon-text" style="font-size: 13px;">
+                    <span class="btn-icon">🚪</span><span class="btn-label">退出</span>
+                </button>
             </div>
         </div>
     </nav>
 
     <!-- 悬浮添加按钮 (FAB) -->
     <button class="fab-btn" id="btn-create-new">
-        <span style="font-size: 20px;">+</span> 记录新片段
+        <span class="fab-icon" style="font-size: 20px;">+</span> <span class="fab-label">记录新片段</span>
     </button>
 
     <!-- 主容器 -->

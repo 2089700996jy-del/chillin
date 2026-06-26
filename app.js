@@ -559,8 +559,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             
-            const originalText = btnForceUpload.innerText;
-            btnForceUpload.innerText = '正在备份...';
+            const labelEl = btnForceUpload.querySelector('.btn-label');
+            const originalLabelText = labelEl ? labelEl.innerText : '备份到云端';
+            if (labelEl) labelEl.innerText = '正在备份...';
             btnForceUpload.disabled = true;
             
             try {
@@ -595,7 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (err) {
                 alert('备份失败: ' + err.message);
             } finally {
-                btnForceUpload.innerText = originalText;
+                if (labelEl) labelEl.innerText = originalLabelText;
                 btnForceUpload.disabled = false;
             }
         });
