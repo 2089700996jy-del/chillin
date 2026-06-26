@@ -225,6 +225,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentArticleId = null;
     let currentNoteId = null;
     let currentActiveNavView = 'home'; 
+    let currentHomeSearchQuery = '';
+    let currentNotesSearchQuery = '';
+    let currentBookmarksSearchQuery = ''; 
 
     // ==========================================
     // 2. DOM 元素获取
@@ -340,11 +343,24 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 4. 周记画廊逻辑 (Weekly Recaps)
     // ==========================================
-    const renderCards = (filter = "all") => {
+    const renderCards = (filter) => {
+        if (!filter) {
+            const activeBtn = document.querySelector('.filter-btn.active');
+            filter = activeBtn ? activeBtn.dataset.filter : 'all';
+        }
         galleryContainer.innerHTML = '';
         const sortedDB = [...database].sort((a, b) => b.id - a.id);
         sortedDB.forEach(item => {
             if (filter !== "all" && item.category !== filter) return;
+            
+            if (currentHomeSearchQuery) {
+                const query = currentHomeSearchQuery.toLowerCase();
+                const titleMatch = (item.title || '').toLowerCase().includes(query);
+                const summaryMatch = (item.summary || '').toLowerCase().includes(query);
+                const contentMatch = (item.content || '').toLowerCase().includes(query);
+                if (!titleMatch && !summaryMatch && !contentMatch) return;
+            }
+            
             const card = document.createElement('div');
             card.className = "notion-collection-card";
             card.dataset.id = item.id;
@@ -448,6 +464,12 @@ document.addEventListener('DOMContentLoaded', () => {
         notesListContainer.innerHTML = '';
         const sortedNotes = [...notesDatabase].sort((a, b) => b.id - a.id);
         sortedNotes.forEach(note => {
+            if (currentNotesSearchQuery) {
+                const query = currentNotesSearchQuery.toLowerCase();
+                const titleMatch = (note.title || '').toLowerCase().includes(query);
+                const contentMatch = (note.content || '').toLowerCase().includes(query);
+                if (!titleMatch && !contentMatch) return;
+            }
             const el = document.createElement('div');
             el.className = 'note-item';
             const previewText = note.content ? escapeHtml(note.content.substring(0, 30)).replace(/\n/g, ' ') + '...' : '无正文内容';
@@ -488,6 +510,13 @@ document.addEventListener('DOMContentLoaded', () => {
         const sortedBookmarks = [...bookmarksDatabase].sort((a, b) => b.id - a.id);
         
         sortedBookmarks.forEach(bm => {
+            if (currentBookmarksSearchQuery) {
+                const query = currentBookmarksSearchQuery.toLowerCase();
+                const titleMatch = (bm.title || '').toLowerCase().includes(query);
+                const descMatch = (bm.desc || '').toLowerCase().includes(query);
+                const typeMatch = (bm.type || '').toLowerCase().includes(query);
+                if (!titleMatch && !descMatch && !typeMatch) return;
+            }
             const card = document.createElement('a');
             card.className = 'bookmark-card';
             card.href = bm.url;
@@ -732,6 +761,31 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 globalImageUploader.value = '';
             }
+        });
+    }
+
+    // 搜索输入框事件监听
+    const searchHomeInput = document.getElementById('search-home');
+    if (searchHomeInput) {
+        searchHomeInput.addEventListener('input', (e) => {
+            currentHomeSearchQuery = e.target.value;
+            renderCards();
+        });
+    }
+
+    const searchNotesInput = document.getElementById('search-notes');
+    if (searchNotesInput) {
+        searchNotesInput.addEventListener('input', (e) => {
+            currentNotesSearchQuery = e.target.value;
+            renderNotes();
+        });
+    }
+
+    const searchBookmarksInput = document.getElementById('search-bookmarks');
+    if (searchBookmarksInput) {
+        searchBookmarksInput.addEventListener('input', (e) => {
+            currentBookmarksSearchQuery = e.target.value;
+            renderBookmarks();
         });
     }
 });
