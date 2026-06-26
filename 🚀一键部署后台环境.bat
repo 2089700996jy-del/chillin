@@ -6,11 +6,11 @@ echo ==============================================
 echo.
 
 echo [1/2] 正在更新数据库结构...
-call npx wrangler d1 migrations apply DB --remote
+call npx -y wrangler d1 migrations apply DB --remote
 
 echo.
 echo [2/2] 正在发布最新的后端 API...
-call npx wrangler deploy
+call npx -y wrangler deploy
 
 echo.
 echo ==============================================
