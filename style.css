@@ -269,10 +269,16 @@ body {
 }
 
 .notion-collection-gallery { 
-  display: grid; 
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
-  gap: 24px; 
-  align-items: start; 
+  display: block; 
+  column-count: 1;
+  column-gap: 24px;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .notion-collection-gallery {
+    column-count: 2;
+  }
 }
 
 .notion-collection-card {
@@ -282,15 +288,18 @@ body {
   box-shadow: var(--card-shadow); 
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
   overflow: hidden; 
-  display: flex; 
+  display: inline-flex; 
   flex-direction: column; 
+  width: 100%;
+  margin-bottom: 24px;
   cursor: pointer; 
   text-decoration: none; 
   color: inherit;
+  break-inside: avoid;
 }
 .notion-collection-card__cover { 
   width: 100%; 
-  height: 200px;
+  aspect-ratio: 16 / 10;
   object-fit: cover; 
   display: block; 
   border-bottom: 1px solid rgba(0,0,0,0.02); 
@@ -984,7 +993,7 @@ body {
   
   /* Cards Gallery Gap */
   .notion-collection-gallery {
-    gap: 16px;
+    column-gap: 16px;
   }
   .notion-collection-card__content {
     padding: 16px;
