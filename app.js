@@ -797,9 +797,17 @@ document.addEventListener('DOMContentLoaded', () => {
             const formData = new FormData();
             formData.append('file', uploadFile);
 
+            const headers = {
+                'X-API-Key': API_KEY
+            };
+            if (authToken) {
+                headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
             try {
-                const res = await fetch('/api/upload', {
+                const res = await fetch(`${API_BASE}/api/upload`, {
                     method: 'POST',
+                    headers: headers,
                     body: formData
                 });
                 if (!res.ok) throw new Error('上传接口返回异常');
