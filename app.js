@@ -343,6 +343,47 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 4. 周记画廊逻辑 (Weekly Recaps)
     // ==========================================
+    let currentWeeklyAnnotations = [];
+
+    const renderWeeklyAnnotationsList = () => {
+        const timeline = document.getElementById('weekly-annotations-timeline');
+        timeline.innerHTML = '';
+        if (!currentWeeklyAnnotations || currentWeeklyAnnotations.length === 0) {
+            timeline.innerHTML = '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无追加说明，在下方写下第一条吧</div>';
+            return;
+        }
+        currentWeeklyAnnotations.forEach(ann => {
+            const item = document.createElement('div');
+            item.className = 'annotation-item';
+            item.innerHTML = `
+                <div class="annotation-dot"></div>
+                <div class="annotation-content-box">
+                    <div class="annotation-meta">
+                        <span class="annotation-time">${escapeHtml(ann.date)}</span>
+                        <button type="button" class="btn-delete-annotation" data-id="${ann.id}">删除</button>
+                    </div>
+                    <div class="annotation-text">${escapeHtml(ann.content)}</div>
+                </div>
+            `;
+            
+            item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
+                if (confirm("确定要删除这条批追记吗？")) {
+                    currentWeeklyAnnotations = currentWeeklyAnnotations.filter(a => a.id !== ann.id);
+                    const article = database.find(d => d.id === currentArticleId);
+                    if (article) {
+                        article.annotations = currentWeeklyAnnotations;
+                        saveDatabase();
+                        apiSyncWeekly(article, 'PUT');
+                        renderCards();
+                    }
+                    renderWeeklyAnnotationsList();
+                }
+            });
+            
+            timeline.appendChild(item);
+        });
+    };
+
     const renderCards = (filter) => {
         if (!filter) {
             const activeBtn = document.querySelector('.filter-btn.active');
@@ -365,7 +406,10 @@ document.addEventListener('DOMContentLoaded', () => {
             card.className = "notion-collection-card";
             card.dataset.id = item.id;
             let coverHtml = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover" class="notion-collection-card__cover">` : '';
-            card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${escapeHtml(item.category)}</div><div class="card-title">${escapeHtml(item.title)}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`;
+            
+            const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
+            
+            card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${escapeHtml(item.category)}</div><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`;
             card.addEventListener('click', () => openArticle(item));
             galleryContainer.appendChild(card);
         });
@@ -391,6 +435,12 @@ document.addEventListener('DOMContentLoaded', () => {
         if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
         articleBody.innerHTML = finalHtml;
         articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover">` : '';
+        
+        // 加载记忆片段的追加批注
+        document.getElementById('new-weekly-annotation-content').value = '';
+        currentWeeklyAnnotations = item.annotations || [];
+        renderWeeklyAnnotationsList();
+        
         switchView('article');
     };
 
@@ -432,8 +482,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const idStr = document.getElementById('edit-id').value;
         const isEdit = !!idStr;
         const newData = {
-            id: isEdit ? parseInt(idStr) : Date.now(), category: document.getElementById('edit-category').value, title: document.getElementById('edit-title').value, summary: document.getElementById('edit-summary').value, cover: document.getElementById('edit-cover').value, content: document.getElementById('edit-content').value,
+            id: isEdit ? parseInt(idStr) : Date.now(), 
+            category: document.getElementById('edit-category').value, 
+            title: document.getElementById('edit-title').value, 
+            summary: document.getElementById('edit-summary').value, 
+            cover: document.getElementById('edit-cover').value, 
+            content: document.getElementById('edit-content').value,
             date: isEdit ? database.find(d => d.id === parseInt(idStr)).date : getChineseDate(),
+            annotations: isEdit ? (database.find(d => d.id === parseInt(idStr)).annotations || []) : [],
             weeklyData: {
                 music: { title: document.getElementById('edit-music-title').value, artist: document.getElementById('edit-music-artist').value, lyric: document.getElementById('edit-music-lyric').value },
                 media: [{ icon: document.getElementById('edit-media-icon').value, title: document.getElementById('edit-media-title').value, desc: document.getElementById('edit-media-desc').value }],
@@ -449,6 +505,28 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnDeleteArticle.addEventListener('click', () => {
         if(confirm("确定要永久删除这篇记忆吗？")) { const deletedId = currentArticleId; database = database.filter(d => d.id !== currentArticleId); saveDatabase(); apiSyncWeekly({id: deletedId}, 'DELETE'); renderCards(); switchView('home'); }
+    });
+
+    document.getElementById('btn-add-weekly-annotation').addEventListener('click', () => {
+        const inputEl = document.getElementById('new-weekly-annotation-content');
+        const text = inputEl.value.trim();
+        if (!text) return;
+        const newAnn = {
+            id: Date.now(),
+            content: text,
+            date: getChineseDateTime()
+        };
+        currentWeeklyAnnotations.push(newAnn);
+        inputEl.value = '';
+        
+        const article = database.find(d => d.id === currentArticleId);
+        if (article) {
+            article.annotations = currentWeeklyAnnotations;
+            saveDatabase();
+            apiSyncWeekly(article, 'PUT');
+            renderCards();
+        }
+        renderWeeklyAnnotationsList();
     });
 
     filterBtns.forEach(btn => {
