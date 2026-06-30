@@ -723,6 +723,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // 客户端图片压缩，避免手机相册原图过大（Telegraph 限制 5MB 且不支持 HEIC）
+    const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.8) => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.readAsDataURL(file);
+            reader.onload = (event) => {
+                const img = new Image();
+                img.src = event.target.result;
+                img.onload = () => {
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > maxWidth || height > maxHeight) {
+                        if (width > height) {
+                            height = Math.round((height * maxWidth) / width);
+                            width = maxWidth;
+                        } else {
+                            width = Math.round((width * maxHeight) / height);
+                            height = maxHeight;
+                        }
+                    }
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = width;
+                    canvas.height = height;
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    canvas.toBlob((blob) => {
+                        if (blob) {
+                            resolve(blob);
+                        } else {
+                            reject(new Error('Canvas to Blob conversion failed'));
+                        }
+                    }, 'image/jpeg', quality);
+                };
+                img.onerror = (err) => reject(err);
+            };
+            reader.onerror = (err) => reject(err);
+        });
+    };
+
     if (globalImageUploader) {
         globalImageUploader.addEventListener('change', async (e) => {
             const file = e.target.files[0];
@@ -730,13 +772,30 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const uploadBtn = document.querySelector(`.btn-upload-image[data-target="${currentUploadTargetInput.id}"]`);
             const originalBtnText = uploadBtn ? uploadBtn.innerText : '📷 上传';
+            
+            let uploadFile = file;
+            if (file.type.startsWith('image/')) {
+                if (uploadBtn) {
+                    uploadBtn.innerText = '压缩中...';
+                    uploadBtn.disabled = true;
+                }
+                try {
+                    const compressedBlob = await compressImage(file, 1600, 1600, 0.85);
+                    const baseName = file.name.includes('.') ? file.name.substring(0, file.name.lastIndexOf('.')) : file.name;
+                    const newFileName = `${baseName || 'image'}.jpg`;
+                    uploadFile = new File([compressedBlob], newFileName, { type: 'image/jpeg' });
+                } catch (compressErr) {
+                    console.warn('Image compression failed, using original file:', compressErr);
+                }
+            }
+
             if (uploadBtn) {
-                uploadBtn.innerText = '⏳...';
+                uploadBtn.innerText = '上传中...';
                 uploadBtn.disabled = true;
             }
 
             const formData = new FormData();
-            formData.append('file', file);
+            formData.append('file', uploadFile);
 
             try {
                 const res = await fetch('/api/upload', {
