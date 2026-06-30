@@ -133,7 +133,14 @@ async function router(path, method, request, env) {
         const row = await db.prepare('SELECT mime_type, data FROM files WHERE id = ?1').bind(fileId).first();
         if (!row) return new Response('Not Found', { status: 404 });
         
-        return new Response(row.data, {
+        let responseData = row.data;
+        if (Array.isArray(responseData)) {
+            responseData = new Uint8Array(responseData);
+        } else if (responseData instanceof ArrayBuffer) {
+            responseData = new Uint8Array(responseData);
+        }
+        
+        return new Response(responseData, {
             status: 200,
             headers: {
                 'Content-Type': row.mime_type,
