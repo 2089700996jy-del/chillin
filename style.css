@@ -272,6 +272,7 @@ body {
   display: grid; 
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); 
   gap: 24px; 
+  align-items: start; 
 }
 
 .notion-collection-card {
@@ -289,10 +290,8 @@ body {
 }
 .notion-collection-card__cover { 
   width: 100%; 
-  height: auto;
-  max-height: 300px;
-  object-fit: contain;
-  background-color: #f8fafc;
+  height: 200px;
+  object-fit: cover; 
   display: block; 
   border-bottom: 1px solid rgba(0,0,0,0.02); 
 }
