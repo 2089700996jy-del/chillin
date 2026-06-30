@@ -198,10 +198,11 @@ async function router(path, method, request, env) {
     if (path === '/api/weeklies' && method === 'POST') {
         const body = await request.json();
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
+        const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, user_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now'))`
-        ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', userId).run();
+            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'))`
+        ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
         const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(formatWeekly(row), 201);
     }
@@ -211,10 +212,11 @@ async function router(path, method, request, env) {
         const id = parseInt(weeklyMatch[1]);
         const body = await request.json();
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
+        const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, updated_at=datetime('now')
-             WHERE id=?8 AND user_id=?9`
-        ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', id, userId).run();
+            `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, annotations=?8, updated_at=datetime('now')
+             WHERE id=?9 AND user_id=?10`
+        ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, id, userId).run();
         const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
         return jsonResponse(formatWeekly(row), 200);
     }
@@ -306,6 +308,7 @@ function formatWeekly(row) {
         date: row.date,
         cover: row.cover || null,
         weeklyData: row.weekly_data ? JSON.parse(row.weekly_data) : null,
-        content: row.content || null
+        content: row.content || null,
+        annotations: row.annotations ? JSON.parse(row.annotations) : []
     };
 }
