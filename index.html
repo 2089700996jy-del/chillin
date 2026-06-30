@@ -230,6 +230,18 @@
                 <input type="text" id="edit-note-title" class="note-paper-title" placeholder="笔记标题..." autocomplete="off">
                 <textarea id="edit-note-content" class="note-paper-content" placeholder="开始写下你的灵感..."></textarea>
             </div>
+
+            <!-- 批注与补充说明 -->
+            <div class="note-annotations-section" id="note-annotations-section">
+                <h3 class="annotations-title">📌 批注与时间线</h3>
+                <div class="annotations-timeline" id="annotations-timeline">
+                    <!-- 批注条目动态渲染 -->
+                </div>
+                <div class="annotation-add-box">
+                    <textarea id="new-annotation-content" class="annotation-input" placeholder="写下补充批注 / 说明..."></textarea>
+                    <button type="button" class="btn-secondary btn-sm" id="btn-add-annotation">添加批注</button>
+                </div>
+            </div>
             
             <div class="editor-actions">
                 <button type="button" class="btn-primary" id="btn-save-note">保存笔记</button>

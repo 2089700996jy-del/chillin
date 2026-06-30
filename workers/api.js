@@ -228,28 +228,40 @@ async function router(path, method, request, env) {
     // ==================== NOTES 备忘录 ====================
     if (path === '/api/notes' && method === 'GET') {
         const result = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
-        return jsonResponse(result.results, 200);
+        const rows = result.results.map(row => ({
+            ...row,
+            annotations: row.annotations ? JSON.parse(row.annotations) : []
+        }));
+        return jsonResponse(rows, 200);
     }
 
     if (path === '/api/notes' && method === 'POST') {
         const body = await request.json();
+        const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `INSERT OR REPLACE INTO notes (id, title, content, date, user_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))`
-        ).bind(body.id, body.title, body.content || '', body.date, userId).run();
+            `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))`
+        ).bind(body.id, body.title, body.content || '', body.date, annotations, userId).run();
         const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
-        return jsonResponse(row, 201);
+        return jsonResponse({
+            ...row,
+            annotations: row.annotations ? JSON.parse(row.annotations) : []
+        }, 201);
     }
 
     const noteMatch = path.match(/^\/api\/notes\/(\d+)$/);
     if (noteMatch && method === 'PUT') {
         const id = parseInt(noteMatch[1]);
         const body = await request.json();
+        const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `UPDATE notes SET title=?1, content=?2, date=?3, updated_at=datetime('now') WHERE id=?4 AND user_id=?5`
-        ).bind(body.title, body.content || '', body.date, id, userId).run();
+            `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now') WHERE id=?5 AND user_id=?6`
+        ).bind(body.title, body.content || '', body.date, annotations, id, userId).run();
         const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
-        return jsonResponse(row, 200);
+        return jsonResponse({
+            ...row,
+            annotations: row.annotations ? JSON.parse(row.annotations) : []
+        }, 200);
     }
 
     if (noteMatch && method === 'DELETE') {
