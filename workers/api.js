@@ -10,10 +10,13 @@ export default {
             return corsResponse(null, 204);
         }
 
-        // 校验 API Key
-        const apiKey = request.headers.get('X-API-Key');
-        if (apiKey !== env.API_KEY) {
-            return jsonResponse({ error: 'Forbidden: Invalid API Key' }, 403);
+        // 校验 API Key (对于获取文件的公开 GET 请求，予以放行)
+        const isPublicFileRoute = method === 'GET' && path.startsWith('/api/file/');
+        if (!isPublicFileRoute) {
+            const apiKey = request.headers.get('X-API-Key');
+            if (apiKey !== env.API_KEY) {
+                return jsonResponse({ error: 'Forbidden: Invalid API Key' }, 403);
+            }
         }
 
         try {
@@ -122,10 +125,48 @@ async function router(path, method, request, env) {
         return jsonResponse({ token, username, userId: user.id }, 200);
     }
 
+    // ==================== FILE 公开路由 ====================
+    if (path.startsWith('/api/file/') && method === 'GET') {
+        const fileId = path.replace('/api/file/', '');
+        if (!fileId) return new Response('Not Found', { status: 404 });
+        
+        const row = await db.prepare('SELECT mime_type, data FROM files WHERE id = ?1').bind(fileId).first();
+        if (!row) return new Response('Not Found', { status: 404 });
+        
+        return new Response(row.data, {
+            status: 200,
+            headers: {
+                'Content-Type': row.mime_type,
+                'Cache-Control': 'public, max-age=31536000',
+                'Access-Control-Allow-Origin': '*'
+            }
+        });
+    }
+
     // ========== 需要鉴权的路由 ==========
     const userId = await authenticate(request, db);
     if (!userId) {
         return jsonResponse({ error: '未登录或登录已过期' }, 401);
+    }
+
+    // ==================== UPLOAD 上传 ====================
+    if (path === '/api/upload' && method === 'POST') {
+        try {
+            const formData = await request.formData();
+            const file = formData.get('file');
+            if (!file) {
+                return jsonResponse({ error: 'No file uploaded' }, 400);
+            }
+            const arrayBuffer = await file.arrayBuffer();
+            const mimeType = file.type || 'application/octet-stream';
+            const id = crypto.randomUUID();
+            await db.prepare('INSERT INTO files (id, mime_type, data) VALUES (?1, ?2, ?3)')
+                .bind(id, mimeType, arrayBuffer).run();
+                
+            return jsonResponse([{ src: `/api/file/${id}` }], 201);
+        } catch (err) {
+            return jsonResponse({ error: err.message }, 500);
+        }
     }
 
     if (path === '/api/auth/logout' && method === 'POST') {
