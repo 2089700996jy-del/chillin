@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         authOverlay.classList.add('hidden');
         if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
-        if (btnForceUpload) btnForceUpload.style.display = 'inline-block';
+        if (btnForceUpload) btnForceUpload.style.display = 'inline-flex';
         return true;
     };
 
