@@ -324,9 +324,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnBack.addEventListener('click', () => {
-        switchView(currentActiveNavView);
-        currentArticleId = null;
-        currentNoteId = null;
+        const activeView = document.querySelector('.view-section.active');
+        if (activeView && activeView.id === 'view-editor') {
+            handleExitWeeklyEditor(() => {
+                switchView(currentActiveNavView);
+                currentArticleId = null;
+                currentNoteId = null;
+            });
+        } else {
+            switchView(currentActiveNavView);
+            currentArticleId = null;
+            currentNoteId = null;
+        }
     });
 
     fabBtn.addEventListener('click', () => {
@@ -444,6 +453,169 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('article');
     };
 
+    // ==========================================
+    // 草稿保存与恢复逻辑 (Weekly Recap Drafts)
+    // ==========================================
+    const hasUnsavedChanges = () => {
+        const editId = document.getElementById('edit-id').value;
+        const currentCategory = document.getElementById('edit-category').value;
+        const currentTitle = document.getElementById('edit-title').value;
+        const currentSummary = document.getElementById('edit-summary').value;
+        const currentCover = document.getElementById('edit-cover').value;
+        const currentContent = document.getElementById('edit-content').value;
+        const currentMusicTitle = document.getElementById('edit-music-title').value;
+        const currentMusicArtist = document.getElementById('edit-music-artist').value;
+        const currentMusicLyric = document.getElementById('edit-music-lyric').value;
+        const currentMediaIcon = document.getElementById('edit-media-icon').value;
+        const currentMediaTitle = document.getElementById('edit-media-title').value;
+        const currentMediaDesc = document.getElementById('edit-media-desc').value;
+        const currentLifeImage = document.getElementById('edit-life-image').value;
+        const currentLifeCaption = document.getElementById('edit-life-caption').value;
+        const currentPodcast = document.getElementById('edit-podcast').value;
+        const currentWorkTitle = document.getElementById('edit-work-title').value;
+        const currentWorkDesc = document.getElementById('edit-work-desc').value;
+
+        if (editId) {
+            // 编辑已有文章：与原始数据库文章对比
+            const item = database.find(d => d.id === parseInt(editId));
+            if (!item) return false;
+            const originalMusic = item.weeklyData?.music || {};
+            const originalMedia = (item.weeklyData?.media && item.weeklyData.media[0]) || {};
+            const originalLife = item.weeklyData?.life || {};
+            const originalPodcast = item.weeklyData?.podcast || '';
+            const originalWork = item.weeklyData?.work || {};
+
+            return currentCategory !== item.category ||
+                   currentTitle !== item.title ||
+                   currentSummary !== item.summary ||
+                   currentCover !== (item.cover || '') ||
+                   currentContent !== (item.content || '') ||
+                   currentMusicTitle !== (originalMusic.title || '') ||
+                   currentMusicArtist !== (originalMusic.artist || '') ||
+                   currentMusicLyric !== (originalMusic.lyric || '') ||
+                   currentMediaIcon !== (originalMedia.icon || '🎬') ||
+                   currentMediaTitle !== (originalMedia.title || '') ||
+                   currentMediaDesc !== (originalMedia.desc || '') ||
+                   currentLifeImage !== (originalLife.image || '') ||
+                   currentLifeCaption !== (originalLife.caption || '') ||
+                   currentPodcast !== originalPodcast ||
+                   currentWorkTitle !== (originalWork.title || '') ||
+                   currentWorkDesc !== (originalWork.desc || '');
+        } else {
+            // 新建文章：只要任一字段不为空即为有修改
+            return currentTitle.trim() !== '' ||
+                   currentSummary.trim() !== '' ||
+                   currentCover.trim() !== '' ||
+                   currentContent.trim() !== '' ||
+                   currentMusicTitle.trim() !== '' ||
+                   currentMusicArtist.trim() !== '' ||
+                   currentMusicLyric.trim() !== '' ||
+                   currentMediaTitle.trim() !== '' ||
+                   currentMediaDesc.trim() !== '' ||
+                   currentLifeImage.trim() !== '' ||
+                   currentLifeCaption.trim() !== '' ||
+                   currentPodcast.trim() !== '' ||
+                   currentWorkTitle.trim() !== '' ||
+                   currentWorkDesc.trim() !== '';
+        }
+    };
+
+    const saveWeeklyDraft = () => {
+        const editId = document.getElementById('edit-id').value;
+        const draft = {
+            id: editId ? parseInt(editId) : '',
+            category: document.getElementById('edit-category').value,
+            title: document.getElementById('edit-title').value,
+            summary: document.getElementById('edit-summary').value,
+            cover: document.getElementById('edit-cover').value,
+            content: document.getElementById('edit-content').value,
+            musicTitle: document.getElementById('edit-music-title').value,
+            musicArtist: document.getElementById('edit-music-artist').value,
+            musicLyric: document.getElementById('edit-music-lyric').value,
+            mediaIcon: document.getElementById('edit-media-icon').value,
+            mediaTitle: document.getElementById('edit-media-title').value,
+            mediaDesc: document.getElementById('edit-media-desc').value,
+            lifeImage: document.getElementById('edit-life-image').value,
+            lifeCaption: document.getElementById('edit-life-caption').value,
+            podcast: document.getElementById('edit-podcast').value,
+            workTitle: document.getElementById('edit-work-title').value,
+            workDesc: document.getElementById('edit-work-desc').value,
+            timestamp: Date.now()
+        };
+        localStorage.setItem(getLocalKey('weeklyDraft'), JSON.stringify(draft));
+    };
+
+    const restoreWeeklyDraft = () => {
+        const draftStr = localStorage.getItem(getLocalKey('weeklyDraft'));
+        if (!draftStr) return;
+        try {
+            const draft = JSON.parse(draftStr);
+            document.getElementById('edit-category').value = draft.category || '🌸';
+            document.getElementById('edit-title').value = draft.title || '';
+            document.getElementById('edit-summary').value = draft.summary || '';
+            document.getElementById('edit-cover').value = draft.cover || '';
+            document.getElementById('edit-content').value = draft.content || '';
+            document.getElementById('edit-music-title').value = draft.musicTitle || '';
+            document.getElementById('edit-music-artist').value = draft.musicArtist || '';
+            document.getElementById('edit-music-lyric').value = draft.musicLyric || '';
+            document.getElementById('edit-media-icon').value = draft.mediaIcon || '🎬';
+            document.getElementById('edit-media-title').value = draft.mediaTitle || '';
+            document.getElementById('edit-media-desc').value = draft.mediaDesc || '';
+            document.getElementById('edit-life-image').value = draft.lifeImage || '';
+            document.getElementById('edit-life-caption').value = draft.lifeCaption || '';
+            document.getElementById('edit-podcast').value = draft.podcast || '';
+            document.getElementById('edit-work-title').value = draft.workTitle || '';
+            document.getElementById('edit-work-desc').value = draft.workDesc || '';
+            
+            // 隐藏横幅
+            document.getElementById('weekly-draft-tip').style.display = 'none';
+        } catch (e) {
+            console.error('Failed to restore draft', e);
+        }
+    };
+
+    const discardWeeklyDraft = () => {
+        localStorage.removeItem(getLocalKey('weeklyDraft'));
+        document.getElementById('weekly-draft-tip').style.display = 'none';
+    };
+
+    const checkAndShowWeeklyDraftTip = (editId) => {
+        const draftStr = localStorage.getItem(getLocalKey('weeklyDraft'));
+        const tipBanner = document.getElementById('weekly-draft-tip');
+        if (!draftStr) {
+            tipBanner.style.display = 'none';
+            return;
+        }
+        try {
+            const draft = JSON.parse(draftStr);
+            const currentIdStr = editId ? String(editId) : '';
+            const draftIdStr = draft.id ? String(draft.id) : '';
+            
+            if (currentIdStr === draftIdStr) {
+                const draftDate = new Date(draft.timestamp);
+                const timeText = draftDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                document.getElementById('weekly-draft-time').innerText = timeText;
+                tipBanner.style.display = 'flex';
+            } else {
+                tipBanner.style.display = 'none';
+            }
+        } catch (e) {
+            tipBanner.style.display = 'none';
+        }
+    };
+
+    const handleExitWeeklyEditor = (onConfirm) => {
+        if (hasUnsavedChanges()) {
+            if (confirm('确定要退出编辑吗？当前未保存的内容将作为草稿保存在本地，下次进入时可以恢复。')) {
+                saveWeeklyDraft();
+                onConfirm();
+            }
+        } else {
+            discardWeeklyDraft();
+            onConfirm();
+        }
+    };
+
     const openWeeklyEditor = (editId = null) => {
         editorForm.reset();
         if (editId) {
@@ -468,13 +640,16 @@ document.addEventListener('DOMContentLoaded', () => {
             editorPageTitle.innerText = "新增记忆";
             document.getElementById('edit-id').value = '';
         }
+        checkAndShowWeeklyDraftTip(editId);
         switchView('editor');
     };
 
     btnEditArticle.addEventListener('click', () => openWeeklyEditor(currentArticleId));
     btnCancelEdit.addEventListener('click', () => {
-        const isNew = !document.getElementById('edit-id').value;
-        switchView(isNew ? 'home' : 'article');
+        handleExitWeeklyEditor(() => {
+            const isNew = !document.getElementById('edit-id').value;
+            switchView(isNew ? 'home' : 'article');
+        });
     });
 
     editorForm.addEventListener('submit', (e) => {
@@ -500,7 +675,36 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
         if (isEdit) { const index = database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) database[index] = newData; } else { database.push(newData); }
+        discardWeeklyDraft();
         saveDatabase(); apiSyncWeekly(newData, isEdit ? 'PUT' : 'POST'); renderCards(document.querySelector('.filter-btn.active').dataset.filter); switchView('home');
+    });
+
+    // 绑定草稿箱相关按钮与自动保存监听
+    document.getElementById('btn-restore-weekly-draft').addEventListener('click', restoreWeeklyDraft);
+    document.getElementById('btn-discard-weekly-draft').addEventListener('click', discardWeeklyDraft);
+
+    editorForm.addEventListener('input', () => {
+        if (hasUnsavedChanges()) {
+            saveWeeklyDraft();
+        } else {
+            discardWeeklyDraft();
+        }
+    });
+    editorForm.addEventListener('change', () => {
+        if (hasUnsavedChanges()) {
+            saveWeeklyDraft();
+        } else {
+            discardWeeklyDraft();
+        }
+    });
+
+    window.addEventListener('beforeunload', (e) => {
+        const activeView = document.querySelector('.view-section.active');
+        if (activeView && activeView.id === 'view-editor' && hasUnsavedChanges()) {
+            saveWeeklyDraft();
+            e.preventDefault();
+            e.returnValue = '';
+        }
     });
 
     btnDeleteArticle.addEventListener('click', () => {

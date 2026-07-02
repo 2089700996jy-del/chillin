@@ -127,6 +127,16 @@
                 <h1 class="page-title" id="editor-page-title">新增记忆</h1>
                 <p class="page-description">填写以下字段，自动生成一篇精美的记忆切片排版。</p>
                 
+                <!-- 草稿提示横幅 -->
+                <div id="weekly-draft-tip" class="draft-tip-banner" style="display: none;">
+                    <span class="draft-tip-icon">📝</span>
+                    <span class="draft-tip-text">检测到您有未保存的草稿（保存于：<span id="weekly-draft-time"></span>），是否恢复？</span>
+                    <div class="draft-tip-actions">
+                        <button type="button" id="btn-restore-weekly-draft" class="btn-text text-primary">恢复草稿</button>
+                        <button type="button" id="btn-discard-weekly-draft" class="btn-text text-danger">忽略</button>
+                    </div>
+                </div>
+                
                 <form id="editor-form" class="editor-form">
                     <input type="hidden" id="edit-id">
 

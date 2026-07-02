@@ -681,6 +681,55 @@ body {
 .widget-form-group input:last-child, .widget-form-group textarea:last-child { 
   margin-bottom: 0; 
 }
+
+/* Draft Tip Banner */
+.draft-tip-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: rgba(79, 70, 229, 0.06);
+  border: 1px solid rgba(79, 70, 229, 0.15);
+  border-radius: 12px;
+  padding: 12px 18px;
+  margin-top: 10px;
+  margin-bottom: 24px;
+  animation: fadeIn 0.3s ease;
+}
+.draft-tip-icon {
+  font-size: 18px;
+}
+.draft-tip-text {
+  font-size: 14px;
+  color: var(--text-color);
+  flex-grow: 1;
+}
+.draft-tip-actions {
+  display: flex;
+  gap: 12px;
+}
+.draft-tip-actions .btn-text {
+  font-size: 13px;
+  font-weight: 600;
+  margin: 0;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: transparent;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.draft-tip-actions .btn-text:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+.draft-tip-actions .text-primary {
+  color: var(--accent-color) !important;
+}
+.draft-tip-actions .text-danger {
+  color: #ef4444 !important;
+}
+
 .editor-actions { 
   display: flex; 
   justify-content: flex-end; 
