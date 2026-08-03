@@ -1557,6 +1557,10 @@ body.dark-reader-body {
   background-color: #0d1117;
   background-image: none;
 }
+body.dark-reader-body .super-navbar {
+  background: rgba(22, 27, 34, 0.85) !important;
+  border-color: rgba(255,255,255,0.08) !important;
+}
 body.dark-reader-body .reader-layout,
 body.dark-reader-body .reader-sidebar,
 body.dark-reader-body .reader-toolbar,
@@ -1606,6 +1610,10 @@ body.dark-reader-body .sidebar-header {
 body.eyecare-reader-body {
   background-color: #dcedc8;
   background-image: none;
+}
+body.eyecare-reader-body .super-navbar {
+  background: rgba(232, 245, 233, 0.9) !important;
+  border-color: rgba(76, 175, 80, 0.2) !important;
 }
 body.eyecare-reader-body .reader-layout,
 body.eyecare-reader-body .reader-sidebar,
