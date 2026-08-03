@@ -1302,8 +1302,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // ── Parser ──
     function parseChapters(text) {
+        // Detect actual newline length (CRLF=2, LF=1)
+        const nlLen = text.indexOf('\r\n') > -1 ? 2 : 1;
         const lines = text.split(/\r?\n/);
         const reChapter = /^第[一二三四五六七八九十百千万零\d]+[章节卷部集篇]\s*[^\n]*/;
+
+        // Build markers with correct byte offsets
         const markers = [];
         let charPos = 0;
         for (let i = 0; i < lines.length; i++) {
@@ -1311,11 +1315,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (reChapter.test(line)) {
                 markers.push({ lineIdx: i, charStart: charPos, title: line });
             }
-            charPos += lines[i].length + (i < lines.length - 1 ? 1 : 0);
+            charPos += lines[i].length + (i < lines.length - 1 ? nlLen : 0);
         }
+
         if (!markers.length) {
             return [{ title: '全文', groupIndex: 0, charStart: 0, charEnd: text.length }];
         }
+
+        // Build chapters: each chapter starts at its marker's charStart
+        // and ends just before the next marker's charStart
         const chapters = [];
         for (let i = 0; i < markers.length; i++) {
             const m = markers[i];
@@ -1331,11 +1339,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function extractChapterContent(text, ch) {
-        let content = text.slice(ch.charStart, ch.charEnd).trim();
+        // Extract raw content between chapter boundaries
+        let content = text.slice(ch.charStart, ch.charEnd);
+        // Strip trailing newlines
+        content = content.replace(/[\r\n]+$/, '');
+        // Remove the chapter title line at the start (may end with \r\n or \n)
         const firstLineEnd = content.indexOf('\n');
-        if (firstLineEnd > -1 && content.slice(0, firstLineEnd).trim() === ch.title) {
-            content = content.slice(firstLineEnd + 1).trim();
+        if (firstLineEnd > -1) {
+            let firstLine = content.slice(0, firstLineEnd);
+            if (firstLine.endsWith('\r')) firstLine = firstLine.slice(0, -1);
+            if (firstLine.trim() === ch.title) {
+                content = content.slice(firstLineEnd + 1);
+            }
         }
+        // Clean up leading/trailing whitespace but preserve paragraph structure
+        content = content.replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, '');
         return content;
     }
 
@@ -1501,16 +1519,25 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = keys.map(gk => {
             const chs = groups[gk];
             const gid = 'rg-' + gk;
-            return '<div class="chapter-group-header" onclick="this.classList.toggle(\'collapsed\');document.getElementById(\'' + gid + '\').classList.toggle(\'collapsed\')">' +
-                '<span class="group-arrow">▼</span>' + '第' + (chs[0].idx + 1) + '-' + (chs[chs.length - 1].idx + 1) + '章</div>' +
-                '<div class="chapter-group-items" id="' + gid + '">' +
-                chs.map(ch => '<div class="chapter-item' + (ch.idx === currentChapterIdx ? ' active' : '') + '" onclick="jumpToChapter(' + ch.idx + ')" title="' + escapeHtml(ch.title) + '">' + escapeHtml(ch.title) + '</div>').join('') +
+            const isCurrentGroup = chs.some(ch => ch.idx === currentChapterIdx);
+            const collapsedClass = isCurrentGroup ? '' : ' collapsed';
+            const arrowClass = isCurrentGroup ? '' : ' collapsed';
+            return '<div class="chapter-group-header' + arrowClass + '" onclick="this.classList.toggle(\'collapsed\');document.getElementById(\'' + gid + '\').classList.toggle(\'collapsed\')">' +
+                '<span class="group-arrow">▼</span>' +
+                '第 ' + (chs[0].idx + 1) + ' - ' + (chs[chs.length - 1].idx + 1) + ' 章' +
+                '<span style="margin-left:auto;font-size:0.65rem;opacity:0.5;font-weight:400;">' + chs.length + '章</span>' +
+                '</div>' +
+                '<div class="chapter-group-items' + collapsedClass + '" id="' + gid + '">' +
+                chs.map(ch => '<div class="chapter-item' + (ch.idx === currentChapterIdx ? ' active' : '') +
+                    '" onclick="jumpToChapter(' + ch.idx + ')" title="' + escapeHtml(ch.title) + '">' +
+                    escapeHtml(ch.title) + '</div>').join('') +
                 '</div>';
         }).join('');
+        // Scroll to active chapter
         setTimeout(() => {
             const active = container.querySelector('.chapter-item.active');
-            if (active) active.scrollIntoView({ block: 'center' });
-        }, 100);
+            if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }, 150);
     }
 
     // ── Chapter Loading ──
@@ -1520,14 +1547,28 @@ document.addEventListener('DOMContentLoaded', () => {
         const ch = chapterMetas[idx];
         const fullCh = await rdbGet('chapters', ch.id);
         const content = fullCh ? fullCh.content : '（加载失败）';
+
         document.getElementById('chapter-title-display').textContent = ch.title;
         document.getElementById('chapter-body').textContent = content;
         document.getElementById('chapter-indicator').textContent = (idx + 1) + ' / ' + chapterMetas.length;
         document.getElementById('btn-prev-chapter').disabled = (idx <= 0);
         document.getElementById('btn-next-chapter').disabled = (idx >= chapterMetas.length - 1);
-        document.querySelectorAll('.chapter-item').forEach(el => el.classList.remove('active'));
-        const items = document.querySelectorAll('.chapter-item');
-        if (items[idx]) { items[idx].classList.add('active'); items[idx].scrollIntoView({ block: 'center' }); }
+
+        // Update sidebar highlight
+        const allItems = document.querySelectorAll('.chapter-item');
+        allItems.forEach(el => el.classList.remove('active'));
+        if (allItems[idx]) {
+            allItems[idx].classList.add('active');
+            // Expand parent group if collapsed
+            const groupItems = allItems[idx].closest('.chapter-group-items');
+            if (groupItems && groupItems.classList.contains('collapsed')) {
+                groupItems.classList.remove('collapsed');
+                const groupHeader = groupItems.previousElementSibling;
+                if (groupHeader) groupHeader.classList.remove('collapsed');
+            }
+            allItems[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+
         document.getElementById('reader-content-area').scrollTop = 0;
         saveReaderProgress(currentBookId, { chapterIdx: idx, scrollPct: 0, timestamp: Date.now() });
     }
