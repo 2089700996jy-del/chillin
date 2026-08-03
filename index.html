@@ -296,20 +296,21 @@
         <section id="view-bookmark-editor" class="view-section">
             <div class="editor-container">
                 <h1 class="page-title" id="bookmark-editor-page-title">新增收藏</h1>
-                
+
                 <form id="bookmark-editor-form" class="editor-form">
                     <input type="hidden" id="edit-bookmark-id">
 
                     <div class="form-group">
                         <label>分类标签</label>
-                        <select id="edit-bookmark-type" required>
-                            <option value="🌐 网站">🌐 网站</option>
-                            <option value="🛠️ 工具">🛠️ 工具</option>
-                            <option value="🛒 店铺">🛒 店铺</option>
-                            <option value="🎬 电影">🎬 电影</option>
-                            <option value="📖 书籍">📖 书籍</option>
-                            <option value="🎵 音乐">🎵 音乐</option>
-                        </select>
+                        <input type="hidden" id="edit-bookmark-type" value="🌐 网站">
+                        <div class="category-chips" id="category-chips">
+                            <span class="cat-chip active" data-val="🌐 网站">🌐 网站</span>
+                            <span class="cat-chip" data-val="🛠️ 工具">🛠️ 工具</span>
+                            <span class="cat-chip" data-val="🛒 店铺">🛒 店铺</span>
+                            <span class="cat-chip" data-val="🎬 电影">🎬 电影</span>
+                            <span class="cat-chip" data-val="📖 书籍">📖 书籍</span>
+                            <span class="cat-chip" data-val="🎵 音乐">🎵 音乐</span>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>名称 / 标题</label>
@@ -318,6 +319,13 @@
                     <div class="form-group">
                         <label>链接 (URL)</label>
                         <input type="url" id="edit-bookmark-url" placeholder="https://..." required>
+                    </div>
+                    <div class="form-group">
+                        <label>封面图片 (选填)</label>
+                        <div style="display: flex; gap: 8px;">
+                            <input type="text" id="edit-bookmark-image" placeholder="https://... 图片链接" style="flex-grow: 1;">
+                            <button type="button" class="btn-secondary btn-upload-image" data-target="edit-bookmark-image" style="padding: 10px 14px; white-space: nowrap;">📷 上传</button>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label>推荐语 (选填)</label>

@@ -147,7 +147,7 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 102, title: "零碎灵感", content: "也许可以尝试给博客加上深色模式？\n颜色方案可以参考 GitHub 的 Dark Dimmed。", date: "2023年10月24日" }
     ];
     const DEFAULT_BOOKMARKS = [
-        { id: 201, type: "🛠️ 工具", title: "Notion", url: "https://notion.so", desc: "极致的块状编辑器，灵感的发源地。" },
+        { id: 201, type: "🛠️ 工具", title: "Notion", url: "https://notion.so", desc: "极致的块状编辑器，灵感的发源地。", image: "" },
         { id: 202, type: "🌐 网站", title: "Vercel", url: "https://vercel.com", desc: "前端项目一键部署的神仙平台。" },
         { id: 203, type: "🎬 电影", title: "豆瓣电影", url: "https://movie.douban.com", desc: "找冷门好片的唯一去处。" }
     ];
@@ -270,6 +270,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const editBookmarkTitle = document.getElementById('edit-bookmark-title');
     const editBookmarkUrl = document.getElementById('edit-bookmark-url');
     const editBookmarkDesc = document.getElementById('edit-bookmark-desc');
+    const editBookmarkImage = document.getElementById('edit-bookmark-image');
+
+    // Category chips
+    document.querySelectorAll('.cat-chip').forEach(chip => {
+        chip.addEventListener('click', function() {
+            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+            this.classList.add('active');
+            editBookmarkType.value = this.dataset.val;
+        });
+    });
 
 
     const escapeHtml = (str) => {
@@ -911,7 +921,11 @@ document.addEventListener('DOMContentLoaded', () => {
             card.href = bm.url;
             card.target = '_blank'; // 新标签页打开
 
+            const hasImage = bm.image && bm.image.trim();
             card.innerHTML = `
+                ${hasImage
+                    ? '<img class="bookmark-card-image" src="' + escapeHtml(bm.image) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+                    : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
                 <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
                 <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
                 <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
@@ -939,6 +953,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const openBookmarkEditor = () => {
         bookmarkEditorForm.reset();
         editBookmarkId.value = '';
+        editBookmarkImage.value = '';
+        // Reset chips
+        document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+        const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');
+        if (firstChip) { firstChip.classList.add('active'); editBookmarkType.value = '🌐 网站'; }
         switchView('bookmark-editor');
     };
 
@@ -951,7 +970,8 @@ document.addEventListener('DOMContentLoaded', () => {
             type: editBookmarkType.value,
             title: editBookmarkTitle.value.trim(),
             url: editBookmarkUrl.value.trim(),
-            desc: editBookmarkDesc.value.trim()
+            desc: editBookmarkDesc.value.trim(),
+            image: (editBookmarkImage && editBookmarkImage.value || '').trim()
         };
         bookmarksDatabase.push(newBookmark);
         saveBookmarksDatabase();
