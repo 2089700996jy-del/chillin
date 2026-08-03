@@ -916,10 +916,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 const typeMatch = (bm.type || '').toLowerCase().includes(query);
                 if (!titleMatch && !descMatch && !typeMatch) return;
             }
-            const card = document.createElement('a');
+            const hasUrl = bm.url && bm.url.trim();
+            const card = document.createElement(hasUrl ? 'a' : 'div');
             card.className = 'bookmark-card';
-            card.href = bm.url;
-            card.target = '_blank'; // 新标签页打开
+            if (hasUrl) { card.href = bm.url; card.target = '_blank'; }
 
             const hasImage = bm.image && bm.image.trim();
             card.innerHTML = `
