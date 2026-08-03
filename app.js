@@ -303,6 +303,11 @@ document.addEventListener('DOMContentLoaded', () => {
             if(activeNav) activeNav.classList.add('active');
         }
 
+        // Update FAB label
+        const fabLabel = document.getElementById('fab-label');
+        const fabLabels = { home: '记录新片段', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
+        if (fabLabel && fabLabels[targetViewId]) fabLabel.textContent = fabLabels[targetViewId];
+
         if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'reader-book') {
             navMenu.style.display = 'none';
             btnBack.style.display = 'block';
@@ -342,6 +347,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (currentActiveNavView === 'home') openWeeklyEditor(null);
         else if (currentActiveNavView === 'notes') openNoteEditor(null);
         else if (currentActiveNavView === 'bookmarks') openBookmarkEditor();
+        else if (currentActiveNavView === 'reader') document.getElementById('book-file-input').click();
     });
 
     const getChineseDate = () => {
@@ -1589,40 +1595,6 @@ document.addEventListener('DOMContentLoaded', () => {
         importBook(file);
         this.value = '';
     });
-
-    // ── Import Tab Switching ──
-    window.switchImportTab = function(tab) {
-        document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.import-panel').forEach(p => p.classList.remove('active'));
-        document.querySelector('.import-tab[onclick*="' + tab + '"]').classList.add('active');
-        document.getElementById('import-panel-' + tab).classList.add('active');
-    };
-
-    // ── Paste Import ──
-    window.importFromPaste = async function() {
-        const text = document.getElementById('paste-textarea').value.trim();
-        if (!text) { alert('请先粘贴文本内容！'); return; }
-        const file = new File([text], document.getElementById('paste-filename').value.trim() || 'pasted_book.txt', { type: 'text/plain' });
-        document.getElementById('paste-textarea').value = '';
-        document.getElementById('paste-filename').value = '';
-        await importBook(file);
-    };
-
-    // ── WeChat browser detection ──
-    (function() {
-        const ua = navigator.userAgent.toLowerCase();
-        const isWeChat = ua.indexOf('micromessenger') !== -1;
-        const isDesktop = !/mobile|android|iphone|ipad/.test(ua);
-        if (isWeChat) {
-            // Highlight WeChat-specific method
-            const wechatCards = document.querySelectorAll('.wechat-method-card');
-            if (wechatCards[0]) wechatCards[0].style.borderColor = 'var(--accent-color)';
-        }
-        if (!isDesktop) {
-            const desktopCard = document.getElementById('wechat-desktop-card');
-            if (desktopCard) desktopCard.style.display = 'none';
-        }
-    })();
 
     // Initial bookshelf render on first load
     openReaderDB().then(() => {
