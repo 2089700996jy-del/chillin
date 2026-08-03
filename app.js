@@ -932,10 +932,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
             `;
 
-            // 删除按钮的独立逻辑，阻止默认的 a 标签跳转
+            // If no URL but has image, click to view image in new tab
+            if (!hasUrl && hasImage) {
+                card.style.cursor = 'zoom-in';
+                card.addEventListener('click', (e) => {
+                    if (e.target.closest('.bookmark-card-delete')) return;
+                    window.open(bm.image, '_blank');
+                });
+            }
+
+            // 删除按钮
             const deleteBtn = card.querySelector('.bookmark-card-delete');
             deleteBtn.addEventListener('click', (e) => {
-                e.preventDefault(); 
+                e.preventDefault();
                 e.stopPropagation();
                 if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
                     const deletedId = bm.id;
