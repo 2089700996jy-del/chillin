@@ -301,6 +301,13 @@ document.addEventListener('DOMContentLoaded', () => {
             navItems.forEach(item => item.classList.remove('active'));
             const activeNav = document.querySelector(`.nav-item[data-view="${targetViewId}"]`);
             if(activeNav) activeNav.classList.add('active');
+            // Render bookshelf when switching to reader
+            if (targetViewId === 'reader') {
+                setTimeout(renderBookshelf, 100);
+            } else {
+                // Clear theme when leaving reader
+                document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+            }
         }
 
         // Update FAB label
@@ -330,6 +337,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnBack.addEventListener('click', () => {
         const activeView = document.querySelector('.view-section.active');
+        // Clear reader theme when leaving reader-book
+        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
         if (activeView && activeView.id === 'view-editor') {
             handleExitWeeklyEditor(() => {
                 switchView(currentActiveNavView);
@@ -1452,14 +1461,29 @@ document.addEventListener('DOMContentLoaded', () => {
             const prog = progress[b.id];
             const pct = prog && b.totalChapters ? Math.round((prog.chapterIdx / b.totalChapters) * 100) : 0;
             const lastRead = prog ? '看到第' + (prog.chapterIdx + 1) + '章' : '未开始阅读';
-            return '<div class="book-card" onclick="openReaderBook(\'' + b.id + '\')">' +
-                '<button class="book-card-delete" onclick="event.stopPropagation();deleteReaderBook(\'' + b.id + '\')">✕</button>' +
+            return '<div class="book-card" data-bookid="' + b.id + '">' +
+                '<span class="book-card-delete" data-delete="' + b.id + '">✕</span>' +
                 '<span class="book-card-icon">📖</span>' +
                 '<div class="book-card-title" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>' +
                 '<div class="book-card-author">' + escapeHtml(b.author) + '</div>' +
                 '<div class="book-card-progress"><div class="book-card-progress-bar" style="width:' + pct + '%"></div></div>' +
                 '<div class="book-card-meta"><span>' + lastRead + '</span><span>' + b.totalChapters + '章</span></div></div>';
         }).join('');
+
+        // Attach event listeners
+        grid.querySelectorAll('.book-card').forEach(card => {
+            card.addEventListener('click', function(e) {
+                if (e.target.closest('.book-card-delete')) return;
+                openReaderBook(this.dataset.bookid);
+            });
+        });
+        grid.querySelectorAll('.book-card-delete').forEach(btn => {
+            btn.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                deleteReaderBook(this.dataset.delete);
+            });
+        });
     }
 
     // ── Open/Close Reader ──
@@ -1475,7 +1499,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const saved = prog[bookId];
         currentChapterIdx = (saved && saved.chapterIdx < chapterMetas.length) ? saved.chapterIdx : 0;
         switchView('reader-book');
-        document.getElementById('reader-sidebar').classList.remove('hidden');
+        document.getElementById('reader-sidebar').classList.add('hidden');
         applyReaderSettings();
         buildChapterTree();
         await loadChapterContent(currentChapterIdx);
@@ -1490,6 +1514,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.closeReaderBook = function() {
         if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
         onReaderScroll();
+        // Clear reader theme when exiting
+        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
         switchView('reader');
         currentBookId = null; chapterMetas = []; currentChapterIdx = 0;
         renderBookshelf();
