@@ -1590,6 +1590,40 @@ document.addEventListener('DOMContentLoaded', () => {
         this.value = '';
     });
 
+    // ── Import Tab Switching ──
+    window.switchImportTab = function(tab) {
+        document.querySelectorAll('.import-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.import-panel').forEach(p => p.classList.remove('active'));
+        document.querySelector('.import-tab[onclick*="' + tab + '"]').classList.add('active');
+        document.getElementById('import-panel-' + tab).classList.add('active');
+    };
+
+    // ── Paste Import ──
+    window.importFromPaste = async function() {
+        const text = document.getElementById('paste-textarea').value.trim();
+        if (!text) { alert('请先粘贴文本内容！'); return; }
+        const file = new File([text], document.getElementById('paste-filename').value.trim() || 'pasted_book.txt', { type: 'text/plain' });
+        document.getElementById('paste-textarea').value = '';
+        document.getElementById('paste-filename').value = '';
+        await importBook(file);
+    };
+
+    // ── WeChat browser detection ──
+    (function() {
+        const ua = navigator.userAgent.toLowerCase();
+        const isWeChat = ua.indexOf('micromessenger') !== -1;
+        const isDesktop = !/mobile|android|iphone|ipad/.test(ua);
+        if (isWeChat) {
+            // Highlight WeChat-specific method
+            const wechatCards = document.querySelectorAll('.wechat-method-card');
+            if (wechatCards[0]) wechatCards[0].style.borderColor = 'var(--accent-color)';
+        }
+        if (!isDesktop) {
+            const desktopCard = document.getElementById('wechat-desktop-card');
+            if (desktopCard) desktopCard.style.display = 'none';
+        }
+    })();
+
     // Initial bookshelf render on first load
     openReaderDB().then(() => {
         if (document.getElementById('view-reader').classList.contains('active')) renderBookshelf();

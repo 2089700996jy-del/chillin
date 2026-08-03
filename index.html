@@ -343,14 +343,58 @@
                 </p>
             </header>
 
-            <div class="import-book-zone" id="import-book-zone">
-                <input type="file" id="book-file-input" accept=".txt" />
-                <div class="import-icon">📖</div>
-                <div class="import-text">点击选择 TXT 小说文件</div>
-                <div class="import-sub">支持 UTF-8 / GBK 编码，自动识别章节</div>
-                <div class="import-progress" id="import-progress" style="display:none;">
-                    <span class="import-progress-text" id="import-progress-text">正在解析...</span>
+            <div class="import-tabs">
+                <button class="import-tab active" onclick="switchImportTab('file')">📁 选择文件</button>
+                <button class="import-tab" onclick="switchImportTab('paste')">📋 粘贴文本</button>
+                <button class="import-tab" onclick="switchImportTab('wechat')">💬 微信导入</button>
+            </div>
+
+            <!-- File Import -->
+            <div class="import-panel active" id="import-panel-file">
+                <div class="import-book-zone" id="import-book-zone">
+                    <input type="file" id="book-file-input" accept=".txt" />
+                    <div class="import-icon">📖</div>
+                    <div class="import-text">点击选择 TXT 小说文件</div>
+                    <div class="import-sub">支持 UTF-8 / GBK 编码，自动识别章节</div>
                 </div>
+            </div>
+
+            <!-- Paste Import -->
+            <div class="import-panel" id="import-panel-paste" style="display:none;">
+                <div class="paste-import-area">
+                    <textarea id="paste-textarea" class="paste-textarea" placeholder="将从微信/其他地方复制的文本粘贴到这里...&#10;&#10;支持自动识别章节分隔符"></textarea>
+                    <div class="paste-action-row">
+                        <input type="text" id="paste-filename" class="paste-filename" placeholder="书名（选填，不填则自动提取）">
+                        <button class="btn-primary btn-sm" onclick="importFromPaste()">📥 导入文本</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- WeChat Guide -->
+            <div class="import-panel" id="import-panel-wechat" style="display:none;">
+                <div class="wechat-guide">
+                    <div class="wechat-methods">
+                        <div class="wechat-method-card" onclick="document.getElementById('book-file-input').click();switchImportTab('file')">
+                            <span class="wechat-method-icon">📱</span>
+                            <div class="wechat-method-title">微信内直接选择</div>
+                            <div class="wechat-method-desc">在微信中打开此页面，点击「选择文件」→「聊天记录中的文件」即可</div>
+                        </div>
+                        <div class="wechat-method-card" onclick="switchImportTab('paste')">
+                            <span class="wechat-method-icon">📋</span>
+                            <div class="wechat-method-title">复制粘贴文本</div>
+                            <div class="wechat-method-desc">在微信中打开 TXT 文件 → 全选复制 → 回到此页面粘贴</div>
+                        </div>
+                        <div class="wechat-method-card" id="wechat-desktop-card">
+                            <span class="wechat-method-icon">💻</span>
+                            <div class="wechat-method-title">电脑端微信</div>
+                            <div class="wechat-method-desc">微信中右键文件 → 另存为 → 再用上方「选择文件」导入</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="import-progress" id="import-progress" style="display:none;">
+                <span class="import-progress-text" id="import-progress-text">正在解析...</span>
             </div>
 
             <div class="bookshelf-grid" id="bookshelf-grid"></div>
