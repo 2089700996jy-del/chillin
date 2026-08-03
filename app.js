@@ -1621,12 +1621,6 @@ document.addEventListener('DOMContentLoaded', () => {
             if (btn) btn.textContent = '🌙';
         }
     }
-    window.changeFontSize = function(delta) {
-        const s = loadReaderSettings();
-        s.fontSize = Math.max(14, Math.min(28, (s.fontSize || 18) + delta));
-        saveReaderSettings(s);
-        applyReaderSettings();
-    };
     window.toggleReaderTheme = function() {
         const s = loadReaderSettings();
         // Cycle: light → dark → eyecare → light
