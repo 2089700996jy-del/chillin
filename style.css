@@ -1552,7 +1552,113 @@ body {
 .reader-nav-bottom .btn-nav:disabled { opacity: 0.35; cursor: not-allowed; }
 .chapter-indicator { font-size: 0.78rem; color: var(--text-color-light); }
 
-/* ── Reader Dark Theme ── */
+/* ── Reader Dark Theme (整页变黑) ── */
+body.dark-reader-body {
+  background-color: #0d1117;
+  background-image: none;
+}
+body.dark-reader-body .reader-layout,
+body.dark-reader-body .reader-sidebar,
+body.dark-reader-body .reader-toolbar,
+body.dark-reader-body .reader-content-area,
+body.dark-reader-body .reader-nav-bottom {
+  background: #161b22;
+  border-color: rgba(255,255,255,0.06);
+}
+body.dark-reader-body .sidebar-header,
+body.dark-reader-body .chapter-group-header {
+  background: #161b22;
+}
+body.dark-reader-body .chapter-group-header:hover {
+  background: rgba(79,70,229,0.1);
+}
+body.dark-reader-body .reader-toolbar .btn-icon {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(255,255,255,0.08);
+  color: #8b949e;
+}
+body.dark-reader-body .chapter-body {
+  color: #c9d1d9;
+}
+body.dark-reader-body .chapter-title-display {
+  color: #e6e8ec;
+  border-bottom-color: rgba(255,255,255,0.08);
+}
+body.dark-reader-body .chapter-item {
+  color: #8b949e;
+}
+body.dark-reader-body .chapter-item:hover {
+  background: rgba(79,70,229,0.1);
+  color: #c9d1d9;
+}
+body.dark-reader-body .chapter-item.active {
+  background: rgba(79,70,229,0.18);
+  color: #c4b9ff;
+}
+body.dark-reader-body .book-title-inline {
+  color: #c9d1d9;
+}
+body.dark-reader-body .sidebar-header {
+  color: #8b949e;
+}
+
+/* ── Reader Eye-Care Theme (护眼浅绿) ── */
+body.eyecare-reader-body {
+  background-color: #dcedc8;
+  background-image: none;
+}
+body.eyecare-reader-body .reader-layout,
+body.eyecare-reader-body .reader-sidebar,
+body.eyecare-reader-body .reader-toolbar,
+body.eyecare-reader-body .reader-content-area,
+body.eyecare-reader-body .reader-nav-bottom {
+  background: #e8f5e9;
+  border-color: rgba(76,175,80,0.15);
+}
+body.eyecare-reader-body .sidebar-header,
+body.eyecare-reader-body .chapter-group-header {
+  background: #e8f5e9;
+}
+body.eyecare-reader-body .chapter-group-header {
+  color: #388e3c;
+  border-bottom-color: rgba(76,175,80,0.12);
+  background: rgba(76,175,80,0.06);
+}
+body.eyecare-reader-body .chapter-group-header:hover {
+  background: rgba(76,175,80,0.1);
+}
+body.eyecare-reader-body .reader-toolbar .btn-icon {
+  background: rgba(76,175,80,0.08);
+  border-color: rgba(76,175,80,0.15);
+  color: #4a7c59;
+}
+body.eyecare-reader-body .chapter-body {
+  color: #2e3b2e;
+}
+body.eyecare-reader-body .chapter-title-display {
+  color: #1b3a1b;
+  border-bottom-color: rgba(76,175,80,0.15);
+}
+body.eyecare-reader-body .chapter-item {
+  color: #5a7a5a;
+}
+body.eyecare-reader-body .chapter-item:hover {
+  background: rgba(76,175,80,0.08);
+  color: #2e3b2e;
+}
+body.eyecare-reader-body .chapter-item.active {
+  background: rgba(76,175,80,0.12);
+  color: #2e7d32;
+  border-left-color: #4caf50;
+}
+body.eyecare-reader-body .book-title-inline {
+  color: #2e3b2e;
+}
+body.eyecare-reader-body .sidebar-header {
+  color: #4a7c59;
+}
+
+/* 移除旧的不完整dark主题 */
 .dark-reader .reader-sidebar,
 .dark-reader .reader-toolbar,
 .dark-reader .reader-content-area,

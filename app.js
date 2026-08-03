@@ -1602,10 +1602,23 @@ document.addEventListener('DOMContentLoaded', () => {
         const theme = s.theme || 'light';
         document.getElementById('reader-content-area').style.setProperty('--reader-font-size', fs + 'px');
         document.getElementById('reader-content-area').style.fontSize = fs + 'px';
+
+        // Remove all theme classes from body
+        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
         const layout = document.querySelector('.reader-layout');
-        if (layout) {
-            if (theme === 'dark') { layout.classList.add('dark-reader'); document.getElementById('btn-theme-toggle').textContent = '☀️'; }
-            else { layout.classList.remove('dark-reader'); document.getElementById('btn-theme-toggle').textContent = '🌙'; }
+        if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
+        const btn = document.getElementById('btn-theme-toggle');
+
+        if (theme === 'dark') {
+            document.body.classList.add('dark-reader-body');
+            if (layout) layout.classList.add('dark-reader');
+            if (btn) btn.textContent = '☀️';
+        } else if (theme === 'eyecare') {
+            document.body.classList.add('eyecare-reader-body');
+            if (layout) layout.classList.add('eyecare-reader');
+            if (btn) btn.textContent = '🌿';
+        } else {
+            if (btn) btn.textContent = '🌙';
         }
     }
     window.changeFontSize = function(delta) {
@@ -1616,7 +1629,10 @@ document.addEventListener('DOMContentLoaded', () => {
     };
     window.toggleReaderTheme = function() {
         const s = loadReaderSettings();
-        s.theme = s.theme === 'dark' ? 'light' : 'dark';
+        // Cycle: light → dark → eyecare → light
+        if (s.theme === 'dark') s.theme = 'eyecare';
+        else if (s.theme === 'eyecare') s.theme = 'light';
+        else s.theme = 'dark';
         saveReaderSettings(s);
         applyReaderSettings();
     };
