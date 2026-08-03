@@ -398,6 +398,11 @@
 
     </main>
 
+    <!-- 图片预览弹窗 -->
+    <div class="modal-overlay" id="image-preview-modal" onclick="this.classList.remove('show')">
+        <img id="image-preview-img" src="" alt="" style="max-width:90vw;max-height:90vh;border-radius:12px;cursor:default;" onclick="event.stopPropagation()">
+    </div>
+
     <!-- 全局隐藏的文件上传器 -->
     <input type="file" id="global-image-uploader" accept="image/*" style="display: none;">
 

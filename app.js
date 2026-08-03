@@ -932,12 +932,13 @@ document.addEventListener('DOMContentLoaded', () => {
                 <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
             `;
 
-            // If no URL but has image, click to view image in new tab
+            // If no URL but has image, click to view image in modal
             if (!hasUrl && hasImage) {
                 card.style.cursor = 'zoom-in';
                 card.addEventListener('click', (e) => {
                     if (e.target.closest('.bookmark-card-delete')) return;
-                    window.open(bm.image, '_blank');
+                    document.getElementById('image-preview-img').src = bm.image;
+                    document.getElementById('image-preview-modal').classList.add('show');
                 });
             }
 
@@ -1545,9 +1546,8 @@ document.addEventListener('DOMContentLoaded', () => {
         onReaderScroll();
         // Clear reader theme when exiting
         document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
-        switchView('reader');
         currentBookId = null; chapterMetas = []; currentChapterIdx = 0;
-        renderBookshelf();
+        switchView('reader'); // switchView will trigger renderBookshelf
     };
 
     function onReaderScroll() {
