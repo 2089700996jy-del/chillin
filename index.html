@@ -39,6 +39,7 @@
                 <a href="#" class="nav-item active" data-view="home">首页</a>
                 <a href="#" class="nav-item" data-view="notes">笔记</a>
                 <a href="#" class="nav-item" data-view="bookmarks">收藏</a>
+                <a href="#" class="nav-item" data-view="reader">阅读</a>
             </div>
             <!-- 阅读模式/编辑模式下的返回按钮 (默认隐藏) -->
             <button id="btn-back" class="nav-btn-back" style="display: none;">
@@ -328,6 +329,69 @@
                         <button type="submit" class="btn-primary" id="btn-save-bookmark">保存收藏</button>
                     </div>
                 </form>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 8: READER (Bookshelf) -->
+        <!-- ========================================== -->
+        <section id="view-reader" class="view-section">
+            <header class="page-header">
+                <h1 class="page-title">📚 阅读.</h1>
+                <p class="page-description">
+                    导入 TXT 小说文件，自动分章，记忆阅读进度。
+                </p>
+            </header>
+
+            <div class="import-book-zone" id="import-book-zone">
+                <input type="file" id="book-file-input" accept=".txt" />
+                <div class="import-icon">📖</div>
+                <div class="import-text">点击选择 TXT 小说文件</div>
+                <div class="import-sub">支持 UTF-8 / GBK 编码，自动识别章节</div>
+                <div class="import-progress" id="import-progress" style="display:none;">
+                    <span class="import-progress-text" id="import-progress-text">正在解析...</span>
+                </div>
+            </div>
+
+            <div class="bookshelf-grid" id="bookshelf-grid"></div>
+            <div class="empty-bookshelf" id="empty-bookshelf">
+                <span class="empty-icon">📭</span>
+                <div class="empty-title">书架空空如也</div>
+                <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
+        <!-- VIEW 9: READER BOOK (Reading View) -->
+        <!-- ========================================== -->
+        <section id="view-reader-book" class="view-section">
+            <div class="reader-layout">
+                <div class="reader-sidebar" id="reader-sidebar">
+                    <div class="sidebar-header">
+                        <span>📑 目录</span>
+                        <button class="btn-icon" onclick="toggleSidebar()" title="收起">✕</button>
+                    </div>
+                    <div class="sidebar-chapter-list" id="sidebar-chapter-list"></div>
+                </div>
+                <div class="reader-main">
+                    <div class="reader-toolbar">
+                        <button class="btn-icon" onclick="closeReaderBook()" title="返回书架">← 书架</button>
+                        <button class="btn-icon" onclick="toggleSidebar()" title="目录">📑</button>
+                        <span class="book-title-inline" id="reader-book-title">—</span>
+                        <button class="btn-icon" onclick="changeFontSize(-1)" title="缩小字体">A⁻</button>
+                        <button class="btn-icon" onclick="changeFontSize(1)" title="放大字体">A⁺</button>
+                        <button class="btn-icon" onclick="toggleReaderTheme()" title="切换日间/夜间" id="btn-theme-toggle">🌙</button>
+                    </div>
+                    <div class="reader-content-area" id="reader-content-area">
+                        <div class="chapter-title-display" id="chapter-title-display">—</div>
+                        <div class="chapter-body" id="chapter-body"></div>
+                    </div>
+                    <div class="reader-nav-bottom">
+                        <button class="btn-nav" id="btn-prev-chapter" onclick="prevChapter()" disabled>◀ 上一章</button>
+                        <span class="chapter-indicator" id="chapter-indicator">—</span>
+                        <button class="btn-nav" id="btn-next-chapter" onclick="nextChapter()" disabled>下一章 ▶</button>
+                    </div>
+                </div>
             </div>
         </section>
 
