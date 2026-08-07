@@ -2149,6 +2149,15 @@ document.addEventListener('DOMContentLoaded', () => {
         updatePlayerCardUI();
     });
 
+    audioPlayer.addEventListener('error', (e) => {
+        console.warn('Audio playback error:', e);
+        const metaEl = document.getElementById('podcast-active-meta');
+        if (metaEl) {
+            metaEl.textContent = '提示：预置音频较大未部署线上，请点击右上角「导入 MP3」选择您的本地音频进行播放测试。';
+            metaEl.style.color = '#e11d48';
+        }
+    });
+
     // ── 播放器控件按钮绑定 ──
     const btnPlay = document.getElementById('podcast-btn-play');
     if (btnPlay) btnPlay.addEventListener('click', toggleAudioPlay);
