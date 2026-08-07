@@ -40,6 +40,7 @@
                 <a href="#" class="nav-item" data-view="notes">笔记</a>
                 <a href="#" class="nav-item" data-view="bookmarks">收藏</a>
                 <a href="#" class="nav-item" data-view="reader">阅读</a>
+                <a href="#" class="nav-item" data-view="podcast">播客</a>
             </div>
             <!-- 阅读模式/编辑模式下的返回按钮 (默认隐藏) -->
             <button id="btn-back" class="nav-btn-back" style="display: none;">
@@ -394,9 +395,129 @@
                     </div>
                 </div>
             </div>
+        <!-- ========================================== -->
+        <!-- VIEW 10: PODCAST (Audio Player & Library) -->
+        <!-- ========================================== -->
+        <section id="view-podcast" class="view-section">
+            <header class="page-header">
+                <h1 class="page-title">🎙️ 播客.</h1>
+                <p class="page-description">
+                    听见声音，捕捉灵感。支持导入 MP3 本地音频，随心播放、记录播放进度与音频笔记。
+                </p>
+                <div class="search-filter-row" style="margin-top: 16px;">
+                    <div class="search-wrapper" style="flex: 1;">
+                        <input type="text" id="search-podcast" class="search-input" placeholder="🔍 搜索播客标题或文件名...">
+                    </div>
+                    <button class="btn-primary btn-icon-text" id="btn-import-podcast" style="white-space: nowrap;">
+                        <span class="btn-icon">📁</span><span>导入 MP3</span>
+                    </button>
+                </div>
+            </header>
+
+            <input type="file" id="podcast-file-input" accept="audio/mp3,audio/*" multiple style="display:none;" />
+
+            <!-- 播客主播放器 Bento 卡片 -->
+            <div class="podcast-player-card" id="podcast-player-card">
+                <div class="podcast-vinyl-wrapper">
+                    <div class="podcast-vinyl" id="podcast-vinyl-disc">
+                        <div class="vinyl-grooves"></div>
+                        <div class="vinyl-center-label">🎙️</div>
+                    </div>
+                    <div class="podcast-wave-bars" id="podcast-wave-bars">
+                        <span></span><span></span><span></span><span></span><span></span>
+                    </div>
+                </div>
+
+                <div class="podcast-info-area">
+                    <div class="podcast-badge">正在播放</div>
+                    <h2 class="podcast-active-title" id="podcast-active-title">选择或导入一首音频开始播放</h2>
+                    <p class="podcast-active-meta" id="podcast-active-meta">尚未选择播客单集</p>
+
+                    <!-- 进度条 -->
+                    <div class="podcast-progress-container">
+                        <span class="podcast-time" id="podcast-time-current">00:00</span>
+                        <div class="podcast-slider-wrapper">
+                            <input type="range" id="podcast-progress-bar" class="podcast-slider" min="0" max="100" value="0" step="0.1">
+                            <div class="podcast-slider-fill" id="podcast-progress-fill" style="width: 0%;"></div>
+                        </div>
+                        <span class="podcast-time" id="podcast-time-duration">00:00</span>
+                    </div>
+
+                    <!-- 控制按键组 -->
+                    <div class="podcast-controls-row">
+                        <div class="podcast-ctrl-left">
+                            <select id="podcast-speed-select" class="podcast-select" title="播放倍速">
+                                <option value="0.75">0.75x</option>
+                                <option value="1" selected>1.0x</option>
+                                <option value="1.25">1.25x</option>
+                                <option value="1.5">1.5x</option>
+                                <option value="2">2.0x</option>
+                            </select>
+                        </div>
+
+                        <div class="podcast-ctrl-center">
+                            <button class="podcast-btn-step" id="podcast-btn-rewind" title="快退 10 秒">↺ 10s</button>
+                            <button class="podcast-btn-play" id="podcast-btn-play" title="播放/暂停">▶</button>
+                            <button class="podcast-btn-step" id="podcast-btn-ff" title="快进 30 秒">30s ↻</button>
+                        </div>
+
+                        <div class="podcast-ctrl-right">
+                            <button class="btn-icon" id="podcast-btn-mute" title="静音/取消静音">🔊</button>
+                            <input type="range" id="podcast-volume-slider" class="podcast-volume-slider" min="0" max="1" step="0.05" value="1" title="音量">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 时间戳播客笔记模块 -->
+            <div class="podcast-notes-section" id="podcast-notes-section">
+                <div class="podcast-notes-header">
+                    <h3 class="annotations-title">📌 播客笔记与时间轴</h3>
+                    <button type="button" class="btn-secondary btn-sm" id="btn-podcast-insert-time">⏱️ 插入当前时间戳</button>
+                </div>
+                <div class="podcast-note-input-box">
+                    <textarea id="new-podcast-note-content" class="annotation-input" placeholder="写下听播客时的灵感或思考...（可点击上方按钮自动附带播放时间戳）"></textarea>
+                    <button type="button" class="btn-primary btn-sm" id="btn-add-podcast-note">添加播客笔记</button>
+                </div>
+                <div class="podcast-notes-list" id="podcast-notes-list">
+                    <!-- 动态渲染时间戳笔记 -->
+                </div>
+            </div>
+
+            <!-- 播客单集列表 -->
+            <div class="podcast-section-title-row">
+                <h3 class="podcast-section-title">音频媒体库</h3>
+                <span class="podcast-count" id="podcast-count-label">0 首单集</span>
+            </div>
+            <div class="podcast-episodes-grid" id="podcast-episodes-grid"></div>
+            <div class="empty-bookshelf" id="empty-podcast" style="display:none;">
+                <span class="empty-icon">🎧</span>
+                <div class="empty-title">播客媒体库空空如也</div>
+                <div class="empty-sub">点击上方「导入 MP3」添加你的第一首播客音频</div>
+            </div>
         </section>
 
     </main>
+
+    <!-- 全局悬浮 Bottom Mini Player -->
+    <div id="podcast-mini-player" class="podcast-mini-player hidden">
+        <div class="mini-player-left" onclick="switchToPodcastView()">
+            <div class="mini-player-icon" id="mini-player-icon">🎙️</div>
+            <div class="mini-player-info">
+                <div class="mini-player-title" id="mini-player-title">正在播放播客</div>
+                <div class="mini-player-time" id="mini-player-time">00:00 / 00:00</div>
+            </div>
+        </div>
+        <div class="mini-player-center">
+            <button class="mini-btn-step" id="mini-btn-rewind" title="快退 10 秒">↺ 10s</button>
+            <button class="mini-btn-play" id="mini-btn-play" title="播放/暂停">▶</button>
+            <button class="mini-btn-step" id="mini-btn-ff" title="快进 30 秒">30s ↻</button>
+        </div>
+        <div class="mini-player-right">
+            <button class="btn-text btn-sm" onclick="switchToPodcastView()">返回播客 →</button>
+        </div>
+        <div class="mini-player-progress-bar" id="mini-player-progress-bar" style="width: 0%;"></div>
+    </div>
 
     <!-- 图片预览弹窗 -->
     <div class="modal-overlay" id="image-preview-modal" onclick="this.classList.remove('show')">
