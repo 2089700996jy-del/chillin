@@ -1,3 +1,5 @@
 .wrangler/
 node_modules/
 *.bat
+*.mp3
+
