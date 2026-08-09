@@ -266,10 +266,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. DOM 元素获取
     // ==========================================
     const views = document.querySelectorAll('.view-section');
-    const navItems = document.querySelectorAll('.nav-item');
+    const navItems = document.querySelectorAll('.nav-item, .mobile-tab-item');
     const btnBack = document.getElementById('btn-back');
     const navMenu = document.getElementById('nav-menu');
     const fabBtn = document.getElementById('btn-create-new');
+    const mobileBottomNav = document.getElementById('mobile-bottom-nav');
 
     // Home / Weekly
     const galleryContainer = document.getElementById('gallery-container');
@@ -342,8 +343,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (targetViewId === 'home' || targetViewId === 'feeds' || targetViewId === 'notes' || targetViewId === 'bookmarks' || targetViewId === 'reader') {
             currentActiveNavView = targetViewId;
             navItems.forEach(item => item.classList.remove('active'));
-            const activeNav = document.querySelector(`.nav-item[data-view="${targetViewId}"]`);
-            if(activeNav) activeNav.classList.add('active');
+            const activeNavs = document.querySelectorAll(`.nav-item[data-view="${targetViewId}"], .mobile-tab-item[data-view="${targetViewId}"]`);
+            activeNavs.forEach(nav => nav.classList.add('active'));
             if (targetViewId === 'reader') {
                 setTimeout(renderBookshelf, 100);
             } else if (targetViewId === 'feeds') {
@@ -364,10 +365,12 @@ document.addEventListener('DOMContentLoaded', () => {
             navMenu.style.display = 'none';
             btnBack.style.display = 'block';
             fabBtn.classList.add('hidden');
+            if (mobileBottomNav) mobileBottomNav.style.display = 'none';
         } else {
-            navMenu.style.display = 'flex';
+            navMenu.style.display = '';
             btnBack.style.display = 'none';
             fabBtn.classList.remove('hidden');
+            if (mobileBottomNav) mobileBottomNav.style.display = '';
         }
         window.scrollTo(0, 0); 
     };
