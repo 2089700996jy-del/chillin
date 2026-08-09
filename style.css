@@ -1067,11 +1067,11 @@ body {
 /* ========================================== */
 @media (max-width: 768px) {
   /* Top Navbar in Mobile */
-  .super-navbar {
-    top: 0;
-    left: 0;
-    transform: none;
-    width: 100%;
+  .super-navbar, .super-navbar.scrolled {
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+    width: 100% !important;
     height: 52px;
     border-radius: 0;
     border: none;
@@ -1159,6 +1159,13 @@ body {
     font-weight: 500;
     transition: color 0.15s ease;
     padding: 4px 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    cursor: pointer;
+  }
+
+  .mobile-tab-item * {
+    pointer-events: none;
   }
 
   .mobile-tab-item .tab-icon {

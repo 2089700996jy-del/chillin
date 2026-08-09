@@ -378,8 +378,9 @@ document.addEventListener('DOMContentLoaded', () => {
     navItems.forEach(item => {
         item.addEventListener('click', (e) => {
             e.preventDefault();
-            const view = e.target.dataset.view;
-            if(view) switchView(view);
+            const targetEl = e.currentTarget || e.target.closest('[data-view]');
+            const view = targetEl ? targetEl.dataset.view : null;
+            if (view) switchView(view);
         });
     });
 
