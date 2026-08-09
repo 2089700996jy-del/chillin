@@ -1183,6 +1183,22 @@ body {
     transform: translateY(-2px) scale(1.12);
   }
 
+  /* Hide bottom nav bar when reading or editing */
+  .mobile-bottom-nav.hidden,
+  body.hide-bottom-nav .mobile-bottom-nav {
+    display: none !important;
+    opacity: 0 !important;
+    pointer-events: none !important;
+  }
+
+  body.hide-bottom-nav .notion-app {
+    padding-bottom: 16px !important;
+  }
+
+  body.hide-bottom-nav .reader-layout {
+    height: calc(100vh - 84px);
+  }
+
   /* Page Padding Adjustment for Header & Bottom Tab Bar */
   .notion-app {
     padding: 66px 16px 86px !important;
