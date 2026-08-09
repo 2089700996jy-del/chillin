@@ -365,12 +365,20 @@ document.addEventListener('DOMContentLoaded', () => {
             navMenu.style.display = 'none';
             btnBack.style.display = 'block';
             fabBtn.classList.add('hidden');
-            if (mobileBottomNav) mobileBottomNav.style.display = 'none';
+            if (mobileBottomNav) {
+                mobileBottomNav.style.display = 'none';
+                mobileBottomNav.classList.add('hidden');
+            }
+            document.body.classList.add('hide-bottom-nav');
         } else {
             navMenu.style.display = '';
             btnBack.style.display = 'none';
             fabBtn.classList.remove('hidden');
-            if (mobileBottomNav) mobileBottomNav.style.display = '';
+            if (mobileBottomNav) {
+                mobileBottomNav.style.display = '';
+                mobileBottomNav.classList.remove('hidden');
+            }
+            document.body.classList.remove('hide-bottom-nav');
         }
         window.scrollTo(0, 0); 
     };
