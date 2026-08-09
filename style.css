@@ -1858,6 +1858,14 @@ body.eyecare-reader-body .sidebar-header {
   background: transparent;
 }
 
+/* 键盘唤起时对底部 Tab 栏与 FAB 按钮避让隐藏 */
+body.keyboard-open .mobile-bottom-nav,
+body.keyboard-open .fab-btn {
+  display: none !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
 .feed-input-toolbar {
   display: flex;
   justify-content: space-between;
@@ -1895,6 +1903,7 @@ body.eyecare-reader-body .sidebar-header {
 }
 
 .btn-feed-send {
+  margin-left: auto;
   padding: 8px 18px;
   border-radius: 20px;
   font-size: 13px;

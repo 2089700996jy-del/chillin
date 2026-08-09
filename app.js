@@ -2189,7 +2189,26 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (btnSendAiChat) btnSendAiChat.addEventListener('click', sendAiChatMessage);
+
+    // 📱 移动端软键盘唤起检测：打字时自动隐藏底部导航栏与悬浮加号按钮
+    document.addEventListener('focusin', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+            document.body.classList.add('keyboard-open');
+        }
+    });
+
+    document.addEventListener('focusout', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) {
+            setTimeout(() => {
+                const active = document.activeElement;
+                if (!active || (active.tagName !== 'INPUT' && active.tagName !== 'TEXTAREA')) {
+                    document.body.classList.remove('keyboard-open');
+                }
+            }, 100);
+        }
+    });
 });
+
 
 
 
