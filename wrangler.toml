@@ -13,8 +13,15 @@ database_id = "59ad83a1-35f2-4e8c-b181-14d064627f1b"
 API_KEY = "REDACTED_API_KEY"
 ALLOW_REGISTRATION = "false"
 
+# 🤖 DeepSeek 大语言模型配置（可选：在 Cloudflare 后台添加密钥变量 LLM_API_KEY）
+LLM_API_BASE = "https://api.deepseek.com/v1"
+LLM_MODEL = "deepseek-chat"
+
 # Workers 路由 (如果绑定到 Pages 域名)
 [env.production]
 routes = [
     { pattern = "api.chillin-bfc.workers.dev", zone_id = "PLACEHOLDER" }
 ]
+
+
+

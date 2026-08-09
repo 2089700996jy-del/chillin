@@ -1737,3 +1737,402 @@ body.eyecare-reader-body .sidebar-header {
   .chapter-body { font-size: 16px; }
 }
 
+/* ========================================== */
+/* MINDBACK ECHO FEATURES STYLES */
+/* ========================================== */
+
+/* 1. Heatmap Widget (思考轨迹热力图) */
+.heatmap-widget {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 18px 20px;
+  margin-bottom: 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.heatmap-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.heatmap-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.heatmap-grid {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-behavior: smooth;
+}
+
+.heatmap-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.heatmap-cell {
+  width: 11px;
+  height: 11px;
+  border-radius: 2px;
+  background-color: #ebedf0;
+  transition: transform 0.15s ease, background-color 0.2s ease;
+}
+
+.heatmap-cell:hover {
+  transform: scale(1.3);
+  z-index: 2;
+}
+
+.heatmap-cell.level-1 { background-color: #9be9a8; }
+.heatmap-cell.level-2 { background-color: #40c463; }
+.heatmap-cell.level-3 { background-color: #30a14e; }
+.heatmap-cell.level-4 { background-color: #216e39; }
+
+/* 2. Feed Input Card (无感速记框) */
+.feed-input-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 28px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(79, 70, 229, 0.12);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.feed-input-card:focus-within {
+  border-color: #6366f1;
+  box-shadow: 0 10px 36px rgba(99, 102, 241, 0.12);
+}
+
+.feed-textarea {
+  width: 100%;
+  border: none;
+  outline: none;
+  resize: vertical;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #111827;
+  background: transparent;
+}
+
+.feed-input-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid #f3f4f6;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.feed-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-chip {
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid #e5e7eb;
+  background: #f9fafb;
+  color: #4b5563;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-chip:hover, .btn-chip.active {
+  background: #eef2ff;
+  color: #4f46e5;
+  border-color: #c7d2fe;
+}
+
+.btn-feed-send {
+  padding: 8px 18px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
+}
+
+.btn-feed-send:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.4);
+}
+
+/* 3. Feeds Stream Timeline */
+.feeds-stream {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.feed-item-card {
+  background: #ffffff;
+  border-radius: 14px;
+  padding: 18px 20px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.feed-item-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+.feed-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.feed-date {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.feed-tags {
+  display: flex;
+  gap: 6px;
+}
+
+.feed-tag-pill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.feed-content-text {
+  font-size: 15px;
+  line-height: 1.6;
+  color: #1f2937;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.feed-media-preview {
+  margin-top: 12px;
+  border-radius: 10px;
+  max-height: 300px;
+  object-fit: cover;
+  width: 100%;
+  cursor: pointer;
+}
+
+.feed-link-preview {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  gap: 12px;
+  text-decoration: none;
+  color: inherit;
+  transition: background 0.15s ease;
+}
+
+.feed-link-preview:hover {
+  background: #f3f4f6;
+}
+
+.feed-link-cover {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
+.feed-link-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.feed-link-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #111827;
+  line-height: 1.3;
+}
+
+.feed-link-desc {
+  font-size: 12px;
+  color: #6b7280;
+  margin-top: 4px;
+  line-clamp: 2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+/* 4. Echo Cards (AI 回响总结卡片) */
+.echo-cards-container {
+  margin-bottom: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.echo-card {
+  background: linear-gradient(135deg, #eef2ff 0%, #fae8ff 100%);
+  border: 1px solid #c7d2fe;
+  border-radius: 16px;
+  padding: 18px 22px;
+  position: relative;
+  overflow: hidden;
+}
+
+.echo-card-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #4f46e5;
+  background: rgba(255, 255, 255, 0.8);
+  padding: 3px 10px;
+  border-radius: 20px;
+  margin-bottom: 10px;
+}
+
+.echo-card-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #312e81;
+  margin-bottom: 6px;
+}
+
+.echo-card-summary {
+  font-size: 13.5px;
+  line-height: 1.6;
+  color: #4338ca;
+}
+
+/* 5. AI Memory Chat Modal (AI 记忆回响助手) */
+.ai-chat-card {
+  width: 90%;
+  max-width: 540px;
+  height: 600px;
+  max-height: 85vh;
+  background: #ffffff;
+  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  animation: modalFadeIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes modalFadeIn {
+  from { opacity: 0; transform: scale(0.95) translateY(10px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.ai-chat-header {
+  padding: 16px 20px;
+  background: #f9fafb;
+  border-bottom: 1px solid #f3f4f6;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ai-chat-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #111827;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ai-chat-body {
+  flex: 1;
+  padding: 20px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #fafafa;
+}
+
+.ai-msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+}
+
+.ai-msg-user {
+  align-self: flex-end;
+}
+
+.ai-msg-user .ai-msg-bubble {
+  background: #4f46e5;
+  color: #ffffff;
+  border-radius: 16px 16px 4px 16px;
+}
+
+.ai-msg-bot {
+  align-self: flex-start;
+}
+
+.ai-msg-bot .ai-msg-bubble {
+  background: #ffffff;
+  color: #1f2937;
+  border: 1px solid #e5e7eb;
+  border-radius: 16px 16px 16px 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+}
+
+.ai-msg-bubble {
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.ai-chat-footer {
+  padding: 14px 18px;
+  background: #ffffff;
+  border-top: 1px solid #f3f4f6;
+  display: flex;
+  gap: 10px;
+}
+
+.ai-chat-input {
+  flex: 1;
+  padding: 10px 14px;
+  border-radius: 20px;
+  border: 1px solid #e5e7eb;
+  outline: none;
+  font-size: 14px;
+  transition: border-color 0.15s ease;
+}
+
+.ai-chat-input:focus {
+  border-color: #6366f1;
+}
+
+

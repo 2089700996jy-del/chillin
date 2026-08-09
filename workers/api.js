@@ -295,7 +295,223 @@ async function router(path, method, request, env) {
         return jsonResponse({ success: true }, 200);
     }
 
+    // ==================== QUICK FEEDS 随手记流 ====================
+    if (path === '/api/feeds' && method === 'GET') {
+        const result = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
+        const rows = (result.results || []).map(row => ({
+            ...row,
+            tags: row.tags ? JSON.parse(row.tags) : []
+        }));
+        return jsonResponse(rows, 200);
+    }
+
+    if (path === '/api/feeds' && method === 'POST') {
+        const body = await request.json();
+        const content = body.content || '';
+        const type = body.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
+        const mediaUrl = body.media_url || body.mediaUrl || null;
+        let summary = body.summary || null;
+        let tags = body.tags || [];
+
+        if (!tags || tags.length === 0) {
+            tags = extractTagsFromContent(content);
+        }
+
+        const tagsJson = JSON.stringify(tags);
+        const res = await db.prepare(
+            `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now')) RETURNING *`
+        ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
+
+        return jsonResponse({
+            ...res,
+            tags: res.tags ? JSON.parse(res.tags) : []
+        }, 201);
+    }
+
+    const feedMatch = path.match(/^\/api\/feeds\/(\d+)$/);
+    if (feedMatch && method === 'DELETE') {
+        const id = parseInt(feedMatch[1]);
+        await db.prepare('DELETE FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
+        return jsonResponse({ success: true }, 200);
+    }
+
+    // ==================== LINK PARSE 链接智能提取 ====================
+    if (path === '/api/link/parse' && method === 'POST') {
+        const { url } = await request.json();
+        if (!url || !url.match(/^https?:\/\//i)) {
+            return jsonResponse({ error: '无效的 URL' }, 400);
+        }
+        try {
+            const pageRes = await fetch(url, {
+                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ChillinBot/1.0' }
+            });
+            const html = await pageRes.text();
+            
+            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            const title = titleMatch ? titleMatch[1].trim() : url;
+            
+            const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
+                                html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+            const description = ogDescMatch ? ogDescMatch[1].trim() : '';
+
+            const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
+            const cover = ogImageMatch ? ogImageMatch[1].trim() : '';
+
+            return jsonResponse({ url, title, description, cover }, 200);
+        } catch (e) {
+            return jsonResponse({ url, title: url, description: '网络链接摘要直接收录', cover: '' }, 200);
+        }
+    }
+
+    // ==================== HEATMAP 统计热力图 ====================
+    if (path === '/api/stats/heatmap' && method === 'GET') {
+        const result = await db.prepare(`
+            SELECT date_str, COUNT(*) as count FROM (
+                SELECT substr(created_at, 1, 10) as date_str FROM weeklies WHERE user_id = ?1
+                UNION ALL
+                SELECT substr(created_at, 1, 10) as date_str FROM notes WHERE user_id = ?1
+                UNION ALL
+                SELECT substr(created_at, 1, 10) as date_str FROM bookmarks WHERE user_id = ?1
+                UNION ALL
+                SELECT substr(created_at, 1, 10) as date_str FROM quick_feeds WHERE user_id = ?1
+            ) GROUP BY date_str ORDER BY date_str ASC
+        `).bind(userId).all();
+
+        return jsonResponse(result.results || [], 200);
+    }
+
+    // ==================== AI CHAT & MEMORY 记忆回响问答 ====================
+    if (path === '/api/ai/chat' && method === 'POST') {
+        const { question } = await request.json();
+        if (!question) return jsonResponse({ error: '请输入问题' }, 400);
+
+        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 20').bind(userId).all();
+        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 15').bind(userId).all();
+        const weeklies = await db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
+
+        const contextText = [
+            ...(feeds.results || []).map(f => `[随手记 ${f.created_at}] ${f.content}`),
+            ...(notes.results || []).map(n => `[备忘录 ${n.date}] ${n.title}: ${n.content || ''}`),
+            ...(weeklies.results || []).map(w => `[周记 ${w.date}] ${w.title}: ${w.summary || ''}`)
+        ].join('\n');
+
+        let reply = '';
+        try {
+            const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请根据提供的用户历史笔记上下文，用温暖、有条理且简炼的中文回答用户的提问。如果上下文中没有提到，请根据通识回答并友好告知。';
+            const userPrompt = `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}`;
+            reply = await callCustomLlm(env, systemPrompt, userPrompt);
+        } catch (err) {
+            console.error('LLM Call error:', err);
+        }
+
+        if (!reply) {
+            reply = generateFallbackReply(question, contextText);
+        }
+
+        return jsonResponse({ reply, question }, 200);
+    }
+
+    // ==================== AI ECHO CARD GENERATION ====================
+    if (path === '/api/echo/generate' && method === 'POST') {
+        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
+        if (!feeds.results || feeds.results.length === 0) {
+            return jsonResponse({ error: '暂无足够的随手记生成回响卡片，请先多记录一些思考吧！' }, 400);
+        }
+
+        const recentTexts = feeds.results.map(f => f.content).join('；');
+        const cardTitle = "近期思维回响与灵感梳理";
+        const topic = "每周灵感";
+        const summary = `在最近的记录中，你关注了：${recentTexts.slice(0, 120)}... AI 建议你继续保持记录，把这些零碎灵感进一步转化为深度的笔记或周记！`;
+
+        const feedIds = JSON.stringify(feeds.results.map(f => f.id));
+        const newCard = await db.prepare(
+            `INSERT INTO echo_cards (user_id, title, summary, topic, related_feed_ids, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now')) RETURNING *`
+        ).bind(userId, cardTitle, summary, topic, feedIds).first();
+
+        return jsonResponse(newCard, 201);
+    }
+
+    if (path === '/api/echo/cards' && method === 'GET') {
+        const cards = await db.prepare('SELECT * FROM echo_cards WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
+        return jsonResponse(cards.results || [], 200);
+    }
+
     return jsonResponse({ error: 'Not found' }, 404);
+}
+
+function extractTagsFromContent(text) {
+    const tags = [];
+    if (/代码|bug|api|js|css|html|react|vue|node|worker|git|python|算法|开发/i.test(text)) tags.push('#技术');
+    if (/生活|咖啡|电影|音乐|小说|美食|游记|运动|散步|秋天|猫|狗/i.test(text)) tags.push('#生活');
+    if (/读书|笔记|文章|极客|思考|播客|想法|灵感/i.test(text)) tags.push('#灵感');
+    if (tags.length === 0) tags.push('#随手记');
+    return tags;
+}
+
+function generateFallbackReply(question, contextText) {
+    if (!contextText || contextText.trim().length === 0) {
+        return `我在您的记忆花园里还没有找到相关记录。试着在顶部“随手记”里多记录一些想法吧！`;
+    }
+    const keywords = question.replace(/[？?！!，,。.]/g, '').split('').filter(c => c.trim());
+    const lines = contextText.split('\n');
+    const matchedLines = lines.filter(line => keywords.some(kw => line.includes(kw)));
+    
+    if (matchedLines.length > 0) {
+        return `针对您的提问 **“${question}”**，我在您的过往记忆中找到了以下匹配片段：\n\n` +
+            matchedLines.slice(0, 5).map(l => `• ${l}`).join('\n') +
+            `\n\n💡 *提示：您可以持续添加随手记，让记忆网络更加丰富！*`;
+    }
+
+    return `针对问题 **“${question}”**，基于您最近的记忆片段摘要：\n\n${lines.slice(0, 3).join('\n')}\n\n以上是为您整理的相关回响，请继续记录更多精彩灵感！`;
+}
+
+async function callCustomLlm(env, systemPrompt, userPrompt) {
+    const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
+    const apiKey = env.LLM_API_KEY;
+    const model = env.LLM_MODEL || 'deepseek-chat';
+
+    if (apiKey) {
+        const url = `${apiBase.replace(/\/$/, '')}/chat/completions`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                temperature: 0.7
+            })
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Custom LLM API error (${res.status}): ${errText}`);
+        }
+
+        const data = await res.json();
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return data.choices[0].message.content;
+        }
+    }
+
+    if (env.AI) {
+        const aiRes = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ]
+        });
+        return aiRes.response || '';
+    }
+
+    return null;
 }
 
 function formatWeekly(row) {
@@ -312,3 +528,5 @@ function formatWeekly(row) {
         annotations: row.annotations ? JSON.parse(row.annotations) : []
     };
 }
+
+
