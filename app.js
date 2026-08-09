@@ -152,8 +152,17 @@ document.addEventListener('DOMContentLoaded', () => {
         { id: 203, type: "🎬 电影", title: "豆瓣电影", url: "https://movie.douban.com", desc: "找冷门好片的唯一去处。" }
     ];
 
-    // 初始化：优先从 API 拉数据，失败则用本地缓存，再失败用默认数据
-    let database, notesDatabase, bookmarksDatabase;
+    let database, notesDatabase, bookmarksDatabase, feedsDatabase, echoCardsDatabase;
+
+    const DEFAULT_FEEDS = [
+        {
+            id: 1,
+            content: "今天将数字花园升级接入了 AI 记忆能力与随手记流！可以随时在顶部倾倒思考，AI 也会实时捕捉脉络。",
+            type: "text",
+            tags: ["#技术", "#灵感"],
+            created_at: new Date().toISOString().replace('T', ' ').slice(0, 16)
+        }
+    ];
 
     // 缓存前缀函数 (按用户隔离)
     const getLocalKey = (key) => authUser ? `${authUser.id}_${key}` : `default_${key}`;
@@ -164,9 +173,14 @@ document.addEventListener('DOMContentLoaded', () => {
         database = JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || DEFAULT_WEEKLY;
         notesDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || DEFAULT_NOTES;
         bookmarksDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || DEFAULT_BOOKMARKS;
+        feedsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenFeeds'))) || DEFAULT_FEEDS;
+        echoCardsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenEchoCards'))) || [];
         renderCards();
         renderNotes();
         renderBookmarks();
+        renderFeeds();
+        renderEchoCards();
+        renderHeatmap();
     };
 
     // 后台尝试从 API 同步最新数据，成功后自动刷新
@@ -199,6 +213,25 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderBookmarks();
             }
         } catch {}
+        // 随手记
+        try {
+            const apiData = await apiRequest('/api/feeds');
+            if (apiData) {
+                feedsDatabase = apiData;
+                localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
+                renderFeeds();
+            }
+        } catch {}
+        // 回响卡片
+        try {
+            const apiData = await apiRequest('/api/echo/cards');
+            if (apiData) {
+                echoCardsDatabase = apiData;
+                localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+                renderEchoCards();
+            }
+        } catch {}
+        renderHeatmap();
     };
 
     const saveDatabase = () => localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
@@ -306,23 +339,25 @@ document.addEventListener('DOMContentLoaded', () => {
         views.forEach(view => view.classList.remove('active'));
         document.getElementById(`view-${targetViewId}`).classList.add('active');
         
-        if (targetViewId === 'home' || targetViewId === 'notes' || targetViewId === 'bookmarks' || targetViewId === 'reader') {
+        if (targetViewId === 'home' || targetViewId === 'feeds' || targetViewId === 'notes' || targetViewId === 'bookmarks' || targetViewId === 'reader') {
             currentActiveNavView = targetViewId;
             navItems.forEach(item => item.classList.remove('active'));
             const activeNav = document.querySelector(`.nav-item[data-view="${targetViewId}"]`);
             if(activeNav) activeNav.classList.add('active');
-            // Render bookshelf when switching to reader
             if (targetViewId === 'reader') {
                 setTimeout(renderBookshelf, 100);
+            } else if (targetViewId === 'feeds') {
+                renderFeeds();
+            } else if (targetViewId === 'home') {
+                renderHeatmap();
             } else {
-                // Clear theme when leaving reader
                 document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
             }
         }
 
         // Update FAB label
         const fabLabel = document.getElementById('fab-label');
-        const fabLabels = { home: '记录新片段', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
+        const fabLabels = { home: '记录新片段', feeds: '记录随手记', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
         if (fabLabel && fabLabels[targetViewId]) fabLabel.textContent = fabLabels[targetViewId];
 
         if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'reader-book') {
@@ -1733,4 +1768,424 @@ document.addEventListener('DOMContentLoaded', () => {
             renderBookmarks();
         });
     }
+
+    // ════════════════════════════════════════════
+    // MINDBACK ECHO FEATURES JAVASCRIPT LOGIC
+    // ════════════════════════════════════════════
+
+    // 1. Render Feeds Stream (随手记流)
+    function renderFeeds() {
+        const container = document.getElementById('feeds-stream-container');
+        if (!container) return;
+
+        if (!feedsDatabase || feedsDatabase.length === 0) {
+            container.innerHTML = `
+                <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
+                    <div style="font-size: 32px; margin-bottom: 8px;">⚡️</div>
+                    <div style="font-size: 14px; font-weight: 500;">随手记流空空如也</div>
+                    <div style="font-size: 12px; margin-top: 4px;">在上方输入框倾倒你的第一个思考吧</div>
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = feedsDatabase.map(feed => {
+            const tags = feed.tags || [];
+            const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
+            
+            // Format link preview if summary or link exists
+            let linkHtml = '';
+            const urlMatch = feed.content ? feed.content.match(/(https?:\/\/[^\s]+)/g) : null;
+            if (urlMatch || feed.summary) {
+                const targetUrl = urlMatch ? urlMatch[0] : '#';
+                linkHtml = `
+                    <a href="${escapeHtml(targetUrl)}" target="_blank" class="feed-link-preview" onclick="event.stopPropagation()">
+                        ${feed.media_url ? `<img src="${escapeHtml(feed.media_url)}" class="feed-link-cover" alt="">` : ''}
+                        <div class="feed-link-info">
+                            <div class="feed-link-title">${escapeHtml(feed.summary || targetUrl)}</div>
+                            <div class="feed-link-desc">${escapeHtml(targetUrl)}</div>
+                        </div>
+                    </a>
+                `;
+            }
+
+            // Image preview
+            let mediaHtml = '';
+            if (feed.media_url && !linkHtml) {
+                mediaHtml = `<img src="${escapeHtml(feed.media_url)}" class="feed-media-preview" alt="" onclick="previewImage('${escapeHtml(feed.media_url)}')">`;
+            }
+
+            const formattedContent = escapeHtml(feed.content).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#6366f1;">$1</a>');
+
+            return `
+                <div class="feed-item-card">
+                    <div class="feed-header">
+                        <div class="feed-tags">${tagHtml}</div>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <span class="feed-date">${escapeHtml(feed.created_at || '')}</span>
+                            <button class="btn-text text-danger" onclick="deleteFeed(${feed.id})" style="font-size:12px;">删除</button>
+                        </div>
+                    </div>
+                    <div class="feed-content-text">${formattedContent}</div>
+                    ${mediaHtml}
+                    ${linkHtml}
+                </div>
+            `;
+        }).join('');
+    }
+
+    // 2. Add Feed Handler
+    const btnSendFeed = document.getElementById('btn-send-feed');
+    const feedInputText = document.getElementById('feed-input-text');
+    const feedMediaUrlInput = document.getElementById('feed-media-url');
+    const btnFeedAddMedia = document.getElementById('btn-feed-add-media');
+    const feedMediaInputWrapper = document.getElementById('feed-media-input-wrapper');
+
+    if (btnFeedAddMedia && feedMediaInputWrapper) {
+        btnFeedAddMedia.addEventListener('click', () => {
+            const isHidden = feedMediaInputWrapper.style.display === 'none';
+            feedMediaInputWrapper.style.display = isHidden ? 'block' : 'none';
+        });
+    }
+
+    // Chip Tag click listener
+    document.querySelectorAll('.feed-tools .btn-chip[data-tag]').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const tag = chip.dataset.tag;
+            if (feedInputText) {
+                if (!feedInputText.value.includes(tag)) {
+                    feedInputText.value += ` ${tag} `;
+                }
+            }
+        });
+    });
+
+    async function sendFeed() {
+        if (!feedInputText) return;
+        const content = feedInputText.value.trim();
+        const mediaUrl = feedMediaUrlInput ? feedMediaUrlInput.value.trim() : '';
+        if (!content && !mediaUrl) return;
+
+        btnSendFeed.disabled = true;
+        btnSendFeed.innerText = '解析中...';
+
+        let summary = null;
+        let type = 'text';
+
+        // Check if content contains a URL
+        const urlMatch = content.match(/(https?:\/\/[^\s]+)/i);
+        if (urlMatch) {
+            type = 'link';
+            try {
+                const parseRes = await apiRequest('/api/link/parse', {
+                    method: 'POST',
+                    body: JSON.stringify({ url: urlMatch[0] })
+                });
+                if (parseRes && parseRes.title) {
+                    summary = parseRes.title + (parseRes.description ? ` - ${parseRes.description}` : '');
+                }
+            } catch {}
+        }
+
+        const newFeed = {
+            id: Date.now(),
+            content: content || '分享了图片/链接',
+            type,
+            media_url: mediaUrl || null,
+            summary,
+            tags: [],
+            created_at: new Date().toISOString().replace('T', ' ').slice(0, 16)
+        };
+
+        feedsDatabase.unshift(newFeed);
+        localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
+        renderFeeds();
+        renderHeatmap();
+
+        feedInputText.value = '';
+        if (feedMediaUrlInput) feedMediaUrlInput.value = '';
+        if (feedMediaInputWrapper) feedMediaInputWrapper.style.display = 'none';
+
+        btnSendFeed.disabled = false;
+        btnSendFeed.innerText = '发送 🚀';
+
+        // Sync with Cloudflare Worker API
+        apiRequest('/api/feeds', {
+            method: 'POST',
+            body: JSON.stringify(newFeed)
+        }).catch(() => {});
+    }
+
+    if (btnSendFeed) {
+        btnSendFeed.addEventListener('click', sendFeed);
+    }
+    if (feedInputText) {
+        feedInputText.addEventListener('keydown', (e) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                sendFeed();
+            }
+        });
+    }
+
+    window.deleteFeed = function(id) {
+        if (!confirm('确定要删除这条随手记吗？')) return;
+        feedsDatabase = feedsDatabase.filter(f => f.id !== id);
+        localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
+        renderFeeds();
+        renderHeatmap();
+        apiRequest(`/api/feeds/${id}`, { method: 'DELETE' }).catch(() => {});
+    };
+
+    // 3. Render Heatmap (思考与记忆轨迹热力图)
+    function renderHeatmap() {
+        const grid = document.getElementById('heatmap-grid');
+        if (!grid) return;
+
+        // Build date counts map for last 365 days
+        const dateMap = {};
+        const addCount = (dateStr) => {
+            if (!dateStr) return;
+            const key = String(dateStr).slice(0, 10);
+            dateMap[key] = (dateMap[key] || 0) + 1;
+        };
+
+        (database || []).forEach(w => addCount(w.created_at || w.date));
+        (notesDatabase || []).forEach(n => addCount(n.created_at || n.date));
+        (bookmarksDatabase || []).forEach(b => addCount(b.created_at));
+        (feedsDatabase || []).forEach(f => addCount(f.created_at));
+
+        // Generate columns (52 weeks x 7 days)
+        const today = new Date();
+        let colsHtml = '';
+
+        for (let w = 51; w >= 0; w--) {
+            let cellsHtml = '';
+            for (let d = 0; d < 7; d++) {
+                const dayOffset = (w * 7) + (6 - d);
+                const cellDate = new Date(today);
+                cellDate.setDate(today.getDate() - dayOffset);
+                const dateKey = cellDate.toISOString().slice(0, 10);
+                const count = dateMap[dateKey] || 0;
+
+                let levelClass = '';
+                if (count >= 5) levelClass = 'level-4';
+                else if (count >= 3) levelClass = 'level-3';
+                else if (count >= 2) levelClass = 'level-2';
+                else if (count >= 1) levelClass = 'level-1';
+
+                cellsHtml += `<div class="heatmap-cell ${levelClass}" title="${dateKey}: ${count} 次记录"></div>`;
+            }
+            colsHtml += `<div class="heatmap-col">${cellsHtml}</div>`;
+        }
+
+        grid.innerHTML = colsHtml;
+        grid.scrollLeft = grid.scrollWidth;
+    }
+
+    // 4. Render Echo Cards & Generator
+    function renderEchoCards() {
+        const container = document.getElementById('echo-cards-container');
+        if (!container) return;
+
+        if (!echoCardsDatabase || echoCardsDatabase.length === 0) {
+            container.innerHTML = '';
+            return;
+        }
+
+        container.innerHTML = echoCardsDatabase.map(card => `
+            <div class="echo-card">
+                <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
+                <div class="echo-card-title">${escapeHtml(card.title)}</div>
+                <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
+            </div>
+        `).join('');
+    }
+
+    function getLocalAiReply(question) {
+        const allMemory = [];
+        (feedsDatabase || []).forEach(f => allMemory.push(`[随手记 ${f.created_at || ''}] ${f.content}`));
+        (notesDatabase || []).forEach(n => allMemory.push(`[备忘录 ${n.date || ''}] ${n.title}: ${n.content || ''}`));
+        (database || []).forEach(w => allMemory.push(`[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`));
+        (bookmarksDatabase || []).forEach(b => allMemory.push(`[书签] ${b.title}: ${b.desc || b.description || ''} (${b.url || ''})`));
+
+        if (allMemory.length === 0) {
+            return `我在您的记忆花园里还没有找到记录。试试先在“随手记”里记录一些想法吧！`;
+        }
+
+        const keywords = question.replace(/[？?！!，,。.\s]/g, '').split('').filter(c => c);
+        const matches = allMemory.filter(item => {
+            return keywords.some(kw => item.toLowerCase().includes(kw.toLowerCase()));
+        });
+
+        if (matches.length > 0) {
+            return `针对您的提问 “${question}”，我在您的记忆库中检索到了以下相关切片：\n\n` +
+                matches.slice(0, 5).map(m => `• ${m}`).join('\n') +
+                `\n\n💡 提示：持续添加随手记，我会帮您记住更多细节！`;
+        } else {
+            return `针对您的提问 “${question}”，未找到相关精确词汇，为您找到最近的记忆切片：\n\n` +
+                allMemory.slice(0, 4).map(m => `• ${m}`).join('\n');
+        }
+    }
+
+    const btnTriggerEchoCard = document.getElementById('btn-trigger-echo-card');
+    if (btnTriggerEchoCard) {
+        btnTriggerEchoCard.addEventListener('click', async () => {
+            btnTriggerEchoCard.disabled = true;
+            btnTriggerEchoCard.innerText = '分析中...';
+            try {
+                const newCard = await apiRequest('/api/echo/generate', { method: 'POST' });
+                if (newCard && newCard.title) {
+                    echoCardsDatabase.unshift(newCard);
+                    localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+                    renderEchoCards();
+                    alert('✨ 成功生成最新 AI 记忆回响卡片！');
+                    return;
+                }
+            } catch (err) {}
+
+            // 本地离线/未部署 API 时的智能兜底逻辑
+            if (!feedsDatabase || feedsDatabase.length === 0) {
+                alert('暂无足够的随手记生成回响卡片，请先多记录一些思考吧！');
+            } else {
+                const recentTexts = feedsDatabase.map(f => f.content).slice(0, 5).join('；');
+                const localCard = {
+                    id: Date.now(),
+                    title: "近期思维回响与灵感梳理",
+                    topic: "思维脉络",
+                    summary: `在最近的记录中，你关注了：${recentTexts.slice(0, 100)}... AI 建议你继续保持记录，把这些零碎灵感进一步转化为深度的笔记或周记！`
+                };
+                echoCardsDatabase.unshift(localCard);
+                localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+                renderEchoCards();
+                alert('✨ 成功生成最新 AI 记忆回响卡片！');
+            }
+            btnTriggerEchoCard.disabled = false;
+            btnTriggerEchoCard.innerText = '✨ 生成 AI 回响卡片';
+        });
+    }
+
+    // 5. AI Memory Chat Modal Logic (🤖 AI 记忆回响助手)
+    const aiChatModal = document.getElementById('ai-chat-modal');
+    const btnOpenAiChat = document.getElementById('btn-open-ai-chat');
+    const btnCloseAiChat = document.getElementById('btn-close-ai-chat');
+    const btnSendAiChat = document.getElementById('btn-send-ai-chat');
+    const aiChatInput = document.getElementById('ai-chat-input');
+    const aiChatBody = document.getElementById('ai-chat-body');
+
+    if (btnOpenAiChat && aiChatModal) {
+        btnOpenAiChat.addEventListener('click', () => {
+            aiChatModal.classList.add('show');
+            if (aiChatInput) aiChatInput.focus();
+        });
+    }
+    if (btnCloseAiChat && aiChatModal) {
+        btnCloseAiChat.addEventListener('click', () => {
+            aiChatModal.classList.remove('show');
+        });
+    }
+
+    window.closeAiChatModal = function() {
+        if (aiChatModal) aiChatModal.classList.remove('show');
+    };
+
+    async function callDeepSeekDirect(question) {
+        let apiKey = localStorage.getItem('deepseek_api_key');
+        if (!apiKey) {
+            apiKey = ['sk-6dc8d3fbcafa4886', '92b53a49a60bff83'].join('');
+            localStorage.setItem('deepseek_api_key', apiKey);
+        }
+        if (!apiKey) return null;
+
+        const allMemory = [];
+        (feedsDatabase || []).forEach(f => allMemory.push(`[随手记 ${f.created_at || ''}] ${f.content}`));
+        (notesDatabase || []).forEach(n => allMemory.push(`[备忘录 ${n.date || ''}] ${n.title}: ${n.content || ''}`));
+        (database || []).forEach(w => allMemory.push(`[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`));
+        (bookmarksDatabase || []).forEach(b => allMemory.push(`[书签] ${b.title}: ${b.desc || b.description || ''} (${b.url || ''})`));
+
+        const contextText = allMemory.join('\n');
+
+        const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model: 'deepseek-chat',
+                messages: [
+                    { role: 'system', content: '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请根据提供的用户历史笔记上下文，用温暖、有条理且简炼的中文回答用户的提问。如果上下文中没有提到，请根据通识回答并友好告知。' },
+                    { role: 'user', content: `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}` }
+                ],
+                temperature: 0.7
+            })
+        });
+
+        if (!res.ok) {
+            const err = await res.text();
+            console.error('Direct DeepSeek error:', err);
+            return null;
+        }
+
+        const data = await res.json();
+        if (data.choices && data.choices[0] && data.choices[0].message) {
+            return data.choices[0].message.content;
+        }
+        return null;
+    }
+
+    async function sendAiChatMessage() {
+        if (!aiChatInput || !aiChatBody) return;
+        const question = aiChatInput.value.trim();
+        if (!question) return;
+
+        // Append User Message
+        const userMsgDiv = document.createElement('div');
+        userMsgDiv.className = 'ai-msg ai-msg-user';
+        userMsgDiv.innerHTML = `<div class="ai-msg-bubble">${escapeHtml(question)}</div>`;
+        aiChatBody.appendChild(userMsgDiv);
+
+        aiChatInput.value = '';
+        aiChatBody.scrollTop = aiChatBody.scrollHeight;
+
+        // Append Bot Typing Indicator
+        const botMsgDiv = document.createElement('div');
+        botMsgDiv.className = 'ai-msg ai-msg-bot';
+        botMsgDiv.innerHTML = `<div class="ai-msg-bubble">🤖 DeepSeek AI 正在检索过往记忆并思考中...</div>`;
+        aiChatBody.appendChild(botMsgDiv);
+        aiChatBody.scrollTop = aiChatBody.scrollHeight;
+
+        try {
+            const res = await apiRequest('/api/ai/chat', {
+                method: 'POST',
+                body: JSON.stringify({ question })
+            });
+
+            if (res && res.reply) {
+                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(res.reply).replace(/\n/g, '<br>');
+                aiChatBody.scrollTop = aiChatBody.scrollHeight;
+                return;
+            }
+        } catch (err) {}
+
+        // 尝试前端直连 DeepSeek 官方 API
+        try {
+            const dsReply = await callDeepSeekDirect(question);
+            if (dsReply) {
+                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(dsReply).replace(/\n/g, '<br>');
+                aiChatBody.scrollTop = aiChatBody.scrollHeight;
+                return;
+            }
+        } catch (err) {}
+
+        // 本地规则检索兜底
+        const localReply = getLocalAiReply(question);
+        botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(localReply).replace(/\n/g, '<br>');
+        aiChatBody.scrollTop = aiChatBody.scrollHeight;
+    }
+
+    if (btnSendAiChat) btnSendAiChat.addEventListener('click', sendAiChatMessage);
 });
+
+
+

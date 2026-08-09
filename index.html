@@ -37,6 +37,7 @@
         <div class="super-navbar__content">
             <div class="super-navbar__menu" id="nav-menu">
                 <a href="#" class="nav-item active" data-view="home">首页</a>
+                <a href="#" class="nav-item" data-view="feeds">⚡️ 随手记</a>
                 <a href="#" class="nav-item" data-view="notes">笔记</a>
                 <a href="#" class="nav-item" data-view="bookmarks">收藏</a>
                 <a href="#" class="nav-item" data-view="reader">阅读</a>
@@ -46,6 +47,9 @@
                 ← 返回
             </button>
             <div class="nav-right" style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
+                <button id="btn-open-ai-chat" class="btn-text text-primary btn-icon-text" style="font-size: 13px;">
+                    <span class="btn-icon">🤖</span><span class="btn-label">AI 回响</span>
+                </button>
                 <span id="nav-username" class="nav-username" style="font-size: 13px; color: #a1a1aa; font-weight: 500;"></span>
                 <button id="btn-force-upload" class="btn-text text-primary btn-icon-text" style="font-size: 13px; display: none;">
                     <span class="btn-icon">☁️</span><span class="btn-label">备份到云端</span>
@@ -75,6 +79,16 @@
                     一个极简的数字空间，用来记录我每周的记忆切片、工作总结、播客新知和代码片段。<br>
                     用心培育，保持简单。
                 </p>
+
+                <!-- 思考轨迹热力图 Widget -->
+                <div class="heatmap-widget">
+                    <div class="heatmap-header">
+                        <span class="heatmap-title">🔥 思考与记忆轨迹 (近 12 个月)</span>
+                        <button class="btn-text text-primary" id="btn-trigger-echo-card" style="font-size:12px;">✨ 生成 AI 回响卡片</button>
+                    </div>
+                    <div class="heatmap-grid" id="heatmap-grid"></div>
+                </div>
+
                 <div class="search-filter-row">
                     <div class="filter-container">
                         <button class="filter-btn active" data-filter="all">全部</button>
@@ -396,7 +410,66 @@
             </div>
         </section>
 
+        <!-- ========================================== -->
+        <!-- VIEW 10: QUICK FEEDS 随手记流 (MindBack Style) -->
+        <!-- ========================================== -->
+        <section id="view-feeds" class="view-section">
+            <header class="page-header">
+                <h1 class="page-title">⚡️ 随手记流</h1>
+                <p class="page-description">无分类负重感，像聊天一样随手倾倒你的思考、音频、图片与网页链接。</p>
+            </header>
+
+            <!-- 无感速记输入框卡片 -->
+            <div class="feed-input-card">
+                <textarea id="feed-input-text" class="feed-textarea" placeholder="在此倾倒你的零碎想法、网页链接或灵感片段... (支持直接粘贴网址，Ctrl + Enter 发送)" rows="3"></textarea>
+                <div class="feed-input-toolbar">
+                    <div class="feed-tools">
+                        <button class="btn-chip" data-tag="#技术">#技术</button>
+                        <button class="btn-chip" data-tag="#生活">#生活</button>
+                        <button class="btn-chip" data-tag="#灵感">#灵感</button>
+                        <button class="btn-chip" id="btn-feed-add-media">📷 图片链接</button>
+                    </div>
+                    <button class="btn-primary btn-feed-send" id="btn-send-feed">发送 🚀</button>
+                </div>
+                <div id="feed-media-input-wrapper" style="display:none; margin-top:10px;">
+                    <input type="text" id="feed-media-url" class="search-input" placeholder="输入图片 URL (例如 https://...)" style="width:100%;">
+                </div>
+            </div>
+
+            <!-- AI 智能回响卡片区 -->
+            <div id="echo-cards-container" class="echo-cards-container"></div>
+
+            <!-- 随手记流时间轴 -->
+            <div id="feeds-stream-container" class="feeds-stream"></div>
+        </section>
+
     </main>
+
+    <!-- AI 记忆回响对话 Modal -->
+    <div class="modal-overlay" id="ai-chat-modal">
+        <div class="ai-chat-card" onclick="event.stopPropagation()">
+            <div class="ai-chat-header">
+                <div class="ai-chat-title">
+                    <span style="font-size:18px;">🤖</span> AI 记忆回响助手
+                </div>
+                <button class="btn-icon-close" id="btn-close-ai-chat" style="background:none;border:none;color:#a1a1aa;font-size:18px;cursor:pointer;">✕</button>
+            </div>
+            <div class="ai-chat-body" id="ai-chat-body">
+                <div class="ai-msg ai-msg-bot">
+                    <div class="ai-msg-bubble">
+                        你好！我是你的 AI 记忆回响助手。<br>
+                        我已连接你的花园记忆库（随手记、备忘录、周记与书签）。可以随时问我类似：<br>
+                        • “我上个月去吃过什么好的餐厅？”<br>
+                        • “整理一下我关于开发或算法的想法”
+                    </div>
+                </div>
+            </div>
+            <div class="ai-chat-footer">
+                <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="提问你的过往记忆...">
+                <button class="btn-primary" id="btn-send-ai-chat">提问</button>
+            </div>
+        </div>
+    </div>
 
     <!-- 图片预览弹窗 -->
     <div class="modal-overlay" id="image-preview-modal" onclick="this.classList.remove('show')">
