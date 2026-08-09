@@ -35,6 +35,7 @@
     <!-- 导航栏 -->
     <nav class="super-navbar" id="navbar">
         <div class="super-navbar__content">
+            <div class="nav-brand-mobile" style="display: none;">Chillin.</div>
             <div class="super-navbar__menu" id="nav-menu">
                 <a href="#" class="nav-item active" data-view="home">首页</a>
                 <a href="#" class="nav-item" data-view="feeds">⚡️ 随手记</a>
@@ -478,6 +479,30 @@
 
     <!-- 全局隐藏的文件上传器 -->
     <input type="file" id="global-image-uploader" accept="image/*" style="display: none;">
+
+    <!-- 移动端 App 式底部导航栏 -->
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
+        <a href="#" class="mobile-tab-item active" data-view="home">
+            <span class="tab-icon">🏠</span>
+            <span class="tab-label">首页</span>
+        </a>
+        <a href="#" class="mobile-tab-item" data-view="feeds">
+            <span class="tab-icon">⚡️</span>
+            <span class="tab-label">随手记</span>
+        </a>
+        <a href="#" class="mobile-tab-item" data-view="notes">
+            <span class="tab-icon">📝</span>
+            <span class="tab-label">笔记</span>
+        </a>
+        <a href="#" class="mobile-tab-item" data-view="bookmarks">
+            <span class="tab-icon">🔖</span>
+            <span class="tab-label">收藏</span>
+        </a>
+        <a href="#" class="mobile-tab-item" data-view="reader">
+            <span class="tab-icon">📚</span>
+            <span class="tab-label">阅读</span>
+        </a>
+    </nav>
 
     <!-- Cloudflare Worker API 配置 -->
     <script>
