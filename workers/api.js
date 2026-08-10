@@ -364,6 +364,90 @@ async function router(path, method, request, env) {
         return jsonResponse({ success: true }, 200);
     }
 
+    // ==================== BATCH SYNC 批量一次性强同步备份 ====================
+    if (path === '/api/sync/batch' && method === 'POST') {
+        const body = await request.json();
+        const weeklies = body.weeklies || [];
+        const notes = body.notes || [];
+        const bookmarks = body.bookmarks || [];
+        const feeds = body.feeds || [];
+
+        const statements = [];
+
+        // 1. 周记
+        for (const item of weeklies) {
+            if (weeklies.length > 1 && item.id === 1) continue;
+            const weeklyData = item.weeklyData ? JSON.stringify(item.weeklyData) : null;
+            const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
+            statements.push(
+                db.prepare(
+                    `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'))`
+                ).bind(item.id, item.category, item.title, item.summary, item.date, item.cover || '', weeklyData, item.content || '', annotations, userId)
+            );
+        }
+
+        // 2. 笔记
+        for (const item of notes) {
+            if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
+            const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
+            statements.push(
+                db.prepare(
+                    `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))`
+                ).bind(item.id, item.title, item.content || '', item.date, annotations, userId)
+            );
+        }
+
+        // 3. 收藏
+        for (const item of bookmarks) {
+            if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
+            statements.push(
+                db.prepare(
+                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+                ).bind(item.id, item.type, item.title, item.url, item.desc || item.description || '', userId)
+            );
+        }
+
+        // 4. 随手记
+        for (const item of feeds) {
+            if (feeds.length > 1 && item.id === 1) continue;
+            const content = item.content || '';
+            const type = item.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
+            const mediaUrl = item.media_url || item.mediaUrl || null;
+            const summary = item.summary || null;
+            let tags = item.tags || [];
+            if (!tags || tags.length === 0) tags = extractTagsFromContent(content);
+            const tagsJson = JSON.stringify(tags);
+
+            if (item.id) {
+                statements.push(
+                    db.prepare(
+                        `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')))`
+                    ).bind(item.id, userId, content, type, mediaUrl, summary, tagsJson, item.created_at || null)
+                );
+            } else {
+                statements.push(
+                    db.prepare(
+                        `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))`
+                    ).bind(userId, content, type, mediaUrl, summary, tagsJson)
+                );
+            }
+        }
+
+        if (statements.length > 0) {
+            const CHUNK_SIZE = 80;
+            for (let i = 0; i < statements.length; i += CHUNK_SIZE) {
+                await db.batch(statements.slice(i, i + CHUNK_SIZE));
+            }
+        }
+
+        return jsonResponse({ success: true, count: statements.length }, 200);
+    }
+
     // ==================== LINK PARSE 链接智能提取 ====================
     if (path === '/api/link/parse' && method === 'POST') {
         const { url } = await request.json();
