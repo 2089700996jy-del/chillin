@@ -318,10 +318,19 @@ async function router(path, method, request, env) {
         }
 
         const tagsJson = JSON.stringify(tags);
-        const res = await db.prepare(
-            `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now')) RETURNING *`
-        ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
+        let res;
+        if (body.id) {
+            await db.prepare(
+                `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')))`
+            ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
+            res = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+        } else {
+            res = await db.prepare(
+                `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now')) RETURNING *`
+            ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
+        }
 
         return jsonResponse({
             ...res,
@@ -330,6 +339,25 @@ async function router(path, method, request, env) {
     }
 
     const feedMatch = path.match(/^\/api\/feeds\/(\d+)$/);
+    if (feedMatch && method === 'PUT') {
+        const id = parseInt(feedMatch[1]);
+        const body = await request.json();
+        const content = body.content || '';
+        const type = body.type || 'text';
+        const mediaUrl = body.media_url || body.mediaUrl || null;
+        const summary = body.summary || null;
+        const tags = body.tags || extractTagsFromContent(content);
+        const tagsJson = JSON.stringify(tags);
+        await db.prepare(
+            `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5 WHERE id=?6 AND user_id=?7`
+        ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
+        const row = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
+        return jsonResponse({
+            ...row,
+            tags: row ? (row.tags ? JSON.parse(row.tags) : []) : []
+        }, 200);
+    }
+
     if (feedMatch && method === 'DELETE') {
         const id = parseInt(feedMatch[1]);
         await db.prepare('DELETE FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();

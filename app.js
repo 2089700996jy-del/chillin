@@ -3,11 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 1. 数据持久化与认证逻辑
     // ==========================================
-    let API_BASE = (typeof CHILLIN_API_URL !== 'undefined') ? CHILLIN_API_URL : '';
-    // 如果是本地 file 协议或者 localhost 调试，且 API_BASE 为空，自动指回云端 API 地址
-    if (!API_BASE && (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-        API_BASE = 'https://chillin-api.2089700996jy.workers.dev';
-    }
+    // 无条件默认指向 Cloudflare Worker 云端 API，支持手机、多电脑、局域网及任何域名访问
+    let API_BASE = (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) ? CHILLIN_API_URL : 'https://chillin-api.2089700996jy.workers.dev';
     const API_KEY = (typeof CHILLIN_API_KEY !== 'undefined') ? CHILLIN_API_KEY : '';
 
     let authToken = localStorage.getItem('chillin_token') || '';
@@ -22,6 +19,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnLogout = document.getElementById('btn-logout');
     const navUsername = document.getElementById('nav-username');
     const btnForceUpload = document.getElementById('btn-force-upload');
+    const btnManualSync = document.getElementById('btn-manual-sync');
 
     let isRegisterMode = false;
 
@@ -30,11 +28,13 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!authToken) {
             authOverlay.classList.remove('hidden');
             if (btnForceUpload) btnForceUpload.style.display = 'none';
+            if (btnManualSync) btnManualSync.style.display = 'none';
             return false;
         }
         authOverlay.classList.add('hidden');
         if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
         if (btnForceUpload) btnForceUpload.style.display = 'inline-flex';
+        if (btnManualSync) btnManualSync.style.display = 'inline-flex';
         return true;
     };
 
@@ -237,22 +237,28 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveDatabase = () => localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
     const saveNotesDatabase = () => localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(notesDatabase));
     const saveBookmarksDatabase = () => localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(bookmarksDatabase));
+    const saveFeedsDatabase = () => localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
 
     // API 同步辅助函数（静默失败，不阻塞 UI）
     const apiSyncWeekly = (item, method) => {
         const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
         const id = method === 'POST' ? '' : `/${item.id}`;
-        apiRequest(`/api/weeklies${id}`, bm).catch(() => {});
+        return apiRequest(`/api/weeklies${id}`, bm).catch(() => {});
     };
     const apiSyncNote = (item, method) => {
         const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
         const id = method === 'POST' ? '' : `/${item.id}`;
-        apiRequest(`/api/notes${id}`, bm).catch(() => {});
+        return apiRequest(`/api/notes${id}`, bm).catch(() => {});
     };
     const apiSyncBookmark = (item, method) => {
         const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
         const id = method === 'POST' ? '' : `/${item.id}`;
-        apiRequest(`/api/bookmarks${id}`, bm).catch(() => {});
+        return apiRequest(`/api/bookmarks${id}`, bm).catch(() => {});
+    };
+    const apiSyncFeed = (item, method) => {
+        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(item) };
+        const id = method === 'POST' ? '' : `/${item.id}`;
+        return apiRequest(`/api/feeds${id}`, bm).catch(() => {});
     };
 
     let currentArticleId = null;
@@ -1047,10 +1053,30 @@ document.addEventListener('DOMContentLoaded', () => {
         else navbar.classList.remove('scrolled');
     });
 
+    // 手动从云端同步数据按钮事件
+    if (btnManualSync) {
+        btnManualSync.addEventListener('click', async () => {
+            const labelEl = btnManualSync.querySelector('.btn-label');
+            const originalLabel = labelEl ? labelEl.innerText : '同步';
+            if (labelEl) labelEl.innerText = '同步中...';
+            btnManualSync.disabled = true;
+            try {
+                await syncFromApi();
+                if (labelEl) labelEl.innerText = '已同步!';
+                setTimeout(() => { if (labelEl) labelEl.innerText = originalLabel; }, 1800);
+            } catch (err) {
+                alert('同步失败: ' + err.message);
+                if (labelEl) labelEl.innerText = originalLabel;
+            } finally {
+                btnManualSync.disabled = false;
+            }
+        });
+    }
+
     // 备份本地数据到云端按钮事件
     if (btnForceUpload) {
         btnForceUpload.addEventListener('click', async () => {
-            if (!confirm('确定要将当前电脑上的所有周记、笔记和收藏备份覆盖到云端吗？\n如果在其他设备（如手机）上有新写的数据，可能会被覆盖，请谨慎操作。')) {
+            if (!confirm('确定要将当前设备上的所有周记、笔记、收藏和随手记覆盖备份到云端吗？\n如果在其他设备（如手机）上有新写的数据，可能会被覆盖，请谨慎操作。')) {
                 return;
             }
             
@@ -1087,7 +1113,16 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
                 
-                alert('备份成功！当前电脑上的数据已成功同步至云端。你现在可以在手机上刷新页面同步了。');
+                // 备份随手记
+                for (const item of feedsDatabase) {
+                    if (feedsDatabase.length > 1 && item.id === 1) continue;
+                    await apiRequest('/api/feeds', {
+                        method: 'POST',
+                        body: JSON.stringify(item)
+                    });
+                }
+
+                alert('备份成功！当前设备上的数据已成功同步至云端。你现在可以在手机/其他电脑上点击“同步”获取最新数据。');
             } catch (err) {
                 alert('备份失败: ' + err.message);
             } finally {
@@ -1104,13 +1139,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const guestData = JSON.parse(localStorage.getItem('default_gardenData')) || [];
         const guestNotes = JSON.parse(localStorage.getItem('default_gardenNotes')) || [];
         const guestBookmarks = JSON.parse(localStorage.getItem('default_gardenBookmarks')) || [];
+        const guestFeeds = JSON.parse(localStorage.getItem('default_gardenFeeds')) || [];
         
         const hasGuestData = guestData.length > 0 && !(guestData.length === 1 && guestData[0].id === 1);
         const hasGuestNotes = guestNotes.length > 0 && !guestNotes.every(n => n.id === 101 || n.id === 102);
         const hasGuestBookmarks = guestBookmarks.length > 0 && !guestBookmarks.every(b => b.id === 201 || b.id === 202 || b.id === 203);
-        
-        if (hasGuestData || hasGuestNotes || hasGuestBookmarks) {
-            if (confirm('检测到您在未登录时在当前电脑上创建了本地数据（周记/笔记/收藏）。是否将这些数据导入并同步到您当前的账号中？')) {
+        const hasGuestFeeds = guestFeeds.length > 0 && !(guestFeeds.length === 1 && guestFeeds[0].id === 1);
+
+        if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds) {
+            if (confirm('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记）。是否将这些数据导入并同步到您当前的账号中？')) {
                 try {
                     // 1. 合并周记到当前用户的本地缓存
                     const userKey = getLocalKey('gardenData');
@@ -1154,10 +1191,25 @@ document.addEventListener('DOMContentLoaded', () => {
                         await apiSyncBookmark(item, 'POST');
                     }
 
+                    // 4. 合并随手记到当前用户的本地缓存
+                    const userFeedsKey = getLocalKey('gardenFeeds');
+                    let userFeedsDatabase = JSON.parse(localStorage.getItem(userFeedsKey)) || [];
+                    userFeedsDatabase = [...userFeedsDatabase, ...guestFeeds].filter((item, index, self) => 
+                        self.findIndex(t => t.id === item.id) === index
+                    );
+                    localStorage.setItem(userFeedsKey, JSON.stringify(userFeedsDatabase));
+                    feedsDatabase = userFeedsDatabase;
+                    
+                    for (const item of guestFeeds) {
+                        if (item.id === 1) continue;
+                        await apiSyncFeed(item, 'POST');
+                    }
+
                     // 清空游客数据，防止重复提示
                     localStorage.removeItem('default_gardenData');
                     localStorage.removeItem('default_gardenNotes');
                     localStorage.removeItem('default_gardenBookmarks');
+                    localStorage.removeItem('default_gardenFeeds');
                     
                     alert('本地数据已成功合并并同步至云端！');
                 } catch (e) {
@@ -1174,6 +1226,13 @@ document.addEventListener('DOMContentLoaded', () => {
     checkAndMergeGuestData().then(() => {
         // 3. 后台静默同步 API 数据（有变化则自动刷新）
         syncFromApi();
+    });
+
+    // 页面重新可见（切回标签页或亮屏）时自动重新静默同步
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && authToken) {
+            syncFromApi();
+        }
     });
 
     // 图片上传处理
@@ -1922,10 +1981,24 @@ document.addEventListener('DOMContentLoaded', () => {
         btnSendFeed.innerText = '发送 🚀';
 
         // Sync with Cloudflare Worker API
-        apiRequest('/api/feeds', {
-            method: 'POST',
-            body: JSON.stringify(newFeed)
-        }).catch(() => {});
+        try {
+            const apiRes = await apiRequest('/api/feeds', {
+                method: 'POST',
+                body: JSON.stringify(newFeed)
+            });
+            if (apiRes && apiRes.id) {
+                const idx = feedsDatabase.findIndex(f => f.id === newFeed.id);
+                if (idx !== -1) {
+                    feedsDatabase[idx] = apiRes;
+                } else {
+                    feedsDatabase.unshift(apiRes);
+                }
+                saveFeedsDatabase();
+                renderFeeds();
+            }
+        } catch (err) {
+            console.warn('Silent feed sync failed:', err);
+        }
     }
 
     if (btnSendFeed) {
