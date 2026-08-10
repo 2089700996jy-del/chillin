@@ -43,8 +43,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const authSwitchText = document.getElementById('auth-switch-text');
     const btnLogout = document.getElementById('btn-logout');
     const navUsername = document.getElementById('nav-username');
-    const btnForceUpload = document.getElementById('btn-force-upload');
-    const btnManualSync = document.getElementById('btn-manual-sync');
 
     let isRegisterMode = false;
 
@@ -53,15 +51,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!authToken) {
             authOverlay.classList.remove('hidden');
             document.body.classList.add('not-authenticated');
-            if (btnForceUpload) btnForceUpload.style.display = 'none';
-            if (btnManualSync) btnManualSync.style.display = 'none';
             return false;
         }
         authOverlay.classList.add('hidden');
         document.body.classList.remove('not-authenticated');
         if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
-        if (btnForceUpload) btnForceUpload.style.display = 'inline-flex';
-        if (btnManualSync) btnManualSync.style.display = 'inline-flex';
         return true;
     };
 
@@ -1309,59 +1303,7 @@ document.addEventListener('DOMContentLoaded', () => {
         else navbar.classList.remove('scrolled');
     });
 
-    // 手动从云端同步数据按钮事件
-    if (btnManualSync) {
-        btnManualSync.addEventListener('click', async () => {
-            const labelEl = btnManualSync.querySelector('.btn-label');
-            const originalLabel = labelEl ? labelEl.innerText : '同步';
-            if (labelEl) labelEl.innerText = '同步中...';
-            btnManualSync.disabled = true;
-            try {
-                await syncFromApi();
-                if (labelEl) labelEl.innerText = '已同步!';
-                setTimeout(() => { if (labelEl) labelEl.innerText = originalLabel; }, 1800);
-            } catch (err) {
-                alert('同步失败: ' + err.message);
-                if (labelEl) labelEl.innerText = originalLabel;
-            } finally {
-                btnManualSync.disabled = false;
-            }
-        });
-    }
 
-    // 备份本地数据到云端按钮事件
-    if (btnForceUpload) {
-        btnForceUpload.addEventListener('click', async () => {
-            if (!confirm('确定要将当前设备上的所有周记、笔记、收藏和随手记覆盖备份到云端吗？\n如果在其他设备上写的数据尚未上传，可能会被覆盖，请谨慎操作。')) {
-                return;
-            }
-            
-            const labelEl = btnForceUpload.querySelector('.btn-label');
-            const originalLabelText = labelEl ? labelEl.innerText : '备份到云端';
-            if (labelEl) labelEl.innerText = '正在备份...';
-            btnForceUpload.disabled = true;
-            
-            try {
-                // 一次性批量打包发送给后端 (解决手机网络多次循环请求导致的 signal is aborted 时间超时)
-                await apiRequest('/api/sync/batch', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        weeklies: database,
-                        notes: notesDatabase,
-                        bookmarks: bookmarksDatabase,
-                        feeds: feedsDatabase
-                    })
-                });
-
-                alert('备份成功！已将当前设备数据同步至云端。你现在可以在手机/其他电脑上点击“同步”获取最新数据。');
-            } catch (err) {
-                alert('备份失败: ' + err.message);
-            } finally {
-                if (labelEl) labelEl.innerText = originalLabelText;
-                btnForceUpload.disabled = false;
-            }
-        });
-    }
 
     // 检测并合并游客/未登录状态下的本地数据
     const checkAndMergeGuestData = async () => {
