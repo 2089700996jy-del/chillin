@@ -370,82 +370,98 @@ document.addEventListener('DOMContentLoaded', () => {
         return { merged, needsUpload };
     };
 
-    // 后台尝试从 API 同步最新数据，成功后智能双向合并并自动补充推送与删除同步
+    // 后台无感自动同步 API 最新数据（有变化则静默刷新，无变化零 DOM 重绘）
+    let isSyncingInBg = false;
     const syncFromApi = async () => {
-        if (!authToken) return;
+        if (!authToken || isSyncingInBg) return;
+        isSyncingInBg = true;
         let needsBatchUpload = false;
 
-        // 周记
         try {
-            const apiData = await apiRequest('/api/weeklies');
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(database, apiData);
-                if (needsUpload) needsBatchUpload = true;
-                database = merged;
-                saveDatabase();
-                renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
-            }
-        } catch {}
+            // 周记
+            try {
+                const apiData = await apiRequest('/api/weeklies');
+                if (Array.isArray(apiData)) {
+                    const { merged, needsUpload } = processApiSyncResult(database, apiData);
+                    if (needsUpload) needsBatchUpload = true;
+                    if (JSON.stringify(database) !== JSON.stringify(merged)) {
+                        database = merged;
+                        saveDatabase();
+                        renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
+                    }
+                }
+            } catch {}
 
-        // 笔记
-        try {
-            const apiData = await apiRequest('/api/notes');
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(notesDatabase, apiData);
-                if (needsUpload) needsBatchUpload = true;
-                notesDatabase = merged;
-                saveNotesDatabase();
-                renderNotes();
-            }
-        } catch {}
+            // 笔记
+            try {
+                const apiData = await apiRequest('/api/notes');
+                if (Array.isArray(apiData)) {
+                    const { merged, needsUpload } = processApiSyncResult(notesDatabase, apiData);
+                    if (needsUpload) needsBatchUpload = true;
+                    if (JSON.stringify(notesDatabase) !== JSON.stringify(merged)) {
+                        notesDatabase = merged;
+                        saveNotesDatabase();
+                        renderNotes();
+                    }
+                }
+            } catch {}
 
-        // 收藏
-        try {
-            const apiData = await apiRequest('/api/bookmarks');
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(bookmarksDatabase, apiData);
-                if (needsUpload) needsBatchUpload = true;
-                bookmarksDatabase = merged;
-                saveBookmarksDatabase();
-                renderBookmarks();
-            }
-        } catch {}
+            // 收藏
+            try {
+                const apiData = await apiRequest('/api/bookmarks');
+                if (Array.isArray(apiData)) {
+                    const { merged, needsUpload } = processApiSyncResult(bookmarksDatabase, apiData);
+                    if (needsUpload) needsBatchUpload = true;
+                    if (JSON.stringify(bookmarksDatabase) !== JSON.stringify(merged)) {
+                        bookmarksDatabase = merged;
+                        saveBookmarksDatabase();
+                        renderBookmarks();
+                    }
+                }
+            } catch {}
 
-        // 随手记
-        try {
-            const apiData = await apiRequest('/api/feeds');
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(feedsDatabase, apiData);
-                if (needsUpload) needsBatchUpload = true;
-                feedsDatabase = merged;
-                saveFeedsDatabase();
-                renderFeeds();
-            }
-        } catch {}
+            // 随手记
+            try {
+                const apiData = await apiRequest('/api/feeds');
+                if (Array.isArray(apiData)) {
+                    const { merged, needsUpload } = processApiSyncResult(feedsDatabase, apiData);
+                    if (needsUpload) needsBatchUpload = true;
+                    if (JSON.stringify(feedsDatabase) !== JSON.stringify(merged)) {
+                        feedsDatabase = merged;
+                        saveFeedsDatabase();
+                        renderFeeds();
+                    }
+                }
+            } catch {}
 
-        // 如果合并后发现本地有未上传云端的条目，自动向云端发起 1 次批量补全上传
-        if (needsBatchUpload) {
-            apiRequest('/api/sync/batch', {
-                method: 'POST',
-                body: JSON.stringify({
-                    weeklies: database,
-                    notes: notesDatabase,
-                    bookmarks: bookmarksDatabase,
-                    feeds: feedsDatabase
-                })
-            }).catch(() => {});
+            // 如果合并后发现本地有未上传云端的条目，自动向云端发起 1 次批量补全上传
+            if (needsBatchUpload) {
+                apiRequest('/api/sync/batch', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        weeklies: database,
+                        notes: notesDatabase,
+                        bookmarks: bookmarksDatabase,
+                        feeds: feedsDatabase
+                    })
+                }).catch(() => {});
+            }
+
+            // 回响卡片
+            try {
+                const apiData = await apiRequest('/api/echo/cards');
+                if (Array.isArray(apiData)) {
+                    if (JSON.stringify(echoCardsDatabase) !== JSON.stringify(apiData)) {
+                        echoCardsDatabase = apiData;
+                        localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+                        renderEchoCards();
+                    }
+                }
+            } catch {}
+            renderHeatmap();
+        } finally {
+            isSyncingInBg = false;
         }
-
-        // 回响卡片
-        try {
-            const apiData = await apiRequest('/api/echo/cards');
-            if (Array.isArray(apiData)) {
-                echoCardsDatabase = apiData;
-                localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
-                renderEchoCards();
-            }
-        } catch {}
-        renderHeatmap();
     };
 
     const saveDatabase = () => localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
@@ -1437,12 +1453,33 @@ document.addEventListener('DOMContentLoaded', () => {
         syncFromApi();
     });
 
-    // 页面重新可见（切回标签页或亮屏）时自动重新静默同步
+    // 智能后台无感自动同步引擎 (Seamless Auto-Sync Engine)
+    let autoSyncInterval = null;
+    const startAutoSyncEngine = () => {
+        if (autoSyncInterval) clearInterval(autoSyncInterval);
+        // 每 6 秒后台静默无感同步一次（零弹窗、零打扰、有变化自动无缝更新）
+        autoSyncInterval = setInterval(() => {
+            if (document.visibilityState === 'visible' && authToken) {
+                syncFromApi();
+            }
+        }, 6000);
+    };
+
+    // 页面切回、亮屏焦点、网络恢复时立即无感同步
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible' && authToken) {
             syncFromApi();
         }
     });
+    window.addEventListener('focus', () => {
+        if (authToken) syncFromApi();
+    });
+    window.addEventListener('online', () => {
+        if (authToken) syncFromApi();
+    });
+
+    // 启动后台无感自动同步引擎
+    startAutoSyncEngine();
 
     // 图片上传处理
     const globalImageUploader = document.getElementById('global-image-uploader');
