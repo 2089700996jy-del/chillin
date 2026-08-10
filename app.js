@@ -173,14 +173,74 @@ document.addEventListener('DOMContentLoaded', () => {
     // 缓存前缀函数 (按用户隔离)
     const getLocalKey = (key) => authUser ? `${authUser.id}_${key}` : `default_${key}`;
 
-    // 立即从本地缓存加载，保证页面秒开
+    // 自动扫描与挽救当前设备上的所有历史 LocalStorage 数据（无论前缀是 default_、数字ID_ 或无前缀，防止切账号或升级导致数据丢失）
+    const rescueAndConsolidateLocalData = () => {
+        let rescuedFeeds = [];
+        let rescuedNotes = [];
+        let rescuedWeeklies = [];
+        let rescuedBookmarks = [];
+
+        try {
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (!key) continue;
+                if (key.includes('gardenFeeds')) {
+                    const items = JSON.parse(localStorage.getItem(key));
+                    if (Array.isArray(items)) rescuedFeeds.push(...items);
+                } else if (key.includes('gardenNotes')) {
+                    const items = JSON.parse(localStorage.getItem(key));
+                    if (Array.isArray(items)) rescuedNotes.push(...items);
+                } else if (key.includes('gardenData')) {
+                    const items = JSON.parse(localStorage.getItem(key));
+                    if (Array.isArray(items)) rescuedWeeklies.push(...items);
+                } else if (key.includes('gardenBookmarks')) {
+                    const items = JSON.parse(localStorage.getItem(key));
+                    if (Array.isArray(items)) rescuedBookmarks.push(...items);
+                }
+            }
+        } catch(e) {}
+
+        const cleanList = (list, defaultIds) => {
+            if (!Array.isArray(list)) return [];
+            const unique = list.filter((item, index, self) => 
+                item && item.id && self.findIndex(t => String(t.id) === String(item.id)) === index
+            );
+            if (unique.length > defaultIds.length) {
+                return unique.filter(item => !defaultIds.includes(Number(item.id)));
+            }
+            return unique;
+        };
+
+        return {
+            feeds: cleanList(rescuedFeeds, [1]),
+            notes: cleanList(rescuedNotes, [101, 102]),
+            weeklies: cleanList(rescuedWeeklies, [1]),
+            bookmarks: cleanList(rescuedBookmarks, [201, 202, 203])
+        };
+    };
+
+    // 立即从本地全量安全缓存加载，保证页面秒开且绝不丢失手机原数据
     const loadLocalData = () => {
-        if (!checkAuth()) return; // 未登录时不加载数据
-        database = JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || DEFAULT_WEEKLY;
-        notesDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || DEFAULT_NOTES;
-        bookmarksDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || DEFAULT_BOOKMARKS;
-        feedsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenFeeds'))) || DEFAULT_FEEDS;
+        const rescued = rescueAndConsolidateLocalData();
+
+        const currentFeeds = JSON.parse(localStorage.getItem(getLocalKey('gardenFeeds'))) || [];
+        const currentNotes = JSON.parse(localStorage.getItem('gardenNotes')) || JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || [];
+        const currentData = JSON.parse(localStorage.getItem('gardenData')) || JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || [];
+        const currentBookmarks = JSON.parse(localStorage.getItem('gardenBookmarks')) || JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || [];
+
+        database = mergeDataLists(currentData, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
+        notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES);
+        bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS);
+        feedsDatabase = mergeDataLists(currentFeeds, rescued.feeds.length > 0 ? rescued.feeds : DEFAULT_FEEDS);
         echoCardsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenEchoCards'))) || [];
+
+        if (authUser) {
+            saveDatabase();
+            saveNotesDatabase();
+            saveBookmarksDatabase();
+            saveFeedsDatabase();
+        }
+
         renderCards();
         renderNotes();
         renderBookmarks();
