@@ -189,49 +189,95 @@ document.addEventListener('DOMContentLoaded', () => {
         renderHeatmap();
     };
 
-    // 后台尝试从 API 同步最新数据，成功后自动刷新
+    // 通用双向合并函数：合并本地与云端数据，确保本地新创作不被云端空数据覆盖，且无缝去重
+    const mergeDataLists = (localList, apiList) => {
+        if (!Array.isArray(localList)) localList = [];
+        if (!Array.isArray(apiList)) apiList = [];
+        
+        const map = new Map();
+        // 存入云端拉取到的条目
+        for (const item of apiList) {
+            if (item && item.id) map.set(String(item.id), item);
+        }
+        // 合并本地存在、云端尚未录入的条目
+        for (const item of localList) {
+            if (item && item.id && !map.has(String(item.id))) {
+                map.set(String(item.id), item);
+            }
+        }
+        return Array.from(map.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
+    };
+
+    // 后台尝试从 API 同步最新数据，成功后智能双向合并并自动补充推送
     const syncFromApi = async () => {
         if (!authToken) return;
+        let needsBatchUpload = false;
+
         // 周记
         try {
             const apiData = await apiRequest('/api/weeklies');
-            if (apiData) {
-                database = apiData;
-                localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
+            if (Array.isArray(apiData)) {
+                const merged = mergeDataLists(database, apiData);
+                if (merged.length > apiData.length) needsBatchUpload = true;
+                database = merged;
+                saveDatabase();
                 renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
             }
         } catch {}
+
         // 笔记
         try {
             const apiData = await apiRequest('/api/notes');
-            if (apiData) {
-                notesDatabase = apiData;
-                localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(notesDatabase));
+            if (Array.isArray(apiData)) {
+                const merged = mergeDataLists(notesDatabase, apiData);
+                if (merged.length > apiData.length) needsBatchUpload = true;
+                notesDatabase = merged;
+                saveNotesDatabase();
                 renderNotes();
             }
         } catch {}
+
         // 收藏
         try {
             const apiData = await apiRequest('/api/bookmarks');
-            if (apiData) {
-                bookmarksDatabase = apiData;
-                localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(bookmarksDatabase));
+            if (Array.isArray(apiData)) {
+                const merged = mergeDataLists(bookmarksDatabase, apiData);
+                if (merged.length > apiData.length) needsBatchUpload = true;
+                bookmarksDatabase = merged;
+                saveBookmarksDatabase();
                 renderBookmarks();
             }
         } catch {}
+
         // 随手记
         try {
             const apiData = await apiRequest('/api/feeds');
-            if (apiData) {
-                feedsDatabase = apiData;
-                localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
+            if (Array.isArray(apiData)) {
+                const merged = mergeDataLists(feedsDatabase, apiData);
+                if (merged.length > apiData.length) needsBatchUpload = true;
+                feedsDatabase = merged;
+                saveFeedsDatabase();
                 renderFeeds();
             }
         } catch {}
+
+        // 如果合并后发现本地有未上传云端的条目，自动向云端发起 1 次批量补全上传
+        if (needsBatchUpload) {
+            apiRequest('/api/sync/batch', {
+                method: 'POST',
+                body: JSON.stringify({
+                    weeklies: database,
+                    notes: notesDatabase,
+                    bookmarks: bookmarksDatabase,
+                    feeds: feedsDatabase
+                })
+            }).catch(() => {});
+        }
+
         // 回响卡片
         try {
             const apiData = await apiRequest('/api/echo/cards');
-            if (apiData) {
+            if (Array.isArray(apiData)) {
                 echoCardsDatabase = apiData;
                 localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
                 renderEchoCards();
