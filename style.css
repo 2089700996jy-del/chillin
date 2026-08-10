@@ -23,6 +23,35 @@
   margin: 0; 
   padding: 0; 
   box-sizing: border-box; 
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+button, a, input, textarea, select, div, span {
+  -webkit-tap-highlight-color: transparent !important;
+}
+
+button:focus,
+button:focus-visible,
+a:focus,
+a:focus-visible,
+.btn-text:focus,
+.btn-chip:focus,
+.mobile-tab-item:focus,
+.nav-item:focus,
+.fab-btn:focus {
+  outline: none !important;
+  box-shadow: none;
+}
+
+/* 微弹按压触摸反馈（替代高亮矩形灰色长方框阴影） */
+.btn-text:active,
+.btn-chip:active,
+.mobile-tab-item:active,
+.nav-item:active,
+.fab-btn:active,
+.btn-icon-text:active {
+  transform: scale(0.95) !important;
+  opacity: 0.85;
 }
 
 body {

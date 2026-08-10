@@ -514,6 +514,7 @@ document.addEventListener('DOMContentLoaded', () => {
             navMenu.style.display = 'none';
             btnBack.style.display = 'block';
             fabBtn.classList.add('hidden');
+            fabBtn.style.display = 'none';
             if (mobileBottomNav) {
                 mobileBottomNav.style.display = 'none';
                 mobileBottomNav.classList.add('hidden');
@@ -522,12 +523,20 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             navMenu.style.display = '';
             btnBack.style.display = 'none';
-            fabBtn.classList.remove('hidden');
             if (mobileBottomNav) {
                 mobileBottomNav.style.display = '';
                 mobileBottomNav.classList.remove('hidden');
             }
             document.body.classList.remove('hide-bottom-nav');
+
+            // 随手记页面已有页内倾倒框，隐藏右下角悬浮 + 按钮
+            if (targetViewId === 'feeds') {
+                fabBtn.classList.add('hidden');
+                fabBtn.style.display = 'none';
+            } else {
+                fabBtn.classList.remove('hidden');
+                fabBtn.style.display = '';
+            }
         }
         window.scrollTo(0, 0); 
     };
