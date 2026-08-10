@@ -98,8 +98,9 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const apiRequest = async (path, options = {}) => {
+        const timeoutMs = options.timeout || 25000;
         const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 8000);
+        const timeout = setTimeout(() => controller.abort(), timeoutMs);
         try {
             const headers = {
                 'Content-Type': 'application/json',
@@ -118,10 +119,15 @@ document.addEventListener('DOMContentLoaded', () => {
             
             if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') {
                 logout();
-                throw new Error('Unauthorized or token expired');
+                throw new Error('未登录或登录状态已过期，请重新登录');
             }
-            if (!res.ok) throw new Error(`API error: ${res.status}`);
+            if (!res.ok) throw new Error(`接口请求异常 (${res.status})`);
             return res.json();
+        } catch (err) {
+            if (err.name === 'AbortError' || (err.message && (err.message.includes('aborted') || err.message.includes('signal')))) {
+                throw new Error('网络请求超时，请检查网络后重试');
+            }
+            throw err;
         } finally {
             clearTimeout(timeout);
         }
@@ -1076,7 +1082,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 备份本地数据到云端按钮事件
     if (btnForceUpload) {
         btnForceUpload.addEventListener('click', async () => {
-            if (!confirm('确定要将当前设备上的所有周记、笔记、收藏和随手记覆盖备份到云端吗？\n如果在其他设备（如手机）上有新写的数据，可能会被覆盖，请谨慎操作。')) {
+            if (!confirm('确定要将当前设备上的所有周记、笔记、收藏和随手记覆盖备份到云端吗？\n如果在其他设备上写的数据尚未上传，可能会被覆盖，请谨慎操作。')) {
                 return;
             }
             
@@ -1086,43 +1092,18 @@ document.addEventListener('DOMContentLoaded', () => {
             btnForceUpload.disabled = true;
             
             try {
-                // 备份周记
-                for (const item of database) {
-                    if (database.length > 1 && item.id === 1) continue; // 排除默认的示例
-                    await apiRequest('/api/weeklies', {
-                        method: 'POST',
-                        body: JSON.stringify(item)
-                    });
-                }
-                
-                // 备份笔记
-                for (const item of notesDatabase) {
-                    if (notesDatabase.length > 2 && (item.id === 101 || item.id === 102)) continue;
-                    await apiRequest('/api/notes', {
-                        method: 'POST',
-                        body: JSON.stringify(item)
-                    });
-                }
-                
-                // 备份收藏
-                for (const item of bookmarksDatabase) {
-                    if (bookmarksDatabase.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
-                    await apiRequest('/api/bookmarks', {
-                        method: 'POST',
-                        body: JSON.stringify(item)
-                    });
-                }
-                
-                // 备份随手记
-                for (const item of feedsDatabase) {
-                    if (feedsDatabase.length > 1 && item.id === 1) continue;
-                    await apiRequest('/api/feeds', {
-                        method: 'POST',
-                        body: JSON.stringify(item)
-                    });
-                }
+                // 一次性批量打包发送给后端 (解决手机网络多次循环请求导致的 signal is aborted 时间超时)
+                await apiRequest('/api/sync/batch', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        weeklies: database,
+                        notes: notesDatabase,
+                        bookmarks: bookmarksDatabase,
+                        feeds: feedsDatabase
+                    })
+                });
 
-                alert('备份成功！当前设备上的数据已成功同步至云端。你现在可以在手机/其他电脑上点击“同步”获取最新数据。');
+                alert('备份成功！已将当前设备数据同步至云端。你现在可以在手机/其他电脑上点击“同步”获取最新数据。');
             } catch (err) {
                 alert('备份失败: ' + err.message);
             } finally {
@@ -1157,11 +1138,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     );
                     localStorage.setItem(userKey, JSON.stringify(userDatabase));
                     database = userDatabase;
-                    
-                    for (const item of guestData) {
-                        if (item.id === 1) continue;
-                        await apiSyncWeekly(item, 'POST');
-                    }
 
                     // 2. 合并笔记到当前用户的本地缓存
                     const userNotesKey = getLocalKey('gardenNotes');
@@ -1171,11 +1147,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     );
                     localStorage.setItem(userNotesKey, JSON.stringify(userNotesDatabase));
                     notesDatabase = userNotesDatabase;
-                    
-                    for (const item of guestNotes) {
-                        if (item.id === 101 || item.id === 102) continue;
-                        await apiSyncNote(item, 'POST');
-                    }
 
                     // 3. 合并收藏到当前用户的本地缓存
                     const userBMKey = getLocalKey('gardenBookmarks');
@@ -1185,11 +1156,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     );
                     localStorage.setItem(userBMKey, JSON.stringify(userBMDatabase));
                     bookmarksDatabase = userBMDatabase;
-                    
-                    for (const item of guestBookmarks) {
-                        if (item.id === 201 || item.id === 202 || item.id === 203) continue;
-                        await apiSyncBookmark(item, 'POST');
-                    }
 
                     // 4. 合并随手记到当前用户的本地缓存
                     const userFeedsKey = getLocalKey('gardenFeeds');
@@ -1199,11 +1165,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     );
                     localStorage.setItem(userFeedsKey, JSON.stringify(userFeedsDatabase));
                     feedsDatabase = userFeedsDatabase;
-                    
-                    for (const item of guestFeeds) {
-                        if (item.id === 1) continue;
-                        await apiSyncFeed(item, 'POST');
-                    }
+
+                    // 一次性发送到云端
+                    await apiRequest('/api/sync/batch', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            weeklies: guestData,
+                            notes: guestNotes,
+                            bookmarks: guestBookmarks,
+                            feeds: guestFeeds
+                        })
+                    });
 
                     // 清空游客数据，防止重复提示
                     localStorage.removeItem('default_gardenData');
