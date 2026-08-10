@@ -3,9 +3,34 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     // 1. 数据持久化与认证逻辑
     // ==========================================
-    // 无条件默认指向 Cloudflare Worker 云端 API，支持手机、多电脑、局域网及任何域名访问
-    let API_BASE = (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) ? CHILLIN_API_URL : 'https://chillin-api.2089700996jy.workers.dev';
+    // 智能动态基地址：同源 Pages 代理优先（避免移动端跨域及 DNS 阻断），非同源降级直连 Worker
+    let API_BASE = '';
+    if (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) {
+        API_BASE = CHILLIN_API_URL;
+    } else if (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+        API_BASE = 'https://chillin-api.2089700996jy.workers.dev';
+    } else {
+        // 线上 Cloudflare Pages 部署环境 (chillin-bfc.pages.dev) 优先使用同源 /api 代理
+        API_BASE = '';
+    }
+    const CLOUD_WORKER_BASE = 'https://chillin-api.2089700996jy.workers.dev';
     const API_KEY = (typeof CHILLIN_API_KEY !== 'undefined') ? CHILLIN_API_KEY : '';
+
+    // 双端自动降级 Fetch（同源与直连自动容灾，解决移动端 Failed to fetch）
+    const fetchWithFallback = async (path, options = {}) => {
+        const primaryUrl = `${API_BASE}${path}`;
+        try {
+            const res = await fetch(primaryUrl, options);
+            return res;
+        } catch (primaryErr) {
+            // 如果同源 /api 失败且是在线上域名，自动降级尝试跨域直连 Cloudflare Worker
+            if (API_BASE === '' && (primaryErr.name === 'TypeError' || primaryErr.message.includes('fetch'))) {
+                const secondaryUrl = `${CLOUD_WORKER_BASE}${path}`;
+                return await fetch(secondaryUrl, options);
+            }
+            throw primaryErr;
+        }
+    };
 
     let authToken = localStorage.getItem('chillin_token') || '';
     let authUser = JSON.parse(localStorage.getItem('chillin_user') || 'null');
@@ -73,13 +98,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
-            const res = await fetch(`${API_BASE}${endpoint}`, {
+            const res = await fetchWithFallback(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
                 body: JSON.stringify({ username, password })
             });
             const data = await res.json();
-            if (!res.ok) throw new Error(data.error || 'Authentication failed');
+            if (!res.ok) throw new Error(data.error || '登录失败，请检查账号和密码');
 
             authToken = data.token;
             authUser = { id: data.userId, username: data.username };
@@ -92,7 +117,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 syncFromApi();   // Fetch new API data
             });
         } catch (err) {
-            authErrorMsg.innerText = err.message;
+            if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+                authErrorMsg.innerText = '网络连接失败，请检查手机网络后重试';
+            } else {
+                authErrorMsg.innerText = err.message;
+            }
             authErrorMsg.style.display = 'block';
         }
     });
@@ -111,7 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 headers['Authorization'] = `Bearer ${authToken}`;
             }
 
-            const res = await fetch(`${API_BASE}${path}`, {
+            const res = await fetchWithFallback(path, {
                 ...options,
                 signal: controller.signal,
                 headers
