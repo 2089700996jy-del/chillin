@@ -48,15 +48,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let isRegisterMode = false;
 
-    // 显示/隐藏认证覆盖层
+    // 显示/隐藏认证覆盖层及导航栏
     const checkAuth = () => {
         if (!authToken) {
             authOverlay.classList.remove('hidden');
+            document.body.classList.add('not-authenticated');
             if (btnForceUpload) btnForceUpload.style.display = 'none';
             if (btnManualSync) btnManualSync.style.display = 'none';
             return false;
         }
         authOverlay.classList.add('hidden');
+        document.body.classList.remove('not-authenticated');
         if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
         if (btnForceUpload) btnForceUpload.style.display = 'inline-flex';
         if (btnManualSync) btnManualSync.style.display = 'inline-flex';
