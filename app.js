@@ -280,26 +280,97 @@ document.addEventListener('DOMContentLoaded', () => {
         renderHeatmap();
     };
 
-    // 通用双向合并函数：合并本地与云端数据，确保本地新创作不被云端空数据覆盖，且无缝去重
+    // 已同步与已删除 Tombstones 机制，防止已删除项目在多端智能合并时“死而复活”
+    const getSyncedIds = () => {
+        try {
+            return JSON.parse(localStorage.getItem(getLocalKey('gardenSyncedIds'))) || [];
+        } catch(e) { return []; }
+    };
+    const addSyncedIds = (ids) => {
+        if (!Array.isArray(ids)) return;
+        const current = getSyncedIds();
+        let changed = false;
+        for (const id of ids) {
+            const str = String(id);
+            if (str && !current.includes(str)) {
+                current.push(str);
+                changed = true;
+            }
+        }
+        if (changed) {
+            localStorage.setItem(getLocalKey('gardenSyncedIds'), JSON.stringify(current));
+        }
+    };
+
+    const getDeletedIds = () => {
+        try {
+            return JSON.parse(localStorage.getItem(getLocalKey('gardenDeletedIds'))) || [];
+        } catch(e) { return []; }
+    };
+    const addDeletedId = (id) => {
+        if (!id) return;
+        const current = getDeletedIds();
+        const str = String(id);
+        if (!current.includes(str)) {
+            current.push(str);
+            localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(current));
+        }
+    };
+
+    // 通用双向合并函数：合并本地与云端数据，排除已删除的 Tombstones
     const mergeDataLists = (localList, apiList) => {
         if (!Array.isArray(localList)) localList = [];
         if (!Array.isArray(apiList)) apiList = [];
         
+        const deletedIds = getDeletedIds();
         const map = new Map();
         // 存入云端拉取到的条目
         for (const item of apiList) {
-            if (item && item.id) map.set(String(item.id), item);
+            if (item && item.id && !deletedIds.includes(String(item.id))) {
+                map.set(String(item.id), item);
+            }
         }
-        // 合并本地存在、云端尚未录入的条目
+        // 合并本地存在且未被删除、云端尚未录入的条目
         for (const item of localList) {
-            if (item && item.id && !map.has(String(item.id))) {
+            if (item && item.id && !deletedIds.includes(String(item.id)) && !map.has(String(item.id))) {
                 map.set(String(item.id), item);
             }
         }
         return Array.from(map.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
     };
 
-    // 后台尝试从 API 同步最新数据，成功后智能双向合并并自动补充推送
+    // 智能处理 API 同步结果：处理其他端删除同步与本地新添加同步
+    const processApiSyncResult = (localList, apiData) => {
+        if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false };
+        const deletedIds = getDeletedIds();
+        const syncedIds = getSyncedIds();
+
+        // 1. 记下云端现有所有条目的 ID 标记为已同步过
+        const apiIds = apiData.map(item => String(item.id));
+        addSyncedIds(apiIds);
+
+        // 2. 过滤本地条目：
+        // - 本地若已被本设备删除 (in deletedIds) -> 剔除
+        // - 本地条目曾经同步上过云端 (in syncedIds)，但现在云端 apiIds 中不存在 -> 说明在其他设备上被删除了 -> 从本地同步剔除
+        const activeLocal = (localList || []).filter(item => {
+            if (!item || !item.id) return false;
+            const strId = String(item.id);
+            if (deletedIds.includes(strId)) return false;
+            if (syncedIds.includes(strId) && !apiIds.includes(strId)) return false;
+            return true;
+        });
+
+        // 3. 将云端数据与符合条件的本地新数据合并
+        const merged = mergeDataLists(activeLocal, apiData);
+        
+        // 4. 检查是否有本地新创作需要补充上传
+        const unsyncedLocal = activeLocal.filter(item => !syncedIds.includes(String(item.id)) && !apiIds.includes(String(item.id)));
+        const needsUpload = unsyncedLocal.length > 0;
+
+        return { merged, needsUpload };
+    };
+
+    // 后台尝试从 API 同步最新数据，成功后智能双向合并并自动补充推送与删除同步
     const syncFromApi = async () => {
         if (!authToken) return;
         let needsBatchUpload = false;
@@ -308,8 +379,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const apiData = await apiRequest('/api/weeklies');
             if (Array.isArray(apiData)) {
-                const merged = mergeDataLists(database, apiData);
-                if (merged.length > apiData.length) needsBatchUpload = true;
+                const { merged, needsUpload } = processApiSyncResult(database, apiData);
+                if (needsUpload) needsBatchUpload = true;
                 database = merged;
                 saveDatabase();
                 renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
@@ -320,8 +391,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const apiData = await apiRequest('/api/notes');
             if (Array.isArray(apiData)) {
-                const merged = mergeDataLists(notesDatabase, apiData);
-                if (merged.length > apiData.length) needsBatchUpload = true;
+                const { merged, needsUpload } = processApiSyncResult(notesDatabase, apiData);
+                if (needsUpload) needsBatchUpload = true;
                 notesDatabase = merged;
                 saveNotesDatabase();
                 renderNotes();
@@ -332,8 +403,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const apiData = await apiRequest('/api/bookmarks');
             if (Array.isArray(apiData)) {
-                const merged = mergeDataLists(bookmarksDatabase, apiData);
-                if (merged.length > apiData.length) needsBatchUpload = true;
+                const { merged, needsUpload } = processApiSyncResult(bookmarksDatabase, apiData);
+                if (needsUpload) needsBatchUpload = true;
                 bookmarksDatabase = merged;
                 saveBookmarksDatabase();
                 renderBookmarks();
@@ -344,8 +415,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const apiData = await apiRequest('/api/feeds');
             if (Array.isArray(apiData)) {
-                const merged = mergeDataLists(feedsDatabase, apiData);
-                if (merged.length > apiData.length) needsBatchUpload = true;
+                const { merged, needsUpload } = processApiSyncResult(feedsDatabase, apiData);
+                if (needsUpload) needsBatchUpload = true;
                 feedsDatabase = merged;
                 saveFeedsDatabase();
                 renderFeeds();
@@ -938,7 +1009,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnDeleteArticle.addEventListener('click', () => {
-        if(confirm("确定要永久删除这篇记忆吗？")) { const deletedId = currentArticleId; database = database.filter(d => d.id !== currentArticleId); saveDatabase(); apiSyncWeekly({id: deletedId}, 'DELETE'); renderCards(); switchView('home'); }
+        if(confirm("确定要永久删除这篇记忆吗？")) { 
+            const deletedId = currentArticleId; 
+            addDeletedId(deletedId);
+            database = database.filter(d => d.id !== currentArticleId); 
+            saveDatabase(); 
+            apiSyncWeekly({id: deletedId}, 'DELETE'); 
+            renderCards(); 
+            switchView('home'); 
+        }
     });
 
     document.getElementById('btn-add-weekly-annotation').addEventListener('click', () => {
@@ -1080,7 +1159,15 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     btnDeleteNote.addEventListener('click', () => {
-        if(confirm("确定删除这条笔记吗？")) { const deletedId = currentNoteId; notesDatabase = notesDatabase.filter(n => n.id !== currentNoteId); saveNotesDatabase(); apiSyncNote({id: deletedId}, 'DELETE'); renderNotes(); switchView('notes'); }
+        if(confirm("确定删除这条笔记吗？")) { 
+            const deletedId = currentNoteId; 
+            addDeletedId(deletedId);
+            notesDatabase = notesDatabase.filter(n => n.id !== currentNoteId); 
+            saveNotesDatabase(); 
+            apiSyncNote({id: deletedId}, 'DELETE'); 
+            renderNotes(); 
+            switchView('notes'); 
+        }
     });
 
     document.getElementById('btn-add-annotation').addEventListener('click', () => {
@@ -1154,6 +1241,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 e.stopPropagation();
                 if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
                     const deletedId = bm.id;
+                    addDeletedId(deletedId);
                     bookmarksDatabase = bookmarksDatabase.filter(b => b.id !== bm.id);
                     saveBookmarksDatabase();
                     apiSyncBookmark({id: deletedId}, 'DELETE');
@@ -2136,7 +2224,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.deleteFeed = function(id) {
         if (!confirm('确定要删除这条随手记吗？')) return;
-        feedsDatabase = feedsDatabase.filter(f => f.id !== id);
+        addDeletedId(id);
+        feedsDatabase = feedsDatabase.filter(f => String(f.id) !== String(id));
         localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
         renderFeeds();
         renderHeatmap();
