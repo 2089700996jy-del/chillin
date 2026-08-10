@@ -1326,12 +1326,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
-    // 1. 立即用本地缓存渲染（秒开）
+    // 1. 页面初始化：首先校验登录状态（如果已登录自动隐藏登录遮罩层，免去重复输入密码）
+    checkAuth();
+
+    // 2. 立即用本地缓存渲染（秒开）
     loadLocalData();
 
-    // 2. 检测合并游客数据
+    // 3. 检测合并游客数据
     checkAndMergeGuestData().then(() => {
-        // 3. 后台静默同步 API 数据（有变化则自动刷新）
+        // 4. 后台静默同步 API 数据（有变化则自动刷新）
         syncFromApi();
     });
 
