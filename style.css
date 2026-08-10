@@ -971,10 +971,8 @@ body {
   left: 0; 
   width: 100vw; 
   height: 100vh;
-  background: rgba(246, 248, 250, 0.85); 
-  backdrop-filter: blur(24px); 
-  -webkit-backdrop-filter: blur(24px);
-  z-index: 1000; 
+  background: #F8FAFC; 
+  z-index: 99999; 
   display: flex; 
   justify-content: center; 
   align-items: center;
@@ -984,6 +982,17 @@ body {
   opacity: 0; 
   visibility: hidden; 
   pointer-events: none;
+}
+
+/* 未登录状态下隐藏顶部导航栏、手机底部 Tab 栏及悬浮按钮 */
+body.not-authenticated .super-navbar,
+body.not-authenticated .mobile-bottom-nav,
+body.not-authenticated .fab-btn,
+body.not-authenticated #btn-back {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }
 .auth-card {
   background: #FFFFFF; 
