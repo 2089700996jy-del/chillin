@@ -204,24 +204,41 @@ async function router(path, method, request, env) {
 
         try {
             const isXiaoyuzhou = url.includes('xiaoyuzhoufm.com');
-            const userAgent = isXiaoyuzhou 
-                ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
-                : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+            const userAgents = isXiaoyuzhou 
+                ? [
+                    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                  ]
+                : [
+                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+                  ];
 
-            const pageRes = await fetch(url, {
-                headers: { 
-                    'User-Agent': userAgent,
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
-                },
-                redirect: 'follow'
-            });
-
-            if (!pageRes.ok) {
-                throw new Error(`HTTP status ${pageRes.status}`);
+            let html = '';
+            for (const ua of userAgents) {
+                try {
+                    const pageRes = await fetch(url, {
+                        headers: { 
+                            'User-Agent': ua,
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+                        },
+                        redirect: 'follow'
+                    });
+                    if (pageRes.ok) {
+                        const text = await pageRes.text();
+                        if (text && text.length > 500) {
+                            html = text;
+                            break;
+                        }
+                    }
+                } catch {}
             }
 
-            const html = await pageRes.text();
+            if (!html) {
+                throw new Error('Fetch HTML failed');
+            }
             
             let title = '';
             let description = '';
