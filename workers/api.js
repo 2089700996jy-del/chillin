@@ -297,15 +297,18 @@ async function router(path, method, request, env) {
             title = decodeEntities(title);
             description = decodeEntities(description);
 
-            // 5. Microlink API Fallback for blocked or incomplete metadata
-            if (!title || title === hostname || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title) || !cover) {
+            // 5. Microlink API Fallback for blocked, generic, or incomplete metadata
+            const isGenericTitle = !title || title === hostname || title.toLowerCase() === hostname.toLowerCase() || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title);
+            if (isGenericTitle || !cover) {
                 try {
-                    const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+                    const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, {
+                        headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+                    });
                     if (microRes.ok) {
                         const microData = await microRes.json();
                         if (microData.status === 'success' && microData.data) {
                             const d = microData.data;
-                            if (d.title && (!title || title === hostname || /^(403|404|500|Forbidden)/i.test(title))) {
+                            if (d.title && (isGenericTitle || !title)) {
                                 title = d.title;
                             }
                             if (d.description && !description) {
