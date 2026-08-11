@@ -2057,11 +2057,19 @@ document.addEventListener('DOMContentLoaded', () => {
             const urlMatch = feed.content ? feed.content.match(/(https?:\/\/[^\s]+)/g) : null;
             if (urlMatch || feed.summary) {
                 const targetUrl = urlMatch ? urlMatch[0] : '#';
+                let displayTitle = feed.summary || targetUrl;
+                if (!displayTitle || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(displayTitle.trim())) {
+                    try {
+                        displayTitle = new URL(targetUrl).hostname;
+                    } catch {
+                        displayTitle = targetUrl;
+                    }
+                }
                 linkHtml = `
                     <a href="${escapeHtml(targetUrl)}" target="_blank" class="feed-link-preview" onclick="event.stopPropagation()">
                         ${feed.media_url ? `<img src="${escapeHtml(feed.media_url)}" class="feed-link-cover" alt="">` : ''}
                         <div class="feed-link-info">
-                            <div class="feed-link-title">${escapeHtml(feed.summary || targetUrl)}</div>
+                            <div class="feed-link-title">${escapeHtml(displayTitle)}</div>
                             <div class="feed-link-desc">${escapeHtml(targetUrl)}</div>
                         </div>
                     </a>
@@ -2141,7 +2149,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     body: JSON.stringify({ url: urlMatch[0] })
                 });
                 if (parseRes && parseRes.title) {
-                    summary = parseRes.title + (parseRes.description ? ` - ${parseRes.description}` : '');
+                    if (!/^(403|404|500|Forbidden|Access Denied|Error)/i.test(parseRes.title.trim())) {
+                        summary = parseRes.title + (parseRes.description ? ` - ${parseRes.description}` : '');
+                    } else {
+                        try {
+                            summary = new URL(urlMatch[0]).hostname;
+                        } catch {
+                            summary = urlMatch[0];
+                        }
+                    }
                 }
             } catch {}
         }
