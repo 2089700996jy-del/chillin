@@ -2114,7 +2114,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="rich-link-title">${escapeHtml(title)}</div>
                                 ${description ? `<div class="rich-link-desc">${escapeHtml(description)}</div>` : ''}
                             </div>
-                            ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" class="rich-link-cover" alt="" onerror="this.style.display='none'">` : ''}
+                            ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" onerror="this.onerror=null; this.style.display='none'">` : ''}
                         </div>
                         <div class="rich-link-footer">
                             <span class="rich-platform-pill">
