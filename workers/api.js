@@ -455,20 +455,61 @@ async function router(path, method, request, env) {
             return jsonResponse({ error: '无效的 URL' }, 400);
         }
         
-        const getFallbackTitle = (targetUrl) => {
-            try {
-                const u = new URL(targetUrl);
-                return u.hostname;
-            } catch {
-                return targetUrl;
+        let platformName = '网络链接';
+        let platformIcon = '🌐';
+        let hostname = url;
+        try {
+            const u = new URL(url);
+            hostname = u.hostname;
+            if (hostname.includes('xiaoyuzhoufm.com')) {
+                platformName = '小宇宙';
+                platformIcon = '🪐';
+            } else if (hostname.includes('xiaohongshu.com') || hostname.includes('xhslink.com')) {
+                platformName = '小红书';
+                platformIcon = '📕';
+            } else if (hostname.includes('bilibili.com') || hostname.includes('b23.tv')) {
+                platformName = 'Bilibili';
+                platformIcon = '📺';
+            } else if (hostname.includes('weixin.qq.com')) {
+                platformName = '微信文章';
+                platformIcon = '💬';
+            } else if (hostname.includes('zhihu.com')) {
+                platformName = '知乎';
+                platformIcon = '💡';
+            } else if (hostname.includes('music.163.com')) {
+                platformName = '网易云音乐';
+                platformIcon = '🎵';
+            } else if (hostname.includes('ximalaya.com')) {
+                platformName = '喜马拉雅';
+                platformIcon = '🎙️';
+            } else if (hostname.includes('weibo.com') || hostname.includes('weibo.cn')) {
+                platformName = '微博';
+                platformIcon = '🔴';
+            } else if (hostname.includes('douyin.com')) {
+                platformName = '抖音';
+                platformIcon = '🎵';
+            } else if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+                platformName = 'YouTube';
+                platformIcon = '▶️';
+            } else if (hostname.includes('github.com')) {
+                platformName = 'GitHub';
+                platformIcon = '🐙';
+            } else {
+                platformName = hostname;
+                platformIcon = '🌐';
             }
-        };
+        } catch {}
 
         try {
+            const isXiaoyuzhou = url.includes('xiaoyuzhoufm.com');
+            const userAgent = isXiaoyuzhou 
+                ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+                : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
             const pageRes = await fetch(url, {
                 headers: { 
-                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'User-Agent': userAgent,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
                 },
                 redirect: 'follow'
@@ -480,31 +521,63 @@ async function router(path, method, request, env) {
 
             const html = await pageRes.text();
             
-            // Priority 1: og:title or twitter:title
-            const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
-                                 html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i) ||
-                                 html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
-            
-            // Priority 2: <title>
-            const titleTagMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-            
-            let title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleTagMatch ? titleTagMatch[1].trim() : '');
-            
-            // Filter out common bot block / HTTP error titles
-            if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
-                title = getFallbackTitle(url);
+            let title = '';
+            let description = '';
+            let cover = '';
+            let siteName = platformName;
+
+            // 1. Check for Xiaoyuzhou NEXT_DATA json
+            if (isXiaoyuzhou) {
+                const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+                if (nextDataMatch) {
+                    try {
+                        const nextData = JSON.parse(nextDataMatch[1]);
+                        const ep = nextData.props?.pageProps?.episode;
+                        if (ep) {
+                            title = ep.title || '';
+                            description = ep.description || '';
+                            cover = ep.image?.picUrl || ep.cover?.url || ep.podcast?.image?.picUrl || '';
+                            siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
+                        }
+                    } catch {}
+                }
             }
 
-            const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
-                                html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
-            const description = ogDescMatch ? ogDescMatch[1].trim() : '';
+            // 2. Priority OG title / twitter title / <title>
+            if (!title) {
+                const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
+                                     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i) ||
+                                     html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
+                const titleTagMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+                title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleTagMatch ? titleTagMatch[1].trim() : '');
+            }
 
-            const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i);
-            const cover = ogImageMatch ? ogImageMatch[1].trim() : '';
+            // 3. Cover image extraction
+            if (!cover) {
+                const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
+                                     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i) ||
+                                     html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
+                cover = ogImageMatch ? ogImageMatch[1].trim() : '';
+            }
 
-            return jsonResponse({ url, title, description, cover }, 200);
+            // 4. Description extraction
+            if (!description) {
+                const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
+                                    html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+                description = ogDescMatch ? ogDescMatch[1].trim() : '';
+            }
+
+            const decodeEntities = (str) => str ? str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").trim() : '';
+            title = decodeEntities(title);
+            description = decodeEntities(description);
+
+            if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
+                title = hostname;
+            }
+
+            return jsonResponse({ url, title, description, cover, platform: platformName, icon: platformIcon, siteName }, 200);
         } catch (e) {
-            return jsonResponse({ url, title: getFallbackTitle(url), description: '网络链接', cover: '' }, 200);
+            return jsonResponse({ url, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
         }
     }
 
