@@ -54,6 +54,18 @@ a:focus-visible,
   opacity: 0.85;
 }
 
+html, body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;
+}
+
+@media screen and (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 body {
   background-color: var(--bg-color);
   background-image: 
