@@ -2033,6 +2033,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // ════════════════════════════════════════════
 
     // 1. Render Feeds Stream (随手记流)
+    function extractUrlFromText(text) {
+        if (!text) return null;
+        const match = text.match(/(https?:\/\/[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.(?:com|net|org|cn|fm|cc|co|tv|me|io|xyz)[^\s]*)/i);
+        if (!match) return null;
+        let raw = match[0].trim();
+        let normalized = raw;
+        if (!normalized.match(/^https?:\/\//i)) {
+            normalized = 'https://' + normalized;
+        }
+        return { raw, normalized };
+    }
+
     function renderFeeds() {
         const container = document.getElementById('feeds-stream-container');
         if (!container) return;
@@ -2056,9 +2068,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Format link preview if summary or link exists
             let linkHtml = '';
-            const urlMatch = feed.content ? feed.content.match(/(https?:\/\/[^\s]+)/i) : null;
-            if (urlMatch || feed.summary) {
-                const targetUrl = urlMatch ? urlMatch[0] : '#';
+            const extracted = extractUrlFromText(feed.content);
+            if (extracted || feed.summary) {
+                const targetUrl = extracted ? extracted.normalized : '#';
                 let meta = null;
                 if (feed.summary) {
                     try {
@@ -2101,9 +2113,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
 
                 // Auto enrich unparsed links or plain hostnames (e.g. historical posts)
-                if (urlMatch && (!meta || !meta.cover || title === 'www.xiaoyuzhoufm.com')) {
+                if (extracted && (!meta || !meta.cover || title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com')) {
                     if (!feed._enriching) {
-                        pendingEnrichFeeds.push({ feed, url: urlMatch[0] });
+                        pendingEnrichFeeds.push({ feed, url: extracted.normalized });
                     }
                 }
 
@@ -2137,8 +2149,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Remove raw URL text if a rich link card is displayed
             let contentText = feed.content || '';
-            if (urlMatch && linkHtml) {
-                contentText = contentText.replace(urlMatch[0], '').trim();
+            if (extracted && linkHtml) {
+                contentText = contentText.replace(extracted.raw, '').replace(extracted.normalized, '').trim();
             }
 
             let textHtml = '';
@@ -2225,14 +2237,14 @@ document.addEventListener('DOMContentLoaded', () => {
         let type = 'text';
         let parsedCover = '';
 
-        // Check if content contains a URL
-        const urlMatch = content.match(/(https?:\/\/[^\s]+)/i);
-        if (urlMatch) {
+        // Check if content contains a URL (supports https:// and www. domain URLs)
+        const extracted = extractUrlFromText(content);
+        if (extracted) {
             type = 'link';
             try {
                 const parseRes = await apiRequest('/api/link/parse', {
                     method: 'POST',
-                    body: JSON.stringify({ url: urlMatch[0] })
+                    body: JSON.stringify({ url: extracted.normalized })
                 });
                 if (parseRes) {
                     summary = JSON.stringify(parseRes);
