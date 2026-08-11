@@ -150,6 +150,146 @@ async function router(path, method, request, env) {
         });
     }
 
+    // ==================== LINK PARSE 链接智能提取 ====================
+    if (path === '/api/link/parse' && method === 'POST') {
+        const { url } = await request.json();
+        if (!url || !url.match(/^https?:\/\//i)) {
+            return jsonResponse({ error: '无效的 URL' }, 400);
+        }
+        
+        let platformName = '网络链接';
+        let platformIcon = '🌐';
+        let hostname = url;
+        try {
+            const u = new URL(url);
+            hostname = u.hostname;
+            if (hostname.includes('xiaoyuzhoufm.com')) {
+                platformName = '小宇宙';
+                platformIcon = '🪐';
+            } else if (hostname.includes('xiaohongshu.com') || hostname.includes('xhslink.com')) {
+                platformName = '小红书';
+                platformIcon = '📕';
+            } else if (hostname.includes('bilibili.com') || hostname.includes('b23.tv')) {
+                platformName = 'Bilibili';
+                platformIcon = '📺';
+            } else if (hostname.includes('weixin.qq.com')) {
+                platformName = '微信文章';
+                platformIcon = '💬';
+            } else if (hostname.includes('zhihu.com')) {
+                platformName = '知乎';
+                platformIcon = '💡';
+            } else if (hostname.includes('music.163.com')) {
+                platformName = '网易云音乐';
+                platformIcon = '🎵';
+            } else if (hostname.includes('ximalaya.com')) {
+                platformName = '喜马拉雅';
+                platformIcon = '🎙️';
+            } else if (hostname.includes('weibo.com') || hostname.includes('weibo.cn')) {
+                platformName = '微博';
+                platformIcon = '🔴';
+            } else if (hostname.includes('douyin.com')) {
+                platformName = '抖音';
+                platformIcon = '🎵';
+            } else if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
+                platformName = 'YouTube';
+                platformIcon = '▶️';
+            } else if (hostname.includes('github.com')) {
+                platformName = 'GitHub';
+                platformIcon = '🐙';
+            } else {
+                platformName = hostname;
+                platformIcon = '🌐';
+            }
+        } catch {}
+
+        try {
+            const isXiaoyuzhou = url.includes('xiaoyuzhoufm.com');
+            const userAgent = isXiaoyuzhou 
+                ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
+                : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+            const pageRes = await fetch(url, {
+                headers: { 
+                    'User-Agent': userAgent,
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+                },
+                redirect: 'follow'
+            });
+
+            if (!pageRes.ok) {
+                throw new Error(`HTTP status ${pageRes.status}`);
+            }
+
+            const html = await pageRes.text();
+            
+            let title = '';
+            let description = '';
+            let cover = '';
+            let siteName = platformName;
+
+            // 1. Check for Xiaoyuzhou NEXT_DATA json
+            if (isXiaoyuzhou) {
+                const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+                if (nextDataMatch) {
+                    try {
+                        const nextData = JSON.parse(nextDataMatch[1]);
+                        const ep = nextData.props?.pageProps?.episode;
+                        if (ep) {
+                            title = ep.title || '';
+                            description = ep.description || '';
+                            cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || ep.podcast?.image?.thumbnailUrl || '';
+                            siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
+                        }
+                    } catch {}
+                }
+            }
+
+            // 2. Priority OG title / twitter title / <title>
+            if (!title) {
+                const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
+                                     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i) ||
+                                     html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
+                const titleTagMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+                title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleTagMatch ? titleTagMatch[1].trim() : '');
+            }
+
+            // 3. Cover image extraction
+            if (!cover) {
+                const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
+                                     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i) ||
+                                     html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
+                cover = ogImageMatch ? ogImageMatch[1].trim() : '';
+            }
+
+            // Ensure HTTPS for cover image URL
+            if (cover && cover.startsWith('http://')) {
+                cover = cover.replace(/^http:\/\//i, 'https://');
+            } else if (cover && cover.startsWith('//')) {
+                cover = 'https:' + cover;
+            }
+
+            // 4. Description extraction
+            if (!description) {
+                const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
+                                    html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
+                description = ogDescMatch ? ogDescMatch[1].trim() : '';
+            }
+
+            const decodeEntities = (str) => str ? str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").trim() : '';
+            title = decodeEntities(title);
+            description = decodeEntities(description);
+
+            if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
+                title = hostname;
+            }
+
+            return jsonResponse({ url, title, description, cover, platform: platformName, icon: platformIcon, siteName }, 200);
+        } catch (e) {
+            return jsonResponse({ url, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
+        }
+    }
+
     // ========== 需要鉴权的路由 ==========
     const userId = await authenticate(request, db);
     if (!userId) {
@@ -448,145 +588,7 @@ async function router(path, method, request, env) {
         return jsonResponse({ success: true, count: statements.length }, 200);
     }
 
-    // ==================== LINK PARSE 链接智能提取 ====================
-    if (path === '/api/link/parse' && method === 'POST') {
-        const { url } = await request.json();
-        if (!url || !url.match(/^https?:\/\//i)) {
-            return jsonResponse({ error: '无效的 URL' }, 400);
-        }
-        
-        let platformName = '网络链接';
-        let platformIcon = '🌐';
-        let hostname = url;
-        try {
-            const u = new URL(url);
-            hostname = u.hostname;
-            if (hostname.includes('xiaoyuzhoufm.com')) {
-                platformName = '小宇宙';
-                platformIcon = '🪐';
-            } else if (hostname.includes('xiaohongshu.com') || hostname.includes('xhslink.com')) {
-                platformName = '小红书';
-                platformIcon = '📕';
-            } else if (hostname.includes('bilibili.com') || hostname.includes('b23.tv')) {
-                platformName = 'Bilibili';
-                platformIcon = '📺';
-            } else if (hostname.includes('weixin.qq.com')) {
-                platformName = '微信文章';
-                platformIcon = '💬';
-            } else if (hostname.includes('zhihu.com')) {
-                platformName = '知乎';
-                platformIcon = '💡';
-            } else if (hostname.includes('music.163.com')) {
-                platformName = '网易云音乐';
-                platformIcon = '🎵';
-            } else if (hostname.includes('ximalaya.com')) {
-                platformName = '喜马拉雅';
-                platformIcon = '🎙️';
-            } else if (hostname.includes('weibo.com') || hostname.includes('weibo.cn')) {
-                platformName = '微博';
-                platformIcon = '🔴';
-            } else if (hostname.includes('douyin.com')) {
-                platformName = '抖音';
-                platformIcon = '🎵';
-            } else if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) {
-                platformName = 'YouTube';
-                platformIcon = '▶️';
-            } else if (hostname.includes('github.com')) {
-                platformName = 'GitHub';
-                platformIcon = '🐙';
-            } else {
-                platformName = hostname;
-                platformIcon = '🌐';
-            }
-        } catch {}
 
-        try {
-            const isXiaoyuzhou = url.includes('xiaoyuzhoufm.com');
-            const userAgent = isXiaoyuzhou 
-                ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1'
-                : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
-
-            const pageRes = await fetch(url, {
-                headers: { 
-                    'User-Agent': userAgent,
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
-                },
-                redirect: 'follow'
-            });
-
-            if (!pageRes.ok) {
-                throw new Error(`HTTP status ${pageRes.status}`);
-            }
-
-            const html = await pageRes.text();
-            
-            let title = '';
-            let description = '';
-            let cover = '';
-            let siteName = platformName;
-
-            // 1. Check for Xiaoyuzhou NEXT_DATA json
-            if (isXiaoyuzhou) {
-                const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
-                if (nextDataMatch) {
-                    try {
-                        const nextData = JSON.parse(nextDataMatch[1]);
-                        const ep = nextData.props?.pageProps?.episode;
-                        if (ep) {
-                            title = ep.title || '';
-                            description = ep.description || '';
-                            cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || ep.podcast?.image?.thumbnailUrl || '';
-                            siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
-                        }
-                    } catch {}
-                }
-            }
-
-            // 2. Priority OG title / twitter title / <title>
-            if (!title) {
-                const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
-                                     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i) ||
-                                     html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
-                const titleTagMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-                title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleTagMatch ? titleTagMatch[1].trim() : '');
-            }
-
-            // 3. Cover image extraction
-            if (!cover) {
-                const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
-                                     html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i) ||
-                                     html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
-                cover = ogImageMatch ? ogImageMatch[1].trim() : '';
-            }
-
-            // Ensure HTTPS for cover image URL
-            if (cover && cover.startsWith('http://')) {
-                cover = cover.replace(/^http:\/\//i, 'https://');
-            } else if (cover && cover.startsWith('//')) {
-                cover = 'https:' + cover;
-            }
-
-            // 4. Description extraction
-            if (!description) {
-                const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
-                                    html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
-                description = ogDescMatch ? ogDescMatch[1].trim() : '';
-            }
-
-            const decodeEntities = (str) => str ? str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").trim() : '';
-            title = decodeEntities(title);
-            description = decodeEntities(description);
-
-            if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
-                title = hostname;
-            }
-
-            return jsonResponse({ url, title, description, cover, platform: platformName, icon: platformIcon, siteName }, 200);
-        } catch (e) {
-            return jsonResponse({ url, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
-        }
-    }
 
     // ==================== HEATMAP 统计热力图 ====================
     if (path === '/api/stats/heatmap' && method === 'GET') {
