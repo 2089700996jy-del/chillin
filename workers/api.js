@@ -297,12 +297,49 @@ async function router(path, method, request, env) {
             title = decodeEntities(title);
             description = decodeEntities(description);
 
+            // 5. Microlink API Fallback for blocked or incomplete metadata
+            if (!title || title === hostname || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title) || !cover) {
+                try {
+                    const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+                    if (microRes.ok) {
+                        const microData = await microRes.json();
+                        if (microData.status === 'success' && microData.data) {
+                            const d = microData.data;
+                            if (d.title && (!title || title === hostname || /^(403|404|500|Forbidden)/i.test(title))) {
+                                title = d.title;
+                            }
+                            if (d.description && !description) {
+                                description = d.description;
+                            }
+                            if (d.image?.url && !cover) {
+                                cover = d.image.url;
+                            }
+                        }
+                    }
+                } catch {}
+            }
+
             if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
                 title = hostname;
             }
 
             return jsonResponse({ url, title, description, cover, platform: platformName, icon: platformIcon, siteName }, 200);
         } catch (e) {
+            // Ultimate fallback to Microlink API on fetch failure
+            try {
+                const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+                if (microRes.ok) {
+                    const microData = await microRes.json();
+                    if (microData.status === 'success' && microData.data) {
+                        const d = microData.data;
+                        const title = d.title || hostname;
+                        const description = d.description || '';
+                        const cover = d.image?.url || '';
+                        return jsonResponse({ url, title, description, cover, platform: platformName, icon: platformIcon, siteName: platformName }, 200);
+                    }
+                }
+            } catch {}
+
             return jsonResponse({ url, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
         }
     }
