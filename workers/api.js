@@ -454,15 +454,47 @@ async function router(path, method, request, env) {
         if (!url || !url.match(/^https?:\/\//i)) {
             return jsonResponse({ error: '无效的 URL' }, 400);
         }
+        
+        const getFallbackTitle = (targetUrl) => {
+            try {
+                const u = new URL(targetUrl);
+                return u.hostname;
+            } catch {
+                return targetUrl;
+            }
+        };
+
         try {
             const pageRes = await fetch(url, {
-                headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) ChillinBot/1.0' }
+                headers: { 
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+                },
+                redirect: 'follow'
             });
+
+            if (!pageRes.ok) {
+                throw new Error(`HTTP status ${pageRes.status}`);
+            }
+
             const html = await pageRes.text();
             
-            const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-            const title = titleMatch ? titleMatch[1].trim() : url;
+            // Priority 1: og:title or twitter:title
+            const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
+                                 html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i) ||
+                                 html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
             
+            // Priority 2: <title>
+            const titleTagMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+            
+            let title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleTagMatch ? titleTagMatch[1].trim() : '');
+            
+            // Filter out common bot block / HTTP error titles
+            if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
+                title = getFallbackTitle(url);
+            }
+
             const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
                                 html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
             const description = ogDescMatch ? ogDescMatch[1].trim() : '';
@@ -472,7 +504,7 @@ async function router(path, method, request, env) {
 
             return jsonResponse({ url, title, description, cover }, 200);
         } catch (e) {
-            return jsonResponse({ url, title: url, description: '网络链接摘要直接收录', cover: '' }, 200);
+            return jsonResponse({ url, title: getFallbackTitle(url), description: '网络链接', cover: '' }, 200);
         }
     }
 
