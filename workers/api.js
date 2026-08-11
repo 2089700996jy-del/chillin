@@ -536,7 +536,7 @@ async function router(path, method, request, env) {
                         if (ep) {
                             title = ep.title || '';
                             description = ep.description || '';
-                            cover = ep.image?.picUrl || ep.cover?.url || ep.podcast?.image?.picUrl || '';
+                            cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || ep.podcast?.image?.thumbnailUrl || '';
                             siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
                         }
                     } catch {}
@@ -558,6 +558,13 @@ async function router(path, method, request, env) {
                                      html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i) ||
                                      html.match(/<meta[^>]*name=["']twitter:image["'][^>]*content=["']([^"']+)["']/i);
                 cover = ogImageMatch ? ogImageMatch[1].trim() : '';
+            }
+
+            // Ensure HTTPS for cover image URL
+            if (cover && cover.startsWith('http://')) {
+                cover = cover.replace(/^http:\/\//i, 'https://');
+            } else if (cover && cover.startsWith('//')) {
+                cover = 'https:' + cover;
             }
 
             // 4. Description extraction
