@@ -2048,29 +2048,82 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
+        const pendingEnrichFeeds = [];
+
         container.innerHTML = feedsDatabase.map(feed => {
             const tags = feed.tags || [];
             const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
             
             // Format link preview if summary or link exists
             let linkHtml = '';
-            const urlMatch = feed.content ? feed.content.match(/(https?:\/\/[^\s]+)/g) : null;
+            const urlMatch = feed.content ? feed.content.match(/(https?:\/\/[^\s]+)/i) : null;
             if (urlMatch || feed.summary) {
                 const targetUrl = urlMatch ? urlMatch[0] : '#';
-                let displayTitle = feed.summary || targetUrl;
-                if (!displayTitle || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(displayTitle.trim())) {
+                let meta = null;
+                if (feed.summary) {
                     try {
-                        displayTitle = new URL(targetUrl).hostname;
+                        if (feed.summary.trim().startsWith('{')) {
+                            meta = JSON.parse(feed.summary);
+                        }
+                    } catch {}
+                }
+
+                let title = meta?.title || (feed.summary && !feed.summary.startsWith('{') ? feed.summary : '');
+                let description = meta?.description || '';
+                let coverUrl = meta?.cover || feed.media_url || '';
+                let platformName = meta?.platform || '';
+                let platformIcon = meta?.icon || '';
+
+                if (!title || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(title.trim())) {
+                    try {
+                        title = new URL(targetUrl).hostname;
                     } catch {
-                        displayTitle = targetUrl;
+                        title = targetUrl;
                     }
                 }
+
+                if (!platformName) {
+                    try {
+                        const u = new URL(targetUrl);
+                        const host = u.hostname;
+                        if (host.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🪐'; }
+                        else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) { platformName = '小红书'; platformIcon = '📕'; }
+                        else if (host.includes('bilibili.com') || host.includes('b23.tv')) { platformName = 'Bilibili'; platformIcon = '📺'; }
+                        else if (host.includes('weixin.qq.com')) { platformName = '微信文章'; platformIcon = '💬'; }
+                        else if (host.includes('zhihu.com')) { platformName = '知乎'; platformIcon = '💡'; }
+                        else if (host.includes('music.163.com')) { platformName = '网易云音乐'; platformIcon = '🎵'; }
+                        else if (host.includes('weibo.com') || host.includes('weibo.cn')) { platformName = '微博'; platformIcon = '🔴'; }
+                        else { platformName = host; platformIcon = '🌐'; }
+                    } catch {
+                        platformName = '网络链接';
+                        platformIcon = '🌐';
+                    }
+                }
+
+                // Auto enrich unparsed links or plain hostnames (e.g. historical posts)
+                if (urlMatch && (!meta || !meta.cover || title === 'www.xiaoyuzhoufm.com')) {
+                    if (!feed._enriching) {
+                        pendingEnrichFeeds.push({ feed, url: urlMatch[0] });
+                    }
+                }
+
                 linkHtml = `
-                    <a href="${escapeHtml(targetUrl)}" target="_blank" class="feed-link-preview" onclick="event.stopPropagation()">
-                        ${feed.media_url ? `<img src="${escapeHtml(feed.media_url)}" class="feed-link-cover" alt="">` : ''}
-                        <div class="feed-link-info">
-                            <div class="feed-link-title">${escapeHtml(displayTitle)}</div>
-                            <div class="feed-link-desc">${escapeHtml(targetUrl)}</div>
+                    <a href="${escapeHtml(targetUrl)}" target="_blank" class="rich-link-card" onclick="event.stopPropagation()">
+                        <div class="rich-link-main">
+                            <div class="rich-link-info">
+                                <div class="rich-link-title">${escapeHtml(title)}</div>
+                                ${description ? `<div class="rich-link-desc">${escapeHtml(description)}</div>` : ''}
+                            </div>
+                            ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" class="rich-link-cover" alt="" onerror="this.style.display='none'">` : ''}
+                        </div>
+                        <div class="rich-link-footer">
+                            <span class="rich-platform-pill">
+                                <span class="platform-icon">${platformIcon}</span>
+                                <span class="platform-name">${escapeHtml(platformName)}</span>
+                                <span class="platform-divider">|</span>
+                                <span class="platform-action">链接速览</span>
+                                <svg class="platform-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                            </span>
                         </div>
                     </a>
                 `;
@@ -2099,6 +2152,28 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
         }).join('');
+
+        // Async auto enrichment for historical unparsed links
+        if (pendingEnrichFeeds.length > 0) {
+            pendingEnrichFeeds.forEach(({ feed, url }) => {
+                feed._enriching = true;
+                apiRequest('/api/link/parse', {
+                    method: 'POST',
+                    body: JSON.stringify({ url })
+                }).then(parseRes => {
+                    if (parseRes && parseRes.title) {
+                        feed.summary = JSON.stringify(parseRes);
+                        if (parseRes.cover) feed.media_url = parseRes.cover;
+                        saveFeedsDatabase();
+                        renderFeeds();
+                        apiRequest('/api/feeds/' + feed.id, {
+                            method: 'PUT',
+                            body: JSON.stringify(feed)
+                        }).catch(() => {});
+                    }
+                }).catch(() => {});
+            });
+        }
     }
 
     // 2. Add Feed Handler
@@ -2138,6 +2213,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         let summary = null;
         let type = 'text';
+        let parsedCover = '';
 
         // Check if content contains a URL
         const urlMatch = content.match(/(https?:\/\/[^\s]+)/i);
@@ -2148,16 +2224,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     method: 'POST',
                     body: JSON.stringify({ url: urlMatch[0] })
                 });
-                if (parseRes && parseRes.title) {
-                    if (!/^(403|404|500|Forbidden|Access Denied|Error)/i.test(parseRes.title.trim())) {
-                        summary = parseRes.title + (parseRes.description ? ` - ${parseRes.description}` : '');
-                    } else {
-                        try {
-                            summary = new URL(urlMatch[0]).hostname;
-                        } catch {
-                            summary = urlMatch[0];
-                        }
-                    }
+                if (parseRes) {
+                    summary = JSON.stringify(parseRes);
+                    if (parseRes.cover) parsedCover = parseRes.cover;
                 }
             } catch {}
         }
@@ -2166,7 +2235,7 @@ document.addEventListener('DOMContentLoaded', () => {
             id: Date.now(),
             content: content || '分享了图片/链接',
             type,
-            media_url: mediaUrl || null,
+            media_url: mediaUrl || parsedCover || null,
             summary,
             tags: [],
             created_at: new Date().toISOString().replace('T', ' ').slice(0, 16)
