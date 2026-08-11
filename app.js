@@ -2554,6 +2554,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (btnSendAiChat) btnSendAiChat.addEventListener('click', sendAiChatMessage);
+    if (aiChatInput) {
+        aiChatInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                sendAiChatMessage();
+            }
+        });
+    }
 
     // 📱 移动端软键盘唤起检测：打字时自动隐藏底部导航栏与悬浮加号按钮
     document.addEventListener('focusin', (e) => {
