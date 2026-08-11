@@ -2135,7 +2135,17 @@ document.addEventListener('DOMContentLoaded', () => {
                 mediaHtml = `<img src="${escapeHtml(feed.media_url)}" class="feed-media-preview" alt="" onclick="previewImage('${escapeHtml(feed.media_url)}')">`;
             }
 
-            const formattedContent = escapeHtml(feed.content).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#6366f1;">$1</a>');
+            // Remove raw URL text if a rich link card is displayed
+            let contentText = feed.content || '';
+            if (urlMatch && linkHtml) {
+                contentText = contentText.replace(urlMatch[0], '').trim();
+            }
+
+            let textHtml = '';
+            if (contentText) {
+                const formattedContent = escapeHtml(contentText).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#6366f1;">$1</a>');
+                textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
+            }
 
             return `
                 <div class="feed-item-card">
@@ -2146,7 +2156,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <button class="btn-text text-danger" onclick="deleteFeed(${feed.id})" style="font-size:12px;">删除</button>
                         </div>
                     </div>
-                    <div class="feed-content-text">${formattedContent}</div>
+                    ${textHtml}
                     ${mediaHtml}
                     ${linkHtml}
                 </div>
