@@ -15,6 +15,10 @@ ALLOW_REGISTRATION = "false"
 LLM_API_BASE = "https://api.deepseek.com/v1"
 LLM_MODEL = "deepseek-chat"
 
+# 定时任务：每小时扫描 UGC 违规内容
+[triggers]
+crons = ["13 * * * *"]
+
 # Workers 路由 (如果绑定到 Pages 域名)
 [env.production]
 routes = [
