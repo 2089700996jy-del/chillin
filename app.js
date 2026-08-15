@@ -556,6 +556,15 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#039;');
     };
 
+    // 用 DOMPurify 白名单清洗用户可控的 HTML（正文支持标签，但必须防存储型 XSS）；
+    // 若 CDN 未加载成功，则退化为纯文本转义，保证安全优先。
+    const sanitizeHtml = (html) => {
+        if (typeof window.DOMPurify !== 'undefined' && window.DOMPurify.sanitize) {
+            return window.DOMPurify.sanitize(String(html || ''));
+        }
+        return escapeHtml(html);
+    };
+
     const autoResizeTextarea = (el) => {
         el.style.height = 'auto';
         el.style.height = el.scrollHeight + 'px';
@@ -753,7 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
         articleTitle.innerText = item.title;
         let finalHtml = item.content || '';
         if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
-        articleBody.innerHTML = finalHtml;
+        articleBody.innerHTML = sanitizeHtml(finalHtml);
         articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover">` : '';
         
         // 加载记忆片段的追加批注
@@ -1218,10 +1227,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const typeMatch = (bm.type || '').toLowerCase().includes(query);
                 if (!titleMatch && !descMatch && !typeMatch) return;
             }
-            const hasUrl = bm.url && bm.url.trim();
+            const rawUrl = (bm.url || '').trim();
+            const hasUrl = /^https?:\/\//i.test(rawUrl);
             const card = document.createElement(hasUrl ? 'a' : 'div');
             card.className = 'bookmark-card';
-            if (hasUrl) { card.href = bm.url; card.target = '_blank'; }
+            if (hasUrl) { card.href = rawUrl; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
 
             const hasImage = bm.image && bm.image.trim();
             card.innerHTML = `
@@ -2144,7 +2154,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Image preview
             let mediaHtml = '';
             if (feed.media_url && !linkHtml) {
-                mediaHtml = `<img src="${escapeHtml(feed.media_url)}" class="feed-media-preview" alt="" onclick="previewImage('${escapeHtml(feed.media_url)}')">`;
+                mediaHtml = `<img src="${escapeHtml(feed.media_url)}" class="feed-media-preview" alt="" onclick="previewImage(this.src)">`;
             }
 
             // Remove raw URL text if a rich link card is displayed
@@ -2318,6 +2328,16 @@ document.addEventListener('DOMContentLoaded', () => {
         apiRequest(`/api/feeds/${id}`, { method: 'DELETE' }).catch(() => {});
     };
 
+    window.previewImage = function(src) {
+        if (!src) return;
+        const img = document.getElementById('image-preview-img');
+        const modal = document.getElementById('image-preview-modal');
+        if (img && modal) {
+            img.src = src;
+            modal.classList.add('show');
+        }
+    };
+
     // 3. Render Heatmap (思考与记忆轨迹热力图)
     function renderHeatmap() {
         const grid = document.getElementById('heatmap-grid');
@@ -2470,51 +2490,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (aiChatModal) aiChatModal.classList.remove('show');
     };
 
-    async function callDeepSeekDirect(question) {
-        let apiKey = localStorage.getItem('deepseek_api_key');
-        if (!apiKey) {
-            apiKey = ['sk-6dc8d3fbcafa4886', '92b53a49a60bff83'].join('');
-            localStorage.setItem('deepseek_api_key', apiKey);
-        }
-        if (!apiKey) return null;
-
-        const allMemory = [];
-        (feedsDatabase || []).forEach(f => allMemory.push(`[随手记 ${f.created_at || ''}] ${f.content}`));
-        (notesDatabase || []).forEach(n => allMemory.push(`[备忘录 ${n.date || ''}] ${n.title}: ${n.content || ''}`));
-        (database || []).forEach(w => allMemory.push(`[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`));
-        (bookmarksDatabase || []).forEach(b => allMemory.push(`[书签] ${b.title}: ${b.desc || b.description || ''} (${b.url || ''})`));
-
-        const contextText = allMemory.join('\n');
-
-        const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-                model: 'deepseek-chat',
-                messages: [
-                    { role: 'system', content: '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请根据提供的用户历史笔记上下文，用温暖、有条理且简炼的中文回答用户的提问。如果上下文中没有提到，请根据通识回答并友好告知。' },
-                    { role: 'user', content: `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}` }
-                ],
-                temperature: 0.7
-            })
-        });
-
-        if (!res.ok) {
-            const err = await res.text();
-            console.error('Direct DeepSeek error:', err);
-            return null;
-        }
-
-        const data = await res.json();
-        if (data.choices && data.choices[0] && data.choices[0].message) {
-            return data.choices[0].message.content;
-        }
-        return null;
-    }
-
     async function sendAiChatMessage() {
         if (!aiChatInput || !aiChatBody) return;
         const question = aiChatInput.value.trim();
@@ -2549,17 +2524,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         } catch (err) {}
 
-        // 尝试前端直连 DeepSeek 官方 API
-        try {
-            const dsReply = await callDeepSeekDirect(question);
-            if (dsReply) {
-                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(dsReply).replace(/\n/g, '<br>');
-                aiChatBody.scrollTop = aiChatBody.scrollHeight;
-                return;
-            }
-        } catch (err) {}
-
-        // 本地规则检索兜底
+        // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
         const localReply = getLocalAiReply(question);
         botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(localReply).replace(/\n/g, '<br>');
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
