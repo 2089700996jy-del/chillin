@@ -44,6 +44,73 @@ function jsonResponse(body, status) {
     return corsResponse(body, status);
 }
 
+// ==================== SSRF 防护 ====================
+function isPrivateIPv4(parts) {
+    if (!parts || parts.length !== 4) return true;
+    const ip = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+    const inCidr = (base, bits) => {
+        const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+        return (ip & mask) === ((base >>> 0) & mask);
+    };
+    return (
+        inCidr(0x00000000, 8) ||   // 0.0.0.0/8
+        inCidr(0x0a000000, 8) ||   // 10.0.0.0/8
+        inCidr(0x64400000, 10) ||  // 100.64.0.0/10 (CGNAT)
+        inCidr(0x7f000000, 8) ||   // 127.0.0.0/8
+        inCidr(0xa9fe0000, 16) ||  // 169.254.0.0/16 (link-local / metadata)
+        inCidr(0xac100000, 12) ||  // 172.16.0.0/12
+        inCidr(0xc0000000, 24) ||  // 192.0.0.0/24
+        inCidr(0xc0000200, 24) ||  // 192.0.2.0/24 (TEST-NET)
+        inCidr(0xc6120000, 15) ||  // 198.18.0.0/15
+        inCidr(0xc6336400, 24) ||  // 198.51.100.0/24 (TEST-NET)
+        inCidr(0xcb007100, 24) ||  // 203.0.113.0/24 (TEST-NET)
+        inCidr(0xc0a80000, 16) ||  // 192.168.0.0/16
+        inCidr(0xe0000000, 4) ||   // 224.0.0.0/4 (multicast)
+        inCidr(0xf0000000, 4)      // 240.0.0.0/4 (reserved)
+    );
+}
+
+function isPrivateIPv6(ip) {
+    if (!ip) return true;
+    const lower = ip.toLowerCase();
+    if (lower === '::' || lower === '::1') return true;
+    if (lower.startsWith('::ffff:')) {
+        const v4 = lower.slice(7);
+        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v4)) {
+            return isPrivateIPv4(v4.split('.').map(Number));
+        }
+    }
+    // fc00::/7 (unique local), fe80::/10 (link-local)
+    if (/^f[cd]/.test(lower) || /^fe[89ab]/.test(lower)) return true;
+    return false;
+}
+
+function isLoopbackOrPrivateHost(hostname) {
+    const h = (hostname || '').toLowerCase().trim();
+    if (!h) return true;
+    if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') ||
+        h.endsWith('.internal') || h === 'metadata.google.internal') {
+        return true;
+    }
+    if (h.includes(':')) {
+        return isPrivateIPv6(h.replace(/^\[|\]$/g, '').split('%')[0]);
+    }
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+        return isPrivateIPv4(h.split('.').map(Number));
+    }
+    return false;
+}
+
+function isSafeFetchUrl(rawUrl) {
+    try {
+        const u = new URL(rawUrl);
+        if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+        return !isLoopbackOrPrivateHost(u.hostname);
+    } catch {
+        return false;
+    }
+}
+
 // 密码哈希加密
 async function hashPassword(password) {
     const encoder = new TextEncoder();
@@ -145,6 +212,7 @@ async function router(path, method, request, env) {
             headers: {
                 'Content-Type': row.mime_type,
                 'Cache-Control': 'public, max-age=31536000',
+                'X-Content-Type-Options': 'nosniff',
                 'Access-Control-Allow-Origin': '*'
             }
         });
@@ -202,6 +270,10 @@ async function router(path, method, request, env) {
             }
         } catch {}
 
+        if (!isSafeFetchUrl(url)) {
+            return jsonResponse({ url, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
+        }
+
         try {
             const isXiaoyuzhou = url.includes('xiaoyuzhoufm.com');
             const userAgents = isXiaoyuzhou 
@@ -218,15 +290,27 @@ async function router(path, method, request, env) {
             let html = '';
             for (const ua of userAgents) {
                 try {
-                    const pageRes = await fetch(url, {
-                        headers: { 
-                            'User-Agent': ua,
-                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                            'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
-                        },
-                        redirect: 'follow'
-                    });
-                    if (pageRes.ok) {
+                    let currentUrl = url;
+                    let pageRes = null;
+                    for (let hop = 0; hop < 3; hop++) {
+                        if (!isSafeFetchUrl(currentUrl)) { pageRes = null; break; }
+                        pageRes = await fetch(currentUrl, {
+                            headers: {
+                                'User-Agent': ua,
+                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+                            },
+                            redirect: 'manual'
+                        });
+                        if (pageRes.status >= 300 && pageRes.status < 400) {
+                            const loc = pageRes.headers.get('Location');
+                            if (!loc) { pageRes = null; break; }
+                            currentUrl = new URL(loc, currentUrl).href;
+                            continue;
+                        }
+                        break;
+                    }
+                    if (pageRes && pageRes.ok) {
                         const text = await pageRes.text();
                         if (text && text.length > 500) {
                             html = text;
@@ -362,7 +446,15 @@ async function router(path, method, request, env) {
                 return jsonResponse({ error: 'No file uploaded' }, 400);
             }
             const arrayBuffer = await file.arrayBuffer();
+            const MAX_SIZE = 5 * 1024 * 1024; // 5MB 上限，避免撑爆 D1
+            if (arrayBuffer.byteLength > MAX_SIZE) {
+                return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
+            }
             const mimeType = file.type || 'application/octet-stream';
+            const DANGEROUS_MIME = ['text/html', 'image/svg+xml', 'application/xhtml+xml', 'text/xml'];
+            if (DANGEROUS_MIME.includes(mimeType)) {
+                return jsonResponse({ error: '不支持的文件类型' }, 400);
+            }
             const id = crypto.randomUUID();
             await db.prepare('INSERT INTO files (id, mime_type, data) VALUES (?1, ?2, ?3)')
                 .bind(id, mimeType, arrayBuffer).run();
