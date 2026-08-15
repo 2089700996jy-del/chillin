@@ -71,6 +71,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnLogout.addEventListener('click', logout);
 
+    // 一键导出备份（周记 / 笔记 / 收藏 / 随手记 全量 JSON）
+    const btnExport = document.getElementById('btn-export');
+    if (btnExport) {
+        btnExport.addEventListener('click', async () => {
+            try {
+                const data = await apiRequest('/api/export');
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = 'chillin-backup-' + new Date().toISOString().slice(0, 10) + '.json';
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                URL.revokeObjectURL(a.href);
+            } catch (err) {
+                alert('导出失败：' + err.message);
+            }
+        });
+    }
+
     btnAuthSwitch.addEventListener('click', () => {
         isRegisterMode = !isRegisterMode;
         if (isRegisterMode) {

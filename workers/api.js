@@ -160,13 +160,42 @@ function isBlockedLinkUrl(rawUrl) {
     }
 }
 
-// 密码哈希加密
+// 密码哈希：PBKDF2-SHA256（随机盐 16 字节 + 10 万次迭代），格式 pbkdf2$<iter>$<salt_hex>$<hash_hex>
+const PBKDF2_ITERATIONS = 100000;
+
 async function hashPassword(password) {
     const encoder = new TextEncoder();
-    const data = encoder.encode(password);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt: salt, iterations: PBKDF2_ITERATIONS, hash: 'SHA-256' },
+        keyMaterial, 256
+    );
+    const toHex = (buf) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+    return `pbkdf2$${PBKDF2_ITERATIONS}$${toHex(salt)}$${toHex(bits)}`;
+}
+
+// 校验密码；兼容旧的 64 位 hex 无盐 SHA-256，并返回是否需要透明升级
+async function verifyPassword(password, stored) {
+    const encoder = new TextEncoder();
+    const toHex = (buf) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    if (!stored || !stored.startsWith('pbkdf2$')) {
+        const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
+        const legacy = toHex(hashBuffer);
+        return { valid: legacy === stored, upgrade: legacy === stored };
+    }
+
+    const parts = stored.split('$');
+    const iter = parseInt(parts[1], 10);
+    const salt = new Uint8Array(parts[2].match(/.{2}/g).map(h => parseInt(h, 16)));
+    const expected = parts[3];
+    const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits(
+        { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
+        keyMaterial, 256
+    );
+    return { valid: toHex(bits) === expected, upgrade: false };
 }
 
 // 解析 Token 鉴权
@@ -214,7 +243,7 @@ async function router(path, method, request, env) {
         
         // 自动登录生成 Token
         const token = crypto.randomUUID();
-        const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
         await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
             .bind(token, userId, expiresAt).run();
 
@@ -228,13 +257,18 @@ async function router(path, method, request, env) {
         const user = await db.prepare('SELECT id, password_hash FROM users WHERE username = ?1').bind(username).first();
         if (!user) return jsonResponse({ error: '账号或密码错误' }, 401);
 
-        const hashedPassword = await hashPassword(password);
-        if (user.password_hash !== hashedPassword) {
+        const verify = await verifyPassword(password, user.password_hash);
+        if (!verify.valid) {
             return jsonResponse({ error: '账号或密码错误' }, 401);
+        }
+        // 旧格式（无盐 SHA-256）密码透明升级为 PBKDF2
+        if (verify.upgrade) {
+            const upgraded = await hashPassword(password);
+            await db.prepare('UPDATE users SET password_hash = ?1 WHERE id = ?2').bind(upgraded, user.id).run();
         }
 
         const token = crypto.randomUUID();
-        const expiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000; // 30 days
+        const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
         await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
             .bind(token, user.id, expiresAt).run();
 
@@ -261,7 +295,8 @@ async function router(path, method, request, env) {
             headers: {
                 'Content-Type': row.mime_type,
                 'Cache-Control': 'public, max-age=31536000',
-                'X-Content-Type-Options': 'nosniff'
+                'X-Content-Type-Options': 'nosniff',
+                'X-Robots-Tag': 'noindex, nofollow, noarchive'
             }
         });
     }
@@ -877,6 +912,22 @@ async function router(path, method, request, env) {
     if (path === '/api/audit/scan' && method === 'POST') {
         const result = await scanAndAudit(db);
         return jsonResponse(result, 200);
+    }
+
+    // ==================== 一键导出备份 ====================
+    if (path === '/api/export' && method === 'GET') {
+        const weeklies = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1').bind(userId).all();
+        const notes = await db.prepare('SELECT * FROM notes WHERE user_id = ?1').bind(userId).all();
+        const bookmarks = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1').bind(userId).all();
+        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1').bind(userId).all();
+
+        return jsonResponse({
+            exported_at: new Date().toISOString(),
+            weeklies: (weeklies.results || []).map(formatWeekly),
+            notes: (notes.results || []).map(row => ({ ...row, annotations: row.annotations ? JSON.parse(row.annotations) : [] })),
+            bookmarks: bookmarks.results || [],
+            feeds: (feeds.results || []).map(row => ({ ...row, tags: row.tags ? JSON.parse(row.tags) : [] }))
+        }, 200);
     }
 
     return jsonResponse({ error: 'Not found' }, 404);
