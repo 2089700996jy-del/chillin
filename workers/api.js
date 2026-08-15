@@ -878,6 +878,43 @@ async function router(path, method, request, env) {
         return jsonResponse({ reply: moderated.text, question }, 200);
     }
 
+    // ==================== AI 本周回顾 ====================
+    if (path === '/api/ai/review' && method === 'POST') {
+        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 30').bind(userId).all();
+        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 15').bind(userId).all();
+        const weeklies = await db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 8').bind(userId).all();
+
+        const contextText = [
+            ...(feeds.results || []).map(f => `[随手记 ${f.created_at}] ${f.content}`),
+            ...(notes.results || []).map(n => `[备忘录 ${n.date}] ${n.title}: ${n.content || ''}`),
+            ...(weeklies.results || []).map(w => `[周记 ${w.date}] ${w.title}: ${w.summary || ''}`)
+        ].join('\n');
+
+        if (!contextText.trim()) {
+            return jsonResponse({ reply: '这一周还没有新的记录，去随手记里写下点什么吧。' }, 200);
+        }
+
+        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请基于用户近期的记录生成一份「本周回顾」，按时间线或主题梳理：做了什么、关注了什么、有哪些值得留意的想法。语气温暖、简炼、有条理。';
+        const userPrompt = `用户近期记录：\n${contextText}\n\n请生成本周回顾。`;
+
+        let reply = '';
+        try {
+            reply = await callCustomLlm(env, systemPrompt, userPrompt);
+        } catch (err) {
+            console.error('Review LLM error:', err);
+        }
+        if (!reply) {
+            reply = '本周回顾（本地摘要）：\n\n' + contextText.split('\n').slice(0, 8).map(l => '• ' + l).join('\n');
+        }
+
+        const moderated = moderateText(reply, env);
+        if (!moderated.ok) {
+            return jsonResponse({ error: '内容不合规，已拒绝输出' }, 403);
+        }
+
+        return jsonResponse({ reply: moderated.text }, 200);
+    }
+
     // ==================== AI ECHO CARD GENERATION ====================
     if (path === '/api/echo/generate' && method === 'POST') {
         const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
