@@ -8,9 +8,7 @@ binding = "DB"
 database_name = "chillin-db"
 database_id = "59ad83a1-35f2-4e8c-b181-14d064627f1b"
 
-# API Key — 部署后设为你的密钥
 [vars]
-API_KEY = "REDACTED_API_KEY"
 ALLOW_REGISTRATION = "false"
 
 # 🤖 DeepSeek 大语言模型配置（可选：在 Cloudflare 后台添加密钥变量 LLM_API_KEY）
