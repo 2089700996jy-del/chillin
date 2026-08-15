@@ -1,4 +1,26 @@
 // Chillin API Worker — REST API for auth, weeklies, notes, bookmarks
+
+// CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
+const ALLOWED_ORIGINS = new Set([
+    'https://chillin-bfc.pages.dev',
+    'https://chillin-api.2089700996jy.workers.dev',
+    'http://localhost:8080',
+    'http://localhost:3000',
+    'http://127.0.0.1:8080',
+    'http://127.0.0.1:3000'
+]);
+
+function withCors(response, request) {
+    const origin = request.headers.get('Origin');
+    if (origin && ALLOWED_ORIGINS.has(origin)) {
+        const headers = new Headers(response.headers);
+        headers.set('Access-Control-Allow-Origin', origin);
+        headers.set('Vary', 'Origin');
+        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+    }
+    return response;
+}
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -7,20 +29,38 @@ export default {
 
         // CORS 预检
         if (method === 'OPTIONS') {
-            return corsResponse(null, 204);
+            const origin = request.headers.get('Origin');
+            const headers = {
+                'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+            };
+            if (origin && ALLOWED_ORIGINS.has(origin)) {
+                headers['Access-Control-Allow-Origin'] = origin;
+                headers['Vary'] = 'Origin';
+            }
+            return new Response(null, { status: 204, headers });
         }
 
         try {
-            return await router(path, method, request, env);
+            return withCors(await router(path, method, request, env), request);
         } catch (err) {
-            return jsonResponse({ error: err.message }, 500);
+            return withCors(jsonResponse({ error: err.message }, 500), request);
+        }
+    },
+
+    // 定时任务：每小时扫描 D1 中的 UGC 内容，清理违规引流信息
+    async scheduled(event, env, ctx) {
+        try {
+            const result = await scanAndAudit(env.DB);
+            console.log(`[audit] scheduled scan: scanned=${result.scanned} removed=${result.removed}`);
+        } catch (err) {
+            console.error('[audit] scheduled scan failed:', err);
         }
     }
 };
 
 function corsResponse(body, status) {
     const headers = {
-        'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     };
@@ -99,6 +139,24 @@ function isSafeFetchUrl(rawUrl) {
         return !isLoopbackOrPrivateHost(u.hostname);
     } catch {
         return false;
+    }
+}
+
+// ==================== 外链解析合规黑名单 ====================
+// 命中即拦截，严禁写入 D1 数据库
+const BLOCKED_LINK_HOSTS = ['pages.dev', 'workers.dev', 'workers.cloud'];
+const BLOCKED_LINK_PATTERN = /casino|gamble|bet365|betting|poker|slot|lottery|porn|xxx|sexy|adult|escort|色情|博彩|赌博|彩票|赌场|裸聊|黄播|约炮|外围|刷单|代发|网赚|兼职日结|返利|传销|微商|加微信|加微/i;
+
+function isBlockedLinkUrl(rawUrl) {
+    try {
+        const u = new URL(rawUrl);
+        const host = u.hostname.toLowerCase();
+        if (BLOCKED_LINK_HOSTS.some(h => host === h || host.endsWith('.' + h))) {
+            return true;
+        }
+        return BLOCKED_LINK_PATTERN.test(host);
+    } catch {
+        return true;
     }
 }
 
@@ -203,8 +261,7 @@ async function router(path, method, request, env) {
             headers: {
                 'Content-Type': row.mime_type,
                 'Cache-Control': 'public, max-age=31536000',
-                'X-Content-Type-Options': 'nosniff',
-                'Access-Control-Allow-Origin': '*'
+                'X-Content-Type-Options': 'nosniff'
             }
         });
     }
@@ -261,6 +318,9 @@ async function router(path, method, request, env) {
             }
         } catch {}
 
+        if (isBlockedLinkUrl(url)) {
+            return jsonResponse({ error: '链接已被拦截：该域名存在安全或合规风险' }, 403);
+        }
         if (!isSafeFetchUrl(url)) {
             return jsonResponse({ url, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
         }
@@ -775,7 +835,12 @@ async function router(path, method, request, env) {
             reply = generateFallbackReply(question, contextText);
         }
 
-        return jsonResponse({ reply, question }, 200);
+        const moderated = moderateText(reply, env);
+        if (!moderated.ok) {
+            return jsonResponse({ error: '内容不合规，已拒绝输出' }, 403);
+        }
+
+        return jsonResponse({ reply: moderated.text, question }, 200);
     }
 
     // ==================== AI ECHO CARD GENERATION ====================
@@ -789,12 +854,16 @@ async function router(path, method, request, env) {
         const cardTitle = "近期思维回响与灵感梳理";
         const topic = "每周灵感";
         const summary = `在最近的记录中，你关注了：${recentTexts.slice(0, 120)}... AI 建议你继续保持记录，把这些零碎灵感进一步转化为深度的笔记或周记！`;
+        const moderatedSummary = moderateText(summary, env);
+        if (!moderatedSummary.ok) {
+            return jsonResponse({ error: '内容不合规，已拒绝生成' }, 403);
+        }
 
         const feedIds = JSON.stringify(feeds.results.map(f => f.id));
         const newCard = await db.prepare(
             `INSERT INTO echo_cards (user_id, title, summary, topic, related_feed_ids, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, datetime('now')) RETURNING *`
-        ).bind(userId, cardTitle, summary, topic, feedIds).first();
+        ).bind(userId, cardTitle, moderatedSummary.text, topic, feedIds).first();
 
         return jsonResponse(newCard, 201);
     }
@@ -802,6 +871,12 @@ async function router(path, method, request, env) {
     if (path === '/api/echo/cards' && method === 'GET') {
         const cards = await db.prepare('SELECT * FROM echo_cards WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
         return jsonResponse(cards.results || [], 200);
+    }
+
+    // ==================== UGC 合规审计（手动触发） ====================
+    if (path === '/api/audit/scan' && method === 'POST') {
+        const result = await scanAndAudit(db);
+        return jsonResponse(result, 200);
     }
 
     return jsonResponse({ error: 'Not found' }, 404);
@@ -893,6 +968,65 @@ function formatWeekly(row) {
         content: row.content || null,
         annotations: row.annotations ? JSON.parse(row.annotations) : []
     };
+}
+
+// ==================== AI 输出合规过滤 ====================
+// 政治敏感词请通过环境变量 MODERATION_POLITICAL_WORDS（逗号分隔）自行维护，避免误伤
+const MODERATE_HARD_RE = /色情|裸聊|黄播|约炮|嫖娼|卖淫|赌博|博彩|赌场|六合彩|毒品|制毒|贩毒|枪支|弹药|爆炸物|杀人|血腥|暴力恐吓/i;
+const MODERATE_SOFT_RE = /加微信|加微|微信号|扫码进群|QQ群|刷单|代发|兼职日结|网赚|返利|引流|微商代理|传销|贷款办卡|代开发票/i;
+
+function moderateText(text, env) {
+    if (!text) return { ok: true, text };
+    let hard = MODERATE_HARD_RE;
+    const political = (env && env.MODERATION_POLITICAL_WORDS) ? String(env.MODERATION_POLITICAL_WORDS).trim() : '';
+    if (political) {
+        const p = political.split(/[,，]/).map(s => s.trim()).filter(Boolean).join('|');
+        if (p) hard = new RegExp(`${MODERATE_HARD_RE.source}|${p}`, 'i');
+    }
+    if (hard.test(text)) return { ok: false, text: '' };
+    return { ok: true, text: text.replace(MODERATE_SOFT_RE, '****') };
+}
+
+// ==================== UGC 合规审计 ====================
+const UGC_VIOLATION_RE = /加微|加微信|微信号|扫码加|刷单|代发|代购|网赚|兼职日结|返利|引流|微商|传销|贷款办卡|代开发票|博彩|赌博|色情|裸聊|黄播|外围/i;
+
+function ugcHasViolation(row, cols) {
+    for (const col of cols) {
+        let v = row[col];
+        if (v == null) continue;
+        if (typeof v === 'string' && v.trim().startsWith('[')) {
+            try { v = JSON.parse(v).map(x => (x && (x.content || x.title || x.text)) || '').join(' '); } catch {}
+        }
+        if (typeof v === 'string' && UGC_VIOLATION_RE.test(v)) return true;
+    }
+    return false;
+}
+
+async function scanAndAudit(db) {
+    const results = { scanned: 0, removed: 0, alerts: [] };
+    const tables = [
+        { name: 'notes', cols: ['title', 'content', 'annotations'] },
+        { name: 'quick_feeds', cols: ['content', 'summary', 'tags', 'media_url'] },
+        { name: 'bookmarks', cols: ['title', 'url', 'description'] },
+        { name: 'weeklies', cols: ['title', 'summary', 'content', 'annotations'] }
+    ];
+
+    for (const t of tables) {
+        const rows = await db.prepare(`SELECT * FROM ${t.name}`).all();
+        for (const row of (rows.results || [])) {
+            results.scanned++;
+            if (ugcHasViolation(row, t.cols)) {
+                await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1`).bind(row.id).run();
+                const snippet = String(row[t.cols[0]] || '').slice(0, 100);
+                await db.prepare(
+                    `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'removed', datetime('now'))`
+                ).bind(t.name, String(row.id), snippet).run();
+                results.removed++;
+                results.alerts.push({ table: t.name, id: row.id, snippet });
+            }
+        }
+    }
+    return results;
 }
 
 
