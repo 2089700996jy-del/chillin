@@ -14,7 +14,6 @@ document.addEventListener('DOMContentLoaded', () => {
         API_BASE = '';
     }
     const CLOUD_WORKER_BASE = 'https://chillin-api.2089700996jy.workers.dev';
-    const API_KEY = (typeof CHILLIN_API_KEY !== 'undefined') ? CHILLIN_API_KEY : '';
 
     // 双端自动降级 Fetch（同源与直连自动容灾，解决移动端 Failed to fetch）
     const fetchWithFallback = async (path, options = {}) => {
@@ -96,7 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
             const res = await fetchWithFallback(endpoint, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'X-API-Key': API_KEY },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
             const data = await res.json();
@@ -129,7 +128,6 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const headers = {
                 'Content-Type': 'application/json',
-                'X-API-Key': API_KEY,
                 ...(options.headers || {})
             };
             if (authToken) {
@@ -1520,9 +1518,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const formData = new FormData();
             formData.append('file', uploadFile);
 
-            const headers = {
-                'X-API-Key': API_KEY
-            };
+            const headers = {};
             if (authToken) {
                 headers['Authorization'] = `Bearer ${authToken}`;
             }

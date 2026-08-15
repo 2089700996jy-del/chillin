@@ -10,15 +10,6 @@ export default {
             return corsResponse(null, 204);
         }
 
-        // 校验 API Key (对于获取文件的公开 GET 请求，予以放行)
-        const isPublicFileRoute = method === 'GET' && path.startsWith('/api/file/');
-        if (!isPublicFileRoute) {
-            const apiKey = request.headers.get('X-API-Key');
-            if (apiKey !== env.API_KEY) {
-                return jsonResponse({ error: 'Forbidden: Invalid API Key' }, 403);
-            }
-        }
-
         try {
             return await router(path, method, request, env);
         } catch (err) {
@@ -31,7 +22,7 @@ function corsResponse(body, status) {
     const headers = {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, X-API-Key, Authorization'
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
     };
     if (!body) return new Response(null, { status, headers });
     return new Response(JSON.stringify(body), {
