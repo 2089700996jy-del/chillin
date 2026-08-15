@@ -2546,6 +2546,29 @@ document.addEventListener('DOMContentLoaded', () => {
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
     }
 
+    // 📅 AI 本周回顾：打开对话并展示回顾结果
+    const btnWeeklyReview = document.getElementById('btn-weekly-review');
+    if (btnWeeklyReview) {
+        btnWeeklyReview.addEventListener('click', async () => {
+            if (!aiChatModal || !aiChatBody) return;
+            aiChatModal.classList.add('show');
+            const botMsgDiv = document.createElement('div');
+            botMsgDiv.className = 'ai-msg ai-msg-bot';
+            botMsgDiv.innerHTML = `<div class="ai-msg-bubble">🤖 正在为你生成本周回顾...</div>`;
+            aiChatBody.appendChild(botMsgDiv);
+            aiChatBody.scrollTop = aiChatBody.scrollHeight;
+            try {
+                const res = await apiRequest('/api/ai/review', { method: 'POST', body: JSON.stringify({}) });
+                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = (res && res.reply)
+                    ? escapeHtml(res.reply).replace(/\n/g, '<br>')
+                    : '本周回顾生成失败，请稍后再试。';
+            } catch (err) {
+                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = '本周回顾生成失败：' + escapeHtml(err.message);
+            }
+            aiChatBody.scrollTop = aiChatBody.scrollHeight;
+        });
+    }
+
     if (btnSendAiChat) btnSendAiChat.addEventListener('click', sendAiChatMessage);
     if (aiChatInput) {
         aiChatInput.addEventListener('keydown', (e) => {
@@ -2573,6 +2596,13 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 100);
         }
     });
+
+    // PWA：注册 Service Worker（离线缓存静态资源）
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/sw.js').catch(() => {});
+        });
+    }
 });
 
 
