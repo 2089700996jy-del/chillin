@@ -1,0 +1,18 @@
+{
+  "name": "chillin",
+  "version": "1.0.0",
+  "description": "Chillin 数字花园 - 个人数字花园",
+  "private": true,
+  "scripts": {
+    "sync:web": "node scripts/sync-web.js",
+    "cap:sync": "npm run sync:web && npx cap sync",
+    "cap:add:android": "npx cap add android"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.0"
+  },
+  "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0"
+  }
+}

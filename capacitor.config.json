@@ -1,0 +1,8 @@
+{
+  "appId": "com.chillin.garden",
+  "appName": "Chillin",
+  "webDir": "www",
+  "server": {
+    "androidScheme": "https"
+  }
+}
