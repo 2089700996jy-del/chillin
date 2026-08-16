@@ -213,6 +213,14 @@ async function authenticate(request, db) {
     return session ? session.user_id : null;
 }
 
+// 越权防护：客户端可传 id 触发 INSERT OR REPLACE，写入前校验该 id 是否属于他人，防止跨用户覆盖
+async function isOwnedRecord(db, table, id, userId) {
+    if (id == null || id === '') return true;
+    const existing = await db.prepare(`SELECT user_id FROM ${table} WHERE id = ?1`).bind(id).first();
+    if (!existing) return true;
+    return Number(existing.user_id) === Number(userId);
+}
+
 async function router(path, method, request, env) {
     const db = env.DB;
 
@@ -275,13 +283,19 @@ async function router(path, method, request, env) {
         return jsonResponse({ token, username, userId: user.id }, 200);
     }
 
-    // ==================== FILE 公开路由 ====================
+    // ==================== FILE 路由（访问令牌校验） ====================
     if (path.startsWith('/api/file/') && method === 'GET') {
         const fileId = path.replace('/api/file/', '');
         if (!fileId) return new Response('Not Found', { status: 404 });
         
-        const row = await db.prepare('SELECT mime_type, data FROM files WHERE id = ?1').bind(fileId).first();
+        const row = await db.prepare('SELECT mime_type, data, access_token FROM files WHERE id = ?1').bind(fileId).first();
         if (!row) return new Response('Not Found', { status: 404 });
+
+        // 访问控制：新上传文件需携带匹配的 ?t= 访问令牌；历史无令牌文件回退为 UUID 直链
+        const fileToken = new URL(request.url).searchParams.get('t') || '';
+        if (row.access_token != null && row.access_token !== fileToken) {
+            return new Response('Forbidden', { status: 403 });
+        }
         
         let responseData = row.data;
         if (Array.isArray(responseData)) {
@@ -303,6 +317,10 @@ async function router(path, method, request, env) {
 
     // ==================== LINK PARSE 链接智能提取 ====================
     if (path === '/api/link/parse' && method === 'POST') {
+        // 鉴权：防止被当作匿名链接抓取代理滥用
+        const linkUserId = await authenticate(request, db);
+        if (!linkUserId) return jsonResponse({ error: '未登录或登录已过期' }, 401);
+
         const { url } = await request.json();
         if (!url || !url.match(/^https?:\/\//i)) {
             return jsonResponse({ error: '无效的 URL' }, 400);
@@ -542,10 +560,11 @@ async function router(path, method, request, env) {
                 return jsonResponse({ error: '不支持的文件类型' }, 400);
             }
             const id = crypto.randomUUID();
-            await db.prepare('INSERT INTO files (id, mime_type, data) VALUES (?1, ?2, ?3)')
-                .bind(id, mimeType, arrayBuffer).run();
+            const accessToken = crypto.randomUUID();
+            await db.prepare('INSERT INTO files (id, mime_type, data, access_token) VALUES (?1, ?2, ?3, ?4)')
+                .bind(id, mimeType, arrayBuffer, accessToken).run();
                 
-            return jsonResponse([{ src: `/api/file/${id}` }], 201);
+            return jsonResponse([{ src: `/api/file/${id}?t=${accessToken}` }], 201);
         } catch (err) {
             return jsonResponse({ error: err.message }, 500);
         }
@@ -572,6 +591,9 @@ async function router(path, method, request, env) {
 
     if (path === '/api/weeklies' && method === 'POST') {
         const body = await request.json();
+        if (!(await isOwnedRecord(db, 'weeklies', body.id, userId))) {
+            return jsonResponse({ error: '无权操作该记录' }, 403);
+        }
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
@@ -614,6 +636,9 @@ async function router(path, method, request, env) {
 
     if (path === '/api/notes' && method === 'POST') {
         const body = await request.json();
+        if (!(await isOwnedRecord(db, 'notes', body.id, userId))) {
+            return jsonResponse({ error: '无权操作该记录' }, 403);
+        }
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
             `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
@@ -655,6 +680,9 @@ async function router(path, method, request, env) {
 
     if (path === '/api/bookmarks' && method === 'POST') {
         const body = await request.json();
+        if (!(await isOwnedRecord(db, 'bookmarks', body.id, userId))) {
+            return jsonResponse({ error: '无权操作该记录' }, 403);
+        }
         await db.prepare(
             `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
@@ -682,6 +710,9 @@ async function router(path, method, request, env) {
 
     if (path === '/api/feeds' && method === 'POST') {
         const body = await request.json();
+        if (!(await isOwnedRecord(db, 'quick_feeds', body.id, userId))) {
+            return jsonResponse({ error: '无权操作该记录' }, 403);
+        }
         const content = body.content || '';
         const type = body.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
         const mediaUrl = body.media_url || body.mediaUrl || null;
@@ -752,6 +783,7 @@ async function router(path, method, request, env) {
         // 1. 周记
         for (const item of weeklies) {
             if (weeklies.length > 1 && item.id === 1) continue;
+            if (!(await isOwnedRecord(db, 'weeklies', item.id, userId))) continue;
             const weeklyData = item.weeklyData ? JSON.stringify(item.weeklyData) : null;
             const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
             statements.push(
@@ -765,6 +797,7 @@ async function router(path, method, request, env) {
         // 2. 笔记
         for (const item of notes) {
             if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
+            if (!(await isOwnedRecord(db, 'notes', item.id, userId))) continue;
             const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
             statements.push(
                 db.prepare(
@@ -777,6 +810,7 @@ async function router(path, method, request, env) {
         // 3. 收藏
         for (const item of bookmarks) {
             if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
+            if (!(await isOwnedRecord(db, 'bookmarks', item.id, userId))) continue;
             statements.push(
                 db.prepare(
                     `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
@@ -788,6 +822,7 @@ async function router(path, method, request, env) {
         // 4. 随手记
         for (const item of feeds) {
             if (feeds.length > 1 && item.id === 1) continue;
+            if (!(await isOwnedRecord(db, 'quick_feeds', item.id, userId))) continue;
             const content = item.content || '';
             const type = item.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
             const mediaUrl = item.media_url || item.mediaUrl || null;
@@ -947,7 +982,7 @@ async function router(path, method, request, env) {
 
     // ==================== UGC 合规审计（手动触发） ====================
     if (path === '/api/audit/scan' && method === 'POST') {
-        const result = await scanAndAudit(db);
+        const result = await scanAndAudit(db, userId);
         return jsonResponse(result, 200);
     }
 
@@ -1090,7 +1125,7 @@ function ugcHasViolation(row, cols) {
     return false;
 }
 
-async function scanAndAudit(db) {
+async function scanAndAudit(db, userId) {
     const results = { scanned: 0, removed: 0, alerts: [] };
     const tables = [
         { name: 'notes', cols: ['title', 'content', 'annotations'] },
@@ -1100,11 +1135,17 @@ async function scanAndAudit(db) {
     ];
 
     for (const t of tables) {
-        const rows = await db.prepare(`SELECT * FROM ${t.name}`).all();
+        const rows = userId
+            ? await db.prepare(`SELECT * FROM ${t.name} WHERE user_id = ?1`).bind(userId).all()
+            : await db.prepare(`SELECT * FROM ${t.name}`).all();
         for (const row of (rows.results || [])) {
             results.scanned++;
             if (ugcHasViolation(row, t.cols)) {
-                await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1`).bind(row.id).run();
+                if (userId) {
+                    await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1 AND user_id = ?2`).bind(row.id, userId).run();
+                } else {
+                    await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1`).bind(row.id).run();
+                }
                 const snippet = String(row[t.cols[0]] || '').slice(0, 100);
                 await db.prepare(
                     `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'removed', datetime('now'))`
