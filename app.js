@@ -16,6 +16,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const CLOUD_WORKER_BASE = 'https://chillin-api.2089700996jy.workers.dev';
 
+    // 原生壳里相对路径 /api/... 会解析到 localhost，需转成绝对地址（网页端 API_BASE 为空则保持相对）
+    const resolveAssetUrl = (src) => {
+        if (src && API_BASE && (src.startsWith('/api/') || src.startsWith('/uploads/'))) {
+            return API_BASE + src;
+        }
+        return src;
+    };
+
     // 双端自动降级 Fetch（同源与直连自动容灾，解决移动端 Failed to fetch）
     const fetchWithFallback = async (path, options = {}) => {
         const primaryUrl = `${API_BASE}${path}`;
@@ -753,7 +761,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const card = document.createElement('div');
             card.className = "notion-collection-card";
             card.dataset.id = item.id;
-            let coverHtml = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover" class="notion-collection-card__cover">` : '';
+            let coverHtml = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" class="notion-collection-card__cover">` : '';
             
             const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
             
@@ -768,7 +776,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let html = '';
         if (data.music && data.music.title) html += `<h2>🎵 本周循环</h2><div class="widget-music"><div class="widget-music-disk"></div><div class="widget-music-info"><div class="widget-music-title">${escapeHtml(data.music.title)}</div><div class="widget-music-artist">${escapeHtml(data.music.artist)}</div>${data.music.lyric ? `<div class="widget-music-lyric">"${escapeHtml(data.music.lyric)}"</div>` : ''}</div></div>`;
         if (data.media && data.media.length > 0 && data.media[0].title) html += `<h2>🎬 影音书影</h2><div class="widget-media">${data.media.map(m => `<div class="widget-media-item"><div class="widget-media-icon">${escapeHtml(m.icon || '🎬')}</div><div class="widget-media-content"><div class="widget-media-title">${escapeHtml(m.title)}</div><div class="widget-media-desc">${escapeHtml(m.desc)}</div></div></div>`).join('')}</div>`;
-        if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${escapeHtml(data.life.image)}" alt="Life Snapshot"><div class="widget-polaroid-caption">${escapeHtml(data.life.caption)}</div></div>`;
+        if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${escapeHtml(resolveAssetUrl(data.life.image))}" alt="Life Snapshot"><div class="widget-polaroid-caption">${escapeHtml(data.life.caption)}</div></div>`;
         if (data.podcast) html += `<h2>🎙️ 播客新知</h2><div class="widget-callout"><div class="widget-callout-icon">💡</div><div class="widget-callout-text">${escapeHtml(data.podcast)}</div></div>`;
         if (data.work && data.work.title) html += `<h2>💻 工作切片</h2><div class="widget-work"><div class="widget-work-title">${escapeHtml(data.work.title)}</div><div class="widget-work-desc">${escapeHtml(data.work.desc)}</div></div>`;
         return html;
@@ -782,7 +790,7 @@ document.addEventListener('DOMContentLoaded', () => {
         let finalHtml = item.content || '';
         if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
         articleBody.innerHTML = sanitizeHtml(finalHtml);
-        articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(item.cover)}" alt="Cover">` : '';
+        articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover">` : '';
         
         // 加载记忆片段的追加批注
         document.getElementById('new-weekly-annotation-content').value = '';
@@ -1255,7 +1263,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasImage = bm.image && bm.image.trim();
             card.innerHTML = `
                 ${hasImage
-                    ? '<img class="bookmark-card-image" src="' + escapeHtml(bm.image) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+                    ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
                     : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
                 <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
                 <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
@@ -1268,7 +1276,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 card.style.cursor = 'zoom-in';
                 card.addEventListener('click', (e) => {
                     if (e.target.closest('.bookmark-card-delete')) return;
-                    document.getElementById('image-preview-img').src = bm.image;
+                    document.getElementById('image-preview-img').src = resolveAssetUrl(bm.image);
                     document.getElementById('image-preview-modal').classList.add('show');
                 });
             }
@@ -2153,7 +2161,7 @@ document.addEventListener('DOMContentLoaded', () => {
                                 <div class="rich-link-title">${escapeHtml(title)}</div>
                                 ${description ? `<div class="rich-link-desc">${escapeHtml(description)}</div>` : ''}
                             </div>
-                            ${coverUrl ? `<img src="${escapeHtml(coverUrl)}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" onerror="this.onerror=null; this.style.display='none'">` : ''}
+                            ${coverUrl ? `<img src="${escapeHtml(resolveAssetUrl(coverUrl))}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" onerror="this.onerror=null; this.style.display='none'">` : ''}
                         </div>
                         <div class="rich-link-footer">
                             <span class="rich-platform-pill">
@@ -2171,7 +2179,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Image preview
             let mediaHtml = '';
             if (feed.media_url && !linkHtml) {
-                mediaHtml = `<img src="${escapeHtml(feed.media_url)}" class="feed-media-preview" alt="" onclick="previewImage(this.src)">`;
+                mediaHtml = `<img src="${escapeHtml(resolveAssetUrl(feed.media_url))}" class="feed-media-preview" alt="" onclick="previewImage(this.src)">`;
             }
 
             // Remove raw URL text if a rich link card is displayed
