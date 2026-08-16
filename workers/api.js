@@ -7,7 +7,12 @@ const ALLOWED_ORIGINS = new Set([
     'http://localhost:8080',
     'http://localhost:3000',
     'http://127.0.0.1:8080',
-    'http://127.0.0.1:3000'
+    'http://127.0.0.1:3000',
+    // Capacitor 原生壳（WebView）来源：安卓 http/https 与 iOS capacitor 自定义协议
+    'http://localhost',
+    'https://localhost',
+    'capacitor://localhost',
+    'ionic://localhost'
 ]);
 
 function withCors(response, request) {

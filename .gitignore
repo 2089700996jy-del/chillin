@@ -1,6 +1,6 @@
 .wrangler/
 node_modules/
-*.bat
+/*.bat
 *.mp3
 *.txt
 
