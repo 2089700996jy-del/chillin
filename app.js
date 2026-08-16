@@ -563,6 +563,49 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/'/g, '&#039;');
     };
 
+    // 把 AI 返回的 Markdown 转成安全 HTML（先转义防 XSS，再做轻量格式化），用于对话/本周回顾展示
+    const markdownToHtml = (text) => {
+        if (!text) return '';
+        const lines = escapeHtml(text).split('\n');
+        let html = '';
+        let inUl = false, inOl = false;
+        const closeLists = () => {
+            if (inUl) { html += '</ul>'; inUl = false; }
+            if (inOl) { html += '</ol>'; inOl = false; }
+        };
+        const inline = (s) => s
+            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+            .replace(/`([^`]+)`/g, '<code>$1</code>')
+            .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+        for (const raw of lines) {
+            const line = raw.replace(/[ \t]+$/, '');
+            const h = line.match(/^(#{1,6})\s+(.*)$/);
+            if (h) {
+                closeLists();
+                const lv = h[1].length;
+                html += `<h${lv}>${inline(h[2])}</h${lv}>`;
+                continue;
+            }
+            const ul = line.match(/^\s*[-*]\s+(.*)$/);
+            if (ul) {
+                if (!inUl) { closeLists(); html += '<ul>'; inUl = true; }
+                html += `<li>${inline(ul[1])}</li>`;
+                continue;
+            }
+            const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+            if (ol) {
+                if (!inOl) { closeLists(); html += '<ol>'; inOl = true; }
+                html += `<li>${inline(ol[1])}</li>`;
+                continue;
+            }
+            if (line.trim() === '') { closeLists(); continue; }
+            closeLists();
+            html += `<p>${inline(line)}</p>`;
+        }
+        closeLists();
+        return html;
+    };
+
     // 用 DOMPurify 白名单清洗用户可控的 HTML（正文支持标签，但必须防存储型 XSS）；
     // 若 CDN 未加载成功，则退化为纯文本转义，保证安全优先。
     const sanitizeHtml = (html) => {
@@ -2535,7 +2578,7 @@ document.addEventListener('DOMContentLoaded', () => {
             });
 
             if (res && res.reply) {
-                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(res.reply).replace(/\n/g, '<br>');
+                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = markdownToHtml(res.reply);
                 aiChatBody.scrollTop = aiChatBody.scrollHeight;
                 return;
             }
@@ -2543,7 +2586,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
         const localReply = getLocalAiReply(question);
-        botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = escapeHtml(localReply).replace(/\n/g, '<br>');
+        botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = markdownToHtml(localReply);
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
     }
 
@@ -2561,7 +2604,7 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const res = await apiRequest('/api/ai/review', { method: 'POST', body: JSON.stringify({}) });
                 botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = (res && res.reply)
-                    ? escapeHtml(res.reply).replace(/\n/g, '<br>')
+                    ? markdownToHtml(res.reply)
                     : '本周回顾生成失败，请稍后再试。';
             } catch (err) {
                 botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = '本周回顾生成失败：' + escapeHtml(err.message);

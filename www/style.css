@@ -2311,6 +2311,19 @@ body.keyboard-open .fab-btn {
   white-space: pre-wrap;
 }
 
+.ai-msg-bubble p { margin: 0 0 8px; }
+.ai-msg-bubble p:last-child { margin-bottom: 0; }
+.ai-msg-bubble h1, .ai-msg-bubble h2, .ai-msg-bubble h3, .ai-msg-bubble h4, .ai-msg-bubble h5, .ai-msg-bubble h6 { margin: 12px 0 6px; font-weight: 700; line-height: 1.4; }
+.ai-msg-bubble h1 { font-size: 18px; }
+.ai-msg-bubble h2 { font-size: 16px; }
+.ai-msg-bubble h3 { font-size: 15px; }
+.ai-msg-bubble h4, .ai-msg-bubble h5, .ai-msg-bubble h6 { font-size: 14px; }
+.ai-msg-bubble ul, .ai-msg-bubble ol { margin: 4px 0 8px; padding-left: 20px; }
+.ai-msg-bubble li { margin: 3px 0; }
+.ai-msg-bubble code { background: #f3f4f6; padding: 1px 6px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+.ai-msg-bubble strong { font-weight: 700; }
+.ai-msg-bubble em { font-style: italic; }
+
 .ai-chat-footer {
   padding: 12px 14px;
   background: #ffffff;
