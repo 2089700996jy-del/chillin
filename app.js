@@ -80,26 +80,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     btnLogout.addEventListener('click', logout);
 
-    // 一键导出备份（周记 / 笔记 / 收藏 / 随手记 全量 JSON）
-    const btnExport = document.getElementById('btn-export');
-    if (btnExport) {
-        btnExport.addEventListener('click', async () => {
-            try {
-                const data = await apiRequest('/api/export');
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const a = document.createElement('a');
-                a.href = URL.createObjectURL(blob);
-                a.download = 'chillin-backup-' + new Date().toISOString().slice(0, 10) + '.json';
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                URL.revokeObjectURL(a.href);
-            } catch (err) {
-                alert('导出失败：' + err.message);
-            }
-        });
-    }
-
     btnAuthSwitch.addEventListener('click', () => {
         isRegisterMode = !isRegisterMode;
         if (isRegisterMode) {
@@ -2421,12 +2401,21 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = echoCardsDatabase.map(card => `
             <div class="echo-card">
+                <button class="echo-card-delete" onclick="deleteEchoCard(${card.id})" title="删除卡片">×</button>
                 <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
                 <div class="echo-card-title">${escapeHtml(card.title)}</div>
                 <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
             </div>
         `).join('');
     }
+
+    window.deleteEchoCard = function(id) {
+        if (!confirm('确定要删除这张 AI 回响卡片吗？')) return;
+        echoCardsDatabase = echoCardsDatabase.filter(c => String(c.id) !== String(id));
+        localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+        renderEchoCards();
+        apiRequest('/api/echo/cards/' + id, { method: 'DELETE' }).catch(() => {});
+    };
 
     function getLocalAiReply(question) {
         const allMemory = [];
@@ -2460,34 +2449,37 @@ document.addEventListener('DOMContentLoaded', () => {
             btnTriggerEchoCard.disabled = true;
             btnTriggerEchoCard.innerText = '分析中...';
             try {
-                const newCard = await apiRequest('/api/echo/generate', { method: 'POST' });
-                if (newCard && newCard.title) {
-                    echoCardsDatabase.unshift(newCard);
+                try {
+                    const newCard = await apiRequest('/api/echo/generate', { method: 'POST' });
+                    if (newCard && newCard.title) {
+                        echoCardsDatabase.unshift(newCard);
+                        localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+                        renderEchoCards();
+                        alert('✨ 成功生成最新 AI 记忆回响卡片！');
+                        return;
+                    }
+                } catch (err) {}
+
+                // 本地离线/未部署 API 时的智能兜底逻辑
+                if (!feedsDatabase || feedsDatabase.length === 0) {
+                    alert('暂无足够的随手记生成回响卡片，请先多记录一些思考吧！');
+                } else {
+                    const recentTexts = feedsDatabase.map(f => f.content).slice(0, 5).join('；');
+                    const localCard = {
+                        id: Date.now(),
+                        title: "近期思维回响与灵感梳理",
+                        topic: "思维脉络",
+                        summary: `在最近的记录中，你关注了：${recentTexts.slice(0, 100)}... AI 建议你继续保持记录，把这些零碎灵感进一步转化为深度的笔记或周记！`
+                    };
+                    echoCardsDatabase.unshift(localCard);
                     localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
                     renderEchoCards();
                     alert('✨ 成功生成最新 AI 记忆回响卡片！');
-                    return;
                 }
-            } catch (err) {}
-
-            // 本地离线/未部署 API 时的智能兜底逻辑
-            if (!feedsDatabase || feedsDatabase.length === 0) {
-                alert('暂无足够的随手记生成回响卡片，请先多记录一些思考吧！');
-            } else {
-                const recentTexts = feedsDatabase.map(f => f.content).slice(0, 5).join('；');
-                const localCard = {
-                    id: Date.now(),
-                    title: "近期思维回响与灵感梳理",
-                    topic: "思维脉络",
-                    summary: `在最近的记录中，你关注了：${recentTexts.slice(0, 100)}... AI 建议你继续保持记录，把这些零碎灵感进一步转化为深度的笔记或周记！`
-                };
-                echoCardsDatabase.unshift(localCard);
-                localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
-                renderEchoCards();
-                alert('✨ 成功生成最新 AI 记忆回响卡片！');
+            } finally {
+                btnTriggerEchoCard.disabled = false;
+                btnTriggerEchoCard.innerText = '✨ 生成 AI 回响卡片';
             }
-            btnTriggerEchoCard.disabled = false;
-            btnTriggerEchoCard.innerText = '✨ 生成 AI 回响卡片';
         });
     }
 
