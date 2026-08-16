@@ -15,9 +15,21 @@ const ALLOWED_ORIGINS = new Set([
     'ionic://localhost'
 ]);
 
+// 判断来源是否被允许：白名单 + 任意 localhost 来源（原生壳 WebView 的 scheme/端口可能变化）
+function isAllowedOrigin(origin) {
+    if (!origin) return false;
+    if (ALLOWED_ORIGINS.has(origin)) return true;
+    try {
+        const hostname = new URL(origin).hostname;
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
+    } catch (e) {
+        return false;
+    }
+}
+
 function withCors(response, request) {
     const origin = request.headers.get('Origin');
-    if (origin && ALLOWED_ORIGINS.has(origin)) {
+    if (isAllowedOrigin(origin)) {
         const headers = new Headers(response.headers);
         headers.set('Access-Control-Allow-Origin', origin);
         headers.set('Vary', 'Origin');
@@ -39,7 +51,7 @@ export default {
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization'
             };
-            if (origin && ALLOWED_ORIGINS.has(origin)) {
+            if (isAllowedOrigin(origin)) {
                 headers['Access-Control-Allow-Origin'] = origin;
                 headers['Vary'] = 'Origin';
             }

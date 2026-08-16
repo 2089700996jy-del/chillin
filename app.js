@@ -8,7 +8,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) {
         API_BASE = CHILLIN_API_URL;
     } else if (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        API_BASE = 'https://chillin-api.2089700996jy.workers.dev';
+        // 原生壳/本地调试：走 Pages 同源代理更可靠（workers.dev 在部分网络下不可达）
+        API_BASE = 'https://chillin-bfc.pages.dev';
     } else {
         // 线上 Cloudflare Pages 部署环境 (chillin-bfc.pages.dev) 优先使用同源 /api 代理
         API_BASE = '';
