@@ -19,11 +19,5 @@ LLM_MODEL = "deepseek-chat"
 [triggers]
 crons = ["13 * * * *"]
 
-# Workers 路由 (如果绑定到 Pages 域名)
-[env.production]
-routes = [
-    { pattern = "api.chillin-bfc.workers.dev", zone_id = "PLACEHOLDER" }
-]
-
 
 
