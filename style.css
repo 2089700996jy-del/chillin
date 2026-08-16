@@ -2204,6 +2204,29 @@ body.keyboard-open .fab-btn {
   color: #4338ca;
 }
 
+.echo-card-delete {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(0,0,0,0.06);
+  border: none;
+  border-radius: 50%;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  color: #888;
+  transition: all 0.2s ease;
+}
+.echo-card-delete:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
 /* 5. AI Memory Chat Modal (AI 记忆回响助手) */
 .ai-chat-card {
   width: 90%;

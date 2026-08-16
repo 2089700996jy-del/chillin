@@ -997,6 +997,13 @@ async function router(path, method, request, env) {
         return jsonResponse(cards.results || [], 200);
     }
 
+    const echoCardMatch = path.match(/^\/api\/echo\/cards\/(\d+)$/);
+    if (echoCardMatch && method === 'DELETE') {
+        const id = parseInt(echoCardMatch[1]);
+        await db.prepare('DELETE FROM echo_cards WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
+        return jsonResponse({ success: true }, 200);
+    }
+
     // ==================== UGC 合规审计（手动触发） ====================
     if (path === '/api/audit/scan' && method === 'POST') {
         const result = await scanAndAudit(db, userId);
