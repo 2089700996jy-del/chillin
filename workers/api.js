@@ -65,13 +65,19 @@ export default {
         }
     },
 
-    // 定时任务：每小时扫描 D1 中的 UGC 内容，清理违规引流信息
+    // 定时任务：每小时扫描 D1 中的 UGC 内容，清理违规引流信息，并自动清理过期 Session
     async scheduled(event, env, ctx) {
         try {
             const result = await scanAndAudit(env.DB);
             console.log(`[audit] scheduled scan: scanned=${result.scanned} removed=${result.removed}`);
         } catch (err) {
             console.error('[audit] scheduled scan failed:', err);
+        }
+        try {
+            const cleaned = await cleanExpiredSessions(env.DB);
+            console.log(`[session] scheduled cleanup: removed=${cleaned}`);
+        } catch (err) {
+            console.error('[session] scheduled cleanup failed:', err);
         }
     }
 };
@@ -797,10 +803,31 @@ async function router(path, method, request, env) {
 
         const statements = [];
 
+        // 批量校验归属，消除 N+1 DB 轮询性能卡顿
+        const fetchOwnedSet = async (tableName, items) => {
+            const ids = items.map(i => i.id).filter(id => id != null && id !== '');
+            if (ids.length === 0) return new Set();
+            const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(',');
+            const res = await db.prepare(`SELECT id, user_id FROM ${tableName} WHERE id IN (${placeholders})`).bind(...ids).all();
+            const allowed = new Set();
+            const existingMap = new Map((res.results || []).map(r => [r.id, r.user_id]));
+            for (const id of ids) {
+                if (!existingMap.has(id) || Number(existingMap.get(id)) === Number(userId)) {
+                    allowed.add(id);
+                }
+            }
+            return allowed;
+        };
+
+        const allowedWeeklies = await fetchOwnedSet('weeklies', weeklies);
+        const allowedNotes = await fetchOwnedSet('notes', notes);
+        const allowedBookmarks = await fetchOwnedSet('bookmarks', bookmarks);
+        const allowedFeeds = await fetchOwnedSet('quick_feeds', feeds);
+
         // 1. 周记
         for (const item of weeklies) {
             if (weeklies.length > 1 && item.id === 1) continue;
-            if (!(await isOwnedRecord(db, 'weeklies', item.id, userId))) continue;
+            if (item.id != null && !allowedWeeklies.has(item.id)) continue;
             const weeklyData = item.weeklyData ? JSON.stringify(item.weeklyData) : null;
             const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
             statements.push(
@@ -814,7 +841,7 @@ async function router(path, method, request, env) {
         // 2. 笔记
         for (const item of notes) {
             if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
-            if (!(await isOwnedRecord(db, 'notes', item.id, userId))) continue;
+            if (item.id != null && !allowedNotes.has(item.id)) continue;
             const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
             statements.push(
                 db.prepare(
@@ -827,7 +854,7 @@ async function router(path, method, request, env) {
         // 3. 收藏
         for (const item of bookmarks) {
             if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
-            if (!(await isOwnedRecord(db, 'bookmarks', item.id, userId))) continue;
+            if (item.id != null && !allowedBookmarks.has(item.id)) continue;
             statements.push(
                 db.prepare(
                     `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
@@ -839,7 +866,7 @@ async function router(path, method, request, env) {
         // 4. 随手记
         for (const item of feeds) {
             if (feeds.length > 1 && item.id === 1) continue;
-            if (!(await isOwnedRecord(db, 'quick_feeds', item.id, userId))) continue;
+            if (item.id != null && !allowedFeeds.has(item.id)) continue;
             const content = item.content || '';
             const type = item.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
             const mediaUrl = item.media_url || item.mediaUrl || null;
@@ -896,7 +923,7 @@ async function router(path, method, request, env) {
 
     // ==================== AI CHAT & MEMORY 记忆回响问答 ====================
     if (path === '/api/ai/chat' && method === 'POST') {
-        const { question } = await request.json();
+        const { question, stream } = await request.json();
         if (!question) return jsonResponse({ error: '请输入问题' }, 400);
 
         const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 20').bind(userId).all();
@@ -909,10 +936,42 @@ async function router(path, method, request, env) {
             ...(weeklies.results || []).map(w => `[周记 ${w.date}] ${w.title}: ${w.summary || ''}`)
         ].join('\n');
 
+        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请根据提供的用户历史笔记上下文，用温暖、有条理且简炼的中文回答用户的提问。如果上下文中没有提到，请根据通识回答并友好告知。';
+        const userPrompt = `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}`;
+
+        if (stream) {
+            const readable = new ReadableStream({
+                async start(controller) {
+                    const encoder = new TextEncoder();
+                    const push = (obj) => {
+                        controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
+                    };
+                    try {
+                        const streamed = await callCustomLlmStream(env, systemPrompt, userPrompt, (chunk) => {
+                            const moderated = moderateText(chunk, env);
+                            if (moderated.ok && moderated.text) {
+                                push({ delta: moderated.text });
+                            }
+                        });
+                        if (!streamed) {
+                            const fallback = generateFallbackReply(question, contextText);
+                            const moderated = moderateText(fallback, env);
+                            push({ delta: moderated.text });
+                        }
+                    } catch (err) {
+                        console.error('LLM Stream error:', err);
+                        push({ error: '回答处理出错，请重试' });
+                    } finally {
+                        controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+                        controller.close();
+                    }
+                }
+            });
+            return sseResponse(readable, request);
+        }
+
         let reply = '';
         try {
-            const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请根据提供的用户历史笔记上下文，用温暖、有条理且简炼的中文回答用户的提问。如果上下文中没有提到，请根据通识回答并友好告知。';
-            const userPrompt = `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}`;
             reply = await callCustomLlm(env, systemPrompt, userPrompt);
         } catch (err) {
             console.error('LLM Call error:', err);
@@ -1053,6 +1112,106 @@ function generateFallbackReply(question, contextText) {
     }
 
     return `针对问题 **“${question}”**，基于您最近的记忆片段摘要：\n\n${lines.slice(0, 3).join('\n')}\n\n以上是为您整理的相关回响，请继续记录更多精彩灵感！`;
+}
+
+async function cleanExpiredSessions(db) {
+    try {
+        const res = await db.prepare('DELETE FROM sessions WHERE expires_at < ?1').bind(Date.now()).run();
+        return res.meta?.changes || 0;
+    } catch (err) {
+        console.error('cleanExpiredSessions error:', err);
+        return 0;
+    }
+}
+
+function sseResponse(stream, request) {
+    const headers = new Headers({
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+    });
+    const origin = request.headers.get('Origin');
+    if (isAllowedOrigin(origin)) {
+        headers.set('Access-Control-Allow-Origin', origin);
+        headers.set('Vary', 'Origin');
+    }
+    return new Response(stream, { status: 200, headers });
+}
+
+async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
+    const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
+    const apiKey = env.LLM_API_KEY;
+    const model = env.LLM_MODEL || 'deepseek-chat';
+
+    if (apiKey) {
+        const url = `${apiBase.replace(/\/$/, '')}/chat/completions`;
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: 'system', content: systemPrompt },
+                    { role: 'user', content: userPrompt }
+                ],
+                temperature: 0.7,
+                stream: true
+            })
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`Custom LLM API error (${res.status}): ${errText}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let hasData = false;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed || trimmed.startsWith(':')) continue;
+                if (trimmed === 'data: [DONE]') break;
+                if (trimmed.startsWith('data: ')) {
+                    try {
+                        const json = JSON.parse(trimmed.slice(6));
+                        const content = json.choices?.[0]?.delta?.content;
+                        if (content) {
+                            hasData = true;
+                            onChunk(content);
+                        }
+                    } catch {}
+                }
+            }
+        }
+        return hasData;
+    }
+
+    if (env.AI) {
+        const aiRes = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
+            messages: [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ]
+        });
+        if (aiRes.response) {
+            onChunk(aiRes.response);
+            return true;
+        }
+    }
+
+    return false;
 }
 
 async function callCustomLlm(env, systemPrompt, userPrompt) {
