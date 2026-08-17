@@ -22,6 +22,10 @@
 6. **APK 编译成功**：`E:\桌面\Desktop\777\Chillin.apk`（约 3.94 MB，debug 版）。
 7. **修复原生壳登录网络失败**：`app.js` 原生壳/本地调试改走 Pages 代理；`workers/api.js` CORS 放宽 localhost 来源。已重新编译 APK + 重新部署 Worker。
 8. **修复原生壳图片不显示**：`app.js` 加 `resolveAssetUrl`，把 `/api/` 相对图片路径转成绝对地址。已重新编译 APK。
+9. **D1 数据库索引优化**：新增 `migrations/0009_perf_and_cleanup.sql`，给 `weeklies`, `notes`, `bookmarks`, `quick_feeds`, `echo_cards`, `sessions` 添加 `user_id` 与 `expires_at` 索引。
+10. **Batch Sync N+1 查询优化与过期 Session 定时清理**：`workers/api.js` 将批量同步单条 DB 轮询优化为单次查询，并于 `scheduled` 事件中定期删除过期 Session。
+11. **AI 记忆回响 SSE 流式打字机效果**：`/api/ai/chat` 接口支持 SSE 流式转发 DeepSeek / Workers AI 文本，前端 `app.js` 实时解包渲染 Markdown。
+
 
 ## 当前决定
 
