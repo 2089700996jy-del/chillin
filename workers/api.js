@@ -424,10 +424,23 @@ async function router(path, method, request, env) {
                 return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
             }
         } else {
-            // 历史无令牌文件：仅允许已登录且归属本人；无归属则拒绝直链
-            const viewerId = await authenticate(request, db);
-            if (!viewerId || row.user_id == null || Number(row.user_id) !== Number(viewerId)) {
-                return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
+            // 历史无令牌文件：自动生成持久 token 并存回 DB，同时用 Bearer 兜底
+            const newToken = crypto.randomUUID().replace(/-/g, '');
+            await db.prepare('UPDATE files SET access_token = ?1 WHERE id = ?2').bind(newToken, fileId).run();
+            // 若未携带 token（如 img 标签），以 Bearer 身份验证兜底
+            if (fileToken) {
+                if (!timingSafeEqualStr(newToken, fileToken)) {
+                    return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
+                }
+            } else {
+                const viewerId = await authenticate(request, db);
+                if (!viewerId) {
+                    // 返回一个重定向让客户端带 token 重新请求
+                    return new Response(null, { 
+                        status: 302, 
+                        headers: { 'Location': `/api/file/${fileId}?t=${newToken}` }
+                    });
+                }
             }
         }
         
