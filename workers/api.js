@@ -1,4 +1,5 @@
 // Chillin API Worker — REST API for auth, weeklies, notes, bookmarks
+import webPush from 'web-push';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -111,7 +112,7 @@ function rateLimitedResponse(retryAfter) {
 }
 
 export default {
-    async fetch(request, env) {
+    async fetch(request, env, ctx) {
         const url = new URL(request.url);
         const path = url.pathname;
         const method = request.method;
@@ -131,7 +132,7 @@ export default {
         }
 
         try {
-            return withCors(await router(path, method, request, env), request);
+            return withCors(await router(path, method, request, env, ctx), request);
         } catch (err) {
             console.error('[api] unhandled error:', err);
             return withCors(jsonResponse({ error: '服务器内部错误' }, 500), request);
@@ -339,8 +340,30 @@ async function isOwnedRecord(db, table, id, userId) {
     return Number(existing.user_id) === Number(userId);
 }
 
-async function router(path, method, request, env) {
+async function router(path, method, request, env, ctx) {
     const db = env.DB;
+
+    // Push notifications route
+    if (path === '/api/push/subscribe' && method === 'POST') {
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) return jsonResponse({ error: '未提供登录凭证' }, 401);
+        const token = authHeader.substring(7);
+        const session = await db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?1').bind(token).first();
+        if (!session || new Date(session.expires_at) < new Date()) {
+            return jsonResponse({ error: '无效或过期的会话' }, 401);
+        }
+
+        const sub = await request.json();
+        if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
+            return jsonResponse({ error: '订阅数据不完整' }, 400);
+        }
+
+        await db.prepare('INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id, endpoint) DO UPDATE SET updated_at = CURRENT_TIMESTAMP')
+            .bind(session.user_id, sub.endpoint, sub.keys.p256dh, sub.keys.auth)
+            .run();
+
+        return jsonResponse({ success: true }, 200);
+    }
 
     // ==================== AUTH 认证 ====================
     if (path === '/api/auth/register' && method === 'POST') {
@@ -1265,6 +1288,45 @@ async function router(path, method, request, env) {
             `INSERT INTO echo_cards (user_id, title, summary, topic, related_feed_ids, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, datetime('now')) RETURNING *`
         ).bind(userId, moderatedTitle.text, moderatedSummary.text, moderatedTopic.text, feedIds).first();
+
+        // 尝试发送推送通知给用户的所有设备
+        ctx.waitUntil((async () => {
+            try {
+                const subs = await db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1').bind(userId).all();
+                if (subs && subs.results && subs.results.length > 0) {
+                    webPush.setVapidDetails(
+                        'mailto:admin@chillin.local',
+                        env.VAPID_PUBLIC_KEY,
+                        env.VAPID_PRIVATE_KEY
+                    );
+                    const payload = JSON.stringify({
+                        title: '✨ AI 记忆回响已生成',
+                        body: `探讨了关于 ${moderatedTopic.text} 的新灵感`,
+                        url: '/'
+                    });
+                    
+                    const pushPromises = subs.results.map(async sub => {
+                        try {
+                            const pushSub = {
+                                endpoint: sub.endpoint,
+                                keys: { p256dh: sub.p256dh, auth: sub.auth }
+                            };
+                            await webPush.sendNotification(pushSub, payload);
+                        } catch (err) {
+                            if (err.statusCode === 404 || err.statusCode === 410) {
+                                // 订阅已失效，删除
+                                await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?1').bind(sub.endpoint).run();
+                            } else {
+                                console.error('Push error for endpoint:', sub.endpoint, err);
+                            }
+                        }
+                    });
+                    await Promise.all(pushPromises);
+                }
+            } catch (err) {
+                console.error('Failed to send push notifications:', err);
+            }
+        })());
 
         return jsonResponse(newCard, 201);
     }

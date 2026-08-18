@@ -1,6 +1,7 @@
 name = "chillin-api"
 main = "workers/api.js"
 compatibility_date = "2025-05-08"
+compatibility_flags = ["nodejs_compat"]
 
 # D1 数据库 — 部署后需要把 database_id 替换为实际值
 [[d1_databases]]
@@ -10,6 +11,8 @@ database_id = "59ad83a1-35f2-4e8c-b181-14d064627f1b"
 
 [vars]
 ALLOW_REGISTRATION = "false"
+VAPID_PUBLIC_KEY = "BG6qXQUDG6-gKkP3e2T4s4WBL22226fyU0N4QS_mkCCDW-M-5l3Ma44V5Mgw8ILke_dBrOzvsMbxkNW4lL_4Mtg"
+VAPID_PRIVATE_KEY = "Zsv8CyIxEH-eQoQbCoaefIVWyCRlMoOw7UIQMQPDV4Q"
 
 # 🤖 DeepSeek 大语言模型配置（可选：在 Cloudflare 后台添加密钥变量 LLM_API_KEY）
 LLM_API_BASE = "https://api.deepseek.com/v1"
