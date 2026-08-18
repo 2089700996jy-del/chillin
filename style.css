@@ -2374,4 +2374,34 @@ body.keyboard-open .fab-btn {
   }
 }
 
+/* 同步状态提示 */
+.sync-status {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sync-status[data-tone="ok"] {
+  color: #166534;
+  background: #dcfce7;
+}
+.sync-status[data-tone="warn"] {
+  color: #9a3412;
+  background: #ffedd5;
+}
+.sync-status[data-tone="info"] {
+  color: #1e40af;
+  background: #dbeafe;
+}
+@media screen and (max-width: 768px) {
+  .sync-status {
+    max-width: 96px;
+    font-size: 11px;
+    padding: 3px 8px;
+  }
+}
 

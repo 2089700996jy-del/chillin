@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#6366f1">
     <link rel="manifest" href="/manifest.json">
@@ -55,6 +55,7 @@
                 ← 返回
             </button>
             <div class="nav-right" style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
+                <div id="sync-status" class="sync-status" aria-live="polite" hidden></div>
                 <button id="btn-open-ai-chat" class="btn-text text-primary btn-icon-text" style="font-size: 13px;">
                     <span class="btn-icon">🤖</span><span class="btn-label">AI 回响</span>
                 </button>
@@ -267,6 +268,15 @@
                     <button id="btn-delete-note" class="btn-text text-danger" style="margin-top: -30px;">删除笔记</button>
                 </div>
             </div>
+
+            <div id="note-draft-tip" class="draft-tip-banner" style="display: none;">
+                <span class="draft-tip-icon">📝</span>
+                <span class="draft-tip-text">检测到未保存的笔记草稿（<span id="note-draft-time"></span>），是否恢复？</span>
+                <div class="draft-tip-actions">
+                    <button type="button" id="btn-restore-note-draft" class="btn-text text-primary">恢复草稿</button>
+                    <button type="button" id="btn-discard-note-draft" class="btn-text text-danger">忽略</button>
+                </div>
+            </div>
             
             <div class="note-paper">
                 <input type="hidden" id="edit-note-id">
@@ -433,12 +443,19 @@
                         <button class="btn-chip" data-tag="#技术">#技术</button>
                         <button class="btn-chip" data-tag="#生活">#生活</button>
                         <button class="btn-chip" data-tag="#灵感">#灵感</button>
-                        <button class="btn-chip" id="btn-feed-add-media">📷 图片链接</button>
+                        <button class="btn-chip" id="btn-feed-add-media">📷 图片</button>
                     </div>
                     <button class="btn-primary btn-feed-send" id="btn-send-feed">发送 🚀</button>
                 </div>
                 <div id="feed-media-input-wrapper" style="display:none; margin-top:10px;">
-                    <input type="text" id="feed-media-url" class="search-input" placeholder="输入图片 URL (例如 https://...)" style="width:100%;">
+                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
+                        <button type="button" class="btn-secondary btn-upload-image" data-target="feed-media-url" id="btn-feed-upload-image" style="padding:8px 12px;">本机上传</button>
+                        <span style="font-size:12px; color:#64748b;">或粘贴图片链接</span>
+                    </div>
+                    <input type="text" id="feed-media-url" class="search-input" placeholder="图片 URL（上传后会自动填入）" style="width:100%;">
+                    <div id="feed-media-preview" style="display:none; margin-top:10px;">
+                        <img id="feed-media-preview-img" alt="预览" style="max-height:140px; border-radius:10px; object-fit:cover;">
+                    </div>
                 </div>
             </div>
 
