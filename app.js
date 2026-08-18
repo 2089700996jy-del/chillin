@@ -1734,7 +1734,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
                 <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
                 <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
-                <button class="bookmark-card-edit" data-id="${escapeHtml(String(bm.id))}" title="编辑收藏" style="position:absolute;top:10px;right:42px;background:rgba(255,255,255,0.9);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.1);z-index:2;">✏️</button>
                 <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
             `;
 
@@ -1742,19 +1741,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!hasUrl && hasImage) {
                 card.style.cursor = 'zoom-in';
                 card.addEventListener('click', (e) => {
-                    if (e.target.closest('.bookmark-card-delete') || e.target.closest('.bookmark-card-edit')) return;
+                    if (e.target.closest('.bookmark-card-delete')) return;
                     document.getElementById('image-preview-img').src = resolveAssetUrl(bm.image);
                     document.getElementById('image-preview-modal').classList.add('show');
-                });
-            }
-
-            // 编辑按钮
-            const editBtn = card.querySelector('.bookmark-card-edit');
-            if (editBtn) {
-                editBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    openBookmarkEditor(bm);
                 });
             }
 
