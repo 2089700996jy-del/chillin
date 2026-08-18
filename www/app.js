@@ -1792,26 +1792,32 @@ document.addEventListener('DOMContentLoaded', () => {
                 </div>
             `;
 
-            // Swipe logic
+            // Swipe logic (Touch & Mouse)
             let startX = 0;
             let currentX = 0;
+            let isDragging = false;
             const inner = card.querySelector('.bookmark-card-inner');
             const SWIPE_THRESHOLD = 60;
             
-            card.addEventListener('touchstart', e => {
-                startX = e.touches[0].clientX;
+            const handleStart = (clientX) => {
+                startX = clientX;
+                isDragging = true;
                 inner.style.transition = 'none';
-            }, {passive: true});
-            
-            card.addEventListener('touchmove', e => {
-                const diff = e.touches[0].clientX - startX;
+            };
+
+            const handleMove = (clientX) => {
+                if (!isDragging) return;
+                const diff = clientX - startX;
+                // Only allow right swipe (diff > 0)
                 if (diff > 0) {
                     currentX = diff > SWIPE_THRESHOLD + 20 ? SWIPE_THRESHOLD + 20 : diff;
                     inner.style.transform = `translateX(${currentX}px)`;
                 }
-            }, {passive: true});
-            
-            card.addEventListener('touchend', e => {
+            };
+
+            const handleEnd = () => {
+                if (!isDragging) return;
+                isDragging = false;
                 inner.style.transition = 'transform 0.2s ease';
                 if (currentX > SWIPE_THRESHOLD / 2) {
                     inner.style.transform = `translateX(${SWIPE_THRESHOLD}px)`;
@@ -1819,8 +1825,25 @@ document.addEventListener('DOMContentLoaded', () => {
                     inner.style.transform = `translateX(0px)`;
                 }
                 currentX = 0;
-            });
+            };
+            
+            card.addEventListener('touchstart', e => handleStart(e.touches[0].clientX), {passive: true});
+            card.addEventListener('touchmove', e => handleMove(e.touches[0].clientX), {passive: true});
+            card.addEventListener('touchend', handleEnd);
+            card.addEventListener('touchcancel', handleEnd);
 
+            card.addEventListener('mousedown', e => {
+                if (e.target.closest('.bookmark-action-btn')) return;
+                handleStart(e.clientX);
+            });
+            card.addEventListener('mousemove', e => {
+                if (isDragging) {
+                    e.preventDefault(); // prevent text selection
+                    handleMove(e.clientX);
+                }
+            });
+            card.addEventListener('mouseup', handleEnd);
+            card.addEventListener('mouseleave', handleEnd);
             // Restore on click outside
             document.addEventListener('touchstart', e => {
                 if (!card.contains(e.target)) {
@@ -2695,6 +2718,7 @@ document.addEventListener('DOMContentLoaded', () => {
         return { raw, normalized };
     }
 
+    let currentFeedFilterTag = null;
     window._filterFeedByTag = (tag) => {
         currentFeedFilterTag = currentFeedFilterTag === tag ? null : tag;
         renderFeeds();
