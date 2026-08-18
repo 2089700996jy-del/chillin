@@ -122,12 +122,16 @@ document.addEventListener('DOMContentLoaded', () => {
         authErrorMsg.style.display = 'none';
     });
 
-    authForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    const doLogin = async () => {
         const username = document.getElementById('auth-username').value.trim();
         const password = document.getElementById('auth-password').value.trim();
         const btnAuthSubmit = document.getElementById('btn-auth-submit');
         authErrorMsg.style.display = 'none';
+        if (!username || !password) {
+            authErrorMsg.innerText = '请输入账号和密码';
+            authErrorMsg.style.display = 'block';
+            return;
+        }
 
         if (btnAuthSubmit) {
             btnAuthSubmit.disabled = true;
@@ -178,6 +182,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 btnAuthSubmit.innerText = isRegisterMode ? '注册并进入' : '登录';
             }
         }
+    };
+
+    // 挂载到全局 window，HTML inline onclick 也能调用
+    window._chillinLogin = doLogin;
+    document.getElementById('btn-auth-submit').addEventListener('click', doLogin);
+    document.getElementById('auth-password').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') doLogin();
+    });
+    document.getElementById('auth-username').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') document.getElementById('auth-password').focus();
     });
 
     const apiRequest = async (path, options = {}) => {
