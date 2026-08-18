@@ -126,7 +126,13 @@ document.addEventListener('DOMContentLoaded', () => {
         e.preventDefault();
         const username = document.getElementById('auth-username').value.trim();
         const password = document.getElementById('auth-password').value.trim();
+        const btnAuthSubmit = document.getElementById('btn-auth-submit');
         authErrorMsg.style.display = 'none';
+
+        if (btnAuthSubmit) {
+            btnAuthSubmit.disabled = true;
+            btnAuthSubmit.innerText = isRegisterMode ? '注册中...' : '登录中...';
+        }
 
         try {
             const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
@@ -155,17 +161,24 @@ document.addEventListener('DOMContentLoaded', () => {
             localStorage.setItem('chillin_user', JSON.stringify(authUser));
             
             checkAuth();
+            showToast('登录成功，欢迎来到数字花园', 'success');
+
             checkAndMergeGuestData().then(() => {
                 loadLocalData(); // Reload local cache for new user
                 syncFromApi();   // Fetch new API data
             });
         } catch (err) {
-            if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
-                authErrorMsg.innerText = '网络连接失败，请检查手机网络后重试';
-            } else {
-                authErrorMsg.innerText = err.message;
-            }
+            const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
+                ? '网络连接失败，请检查手机网络后重试'
+                : (err.message || '登录失败');
+            authErrorMsg.innerText = errorMsg;
             authErrorMsg.style.display = 'block';
+            showToast(errorMsg, 'error');
+        } finally {
+            if (btnAuthSubmit) {
+                btnAuthSubmit.disabled = false;
+                btnAuthSubmit.innerText = isRegisterMode ? '注册并进入' : '登录';
+            }
         }
     });
 
