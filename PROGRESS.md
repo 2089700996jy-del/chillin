@@ -25,7 +25,25 @@
 9. **D1 数据库索引优化**：新增 `migrations/0009_perf_and_cleanup.sql`，给 `weeklies`, `notes`, `bookmarks`, `quick_feeds`, `echo_cards`, `sessions` 添加 `user_id` 与 `expires_at` 索引。
 10. **Batch Sync N+1 查询优化与过期 Session 定时清理**：`workers/api.js` 将批量同步单条 DB 轮询优化为单次查询，并于 `scheduled` 事件中定期删除过期 Session。
 11. **AI 记忆回响 SSE 流式打字机效果**：`/api/ai/chat` 接口支持 SSE 流式转发 DeepSeek / Workers AI 文本，前端 `app.js` 实时解包渲染 Markdown。
+12. **安全加固第二轮**（migration `0010_security_hardening.sql` + Worker/前端/Android/_headers）：
+    - 登录/注册/AI/链接解析/上传 **内存限流**（429 + Retry-After）
+    - 文件表增加 `user_id`；上传绑定归属；历史无令牌文件禁止 UUID 直链（需本人登录）
+    - 上传仅允许 JPEG/PNG/GIF/WEBP，**魔数嗅探**防 MIME 伪装
+    - UGC 审计改为写入 `ugc_quarantine` 隔离区后再删业务行（误报可恢复）
+    - 注册密码 ≥8 且需字母+数字；哈希比较改为近似常量时间
+    - API 500 不再回传内部 err.message；响应补安全头
+    - Pages `_headers` 增加 CSP / XFO / nosniff 等
+    - Android `allowBackup=false` + data extraction 排除规则
 
+### 部署本轮安全改动
+
+```bat
+npx wrangler d1 migrations apply DB --remote
+npx wrangler deploy
+git push origin main
+```
+
+> 提醒：若历史上泄露过 `LLM_API_KEY`，请在 Cloudflare / DeepSeek 控制台确认已轮换。
 
 ## 当前决定
 

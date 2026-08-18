@@ -102,6 +102,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+            if (isRegisterMode) {
+                if (username.length < 3 || username.length > 32) {
+                    throw new Error('账号长度需为 3–32 位');
+                }
+                if (password.length < 8) {
+                    throw new Error('密码至少 8 位');
+                }
+                if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+                    throw new Error('密码需同时包含字母和数字');
+                }
+            }
             const res = await fetchWithFallback(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -2571,22 +2582,72 @@ document.addEventListener('DOMContentLoaded', () => {
         aiChatBody.appendChild(botMsgDiv);
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
 
+        const bubbleEl = botMsgDiv.querySelector('.ai-msg-bubble');
+
         try {
-            const res = await apiRequest('/api/ai/chat', {
+            const headers = { 'Content-Type': 'application/json' };
+            if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+            const response = await fetchWithFallback('/api/ai/chat', {
                 method: 'POST',
-                body: JSON.stringify({ question })
+                headers,
+                body: JSON.stringify({ question, stream: true })
             });
 
-            if (res && res.reply) {
-                botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = markdownToHtml(res.reply);
-                aiChatBody.scrollTop = aiChatBody.scrollHeight;
-                return;
+            if (response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                let fullText = '';
+                let isFirstChunk = true;
+
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop() || '';
+
+                    for (const line of lines) {
+                        const trimmed = line.trim();
+                        if (!trimmed) continue;
+                        if (trimmed === 'data: [DONE]') break;
+                        if (trimmed.startsWith('data: ')) {
+                            try {
+                                const payload = JSON.parse(trimmed.slice(6));
+                                if (payload.error) {
+                                    bubbleEl.innerHTML = '🤖 ' + escapeHtml(payload.error);
+                                    break;
+                                }
+                                if (payload.delta) {
+                                    if (isFirstChunk) {
+                                        fullText = '';
+                                        isFirstChunk = false;
+                                    }
+                                    fullText += payload.delta;
+                                    bubbleEl.innerHTML = markdownToHtml(fullText);
+                                    aiChatBody.scrollTop = aiChatBody.scrollHeight;
+                                }
+                            } catch (e) {}
+                        }
+                    }
+                }
+                if (fullText) return;
+            } else if (response.ok) {
+                const res = await response.json();
+                if (res && res.reply) {
+                    bubbleEl.innerHTML = markdownToHtml(res.reply);
+                    aiChatBody.scrollTop = aiChatBody.scrollHeight;
+                    return;
+                }
             }
-        } catch (err) {}
+        } catch (err) {
+            console.error('AI chat stream fetch error:', err);
+        }
 
         // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
         const localReply = getLocalAiReply(question);
-        botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = markdownToHtml(localReply);
+        bubbleEl.innerHTML = markdownToHtml(localReply);
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
     }
 

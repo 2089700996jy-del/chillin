@@ -102,6 +102,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
+            if (isRegisterMode) {
+                if (username.length < 3 || username.length > 32) {
+                    throw new Error('账号长度需为 3–32 位');
+                }
+                if (password.length < 8) {
+                    throw new Error('密码至少 8 位');
+                }
+                if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+                    throw new Error('密码需同时包含字母和数字');
+                }
+            }
             const res = await fetchWithFallback(endpoint, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
