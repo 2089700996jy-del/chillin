@@ -200,6 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
             });
             
             if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') {
+                // 防范极速连续请求与边缘同步延迟：单次 401 进行 300ms 重试一次
+                if (!options._isRetry) {
+                    await new Promise(r => setTimeout(r, 300));
+                    return await apiRequest(path, { ...options, _isRetry: true });
+                }
                 logout();
                 throw new Error('未登录或登录状态已过期，请重新登录');
             }
