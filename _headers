@@ -8,7 +8,10 @@
 
 /sw.js
   Content-Type: text/javascript
-  Cache-Control: no-cache
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
 
 /manifest.json
   Content-Type: application/json
