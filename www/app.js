@@ -1728,14 +1728,66 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const hasImage = bm.image && bm.image.trim();
             card.innerHTML = `
-                ${hasImage
-                    ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-                    : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
-                <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
-                <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
-                <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
-                <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
+                <div class="bookmark-swipe-actions">
+                    <button class="bookmark-action-btn btn-edit-swipe" data-id="${escapeHtml(String(bm.id))}" title="编辑">✏️</button>
+                </div>
+                <div class="bookmark-card-inner">
+                    ${hasImage
+                        ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
+                        : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
+                    <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
+                    <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
+                    <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
+                    <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
+                </div>
             `;
+
+            // Swipe logic
+            let startX = 0;
+            let currentX = 0;
+            const inner = card.querySelector('.bookmark-card-inner');
+            const SWIPE_THRESHOLD = 60;
+            
+            card.addEventListener('touchstart', e => {
+                startX = e.touches[0].clientX;
+                inner.style.transition = 'none';
+            }, {passive: true});
+            
+            card.addEventListener('touchmove', e => {
+                const diff = e.touches[0].clientX - startX;
+                if (diff > 0) {
+                    currentX = diff > SWIPE_THRESHOLD + 20 ? SWIPE_THRESHOLD + 20 : diff;
+                    inner.style.transform = `translateX(${currentX}px)`;
+                }
+            }, {passive: true});
+            
+            card.addEventListener('touchend', e => {
+                inner.style.transition = 'transform 0.2s ease';
+                if (currentX > SWIPE_THRESHOLD / 2) {
+                    inner.style.transform = `translateX(${SWIPE_THRESHOLD}px)`;
+                } else {
+                    inner.style.transform = `translateX(0px)`;
+                }
+                currentX = 0;
+            });
+
+            // Restore on click outside
+            document.addEventListener('touchstart', e => {
+                if (!card.contains(e.target)) {
+                    inner.style.transform = `translateX(0px)`;
+                }
+            });
+
+            // Edit button logic
+            const editBtn = card.querySelector('.btn-edit-swipe');
+            if (editBtn) {
+                editBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    inner.style.transform = `translateX(0px)`;
+                    openBookmarkEditor(bm);
+                });
+            }
 
             // If no URL but has image, click to view image in modal
             if (!hasUrl && hasImage) {
@@ -2593,11 +2645,52 @@ document.addEventListener('DOMContentLoaded', () => {
         return { raw, normalized };
     }
 
+    window._filterFeedByTag = (tag) => {
+        currentFeedFilterTag = currentFeedFilterTag === tag ? null : tag;
+        renderFeeds();
+    };
+
     function renderFeeds() {
         const container = document.getElementById('feeds-stream-container');
+        const filterContainer = document.getElementById('feed-tag-filter-container');
         if (!container) return;
 
-        if (!feedsDatabase || feedsDatabase.length === 0) {
+        // Extract all unique tags
+        const allTags = new Set();
+        (feedsDatabase || []).forEach(f => {
+            (f.tags || []).forEach(t => allTags.add(t));
+        });
+        const tagsList = Array.from(allTags).sort();
+
+        // Render filter bar
+        if (filterContainer) {
+            if (tagsList.length > 0) {
+                filterContainer.style.display = 'flex';
+                let filterHtml = `<div class="feed-filter-chip ${currentFeedFilterTag === null ? 'active' : ''}" data-tag="">全部</div>`;
+                tagsList.forEach(tag => {
+                    filterHtml += `<div class="feed-filter-chip ${currentFeedFilterTag === tag ? 'active' : ''}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</div>`;
+                });
+                filterContainer.innerHTML = filterHtml;
+
+                // Bind click events
+                filterContainer.querySelectorAll('.feed-filter-chip').forEach(chip => {
+                    chip.addEventListener('click', (e) => {
+                        const tag = e.target.dataset.tag;
+                        currentFeedFilterTag = tag ? tag : null;
+                        renderFeeds();
+                    });
+                });
+            } else {
+                filterContainer.style.display = 'none';
+                filterContainer.innerHTML = '';
+            }
+        }
+
+        const displayFeeds = currentFeedFilterTag 
+            ? feedsDatabase.filter(f => f.tags && f.tags.includes(currentFeedFilterTag))
+            : feedsDatabase;
+
+        if (!displayFeeds || displayFeeds.length === 0) {
             container.innerHTML = `
                 <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
                     <div style="font-size: 32px; margin-bottom: 8px;">⚡️</div>
@@ -2610,9 +2703,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const pendingEnrichFeeds = [];
 
-        container.innerHTML = feedsDatabase.map(feed => {
+        container.innerHTML = displayFeeds.map(feed => {
             const tags = feed.tags || [];
-            const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
+            const tagHtml = tags.map(t => `<span class="feed-tag-pill" onclick="event.stopPropagation(); window._filterFeedByTag('${escapeHtml(t)}')">${escapeHtml(t)}</span>`).join('');
+
             
             // Format link preview if summary or link exists
             let linkHtml = '';
@@ -2751,11 +2845,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const feedMediaUrlInput = document.getElementById('feed-media-url');
     const btnFeedAddMedia = document.getElementById('btn-feed-add-media');
     const feedMediaInputWrapper = document.getElementById('feed-media-input-wrapper');
+    const btnFeedRemoveMedia = document.getElementById('btn-feed-remove-media');
 
     if (btnFeedAddMedia && feedMediaInputWrapper) {
         btnFeedAddMedia.addEventListener('click', () => {
-            const isHidden = feedMediaInputWrapper.style.display === 'none';
-            feedMediaInputWrapper.style.display = isHidden ? 'block' : 'none';
+            const uploader = document.getElementById('global-image-uploader');
+            if (uploader) {
+                // Manually trigger upload flow
+                currentUploadTargetInput = feedMediaUrlInput;
+                uploader.click();
+            }
+        });
+    }
+
+    if (btnFeedRemoveMedia) {
+        btnFeedRemoveMedia.addEventListener('click', () => {
+            if (feedMediaUrlInput) {
+                feedMediaUrlInput.value = '';
+                feedMediaUrlInput.dispatchEvent(new Event('input', { bubbles: true }));
+            }
         });
     }
 
@@ -2766,10 +2874,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const url = feedMediaUrlInput.value.trim();
         if (url) {
             previewImg.src = resolveAssetUrl(url);
-            previewWrap.style.display = 'block';
+            previewWrap.style.display = 'inline-block';
+            if (feedMediaInputWrapper) feedMediaInputWrapper.style.display = 'block';
         } else {
             previewImg.removeAttribute('src');
             previewWrap.style.display = 'none';
+            if (feedMediaInputWrapper) feedMediaInputWrapper.style.display = 'none';
         }
     };
     if (feedMediaUrlInput) {

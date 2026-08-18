@@ -451,19 +451,19 @@
                     <button class="btn-primary btn-feed-send" id="btn-send-feed">发送 🚀</button>
                 </div>
                 <div id="feed-media-input-wrapper" style="display:none; margin-top:10px;">
-                    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:8px;">
-                        <button type="button" class="btn-secondary btn-upload-image" data-target="feed-media-url" id="btn-feed-upload-image" style="padding:8px 12px;">本机上传</button>
-                        <span style="font-size:12px; color:#64748b;">或粘贴图片链接</span>
-                    </div>
-                    <input type="text" id="feed-media-url" class="search-input" placeholder="图片 URL（上传后会自动填入）" style="width:100%;">
-                    <div id="feed-media-preview" style="display:none; margin-top:10px;">
+                    <input type="text" id="feed-media-url" class="search-input" placeholder="图片 URL（选填/上传自动填入）" style="width:100%; display:none;">
+                    <div id="feed-media-preview" style="display:none; margin-top:10px; position:relative; display:inline-block;">
                         <img id="feed-media-preview-img" alt="预览" style="max-height:140px; border-radius:10px; object-fit:cover;">
+                        <button id="btn-feed-remove-media" style="position:absolute; top:-8px; right:-8px; background:var(--danger-color); color:white; border:none; border-radius:50%; width:24px; height:24px; cursor:pointer;">×</button>
                     </div>
                 </div>
             </div>
 
             <!-- AI 智能回响卡片区 -->
             <div id="echo-cards-container" class="echo-cards-container"></div>
+
+            <!-- 随手记标签筛选栏 -->
+            <div id="feed-tag-filter-container" class="feed-tag-filter-container" style="display: none;"></div>
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
