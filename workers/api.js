@@ -1152,17 +1152,63 @@ async function router(path, method, request, env) {
         const echoLimit = checkRateLimit(`echo:${userId}`, 20, 10 * 60 * 1000);
         if (!echoLimit.ok) return rateLimitedResponse(echoLimit.retryAfter);
 
-        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
+        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 12').bind(userId).all();
         if (!feeds.results || feeds.results.length === 0) {
             return jsonResponse({ error: '暂无足够的随手记生成回响卡片，请先多记录一些思考吧！' }, 400);
         }
 
-        const recentTexts = feeds.results.map(f => f.content).join('；');
-        const cardTitle = "近期思维回响与灵感梳理";
-        const topic = "每周灵感";
-        const summary = `在最近的记录中，你关注了：${recentTexts.slice(0, 120)}... AI 建议你继续保持记录，把这些零碎灵感进一步转化为深度的笔记或周记！`;
+        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all();
+        const contextText = [
+            ...(feeds.results || []).map(f => `[随手记 ${f.created_at || ''}] ${f.content || ''}`),
+            ...(notes.results || []).map(n => `[笔记 ${n.date || ''}] ${n.title}: ${(n.content || '').slice(0, 120)}`)
+        ].join('\n');
+
+        const systemPrompt = [
+            '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。',
+            '请根据用户近期记录，生成一张「回响卡片」。',
+            '必须只输出一个 JSON 对象，不要 markdown 代码块，不要额外解释。',
+            '字段：title（不超过24字的标题）、topic（2-8字主题标签）、summary（80-160字摘要，温暖有条理，提炼共性与可继续的思考，不要逐条复读原文）。'
+        ].join('');
+
+        const userPrompt = `用户近期记录：\n${contextText}\n\n请生成回响卡片 JSON。`;
+
+        let cardTitle = '';
+        let topic = '灵感脉络';
+        let summary = '';
+
+        let reply = '';
+        try {
+            reply = await callCustomLlm(env, systemPrompt, userPrompt);
+        } catch (err) {
+            console.error('Echo LLM error:', err);
+        }
+
+        if (reply) {
+            try {
+                const cleaned = String(reply).replace(/```json/gi, '').replace(/```/g, '').trim();
+                const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+                const parsed = JSON.parse(jsonMatch ? jsonMatch[0] : cleaned);
+                cardTitle = String(parsed.title || '').trim();
+                topic = String(parsed.topic || topic).trim() || topic;
+                summary = String(parsed.summary || '').trim();
+            } catch (err) {
+                // 模型未按 JSON 返回时，把正文当作摘要
+                summary = String(reply).replace(/```/g, '').trim().slice(0, 200);
+                cardTitle = '近期思维回响';
+            }
+        }
+
+        if (!cardTitle || !summary) {
+            const recentTexts = feeds.results.map(f => f.content).filter(Boolean).slice(0, 5).join('；');
+            cardTitle = cardTitle || '近期思维回响与灵感梳理';
+            summary = summary || `在最近的记录中，你关注了：${recentTexts.slice(0, 120)}… 建议把这些零碎灵感进一步写成笔记或周记。`;
+            topic = topic || '本地摘要';
+        }
+
+        const moderatedTitle = moderateText(cardTitle, env);
+        const moderatedTopic = moderateText(topic, env);
         const moderatedSummary = moderateText(summary, env);
-        if (!moderatedSummary.ok) {
+        if (!moderatedTitle.ok || !moderatedTopic.ok || !moderatedSummary.ok) {
             return jsonResponse({ error: '内容不合规，已拒绝生成' }, 403);
         }
 
@@ -1170,7 +1216,7 @@ async function router(path, method, request, env) {
         const newCard = await db.prepare(
             `INSERT INTO echo_cards (user_id, title, summary, topic, related_feed_ids, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, datetime('now')) RETURNING *`
-        ).bind(userId, cardTitle, moderatedSummary.text, topic, feedIds).first();
+        ).bind(userId, moderatedTitle.text, moderatedSummary.text, moderatedTopic.text, feedIds).first();
 
         return jsonResponse(newCard, 201);
     }
