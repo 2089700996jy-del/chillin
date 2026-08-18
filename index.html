@@ -23,14 +23,14 @@
             <h1 class="auth-title">Chillin.</h1>
             <p class="auth-desc">请输入您的通行账号进入属于您的数字花园</p>
             
-            <form id="auth-form" class="auth-form">
-                <input type="text" id="auth-username" class="auth-input" placeholder="账号名" required autocomplete="username">
-                <input type="password" id="auth-password" class="auth-input" placeholder="密码" required autocomplete="current-password">
+            <div id="auth-form" class="auth-form">
+                <input type="text" id="auth-username" class="auth-input" placeholder="账号名" autocomplete="username" enterkeyhint="next">
+                <input type="password" id="auth-password" class="auth-input" placeholder="密码" autocomplete="current-password" enterkeyhint="done" id="auth-password">
                 
                 <div class="auth-error" id="auth-error-msg" style="display: none;">账号或密码错误</div>
                 
-                <button type="submit" class="auth-btn btn-primary" id="btn-auth-submit">登录</button>
-            </form>
+                <button type="button" class="auth-btn btn-primary" id="btn-auth-submit" onclick="window._chillinLogin && window._chillinLogin()">登录</button>
+            </div>
             
             <div class="auth-switch">
                 <span id="auth-switch-text">还没有账号？</span>
@@ -554,6 +554,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-    <script src="app.js?v=2.0.3"></script>
+    <script src="app.js?v=2.0.4"></script>
 </body>
 </html>
