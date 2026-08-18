@@ -821,10 +821,18 @@ async function router(path, method, request, env) {
         if (!(await isOwnedRecord(db, 'bookmarks', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
-        await db.prepare(
-            `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
-        ).bind(body.id, body.type, body.title, body.url, body.desc || '', userId).run();
+        const image = body.image || body.img || null;
+        try {
+            await db.prepare(
+                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+            ).bind(body.id, body.type, body.title, body.url, body.desc || body.description || '', image, userId).run();
+        } catch (e) {
+            await db.prepare(
+                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+            ).bind(body.id, body.type, body.title, body.url, body.desc || body.description || '', userId).run();
+        }
         const row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(row, 201);
     }
@@ -1041,20 +1049,34 @@ async function router(path, method, request, env) {
         const aiLimit = checkRateLimit(`ai:${userId}`, 30, 10 * 60 * 1000);
         if (!aiLimit.ok) return rateLimitedResponse(aiLimit.retryAfter);
 
-        const { question, stream } = await request.json();
+        const { question, stream, history } = await request.json();
         if (!question) return jsonResponse({ error: '请输入问题' }, 400);
 
-        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 20').bind(userId).all();
+        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 25').bind(userId).all();
         const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 15').bind(userId).all();
-        const weeklies = await db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
+        const weeklies = await db.prepare('SELECT title, summary, content, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
+        const bookmarks = await db.prepare('SELECT title, url, description FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC LIMIT 20').bind(userId).all();
 
         const contextText = [
             ...(feeds.results || []).map(f => `[随手记 ${f.created_at}] ${f.content}`),
             ...(notes.results || []).map(n => `[备忘录 ${n.date}] ${n.title}: ${n.content || ''}`),
-            ...(weeklies.results || []).map(w => `[周记 ${w.date}] ${w.title}: ${w.summary || ''}`)
+            ...(weeklies.results || []).map(w => `[周记 ${w.date}] ${w.title}: ${w.summary || ''} ${(w.content || '').slice(0, 200)}`),
+            ...(bookmarks.results || []).map(b => `[收藏/书签] ${b.title}: ${b.description || ''} (${b.url || ''})`)
         ].join('\n');
 
-        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请根据提供的用户历史笔记上下文，用温暖、有条理且简炼的中文回答用户的提问。如果上下文中没有提到，请根据通识回答并友好告知。';
+        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请结合提供的用户数字花园过往所有切片记忆（随手记、备忘录、周记、书签收藏），用温暖、有条理且简炼的中文回答用户的提问。如果切片记忆中提到了对应条目，请简要总结引用。如果上下文中没有提到，请根据通识回答并友好告知。';
+
+        // 整理多轮对话历史
+        const sanitizedHistory = (Array.isArray(history) ? history : [])
+            .filter(h => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string')
+            .slice(-6); // 保留最近 6 条历史，防止超出上下文窗口
+
+        const messages = [
+            { role: 'system', content: `${systemPrompt}\n\n【用户数字花园记忆切片】:\n${contextText}` },
+            ...sanitizedHistory,
+            { role: 'user', content: question }
+        ];
+
         const userPrompt = `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}`;
 
         if (stream) {
@@ -1065,7 +1087,7 @@ async function router(path, method, request, env) {
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
                     };
                     try {
-                        const streamed = await callCustomLlmStream(env, systemPrompt, userPrompt, (chunk) => {
+                        const streamed = await callCustomLlmStreamWithMessages(env, messages, (chunk) => {
                             const moderated = moderateText(chunk, env);
                             if (moderated.ok && moderated.text) {
                                 push({ delta: moderated.text });
@@ -1090,7 +1112,7 @@ async function router(path, method, request, env) {
 
         let reply = '';
         try {
-            reply = await callCustomLlm(env, systemPrompt, userPrompt);
+            reply = await callCustomLlmWithMessages(env, messages);
         } catch (err) {
             console.error('LLM Call error:', err);
         }
@@ -1308,7 +1330,7 @@ function sseResponse(stream, request) {
     return new Response(stream, { status: 200, headers });
 }
 
-async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
+async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
     const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
     const apiKey = env.LLM_API_KEY;
     const model = env.LLM_MODEL || 'deepseek-chat';
@@ -1323,10 +1345,7 @@ async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
             },
             body: JSON.stringify({
                 model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                ],
+                messages,
                 temperature: 0.7,
                 stream: true
             })
@@ -1370,10 +1389,7 @@ async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
 
     if (env.AI) {
         const aiRes = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ]
+            messages
         });
         if (aiRes.response) {
             onChunk(aiRes.response);
@@ -1384,7 +1400,7 @@ async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
     return false;
 }
 
-async function callCustomLlm(env, systemPrompt, userPrompt) {
+async function callCustomLlmWithMessages(env, messages) {
     const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
     const apiKey = env.LLM_API_KEY;
     const model = env.LLM_MODEL || 'deepseek-chat';
@@ -1399,10 +1415,7 @@ async function callCustomLlm(env, systemPrompt, userPrompt) {
             },
             body: JSON.stringify({
                 model,
-                messages: [
-                    { role: 'system', content: systemPrompt },
-                    { role: 'user', content: userPrompt }
-                ],
+                messages,
                 temperature: 0.7
             })
         });
@@ -1417,18 +1430,21 @@ async function callCustomLlm(env, systemPrompt, userPrompt) {
             return data.choices[0].message.content;
         }
     }
+    return '';
+}
 
-    if (env.AI) {
-        const aiRes = await env.AI.run('@cf/meta/llama-3-8b-instruct', {
-            messages: [
-                { role: 'system', content: systemPrompt },
-                { role: 'user', content: userPrompt }
-            ]
-        });
-        return aiRes.response || '';
-    }
+async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
+    return callCustomLlmStreamWithMessages(env, [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+    ], onChunk);
+}
 
-    return null;
+async function callCustomLlm(env, systemPrompt, userPrompt) {
+    return callCustomLlmWithMessages(env, [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt }
+    ]);
 }
 
 function formatWeekly(row) {

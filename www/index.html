@@ -56,6 +56,9 @@
             </button>
             <div class="nav-right" style="margin-left: auto; display: flex; align-items: center; gap: 15px;">
                 <div id="sync-status" class="sync-status" aria-live="polite" hidden></div>
+                <button id="btn-open-global-search" class="btn-text text-primary btn-icon-text" style="font-size: 13px;" title="全局搜索 (Cmd/Ctrl + K)">
+                    <span class="btn-icon">🔍</span><span class="btn-label">搜索 <kbd class="search-kbd">⌘K</kbd></span>
+                </button>
                 <button id="btn-open-ai-chat" class="btn-text text-primary btn-icon-text" style="font-size: 13px;">
                     <span class="btn-icon">🤖</span><span class="btn-label">AI 回响</span>
                 </button>
@@ -500,6 +503,23 @@
     <div class="modal-overlay" id="image-preview-modal" onclick="this.classList.remove('show')">
         <img id="image-preview-img" src="" alt="" style="max-width:90vw;max-height:90vh;border-radius:12px;cursor:default;" onclick="event.stopPropagation()">
     </div>
+
+    <!-- 全局搜索弹窗 (Cmd/Ctrl + K) -->
+    <div class="modal-overlay global-search-overlay" id="global-search-modal">
+        <div class="global-search-card" onclick="event.stopPropagation()">
+            <div class="global-search-header">
+                <span class="global-search-icon">🔍</span>
+                <input type="text" id="global-search-input" placeholder="一个框找全站（随手记、笔记、周记、收藏、批注）..." autocomplete="off">
+                <button class="btn-text" id="btn-close-global-search">Esc</button>
+            </div>
+            <div class="global-search-results" id="global-search-results">
+                <div class="global-search-empty">输入关键词，搜索您的数字花园所有内存切片...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 全局 Toast 轻提示容器 -->
+    <div class="toast-container" id="toast-container"></div>
 
     <!-- 全局隐藏的文件上传器 -->
     <input type="file" id="global-image-uploader" accept="image/*" style="display: none;">
