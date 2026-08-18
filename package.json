@@ -9,7 +9,8 @@
     "cap:add:android": "npx cap add android"
   },
   "dependencies": {
-    "@capacitor/core": "^8.5.0"
+    "@capacitor/core": "^8.5.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",

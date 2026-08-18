@@ -28,6 +28,54 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 3000);
     }
 
+    async function registerPushNotification() {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+        try {
+            const reg = await navigator.serviceWorker.ready;
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') return;
+
+            const existingSub = await reg.pushManager.getSubscription();
+            if (existingSub) {
+                await sendSubscriptionToServer(existingSub);
+                return;
+            }
+
+            const VAPID_PUBLIC_KEY = 'BG6qXQUDG6-gKkP3e2T4s4WBL22226fyU0N4QS_mkCCDW-M-5l3Ma44V5Mgw8ILke_dBrOzvsMbxkNW4lL_4Mtg';
+            const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
+            
+            const subscription = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: convertedVapidKey
+            });
+            await sendSubscriptionToServer(subscription);
+        } catch (e) {
+            console.error('Push registration failed:', e);
+        }
+    }
+
+    function urlBase64ToUint8Array(base64String) {
+        const padding = '='.repeat((4 - base64String.length % 4) % 4);
+        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+        const rawData = window.atob(base64);
+        const outputArray = new Uint8Array(rawData.length);
+        for (let i = 0; i < rawData.length; ++i) {
+            outputArray[i] = rawData.charCodeAt(i);
+        }
+        return outputArray;
+    }
+
+    async function sendSubscriptionToServer(subscription) {
+        try {
+            await apiRequest('/api/push/subscribe', {
+                method: 'POST',
+                body: JSON.stringify(subscription)
+            });
+        } catch (e) {
+            console.error('Failed to send subscription:', e);
+        }
+    }
+
     // ==========================================
     // 1. 数据持久化与认证逻辑
     // ==========================================
@@ -169,6 +217,8 @@ document.addEventListener('DOMContentLoaded', () => {
             loadLocalData(); // Reload local cache for new user
             syncFromApi();   // Fetch new API data immediately
             checkAndMergeGuestData();
+            setTimeout(registerPushNotification, 2000); // Request push permission after 2s
+
         } catch (err) {
             const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
                 ? '网络连接失败，请检查手机网络后重试'
@@ -1968,10 +2018,10 @@ document.addEventListener('DOMContentLoaded', () => {
     // 1. 页面初始化：首先校验登录状态（如果已登录自动隐藏登录遮罩层，免去重复输入密码）
     checkAuth();
 
-    // 2. 立即用本地缓存渲染（秒开）
+    if (authToken) {
+        setTimeout(registerPushNotification, 2000);
+    }
     loadLocalData();
-
-    // 3. 登录状态下立即发起 API 数据同步
     if (authToken) {
         syncFromApi();
     }

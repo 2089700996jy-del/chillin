@@ -1,9 +1,9 @@
 // Chillin Service Worker — 网络优先，离线回退缓存
-const CACHE_NAME = 'chillin-v7';
+const CACHE_NAME = 'chillin-v8';
 const ASSETS = [
     '/',
     '/index.html',
-    '/app.js?v=2.0.4',
+    '/app.js?v=2.0.5',
     '/style.css',
     '/manifest.json',
     '/icons/icon-192.png',
@@ -37,5 +37,49 @@ self.addEventListener('fetch', (e) => {
                 return res;
             })
             .catch(() => caches.match(e.request).then((m) => m || caches.match('/index.html')))
+    );
+});
+
+// 处理推送通知
+self.addEventListener('push', (e) => {
+    let data = { title: '新消息', body: '你收到了一条新消息' };
+    try {
+        if (e.data) {
+            data = e.data.json();
+        }
+    } catch (err) {}
+
+    const options = {
+        body: data.body,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/icon-192.png',
+        vibrate: [100, 50, 100],
+        data: {
+            url: data.url || '/'
+        }
+    };
+
+    e.waitUntil(
+        self.registration.showNotification(data.title, options)
+    );
+});
+
+// 点击通知跳转
+self.addEventListener('notificationclick', (e) => {
+    e.notification.close();
+    const urlToOpen = new URL(e.notification.data.url, self.location.origin).href;
+
+    e.waitUntil(
+        clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+            for (let i = 0; i < windowClients.length; i++) {
+                const client = windowClients[i];
+                if (client.url === urlToOpen && 'focus' in client) {
+                    return client.focus();
+                }
+            }
+            if (clients.openWindow) {
+                return clients.openWindow(urlToOpen);
+            }
+        })
     );
 });
