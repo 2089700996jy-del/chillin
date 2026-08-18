@@ -162,11 +162,9 @@ document.addEventListener('DOMContentLoaded', () => {
             
             checkAuth();
             showToast('登录成功，欢迎来到数字花园', 'success');
-
-            checkAndMergeGuestData().then(() => {
-                loadLocalData(); // Reload local cache for new user
-                syncFromApi();   // Fetch new API data
-            });
+            loadLocalData(); // Reload local cache for new user
+            syncFromApi();   // Fetch new API data immediately
+            checkAndMergeGuestData();
         } catch (err) {
             const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
                 ? '网络连接失败，请检查手机网络后重试'
@@ -1900,9 +1898,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     localStorage.removeItem('default_gardenBookmarks');
                     localStorage.removeItem('default_gardenFeeds');
                     
-                    alert('本地数据已成功合并并同步至云端！');
+                    showToast('本地数据已成功合并并同步至云端！', 'success');
                 } catch (e) {
-                    alert('合并同步部分数据失败，请重试：' + e.message);
+                    showToast('合并同步部分数据失败：' + e.message, 'error');
                 }
             }
         }
@@ -1914,11 +1912,13 @@ document.addEventListener('DOMContentLoaded', () => {
     // 2. 立即用本地缓存渲染（秒开）
     loadLocalData();
 
-    // 3. 检测合并游客数据
-    checkAndMergeGuestData().then(() => {
-        // 4. 后台静默同步 API 数据（有变化则自动刷新）
+    // 3. 登录状态下立即发起 API 数据同步
+    if (authToken) {
         syncFromApi();
-    });
+    }
+
+    // 4. 后台检测合并游客数据
+    checkAndMergeGuestData();
 
     // 智能后台无感自动同步引擎 (Seamless Auto-Sync Engine)
     let autoSyncInterval = null;
