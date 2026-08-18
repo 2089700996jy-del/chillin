@@ -3289,7 +3289,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Append Bot Typing Indicator
         const botMsgDiv = document.createElement('div');
         botMsgDiv.className = 'ai-msg ai-msg-bot';
-        botMsgDiv.innerHTML = `<div class="ai-msg-bubble">🤖 DeepSeek AI 正在检索过往记忆并思考中...</div>`;
+        botMsgDiv.innerHTML = `<div class="ai-msg-bubble">🤖 思考中...</div>`;
         aiChatBody.appendChild(botMsgDiv);
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
 
