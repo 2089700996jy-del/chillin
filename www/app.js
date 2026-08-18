@@ -1819,7 +1819,6 @@ document.addEventListener('DOMContentLoaded', () => {
         switchView('bookmarks');
         showToast(isEdit ? '收藏更新成功' : '新增收藏成功', 'success');
     });
-    });
 
 
     // ==========================================
