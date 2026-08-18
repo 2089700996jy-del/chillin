@@ -1,6 +1,34 @@
 document.addEventListener('DOMContentLoaded', () => {
 
     // ==========================================
+    // 0. 全局轻提示与防碰撞 ID 生成器
+    // ==========================================
+    let aiChatHistory = [];
+
+    function generateUniqueId() {
+        return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    }
+
+    function showToast(msg, type = 'info') {
+        const container = document.getElementById('toast-container');
+        if (!container) {
+            console.log(`[Toast ${type}] ${msg}`);
+            return;
+        }
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+        toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(msg)}</span>`;
+        container.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(10px)';
+            toast.style.transition = 'all 0.25s ease';
+            setTimeout(() => toast.remove(), 250);
+        }, 3000);
+    }
+
+    // ==========================================
     // 1. 数据持久化与认证逻辑
     // ==========================================
     // 智能动态基地址：同源 Pages 代理优先（避免移动端跨域及 DNS 阻断），非同源降级直连 Worker
@@ -1481,6 +1509,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const el = document.createElement('div');
             el.className = 'note-item';
+            el.setAttribute('data-note-id', String(note.id));
             const previewText = note.content ? escapeHtml(note.content.substring(0, 30)).replace(/\n/g, ' ') + '...' : '无正文内容';
             
             // 如果笔记有批注，显示批注数量气泡
@@ -1664,6 +1693,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const hasUrl = /^https?:\/\//i.test(rawUrl);
             const card = document.createElement(hasUrl ? 'a' : 'div');
             card.className = 'bookmark-card';
+            card.setAttribute('data-bookmark-id', String(bm.id));
             if (hasUrl) { card.href = rawUrl; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
 
             const hasImage = bm.image && bm.image.trim();
@@ -1674,6 +1704,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
                 <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
                 <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
+                <button class="bookmark-card-edit" data-id="${escapeHtml(String(bm.id))}" title="编辑收藏" style="position:absolute;top:10px;right:42px;background:rgba(255,255,255,0.9);border:none;border-radius:50%;width:26px;height:26px;cursor:pointer;font-size:12px;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 5px rgba(0,0,0,0.1);z-index:2;">✏️</button>
                 <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
             `;
 
@@ -1681,9 +1712,19 @@ document.addEventListener('DOMContentLoaded', () => {
             if (!hasUrl && hasImage) {
                 card.style.cursor = 'zoom-in';
                 card.addEventListener('click', (e) => {
-                    if (e.target.closest('.bookmark-card-delete')) return;
+                    if (e.target.closest('.bookmark-card-delete') || e.target.closest('.bookmark-card-edit')) return;
                     document.getElementById('image-preview-img').src = resolveAssetUrl(bm.image);
                     document.getElementById('image-preview-modal').classList.add('show');
+                });
+            }
+
+            // 编辑按钮
+            const editBtn = card.querySelector('.bookmark-card-edit');
+            if (editBtn) {
+                editBtn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    openBookmarkEditor(bm);
                 });
             }
 
@@ -1699,6 +1740,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     saveBookmarksDatabase();
                     apiSyncBookmark({id: deletedId}, 'DELETE');
                     renderBookmarks();
+                    showToast('已移除收藏', 'info');
                 }
             });
 
@@ -1706,14 +1748,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const openBookmarkEditor = () => {
+    const openBookmarkEditor = (bmToEdit = null) => {
         bookmarkEditorForm.reset();
-        editBookmarkId.value = '';
-        editBookmarkImage.value = '';
-        // Reset chips
-        document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-        const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');
-        if (firstChip) { firstChip.classList.add('active'); editBookmarkType.value = '🌐 网站'; }
+        if (bmToEdit) {
+            editBookmarkId.value = bmToEdit.id;
+            editBookmarkTitle.value = bmToEdit.title || '';
+            editBookmarkUrl.value = bmToEdit.url || '';
+            editBookmarkDesc.value = bmToEdit.desc || bmToEdit.description || '';
+            if (editBookmarkImage) editBookmarkImage.value = bmToEdit.image || '';
+            const typeVal = bmToEdit.type || '🌐 网站';
+            editBookmarkType.value = typeVal;
+            document.querySelectorAll('.cat-chip').forEach(c => {
+                c.classList.toggle('active', c.getAttribute('data-val') === typeVal);
+            });
+        } else {
+            editBookmarkId.value = '';
+            if (editBookmarkImage) editBookmarkImage.value = '';
+            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+            const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');
+            if (firstChip) { firstChip.classList.add('active'); editBookmarkType.value = '🌐 网站'; }
+        }
         switchView('bookmark-editor');
     };
 
@@ -1721,8 +1775,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bookmarkEditorForm.addEventListener('submit', (e) => {
         e.preventDefault();
+        const existingIdStr = (editBookmarkId.value || '').trim();
+        const isEdit = Boolean(existingIdStr);
+        const targetId = isEdit ? (isNaN(Number(existingIdStr)) ? existingIdStr : Number(existingIdStr)) : generateUniqueId();
+        
         const newBookmark = {
-            id: Date.now(),
+            id: targetId,
             type: editBookmarkType.value,
             title: editBookmarkTitle.value.trim(),
             url: editBookmarkUrl.value.trim(),
@@ -1730,11 +1788,21 @@ document.addEventListener('DOMContentLoaded', () => {
             image: (editBookmarkImage && editBookmarkImage.value || '').trim()
         };
         stampLocalUpdate(newBookmark);
-        bookmarksDatabase.push(newBookmark);
+        
+        if (isEdit) {
+            const idx = bookmarksDatabase.findIndex(b => String(b.id) === String(targetId));
+            if (idx !== -1) bookmarksDatabase[idx] = newBookmark;
+            else bookmarksDatabase.unshift(newBookmark);
+        } else {
+            bookmarksDatabase.unshift(newBookmark);
+        }
+
         saveBookmarksDatabase();
         apiSyncBookmark(newBookmark, 'POST');
         renderBookmarks();
         switchView('bookmarks');
+        showToast(isEdit ? '收藏更新成功' : '新增收藏成功', 'success');
+    });
     });
 
 
@@ -2620,7 +2688,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             return `
-                <div class="feed-item-card">
+                <div class="feed-item-card" data-feed-id="${feed.id}">
                     <div class="feed-header">
                         <div class="feed-tags">${tagHtml}</div>
                         <div style="display:flex;align-items:center;gap:10px;">
@@ -2886,15 +2954,34 @@ document.addEventListener('DOMContentLoaded', () => {
             return;
         }
 
-        container.innerHTML = echoCardsDatabase.map(card => `
-            <div class="echo-card">
-                <button class="echo-card-delete" onclick="deleteEchoCard(${card.id})" title="删除卡片">×</button>
-                <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
-                <div class="echo-card-title">${escapeHtml(card.title)}</div>
-                <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
-            </div>
-        `).join('');
+        container.innerHTML = echoCardsDatabase.map(card => {
+            let feedLinksHtml = '';
+            try {
+                const feedIds = typeof card.related_feed_ids === 'string'
+                    ? JSON.parse(card.related_feed_ids)
+                    : (Array.isArray(card.related_feed_ids) ? card.related_feed_ids : []);
+                if (Array.isArray(feedIds) && feedIds.length > 0) {
+                    feedLinksHtml = `<div class="echo-card-feeds">` + feedIds.map(fid =>
+                        `<span class="echo-card-feed-link" onclick="jumpToFeed('${escapeHtml(String(fid))}')">🔗 随手记 #${fid}</span>`
+                    ).join('') + `</div>`;
+                }
+            } catch (e) {}
+
+            return `
+                <div class="echo-card" id="echo-card-${card.id}">
+                    <button class="echo-card-delete" onclick="deleteEchoCard(${card.id})" title="删除卡片">×</button>
+                    <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
+                    <div class="echo-card-title">${escapeHtml(card.title)}</div>
+                    <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
+                    ${feedLinksHtml}
+                </div>
+            `;
+        }).join('');
     }
+
+    window.jumpToFeed = function(feedId) {
+        jumpToElement('feeds', `[data-feed-id="${feedId}"]`);
+    };
 
     window.deleteEchoCard = function(id) {
         if (!confirm('确定要删除这张 AI 回响卡片吗？')) return;
@@ -3009,6 +3096,182 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // ==========================================
+    // 6.5 全局搜索 (Cmd/Ctrl + K) & 页面跳转定位
+    // ==========================================
+    const globalSearchModal = document.getElementById('global-search-modal');
+    const globalSearchInput = document.getElementById('global-search-input');
+    const globalSearchResults = document.getElementById('global-search-results');
+    const btnOpenGlobalSearch = document.getElementById('btn-open-global-search');
+    const btnCloseGlobalSearch = document.getElementById('btn-close-global-search');
+
+    function openGlobalSearch() {
+        if (!globalSearchModal) return;
+        globalSearchModal.classList.add('show');
+        if (globalSearchInput) {
+            globalSearchInput.value = '';
+            globalSearchInput.focus();
+            renderGlobalSearchResults('');
+        }
+    }
+
+    function closeGlobalSearch() {
+        if (!globalSearchModal) return;
+        globalSearchModal.classList.remove('show');
+    }
+
+    if (btnOpenGlobalSearch) btnOpenGlobalSearch.addEventListener('click', openGlobalSearch);
+    if (btnCloseGlobalSearch) btnCloseGlobalSearch.addEventListener('click', closeGlobalSearch);
+
+    document.addEventListener('keydown', (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+            e.preventDefault();
+            if (globalSearchModal && globalSearchModal.classList.contains('show')) closeGlobalSearch();
+            else openGlobalSearch();
+        } else if (e.key === 'Escape' && globalSearchModal && globalSearchModal.classList.contains('show')) {
+            closeGlobalSearch();
+        }
+    });
+
+    if (globalSearchInput) {
+        globalSearchInput.addEventListener('input', (e) => {
+            renderGlobalSearchResults(e.target.value.trim());
+        });
+    }
+
+    function renderGlobalSearchResults(query) {
+        if (!globalSearchResults) return;
+        if (!query) {
+            globalSearchResults.innerHTML = `<div class="global-search-empty">输入关键词，搜索您的数字花园所有切片记忆...</div>`;
+            return;
+        }
+
+        const q = query.toLowerCase();
+        const results = [];
+
+        // 1. 周记
+        (database || []).forEach(w => {
+            if ((w.title || '').toLowerCase().includes(q) || (w.summary || '').toLowerCase().includes(q) || (w.content || '').toLowerCase().includes(q)) {
+                results.push({
+                    type: '周记',
+                    view: 'home',
+                    id: w.id,
+                    title: w.title || '无标题周记',
+                    snippet: w.summary || (w.content || '').slice(0, 80),
+                    targetElSelector: `#weekly-card-${w.id}`
+                });
+            }
+        });
+
+        // 2. 随手记
+        (feedsDatabase || []).forEach(f => {
+            if ((f.content || '').toLowerCase().includes(q) || (f.summary || '').toLowerCase().includes(q)) {
+                results.push({
+                    type: '⚡ 随手记',
+                    view: 'feeds',
+                    id: f.id,
+                    title: f.created_at || '随手记切片',
+                    snippet: f.content,
+                    targetElSelector: `[data-feed-id="${f.id}"]`
+                });
+            }
+        });
+
+        // 3. 笔记
+        (notesDatabase || []).forEach(n => {
+            if ((n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q)) {
+                results.push({
+                    type: '📝 笔记',
+                    view: 'notes',
+                    id: n.id,
+                    title: n.title || '无标题笔记',
+                    snippet: (n.content || '').slice(0, 80),
+                    targetElSelector: `[data-note-id="${n.id}"]`
+                });
+            }
+        });
+
+        // 4. 收藏
+        (bookmarksDatabase || []).forEach(b => {
+            if ((b.title || '').toLowerCase().includes(q) || (b.desc || b.description || '').toLowerCase().includes(q) || (b.url || '').toLowerCase().includes(q)) {
+                results.push({
+                    type: '🔖 收藏',
+                    view: 'bookmarks',
+                    id: b.id,
+                    title: b.title || '无标题收藏',
+                    snippet: (b.desc || b.description || b.url || ''),
+                    targetElSelector: `[data-bookmark-id="${b.id}"]`
+                });
+            }
+        });
+
+        // 5. AI 回响卡片
+        (echoCardsDatabase || []).forEach(c => {
+            if ((c.title || '').toLowerCase().includes(q) || (c.summary || '').toLowerCase().includes(q) || (c.topic || '').toLowerCase().includes(q)) {
+                results.push({
+                    type: '✨ AI 回响',
+                    view: 'home',
+                    id: c.id,
+                    title: c.title || 'AI 回响卡片',
+                    snippet: c.summary,
+                    targetElSelector: `#echo-card-${c.id}`
+                });
+            }
+        });
+
+        // 6. 阅读批注
+        (readerAnnotations || []).forEach(a => {
+            if ((a.text || '').toLowerCase().includes(q)) {
+                results.push({
+                    type: '📚 阅读批注',
+                    view: 'reader',
+                    id: a.id,
+                    title: a.bookTitle ? `《${a.bookTitle}》批注` : '阅读批注',
+                    snippet: a.text,
+                    targetElSelector: `[data-annotation-id="${a.id}"]`
+                });
+            }
+        });
+
+        if (results.length === 0) {
+            globalSearchResults.innerHTML = `<div class="global-search-empty">未匹配到与 "${escapeHtml(query)}" 相关的切片</div>`;
+            return;
+        }
+
+        globalSearchResults.innerHTML = results.slice(0, 15).map(item => `
+            <div class="global-search-item" data-view="${item.view}" data-selector="${escapeHtml(item.targetElSelector || '')}">
+                <div class="global-search-item-header">
+                    <span class="global-search-title">${escapeHtml(item.title)}</span>
+                    <span class="global-search-tag">${escapeHtml(item.type)}</span>
+                </div>
+                <div class="global-search-snippet">${escapeHtml(item.snippet)}</div>
+            </div>
+        `).join('');
+
+        globalSearchResults.querySelectorAll('.global-search-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const targetView = el.getAttribute('data-view');
+                const selector = el.getAttribute('data-selector');
+                closeGlobalSearch();
+                jumpToElement(targetView, selector);
+            });
+        });
+    }
+
+    function jumpToElement(targetView, selector) {
+        if (targetView) switchView(targetView);
+        if (!selector) return;
+        setTimeout(() => {
+            const el = document.querySelector(selector);
+            if (el) {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                el.classList.remove('highlight-flash');
+                void el.offsetWidth;
+                el.classList.add('highlight-flash');
+            }
+        }, 150);
+    }
+
     async function sendAiChatMessage() {
         if (!aiChatInput || !aiChatBody) return;
         const question = aiChatInput.value.trim();
@@ -3036,10 +3299,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const headers = { 'Content-Type': 'application/json' };
             if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
+            // 多轮对话：保存 user 输入
+            const recentHistory = [...aiChatHistory];
+            aiChatHistory.push({ role: 'user', content: question });
+
             const response = await fetchWithFallback('/api/ai/chat', {
                 method: 'POST',
                 headers,
-                body: JSON.stringify({ question, stream: true })
+                body: JSON.stringify({ question, stream: true, history: recentHistory })
             });
 
             if (response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
@@ -3080,11 +3347,15 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
-                if (fullText) return;
+                if (fullText) {
+                    aiChatHistory.push({ role: 'assistant', content: fullText });
+                    return;
+                }
             } else if (response.ok) {
                 const res = await response.json();
                 if (res && res.reply) {
                     bubbleEl.innerHTML = markdownToHtml(res.reply);
+                    aiChatHistory.push({ role: 'assistant', content: res.reply });
                     aiChatBody.scrollTop = aiChatBody.scrollHeight;
                     return;
                 }
@@ -3096,6 +3367,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
         const localReply = getLocalAiReply(question);
         bubbleEl.innerHTML = markdownToHtml(localReply);
+        aiChatHistory.push({ role: 'assistant', content: localReply });
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
     }
 
