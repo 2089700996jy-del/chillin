@@ -1052,27 +1052,31 @@ async function router(path, method, request, env) {
         const { question, stream, history } = await request.json();
         if (!question) return jsonResponse({ error: '请输入问题' }, 400);
 
-        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 25').bind(userId).all();
-        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 15').bind(userId).all();
-        const weeklies = await db.prepare('SELECT title, summary, content, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
-        const bookmarks = await db.prepare('SELECT title, url, description FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC LIMIT 20').bind(userId).all();
+        const [feedsRes, notesRes, weekliesRes, bookmarksRes] = await Promise.all([
+            db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all(),
+            db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all(),
+            db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all(),
+            db.prepare('SELECT title, url, description FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all()
+        ]);
 
-        const contextText = [
-            ...(feeds.results || []).map(f => `[随手记 ${f.created_at}] ${f.content}`),
-            ...(notes.results || []).map(n => `[备忘录 ${n.date}] ${n.title}: ${n.content || ''}`),
-            ...(weeklies.results || []).map(w => `[周记 ${w.date}] ${w.title}: ${w.summary || ''} ${(w.content || '').slice(0, 200)}`),
-            ...(bookmarks.results || []).map(b => `[收藏/书签] ${b.title}: ${b.description || ''} (${b.url || ''})`)
+        const rawContext = [
+            ...(feedsRes.results || []).map(f => `[随手记 ${f.created_at || ''}] ${f.content}`),
+            ...(notesRes.results || []).map(n => `[备忘录 ${n.date || ''}] ${n.title}: ${(n.content || '').slice(0, 100)}`),
+            ...(weekliesRes.results || []).map(w => `[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`),
+            ...(bookmarksRes.results || []).map(b => `[收藏] ${b.title}: ${b.description || ''}`)
         ].join('\n');
 
-        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆回响助手。请结合提供的用户数字花园过往所有切片记忆（随手记、备忘录、周记、书签收藏），用温暖、有条理且简炼的中文回答用户的提问。如果切片记忆中提到了对应条目，请简要总结引用。如果上下文中没有提到，请根据通识回答并友好告知。';
+        const contextText = rawContext.length > 1500 ? rawContext.slice(0, 1500) + '\n...' : rawContext;
+
+        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆助手。请根据用户过往花园记忆切片及对话历史，用温暖简炼的中文回答。未查到的内容请友好回答。';
 
         // 整理多轮对话历史
         const sanitizedHistory = (Array.isArray(history) ? history : [])
             .filter(h => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string')
-            .slice(-6); // 保留最近 6 条历史，防止超出上下文窗口
+            .slice(-6);
 
         const messages = [
-            { role: 'system', content: `${systemPrompt}\n\n【用户数字花园记忆切片】:\n${contextText}` },
+            { role: 'system', content: `${systemPrompt}\n\n【用户花园记忆切片】:\n${contextText}` },
             ...sanitizedHistory,
             { role: 'user', content: question }
         ];
