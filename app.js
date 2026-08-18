@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let authToken = localStorage.getItem('chillin_token') || '';
     let authUser = JSON.parse(localStorage.getItem('chillin_user') || 'null');
-
+    let currentFeedFilterTag = null; // declared here to prevent TDZ
     // DOM Elements for Auth
     const authOverlay = document.getElementById('auth-overlay');
     const authForm = document.getElementById('auth-form');
@@ -2718,7 +2718,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return { raw, normalized };
     }
 
-    let currentFeedFilterTag = null;
     window._filterFeedByTag = (tag) => {
         currentFeedFilterTag = currentFeedFilterTag === tag ? null : tag;
         renderFeeds();
