@@ -2655,13 +2655,8 @@ body.keyboard-open .fab-btn {
   border-color: var(--primary-color);
 }
 
-/* Bookmark Swipe to Edit */
+/* Bookmark styles reverted */
 .bookmark-card {
-  position: relative;
-  overflow: hidden;
-  transition: transform 0.2s ease;
-}
-.bookmark-card-inner {
   background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 16px;
@@ -2671,45 +2666,10 @@ body.keyboard-open .fab-btn {
   gap: 8px;
   height: 100%;
   position: relative;
-  z-index: 2;
-  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s, border-color 0.3s;
 }
 .bookmark-card:hover {
-  transform: none; /* Disable old hover */
-}
-.bookmark-card-inner:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-md);
   border-color: rgba(99, 102, 241, 0.3);
-}
-.bookmark-swipe-actions {
-  position: absolute;
-  top: 0;
-  left: 0;
-  bottom: 0;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  padding-left: 16px;
-  background: var(--primary-color);
-  border-radius: 16px;
-  z-index: 1;
-}
-.bookmark-action-btn {
-  background: transparent;
-  border: none;
-  color: white;
-  font-size: 20px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  transition: background 0.2s;
-}
-.bookmark-action-btn:hover {
-  background: rgba(255,255,255,0.2);
 }
