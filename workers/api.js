@@ -17,11 +17,11 @@ const ALLOWED_ORIGINS = new Set([
 
 // 判断来源是否被允许：白名单 + 任意 localhost 来源（原生壳 WebView 的 scheme/端口可能变化）
 function isAllowedOrigin(origin) {
-    if (!origin) return false;
+    if (!origin) return true;
     if (ALLOWED_ORIGINS.has(origin)) return true;
     try {
         const hostname = new URL(origin).hostname;
-        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost') || hostname.endsWith('.pages.dev') || hostname.endsWith('.workers.dev');
     } catch (e) {
         return false;
     }
@@ -29,13 +29,35 @@ function isAllowedOrigin(origin) {
 
 function withCors(response, request) {
     const origin = request.headers.get('Origin');
-    if (isAllowedOrigin(origin)) {
-        const headers = new Headers(response.headers);
-        headers.set('Access-Control-Allow-Origin', origin);
+    const headers = new Headers(response.headers);
+    if (!origin || isAllowedOrigin(origin)) {
+        headers.set('Access-Control-Allow-Origin', origin || '*');
         headers.set('Vary', 'Origin');
-        return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
     }
-    return response;
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+
+// 解析 Token 鉴权
+async function authenticate(request, db) {
+    const authHeader = request.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return null;
+    }
+    const token = authHeader.split(' ')[1];
+    if (!token) return null;
+    
+    // 检查 session 是否有效且未过期
+    let session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
+        .bind(token, Date.now()).first();
+
+    // 防范 D1 主从节点边缘同步延迟：极快连续请求如果初次未查到，微秒级重试一次
+    if (!session) {
+        await new Promise(r => setTimeout(r, 60));
+        session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
+            .bind(token, Date.now()).first();
+    }
+        
+    return session ? session.user_id : null;
 }
 
 const SECURITY_HEADERS = {
@@ -307,20 +329,7 @@ async function verifyPassword(password, stored) {
     return { valid: timingSafeEqualStr(toHex(bits), expected), upgrade: false };
 }
 
-// 解析 Token 鉴权
-async function authenticate(request, db) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return null;
-    }
-    const token = authHeader.split(' ')[1];
-    
-    // 检查 session 是否有效且未过期
-    const session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
-        .bind(token, Date.now()).first();
-        
-    return session ? session.user_id : null;
-}
+
 
 // 越权防护：客户端可传 id 触发 INSERT OR REPLACE，写入前校验该 id 是否属于他人，防止跨用户覆盖
 async function isOwnedRecord(db, table, id, userId) {
