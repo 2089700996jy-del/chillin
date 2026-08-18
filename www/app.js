@@ -1778,9 +1778,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const hasImage = bm.image && bm.image.trim();
             card.innerHTML = `
-                <div class="bookmark-swipe-actions">
-                    <button class="bookmark-action-btn btn-edit-swipe" data-id="${escapeHtml(String(bm.id))}" title="编辑">✏️</button>
-                </div>
                 <div class="bookmark-card-inner">
                     ${hasImage
                         ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
@@ -1791,76 +1788,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
                 </div>
             `;
-
-            // Swipe logic (Touch & Mouse)
-            let startX = 0;
-            let currentX = 0;
-            let isDragging = false;
-            const inner = card.querySelector('.bookmark-card-inner');
-            const SWIPE_THRESHOLD = 60;
-            
-            const handleStart = (clientX) => {
-                startX = clientX;
-                isDragging = true;
-                inner.style.transition = 'none';
-            };
-
-            const handleMove = (clientX) => {
-                if (!isDragging) return;
-                const diff = clientX - startX;
-                // Only allow right swipe (diff > 0)
-                if (diff > 0) {
-                    currentX = diff > SWIPE_THRESHOLD + 20 ? SWIPE_THRESHOLD + 20 : diff;
-                    inner.style.transform = `translateX(${currentX}px)`;
-                }
-            };
-
-            const handleEnd = () => {
-                if (!isDragging) return;
-                isDragging = false;
-                inner.style.transition = 'transform 0.2s ease';
-                if (currentX > SWIPE_THRESHOLD / 2) {
-                    inner.style.transform = `translateX(${SWIPE_THRESHOLD}px)`;
-                } else {
-                    inner.style.transform = `translateX(0px)`;
-                }
-                currentX = 0;
-            };
-            
-            card.addEventListener('touchstart', e => handleStart(e.touches[0].clientX), {passive: true});
-            card.addEventListener('touchmove', e => handleMove(e.touches[0].clientX), {passive: true});
-            card.addEventListener('touchend', handleEnd);
-            card.addEventListener('touchcancel', handleEnd);
-
-            card.addEventListener('mousedown', e => {
-                if (e.target.closest('.bookmark-action-btn')) return;
-                handleStart(e.clientX);
-            });
-            card.addEventListener('mousemove', e => {
-                if (isDragging) {
-                    e.preventDefault(); // prevent text selection
-                    handleMove(e.clientX);
-                }
-            });
-            card.addEventListener('mouseup', handleEnd);
-            card.addEventListener('mouseleave', handleEnd);
-            // Restore on click outside
-            document.addEventListener('touchstart', e => {
-                if (!card.contains(e.target)) {
-                    inner.style.transform = `translateX(0px)`;
-                }
-            });
-
-            // Edit button logic
-            const editBtn = card.querySelector('.btn-edit-swipe');
-            if (editBtn) {
-                editBtn.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    inner.style.transform = `translateX(0px)`;
-                    openBookmarkEditor(bm);
-                });
-            }
 
             // If no URL but has image, click to view image in modal
             if (!hasUrl && hasImage) {
