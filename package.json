@@ -13,6 +13,7 @@
   },
   "devDependencies": {
     "@capacitor/android": "^8.5.0",
-    "@capacitor/cli": "^8.5.0"
+    "@capacitor/cli": "^8.5.0",
+    "wrangler": "^4.86.0"
   }
 }

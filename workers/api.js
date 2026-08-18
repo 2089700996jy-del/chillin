@@ -38,6 +38,56 @@ function withCors(response, request) {
     return response;
 }
 
+const SECURITY_HEADERS = {
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'strict-origin-when-cross-origin',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()'
+};
+
+function applySecurityHeaders(headers) {
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
+        if (!headers.has(k)) headers.set(k, v);
+    }
+    return headers;
+}
+
+// ==================== 简易内存限流（按隔离实例生效，防爆破/刷费用） ====================
+const rateLimitBuckets = new Map();
+
+function getClientIp(request) {
+    return request.headers.get('CF-Connecting-IP')
+        || (request.headers.get('X-Forwarded-For') || '').split(',')[0].trim()
+        || 'unknown';
+}
+
+function checkRateLimit(key, limit, windowMs) {
+    const now = Date.now();
+    // 偶发清理过期桶，避免 Map 无限增长
+    if (rateLimitBuckets.size > 5000) {
+        for (const [k, v] of rateLimitBuckets) {
+            if (now > v.resetAt) rateLimitBuckets.delete(k);
+        }
+    }
+    let bucket = rateLimitBuckets.get(key);
+    if (!bucket || now > bucket.resetAt) {
+        bucket = { count: 0, resetAt: now + windowMs };
+        rateLimitBuckets.set(key, bucket);
+    }
+    bucket.count += 1;
+    if (bucket.count > limit) {
+        return { ok: false, retryAfter: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)) };
+    }
+    return { ok: true };
+}
+
+function rateLimitedResponse(retryAfter) {
+    const res = jsonResponse({ error: '请求过于频繁，请稍后再试' }, 429);
+    const headers = new Headers(res.headers);
+    headers.set('Retry-After', String(retryAfter || 60));
+    return new Response(res.body, { status: 429, headers });
+}
+
 export default {
     async fetch(request, env) {
         const url = new URL(request.url);
@@ -47,13 +97,13 @@ export default {
         // CORS 预检
         if (method === 'OPTIONS') {
             const origin = request.headers.get('Origin');
-            const headers = {
+            const headers = applySecurityHeaders(new Headers({
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
                 'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-            };
+            }));
             if (isAllowedOrigin(origin)) {
-                headers['Access-Control-Allow-Origin'] = origin;
-                headers['Vary'] = 'Origin';
+                headers.set('Access-Control-Allow-Origin', origin);
+                headers.set('Vary', 'Origin');
             }
             return new Response(null, { status: 204, headers });
         }
@@ -61,15 +111,16 @@ export default {
         try {
             return withCors(await router(path, method, request, env), request);
         } catch (err) {
-            return withCors(jsonResponse({ error: err.message }, 500), request);
+            console.error('[api] unhandled error:', err);
+            return withCors(jsonResponse({ error: '服务器内部错误' }, 500), request);
         }
     },
 
-    // 定时任务：每小时扫描 D1 中的 UGC 内容，清理违规引流信息，并自动清理过期 Session
+    // 定时任务：每小时扫描 UGC → 隔离违规内容；并清理过期 Session
     async scheduled(event, env, ctx) {
         try {
             const result = await scanAndAudit(env.DB);
-            console.log(`[audit] scheduled scan: scanned=${result.scanned} removed=${result.removed}`);
+            console.log(`[audit] scheduled scan: scanned=${result.scanned} quarantined=${result.quarantined}`);
         } catch (err) {
             console.error('[audit] scheduled scan failed:', err);
         }
@@ -83,19 +134,54 @@ export default {
 };
 
 function corsResponse(body, status) {
-    const headers = {
+    const headers = applySecurityHeaders(new Headers({
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization'
-    };
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Content-Type': 'application/json'
+    }));
     if (!body) return new Response(null, { status, headers });
-    return new Response(JSON.stringify(body), {
-        status,
-        headers: { ...headers, 'Content-Type': 'application/json' }
-    });
+    return new Response(JSON.stringify(body), { status, headers });
 }
 
 function jsonResponse(body, status) {
     return corsResponse(body, status);
+}
+
+function validatePassword(password) {
+    if (!password || password.length < 8) return '密码至少 8 位';
+    if (password.length > 128) return '密码过长';
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+        return '密码需同时包含字母和数字';
+    }
+    return null;
+}
+
+function timingSafeEqualStr(a, b) {
+    const enc = new TextEncoder();
+    const ba = enc.encode(String(a || ''));
+    const bb = enc.encode(String(b || ''));
+    const len = Math.max(ba.length, bb.length);
+    let out = ba.length ^ bb.length;
+    for (let i = 0; i < len; i++) {
+        out |= (ba[i] || 0) ^ (bb[i] || 0);
+    }
+    return out === 0;
+}
+
+function sniffImageMime(bytes) {
+    if (!bytes || bytes.length < 12) return null;
+    // JPEG
+    if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg';
+    // PNG
+    if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'image/png';
+    // GIF
+    if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'image/gif';
+    // WEBP: RIFF....WEBP
+    if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46
+        && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+        return 'image/webp';
+    }
+    return null;
 }
 
 // ==================== SSRF 防护 ====================
@@ -206,7 +292,7 @@ async function verifyPassword(password, stored) {
     if (!stored || !stored.startsWith('pbkdf2$')) {
         const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
         const legacy = toHex(hashBuffer);
-        return { valid: legacy === stored, upgrade: legacy === stored };
+        return { valid: timingSafeEqualStr(legacy, stored), upgrade: timingSafeEqualStr(legacy, stored) };
     }
 
     const parts = stored.split('$');
@@ -218,7 +304,7 @@ async function verifyPassword(password, stored) {
         { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
         keyMaterial, 256
     );
-    return { valid: toHex(bits) === expected, upgrade: false };
+    return { valid: timingSafeEqualStr(toHex(bits), expected), upgrade: false };
 }
 
 // 解析 Token 鉴权
@@ -249,15 +335,20 @@ async function router(path, method, request, env) {
 
     // ==================== AUTH 认证 ====================
     if (path === '/api/auth/register' && method === 'POST') {
+        const regLimit = checkRateLimit(`register:${getClientIp(request)}`, 5, 60 * 60 * 1000);
+        if (!regLimit.ok) return rateLimitedResponse(regLimit.retryAfter);
+
         // 校验是否允许注册
         if (env.ALLOW_REGISTRATION !== 'true') {
             return jsonResponse({ error: '注册功能已关闭，请联系管理员。' }, 403);
         }
 
         const { username, password } = await request.json();
-        if (!username || !password || username.length < 3 || password.length < 6) {
-            return jsonResponse({ error: '账号必须大于3位，密码必须大于6位' }, 400);
+        if (!username || username.length < 3 || username.length > 32) {
+            return jsonResponse({ error: '账号长度需为 3–32 位' }, 400);
         }
+        const pwdErr = validatePassword(password);
+        if (pwdErr) return jsonResponse({ error: pwdErr }, 400);
 
         const existing = await db.prepare('SELECT id FROM users WHERE username = ?1').bind(username).first();
         if (existing) {
@@ -282,6 +373,9 @@ async function router(path, method, request, env) {
     }
 
     if (path === '/api/auth/login' && method === 'POST') {
+        const loginLimit = checkRateLimit(`login:${getClientIp(request)}`, 10, 15 * 60 * 1000);
+        if (!loginLimit.ok) return rateLimitedResponse(loginLimit.retryAfter);
+
         const { username, password } = await request.json();
         if (!username || !password) return jsonResponse({ error: '请输入账号和密码' }, 400);
 
@@ -306,18 +400,26 @@ async function router(path, method, request, env) {
         return jsonResponse({ token, username, userId: user.id }, 200);
     }
 
-    // ==================== FILE 路由（访问令牌校验） ====================
+    // ==================== FILE 路由（访问令牌 + 归属校验） ====================
     if (path.startsWith('/api/file/') && method === 'GET') {
         const fileId = path.replace('/api/file/', '');
         if (!fileId) return new Response('Not Found', { status: 404 });
         
-        const row = await db.prepare('SELECT mime_type, data, access_token FROM files WHERE id = ?1').bind(fileId).first();
+        const row = await db.prepare('SELECT mime_type, data, access_token, user_id FROM files WHERE id = ?1').bind(fileId).first();
         if (!row) return new Response('Not Found', { status: 404 });
 
-        // 访问控制：新上传文件需携带匹配的 ?t= 访问令牌；历史无令牌文件回退为 UUID 直链
         const fileToken = new URL(request.url).searchParams.get('t') || '';
-        if (row.access_token != null && row.access_token !== fileToken) {
-            return new Response('Forbidden', { status: 403 });
+        if (row.access_token != null && row.access_token !== '') {
+            // 新文件：必须携带匹配的访问令牌
+            if (!timingSafeEqualStr(row.access_token, fileToken)) {
+                return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
+            }
+        } else {
+            // 历史无令牌文件：仅允许已登录且归属本人；无归属则拒绝直链
+            const viewerId = await authenticate(request, db);
+            if (!viewerId || row.user_id == null || Number(row.user_id) !== Number(viewerId)) {
+                return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
+            }
         }
         
         let responseData = row.data;
@@ -329,12 +431,12 @@ async function router(path, method, request, env) {
         
         return new Response(responseData, {
             status: 200,
-            headers: {
-                'Content-Type': row.mime_type,
-                'Cache-Control': 'public, max-age=31536000',
-                'X-Content-Type-Options': 'nosniff',
-                'X-Robots-Tag': 'noindex, nofollow, noarchive'
-            }
+            headers: applySecurityHeaders(new Headers({
+                'Content-Type': row.mime_type || 'application/octet-stream',
+                'Cache-Control': 'private, max-age=86400',
+                'X-Robots-Tag': 'noindex, nofollow, noarchive',
+                'Content-Disposition': 'inline'
+            }))
         });
     }
 
@@ -343,6 +445,9 @@ async function router(path, method, request, env) {
         // 鉴权：防止被当作匿名链接抓取代理滥用
         const linkUserId = await authenticate(request, db);
         if (!linkUserId) return jsonResponse({ error: '未登录或登录已过期' }, 401);
+
+        const linkLimit = checkRateLimit(`link:${linkUserId}`, 40, 10 * 60 * 1000);
+        if (!linkLimit.ok) return rateLimitedResponse(linkLimit.retryAfter);
 
         const { url } = await request.json();
         if (!url || !url.match(/^https?:\/\//i)) {
@@ -566,6 +671,9 @@ async function router(path, method, request, env) {
 
     // ==================== UPLOAD 上传 ====================
     if (path === '/api/upload' && method === 'POST') {
+        const uploadLimit = checkRateLimit(`upload:${userId}`, 60, 10 * 60 * 1000);
+        if (!uploadLimit.ok) return rateLimitedResponse(uploadLimit.retryAfter);
+
         try {
             const formData = await request.formData();
             const file = formData.get('file');
@@ -577,19 +685,26 @@ async function router(path, method, request, env) {
             if (arrayBuffer.byteLength > MAX_SIZE) {
                 return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
             }
-            const mimeType = file.type || 'application/octet-stream';
-            const DANGEROUS_MIME = ['text/html', 'image/svg+xml', 'application/xhtml+xml', 'text/xml'];
-            if (DANGEROUS_MIME.includes(mimeType)) {
-                return jsonResponse({ error: '不支持的文件类型' }, 400);
+            const bytes = new Uint8Array(arrayBuffer);
+            const sniffed = sniffImageMime(bytes);
+            const claimed = (file.type || '').toLowerCase();
+            const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
+            // 以魔数嗅探为准，拒绝伪装 MIME / 非图片
+            if (!sniffed || !ALLOWED_MIME.has(sniffed)) {
+                return jsonResponse({ error: '仅支持 JPEG / PNG / GIF / WEBP 图片' }, 400);
+            }
+            if (claimed && claimed !== 'application/octet-stream' && claimed !== sniffed) {
+                return jsonResponse({ error: '文件类型与内容不匹配' }, 400);
             }
             const id = crypto.randomUUID();
             const accessToken = crypto.randomUUID();
-            await db.prepare('INSERT INTO files (id, mime_type, data, access_token) VALUES (?1, ?2, ?3, ?4)')
-                .bind(id, mimeType, arrayBuffer, accessToken).run();
+            await db.prepare('INSERT INTO files (id, mime_type, data, access_token, user_id) VALUES (?1, ?2, ?3, ?4, ?5)')
+                .bind(id, sniffed, arrayBuffer, accessToken, userId).run();
                 
             return jsonResponse([{ src: `/api/file/${id}?t=${accessToken}` }], 201);
         } catch (err) {
-            return jsonResponse({ error: err.message }, 500);
+            console.error('[upload] error:', err);
+            return jsonResponse({ error: '上传失败' }, 500);
         }
     }
 
@@ -923,6 +1038,9 @@ async function router(path, method, request, env) {
 
     // ==================== AI CHAT & MEMORY 记忆回响问答 ====================
     if (path === '/api/ai/chat' && method === 'POST') {
+        const aiLimit = checkRateLimit(`ai:${userId}`, 30, 10 * 60 * 1000);
+        if (!aiLimit.ok) return rateLimitedResponse(aiLimit.retryAfter);
+
         const { question, stream } = await request.json();
         if (!question) return jsonResponse({ error: '请输入问题' }, 400);
 
@@ -991,6 +1109,9 @@ async function router(path, method, request, env) {
 
     // ==================== AI 本周回顾 ====================
     if (path === '/api/ai/review' && method === 'POST') {
+        const reviewLimit = checkRateLimit(`ai-review:${userId}`, 20, 10 * 60 * 1000);
+        if (!reviewLimit.ok) return rateLimitedResponse(reviewLimit.retryAfter);
+
         const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 30').bind(userId).all();
         const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 15').bind(userId).all();
         const weeklies = await db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 8').bind(userId).all();
@@ -1028,6 +1149,9 @@ async function router(path, method, request, env) {
 
     // ==================== AI ECHO CARD GENERATION ====================
     if (path === '/api/echo/generate' && method === 'POST') {
+        const echoLimit = checkRateLimit(`echo:${userId}`, 20, 10 * 60 * 1000);
+        if (!echoLimit.ok) return rateLimitedResponse(echoLimit.retryAfter);
+
         const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all();
         if (!feeds.results || feeds.results.length === 0) {
             return jsonResponse({ error: '暂无足够的随手记生成回响卡片，请先多记录一些思考吧！' }, 400);
@@ -1125,11 +1249,11 @@ async function cleanExpiredSessions(db) {
 }
 
 function sseResponse(stream, request) {
-    const headers = new Headers({
+    const headers = applySecurityHeaders(new Headers({
         'Content-Type': 'text/event-stream; charset=utf-8',
         'Cache-Control': 'no-cache',
         'Connection': 'keep-alive'
-    });
+    }));
     const origin = request.headers.get('Origin');
     if (isAllowedOrigin(origin)) {
         headers.set('Access-Control-Allow-Origin', origin);
@@ -1309,7 +1433,7 @@ function ugcHasViolation(row, cols) {
 }
 
 async function scanAndAudit(db, userId) {
-    const results = { scanned: 0, removed: 0, alerts: [] };
+    const results = { scanned: 0, quarantined: 0, removed: 0, alerts: [] };
     const tables = [
         { name: 'notes', cols: ['title', 'content', 'annotations'] },
         { name: 'quick_feeds', cols: ['content', 'summary', 'tags', 'media_url'] },
@@ -1324,17 +1448,38 @@ async function scanAndAudit(db, userId) {
         for (const row of (rows.results || [])) {
             results.scanned++;
             if (ugcHasViolation(row, t.cols)) {
+                const snippet = String(row[t.cols[0]] || '').slice(0, 100);
+                const ownerId = row.user_id != null ? row.user_id : (userId || null);
+                // 先写入隔离区，保留完整 payload，便于误报恢复
+                try {
+                    await db.prepare(
+                        `INSERT INTO ugc_quarantine (table_name, record_id, user_id, payload, snippet, reason)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+                    ).bind(
+                        t.name,
+                        String(row.id),
+                        ownerId,
+                        JSON.stringify(row),
+                        snippet,
+                        'ugc_keyword_match'
+                    ).run();
+                } catch (err) {
+                    console.error('[audit] quarantine insert failed:', err);
+                    // 隔离失败则跳过删除，避免不可恢复丢数据
+                    continue;
+                }
+
                 if (userId) {
                     await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1 AND user_id = ?2`).bind(row.id, userId).run();
                 } else {
                     await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1`).bind(row.id).run();
                 }
-                const snippet = String(row[t.cols[0]] || '').slice(0, 100);
                 await db.prepare(
-                    `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'removed', datetime('now'))`
+                    `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'quarantined', datetime('now'))`
                 ).bind(t.name, String(row.id), snippet).run();
-                results.removed++;
-                results.alerts.push({ table: t.name, id: row.id, snippet });
+                results.quarantined++;
+                results.removed++; // 兼容旧字段
+                results.alerts.push({ table: t.name, id: row.id, snippet, action: 'quarantined' });
             }
         }
     }
