@@ -2662,28 +2662,10 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const tagsList = Array.from(allTags).sort();
 
-        // Render filter bar
+        // Render filter bar (Removed per user request)
         if (filterContainer) {
-            if (tagsList.length > 0) {
-                filterContainer.style.display = 'flex';
-                let filterHtml = `<div class="feed-filter-chip ${currentFeedFilterTag === null ? 'active' : ''}" data-tag="">全部</div>`;
-                tagsList.forEach(tag => {
-                    filterHtml += `<div class="feed-filter-chip ${currentFeedFilterTag === tag ? 'active' : ''}" data-tag="${escapeHtml(tag)}">${escapeHtml(tag)}</div>`;
-                });
-                filterContainer.innerHTML = filterHtml;
-
-                // Bind click events
-                filterContainer.querySelectorAll('.feed-filter-chip').forEach(chip => {
-                    chip.addEventListener('click', (e) => {
-                        const tag = e.target.dataset.tag;
-                        currentFeedFilterTag = tag ? tag : null;
-                        renderFeeds();
-                    });
-                });
-            } else {
-                filterContainer.style.display = 'none';
-                filterContainer.innerHTML = '';
-            }
+            filterContainer.style.display = 'none';
+            filterContainer.innerHTML = '';
         }
 
         const displayFeeds = currentFeedFilterTag 
@@ -3087,14 +3069,7 @@ document.addEventListener('DOMContentLoaded', () => {
         container.innerHTML = echoCardsDatabase.map(card => {
             let feedLinksHtml = '';
             try {
-                const feedIds = typeof card.related_feed_ids === 'string'
-                    ? JSON.parse(card.related_feed_ids)
-                    : (Array.isArray(card.related_feed_ids) ? card.related_feed_ids : []);
-                if (Array.isArray(feedIds) && feedIds.length > 0) {
-                    feedLinksHtml = `<div class="echo-card-feeds">` + feedIds.map(fid =>
-                        `<span class="echo-card-feed-link" onclick="jumpToFeed('${escapeHtml(String(fid))}')">🔗 随手记 #${fid}</span>`
-                    ).join('') + `</div>`;
-                }
+                // Removed feed links logic
             } catch (e) {}
 
             return `
