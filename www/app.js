@@ -3435,10 +3435,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    // PWA：注册 Service Worker（离线缓存静态资源）
+    // PWA：注册与自动感知更新 Service Worker
     if ('serviceWorker' in navigator) {
         window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').catch(() => {});
+            navigator.serviceWorker.register('/sw.js').then(reg => {
+                reg.onupdatefound = () => {
+                    const installingWorker = reg.installing;
+                    if (installingWorker) {
+                        installingWorker.onstatechange = () => {
+                            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                                showToast('手机 PWA 已感知到最新版本，正在加载...', 'success');
+                                setTimeout(() => window.location.reload(), 1200);
+                            }
+                        };
+                    }
+                };
+            }).catch(() => {});
         });
     }
 });
