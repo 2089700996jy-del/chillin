@@ -21,4 +21,5 @@ export const actions = {
     renderHeatmap: null,
     renderBookshelf: null,
     renderEchoCards: null,
+    getReaderAnnotations: null,
 };
