@@ -11,7 +11,7 @@
 - 数据库：Cloudflare D1（`migrations/0001`–`0012`）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`git@github.com:2089700996jy-del/chillin.git`
-- 前端缓存：`app.js`/`style.css` `?v=2.4.1`，SW `chillin-v20`；页面左下角显示 `v2.4.1`（`js/version.js`）
+- 前端缓存：`app.js`/`style.css` `?v=2.4.2`，SW `chillin-v21`；左下角深色胶囊显示 `v2.4.2`（`js/version.js`），标题栏也会带版本
 - 前端模块化：入口 `app.js`（编排）+ `js/`（utils / state / api / ui / actions / router / weeklies / notes / bookmarks / upload / reader / feeds / echo-ai / search / version）
 - Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制，含 `js/`）
 
