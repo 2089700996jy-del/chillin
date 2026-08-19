@@ -80,15 +80,7 @@ const renderCards = (filter) => {
     const sortedDB = [...state.database].sort((a, b) => b.id - a.id);
     sortedDB.forEach(item => {
         if (filter !== "all" && item.category !== filter) return;
-        
-        if (ui.currentHomeSearchQuery) {
-            const query = ui.currentHomeSearchQuery.toLowerCase();
-            const titleMatch = (item.title || '').toLowerCase().includes(query);
-            const summaryMatch = (item.summary || '').toLowerCase().includes(query);
-            const contentMatch = (item.content || '').toLowerCase().includes(query);
-            if (!titleMatch && !summaryMatch && !contentMatch) return;
-        }
-        
+
         const card = document.createElement('div');
         card.className = "notion-collection-card";
         card.dataset.id = item.id;

@@ -71,12 +71,6 @@ const renderNotes = () => {
     notesListContainer.innerHTML = '';
     const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
     sortedNotes.forEach(note => {
-        if (ui.currentNotesSearchQuery) {
-            const query = ui.currentNotesSearchQuery.toLowerCase();
-            const titleMatch = (note.title || '').toLowerCase().includes(query);
-            const contentMatch = (note.content || '').toLowerCase().includes(query);
-            if (!titleMatch && !contentMatch) return;
-        }
         const el = document.createElement('div');
         el.className = 'note-item';
         el.setAttribute('data-note-id', String(note.id));

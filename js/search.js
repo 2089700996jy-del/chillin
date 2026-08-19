@@ -1,6 +1,5 @@
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
-import { ui } from './ui.js';
 import { actions } from './actions.js';
 
 export function initSearch() {
@@ -27,6 +26,11 @@ function closeGlobalSearch() {
 
 if (btnOpenGlobalSearch) btnOpenGlobalSearch.addEventListener('click', openGlobalSearch);
 if (btnCloseGlobalSearch) btnCloseGlobalSearch.addEventListener('click', closeGlobalSearch);
+if (globalSearchModal) {
+    globalSearchModal.addEventListener('click', (e) => {
+        if (e.target === globalSearchModal) closeGlobalSearch();
+    });
+}
 
 document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
@@ -180,33 +184,4 @@ function jumpToElement(targetView, selector) {
 
 
     return { openGlobalSearch, closeGlobalSearch };
-}
-
-export function initDomainSearchInputs() {
-// 搜索输入框事件监听
-const searchHomeInput = document.getElementById('search-home');
-if (searchHomeInput) {
-    searchHomeInput.addEventListener('input', (e) => {
-        ui.currentHomeSearchQuery = e.target.value;
-        actions.renderCards();
-    });
-}
-
-const searchNotesInput = document.getElementById('search-notes');
-if (searchNotesInput) {
-    searchNotesInput.addEventListener('input', (e) => {
-        ui.currentNotesSearchQuery = e.target.value;
-        actions.renderNotes();
-    });
-}
-
-const searchBookmarksInput = document.getElementById('search-bookmarks');
-if (searchBookmarksInput) {
-    searchBookmarksInput.addEventListener('input', (e) => {
-        ui.currentBookmarksSearchQuery = e.target.value;
-        actions.renderBookmarks();
-    });
-}
-
-
 }

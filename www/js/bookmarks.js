@@ -4,7 +4,6 @@ import {
     showToast,
 } from './utils.js';
 import { state } from './state.js';
-import { ui } from './ui.js';
 import { actions } from './actions.js';
 import {
     resolveAssetUrl,
@@ -38,14 +37,6 @@ const renderBookmarks = () => {
     const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id);
     
     sortedBookmarks.forEach(bm => {
-        if (ui.currentBookmarksSearchQuery) {
-            const query = ui.currentBookmarksSearchQuery.toLowerCase();
-            const titleMatch = (bm.title || '').toLowerCase().includes(query);
-            const descText = bm.desc || bm.description || '';
-            const descMatch = descText.toLowerCase().includes(query);
-            const typeMatch = (bm.type || '').toLowerCase().includes(query);
-            if (!titleMatch && !descMatch && !typeMatch) return;
-        }
         const rawUrl = (bm.url || '').trim();
         const hasUrl = /^https?:\/\//i.test(rawUrl);
         const card = document.createElement(hasUrl ? 'a' : 'div');
