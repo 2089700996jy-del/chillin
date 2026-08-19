@@ -2631,39 +2631,7 @@ body.keyboard-open .fab-btn {
   transform: translateY(-1px);
 }
 
-/* Feed Tag Filter */
-.feed-tag-filter-container {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 0;
-  margin-bottom: 16px;
-  position: sticky;
-  top: 70px;
-  background: var(--bg-color);
-  z-index: 10;
-  border-bottom: 1px solid var(--border-color);
-}
-.feed-filter-chip {
-  padding: 4px 12px;
-  border-radius: 16px;
-  font-size: 13px;
-  background: var(--surface-color);
-  color: var(--text-color);
-  border: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-.feed-filter-chip:hover {
-  background: var(--bg-hover);
-}
-.feed-filter-chip.active {
-  background: var(--primary-color);
-  color: white;
-  border-color: var(--primary-color);
-}
-
-/* Bookmark styles reverted */
+/* Bookmark styles */
 .bookmark-card {
   background: var(--surface-color);
   border: 1px solid var(--border-color);

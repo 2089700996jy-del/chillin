@@ -118,7 +118,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let authToken = localStorage.getItem('chillin_token') || '';
     let authUser = JSON.parse(localStorage.getItem('chillin_user') || 'null');
-    let currentFeedFilterTag = null; // declared here to prevent TDZ
     // DOM Elements for Auth
     const authOverlay = document.getElementById('auth-overlay');
     const authForm = document.getElementById('auth-form');
@@ -613,7 +612,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const { merged, needsUpload } = processApiSyncResult(bookmarksDatabase, apiData);
                     if (needsUpload) needsBatchUpload = true;
                     if (JSON.stringify(bookmarksDatabase) !== JSON.stringify(merged)) {
-                        bookmarksDatabase = merged;
+                        bookmarksDatabase = merged.map((bm) => {
+                            const desc = (bm && (bm.desc || bm.description)) || '';
+                            return { ...bm, desc, description: desc };
+                        });
                         saveBookmarksDatabase();
                         if (getActiveViewId() === 'view-bookmarks') renderBookmarks();
                     }
@@ -1765,7 +1767,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (currentBookmarksSearchQuery) {
                 const query = currentBookmarksSearchQuery.toLowerCase();
                 const titleMatch = (bm.title || '').toLowerCase().includes(query);
-                const descMatch = (bm.desc || '').toLowerCase().includes(query);
+                const descText = bm.desc || bm.description || '';
+                const descMatch = descText.toLowerCase().includes(query);
                 const typeMatch = (bm.type || '').toLowerCase().includes(query);
                 if (!titleMatch && !descMatch && !typeMatch) return;
             }
@@ -1777,6 +1780,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hasUrl) { card.href = rawUrl; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
 
             const hasImage = bm.image && bm.image.trim();
+            const descDisplay = bm.desc || bm.description || '暂无描述...';
             card.innerHTML = `
                 <div class="bookmark-card-inner">
                     ${hasImage
@@ -1784,7 +1788,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
                     <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
                     <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
-                    <div class="bookmark-card-desc">${escapeHtml(bm.desc || '暂无描述...')}</div>
+                    <div class="bookmark-card-desc">${escapeHtml(descDisplay)}</div>
                     <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
                 </div>
             `;
@@ -1819,26 +1823,13 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
-    const openBookmarkEditor = (bmToEdit = null) => {
+    const openBookmarkEditor = () => {
         bookmarkEditorForm.reset();
-        if (bmToEdit) {
-            editBookmarkId.value = bmToEdit.id;
-            editBookmarkTitle.value = bmToEdit.title || '';
-            editBookmarkUrl.value = bmToEdit.url || '';
-            editBookmarkDesc.value = bmToEdit.desc || bmToEdit.description || '';
-            if (editBookmarkImage) editBookmarkImage.value = bmToEdit.image || '';
-            const typeVal = bmToEdit.type || '🌐 网站';
-            editBookmarkType.value = typeVal;
-            document.querySelectorAll('.cat-chip').forEach(c => {
-                c.classList.toggle('active', c.getAttribute('data-val') === typeVal);
-            });
-        } else {
-            editBookmarkId.value = '';
-            if (editBookmarkImage) editBookmarkImage.value = '';
-            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-            const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');
-            if (firstChip) { firstChip.classList.add('active'); editBookmarkType.value = '🌐 网站'; }
-        }
+        editBookmarkId.value = '';
+        if (editBookmarkImage) editBookmarkImage.value = '';
+        document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
+        const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');
+        if (firstChip) { firstChip.classList.add('active'); editBookmarkType.value = '🌐 网站'; }
         switchView('bookmark-editor');
     };
 
@@ -1846,33 +1837,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
     bookmarkEditorForm.addEventListener('submit', (e) => {
         e.preventDefault();
-        const existingIdStr = (editBookmarkId.value || '').trim();
-        const isEdit = Boolean(existingIdStr);
-        const targetId = isEdit ? (isNaN(Number(existingIdStr)) ? existingIdStr : Number(existingIdStr)) : generateUniqueId();
-        
+        const descText = editBookmarkDesc.value.trim();
         const newBookmark = {
-            id: targetId,
+            id: generateUniqueId(),
             type: editBookmarkType.value,
             title: editBookmarkTitle.value.trim(),
             url: editBookmarkUrl.value.trim(),
-            desc: editBookmarkDesc.value.trim(),
+            desc: descText,
+            description: descText,
             image: (editBookmarkImage && editBookmarkImage.value || '').trim()
         };
         stampLocalUpdate(newBookmark);
-        
-        if (isEdit) {
-            const idx = bookmarksDatabase.findIndex(b => String(b.id) === String(targetId));
-            if (idx !== -1) bookmarksDatabase[idx] = newBookmark;
-            else bookmarksDatabase.unshift(newBookmark);
-        } else {
-            bookmarksDatabase.unshift(newBookmark);
-        }
-
+        bookmarksDatabase.unshift(newBookmark);
         saveBookmarksDatabase();
         apiSyncBookmark(newBookmark, 'POST');
         renderBookmarks();
         switchView('bookmarks');
-        showToast(isEdit ? '收藏更新成功' : '新增收藏成功', 'success');
+        showToast('新增收藏成功', 'success');
     });
 
 
@@ -2645,29 +2626,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return { raw, normalized };
     }
 
-    window._filterFeedByTag = (tag) => {
-        currentFeedFilterTag = currentFeedFilterTag === tag ? null : tag;
-        renderFeeds();
-    };
-
     function renderFeeds() {
         const container = document.getElementById('feeds-stream-container');
-        const filterContainer = document.getElementById('feed-tag-filter-container');
         if (!container) return;
-
-        // Extract all unique tags
-        const allTags = new Set();
-        (feedsDatabase || []).forEach(f => {
-            (f.tags || []).forEach(t => allTags.add(t));
-        });
-        const tagsList = Array.from(allTags).sort();
-
-        // Render filter bar (已关闭)
-        if (filterContainer) {
-            filterContainer.style.display = 'none';
-            filterContainer.innerHTML = '';
-        }
-        currentFeedFilterTag = null;
 
         const displayFeeds = feedsDatabase;
 
@@ -2686,8 +2647,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = displayFeeds.map(feed => {
             const tags = feed.tags || [];
-        // 标签筛选栏已关闭：点击标签仅展示，不再过滤（避免点后列表变空无法恢复）
-        const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
+            const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
 
             
             // Format link preview if summary or link exists
