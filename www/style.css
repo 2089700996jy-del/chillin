@@ -321,6 +321,9 @@ body {
   gap: 12px; 
   margin-bottom: 24px; 
 }
+.filter-container--home {
+  margin-top: 24px;
+}
 .filter-btn {
   padding: 6px 16px; 
   border-radius: 99px; 

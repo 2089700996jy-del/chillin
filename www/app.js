@@ -20,7 +20,7 @@ import { initUpload } from './js/upload.js';
 import { initReader } from './js/reader.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
-import { initSearch, initDomainSearchInputs } from './js/search.js';
+import { initSearch } from './js/search.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -69,7 +69,6 @@ document.addEventListener('DOMContentLoaded', () => {
     initFeeds();
     initEchoAi();
     initSearch();
-    initDomainSearchInputs();
     initRouter();
 
     bindApiHooks({

@@ -13,7 +13,7 @@
     <title>Chillin</title>
     <!-- 引入 Inter 字体 -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.5">
+    <link rel="stylesheet" href="style.css?v=2.4.6">
 </head>
 <body>
 
@@ -99,19 +99,14 @@
                     <div class="heatmap-grid" id="heatmap-grid"></div>
                 </div>
 
-                <div class="search-filter-row">
-                    <div class="filter-container">
-                        <button class="filter-btn active" data-filter="all">全部</button>
-                        <button class="filter-btn" data-filter="⚪️">⚪️ 技术</button>
-                        <button class="filter-btn" data-filter="🌸">🌸 生活</button>
-                    </div>
-                    <div class="search-wrapper">
-                        <input type="text" id="search-home" class="search-input" placeholder="🔍 搜索周记标题、摘要或正文...">
-                    </div>
+                <div class="filter-container filter-container--home">
+                    <button class="filter-btn active" data-filter="all">全部</button>
+                    <button class="filter-btn" data-filter="⚪️">⚪️ 技术</button>
+                    <button class="filter-btn" data-filter="🌸">🌸 生活</button>
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <div class="app-version-badge" data-app-version>v2.4.5</div>
+            <div class="app-version-badge" data-app-version>v2.4.6</div>
         </section>
 
         <!-- ========================================== -->
@@ -254,13 +249,10 @@
                 <p class="page-description">
                     随时捕捉脑海中的一闪而过。绝对纯粹，无需排版。
                 </p>
-                <div class="search-wrapper" style="margin-top: 16px;">
-                    <input type="text" id="search-notes" class="search-input" placeholder="🔍 搜索笔记标题或内容...">
-                </div>
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <div class="app-version-badge" data-app-version>v2.4.5</div>
+            <div class="app-version-badge" data-app-version>v2.4.6</div>
         </section>
 
         <!-- ========================================== -->
@@ -315,15 +307,12 @@
                 <p class="page-description">
                     散落在赛博空间的碎片和宝藏店铺，点击即可直达。
                 </p>
-                <div class="search-wrapper" style="margin-top: 16px;">
-                    <input type="text" id="search-bookmarks" class="search-input" placeholder="🔍 搜索收藏标题、描述或类型...">
-                </div>
             </header>
             
             <div class="bookmark-grid" id="bookmark-list-container">
                 <!-- 收藏卡片由 JavaScript 动态渲染 -->
             </div>
-            <div class="app-version-badge" data-app-version>v2.4.5</div>
+            <div class="app-version-badge" data-app-version>v2.4.6</div>
         </section>
 
         <!-- ========================================== -->
@@ -398,7 +387,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <div class="app-version-badge" data-app-version>v2.4.5</div>
+            <div class="app-version-badge" data-app-version>v2.4.6</div>
         </section>
 
         <!-- ========================================== -->
@@ -468,7 +457,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <div class="app-version-badge" data-app-version>v2.4.5</div>
+            <div class="app-version-badge" data-app-version>v2.4.6</div>
         </section>
 
     </main>
@@ -556,6 +545,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-    <script type="module" src="app.js?v=2.4.5"></script>
+    <script type="module" src="app.js?v=2.4.6"></script>
 </body>
 </html>
