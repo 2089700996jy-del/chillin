@@ -2576,15 +2576,13 @@ body.keyboard-open .fab-btn {
   border-color: rgba(99, 102, 241, 0.3);
 }
 
-/* Fixed build version — bottom edge, subtle */
+/* In-flow build version — appear after scrolling to page bottom */
 .app-version-badge {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 1100;
+  display: block;
+  width: 100%;
   text-align: center;
-  padding: 3px 8px calc(3px + env(safe-area-inset-bottom, 0px));
+  margin: 28px 0 8px;
+  padding: 8px 12px calc(20px + env(safe-area-inset-bottom, 0px));
   font-size: 10px;
   line-height: 1.2;
   color: var(--text-color-light, #9ca3af);
@@ -2596,4 +2594,12 @@ body.keyboard-open .fab-btn {
   letter-spacing: 0.04em;
   box-shadow: none;
   border-radius: 0;
+  position: static;
+  z-index: auto;
+}
+@media (max-width: 768px) {
+  .app-version-badge {
+    /* clear floating bottom nav when scrolled to end */
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+  }
 }
