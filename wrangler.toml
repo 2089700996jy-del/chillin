@@ -11,8 +11,8 @@ database_id = "59ad83a1-35f2-4e8c-b181-14d064627f1b"
 
 [vars]
 ALLOW_REGISTRATION = "false"
-VAPID_PUBLIC_KEY = "BG6qXQUDG6-gKkP3e2T4s4WBL22226fyU0N4QS_mkCCDW-M-5l3Ma44V5Mgw8ILke_dBrOzvsMbxkNW4lL_4Mtg"
-VAPID_PRIVATE_KEY = "Zsv8CyIxEH-eQoQbCoaefIVWyCRlMoOw7UIQMQPDV4Q"
+# 公钥可公开；私钥请用 `wrangler secret put VAPID_PRIVATE_KEY`，勿写入本文件
+VAPID_PUBLIC_KEY = "BBj8FZZ57_GfEm-HGPo9pXRA5jsd4FAzu-3bQJC7KjAoGp3TWlDGFt5D22JadZ6t5bw9u6NDNsy4Vgny9v3r2e0"
 
 # 🤖 DeepSeek 大语言模型配置（可选：在 Cloudflare 后台添加密钥变量 LLM_API_KEY）
 LLM_API_BASE = "https://api.deepseek.com/v1"
@@ -21,6 +21,3 @@ LLM_MODEL = "deepseek-chat"
 # 定时任务：每小时扫描 UGC 违规内容
 [triggers]
 crons = ["13 * * * *"]
-
-
-

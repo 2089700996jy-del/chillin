@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
-            const VAPID_PUBLIC_KEY = 'BG6qXQUDG6-gKkP3e2T4s4WBL22226fyU0N4QS_mkCCDW-M-5l3Ma44V5Mgw8ILke_dBrOzvsMbxkNW4lL_4Mtg';
+            const VAPID_PUBLIC_KEY = 'BBj8FZZ57_GfEm-HGPo9pXRA5jsd4FAzu-3bQJC7KjAoGp3TWlDGFt5D22JadZ6t5bw9u6NDNsy4Vgny9v3r2e0';
             const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
             
             const subscription = await reg.pushManager.subscribe({
@@ -2662,15 +2662,14 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         const tagsList = Array.from(allTags).sort();
 
-        // Render filter bar (Removed per user request)
+        // Render filter bar (已关闭)
         if (filterContainer) {
             filterContainer.style.display = 'none';
             filterContainer.innerHTML = '';
         }
+        currentFeedFilterTag = null;
 
-        const displayFeeds = currentFeedFilterTag 
-            ? feedsDatabase.filter(f => f.tags && f.tags.includes(currentFeedFilterTag))
-            : feedsDatabase;
+        const displayFeeds = feedsDatabase;
 
         if (!displayFeeds || displayFeeds.length === 0) {
             container.innerHTML = `
@@ -2687,7 +2686,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         container.innerHTML = displayFeeds.map(feed => {
             const tags = feed.tags || [];
-            const tagHtml = tags.map(t => `<span class="feed-tag-pill" onclick="event.stopPropagation(); window._filterFeedByTag('${escapeHtml(t)}')">${escapeHtml(t)}</span>`).join('');
+        // 标签筛选栏已关闭：点击标签仅展示，不再过滤（避免点后列表变空无法恢复）
+        const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
 
             
             // Format link preview if summary or link exists
@@ -3133,6 +3133,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     echoCardsDatabase.unshift(newCard);
                     localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
                     renderEchoCards();
+                    switchView('feeds');
                     setSyncStatus('回响卡片已生成', 'ok', 2500);
                     return;
                 }
