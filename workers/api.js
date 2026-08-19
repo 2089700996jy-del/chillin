@@ -18,11 +18,12 @@ const ALLOWED_ORIGINS = new Set([
 
 // 判断来源是否被允许：白名单 + 任意 localhost 来源（原生壳 WebView 的 scheme/端口可能变化）
 function isAllowedOrigin(origin) {
-    if (!origin) return true;
+    if (!origin) return false;
     if (ALLOWED_ORIGINS.has(origin)) return true;
     try {
         const hostname = new URL(origin).hostname;
-        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost') || hostname.endsWith('.pages.dev') || hostname.endsWith('.workers.dev');
+        // 仅放行本机调试 / 原生壳；不再放行任意 *.pages.dev / *.workers.dev
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.endsWith('.localhost');
     } catch (e) {
         return false;
     }
@@ -447,23 +448,16 @@ async function router(path, method, request, env, ctx) {
                 return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
             }
         } else {
-            // 历史无令牌文件：自动生成持久 token 并存回 DB，同时用 Bearer 兜底
-            const newToken = crypto.randomUUID().replace(/-/g, '');
-            await db.prepare('UPDATE files SET access_token = ?1 WHERE id = ?2').bind(newToken, fileId).run();
-            // 若未携带 token（如 img 标签），以 Bearer 身份验证兜底
-            if (fileToken) {
-                if (!timingSafeEqualStr(newToken, fileToken)) {
-                    return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
-                }
-            } else {
-                const viewerId = await authenticate(request, db);
-                if (!viewerId) {
-                    // 返回一个重定向让客户端带 token 重新请求
-                    return new Response(null, { 
-                        status: 302, 
-                        headers: { 'Location': `/api/file/${fileId}?t=${newToken}` }
-                    });
-                }
+            // 历史无令牌文件：仅允许已登录且归属本人；禁止 UUID 直链 / 302 泄 token
+            const viewerId = await authenticate(request, db);
+            if (!viewerId || row.user_id == null || Number(row.user_id) !== Number(viewerId)) {
+                return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
+            }
+            // 登录后访问时补发持久 token，便于后续用 ?t= 展示（不通过 302 泄露）
+            if (!fileToken) {
+                const newToken = crypto.randomUUID().replace(/-/g, '');
+                await db.prepare('UPDATE files SET access_token = ?1 WHERE id = ?2 AND access_token IS NULL')
+                    .bind(newToken, fileId).run();
             }
         }
         
@@ -1019,15 +1013,16 @@ async function router(path, method, request, env, ctx) {
             );
         }
 
-        // 3. 收藏
+        // 3. 收藏（必须带 image，避免 INSERT OR REPLACE 把封面刷成 NULL）
         for (const item of bookmarks) {
             if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
             if (item.id != null && !allowedBookmarks.has(item.id)) continue;
+            const image = item.image || item.img || null;
             statements.push(
                 db.prepare(
-                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
-                ).bind(item.id, item.type, item.title, item.url, item.desc || item.description || '', userId)
+                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+                ).bind(item.id, item.type, item.title, item.url, item.desc || item.description || '', image, userId)
             );
         }
 
@@ -1546,7 +1541,9 @@ function formatWeekly(row) {
         cover: row.cover || null,
         weeklyData: row.weekly_data ? JSON.parse(row.weekly_data) : null,
         content: row.content || null,
-        annotations: row.annotations ? JSON.parse(row.annotations) : []
+        annotations: row.annotations ? JSON.parse(row.annotations) : [],
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null
     };
 }
 
