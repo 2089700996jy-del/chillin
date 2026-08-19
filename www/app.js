@@ -1,7 +1,6 @@
 import {
     generateUniqueId,
     showToast,
-    urlBase64ToUint8Array,
     escapeHtml,
     markdownToHtml,
     sanitizeHtml,
@@ -9,747 +8,36 @@ import {
     getChineseDate,
     getChineseDateTime,
 } from './js/utils.js';
+import { state } from './js/state.js';
+import {
+    API_BASE,
+    resolveAssetUrl,
+    fetchWithFallback,
+    getLocalKey,
+    checkAuth,
+    initAuthUI,
+    apiRequest,
+    registerPushNotification,
+    loadLocalData,
+    syncFromApi,
+    saveDatabase,
+    saveNotesDatabase,
+    saveBookmarksDatabase,
+    saveFeedsDatabase,
+    stampLocalUpdate,
+    addDeletedId,
+    apiSyncWeekly,
+    apiSyncNote,
+    apiSyncBookmark,
+    apiSyncFeed,
+    checkAndMergeGuestData,
+    startAutoSyncEngine,
+    bindApiHooks,
+} from './js/api.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
-    // ==========================================
-    // 0. 推送订阅（工具函数见 ./js/utils.js）
-    // ==========================================
-    let aiChatHistory = [];
-
-    async function registerPushNotification() {
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-        try {
-            const reg = await navigator.serviceWorker.ready;
-            const permission = await Notification.requestPermission();
-            if (permission !== 'granted') return;
-
-            const existingSub = await reg.pushManager.getSubscription();
-            if (existingSub) {
-                await sendSubscriptionToServer(existingSub);
-                return;
-            }
-
-            const VAPID_PUBLIC_KEY = 'BBj8FZZ57_GfEm-HGPo9pXRA5jsd4FAzu-3bQJC7KjAoGp3TWlDGFt5D22JadZ6t5bw9u6NDNsy4Vgny9v3r2e0';
-            const convertedVapidKey = urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
-            
-            const subscription = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: convertedVapidKey
-            });
-            await sendSubscriptionToServer(subscription);
-        } catch (e) {
-            console.error('Push registration failed:', e);
-        }
-    }
-
-    async function sendSubscriptionToServer(subscription) {
-        try {
-            await apiRequest('/api/push/subscribe', {
-                method: 'POST',
-                body: JSON.stringify(subscription)
-            });
-        } catch (e) {
-            console.error('Failed to send subscription:', e);
-        }
-    }
-
-    // ==========================================
-    // 1. 数据持久化与认证逻辑
-    // ==========================================
-    // 智能动态基地址：同源 Pages 代理优先（避免移动端跨域及 DNS 阻断），非同源降级直连 Worker
-    let API_BASE = '';
-    if (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) {
-        API_BASE = CHILLIN_API_URL;
-    } else if (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-        // 原生壳/本地调试：走 Pages 同源代理更可靠（workers.dev 在部分网络下不可达）
-        API_BASE = 'https://chillin-bfc.pages.dev';
-    } else {
-        // 线上 Cloudflare Pages 部署环境 (chillin-bfc.pages.dev) 优先使用同源 /api 代理
-        API_BASE = '';
-    }
-    const CLOUD_WORKER_BASE = 'https://chillin-api.2089700996jy.workers.dev';
-
-    // 原生壳里相对路径 /api/... 会解析到 localhost，需转成绝对地址（网页端 API_BASE 为空则保持相对）
-    const resolveAssetUrl = (src) => {
-        if (src && API_BASE && (src.startsWith('/api/') || src.startsWith('/uploads/'))) {
-            return API_BASE + src;
-        }
-        return src;
-    };
-
-    // 双端自动降级 Fetch（同源与直连自动容灾，解决移动端 Failed to fetch）
-    const fetchWithFallback = async (path, options = {}) => {
-        const primaryUrl = `${API_BASE}${path}`;
-        try {
-            const res = await fetch(primaryUrl, options);
-            return res;
-        } catch (primaryErr) {
-            // 如果同源 /api 失败且是在线上域名，自动降级尝试跨域直连 Cloudflare Worker
-            if (API_BASE === '' && (primaryErr.name === 'TypeError' || primaryErr.message.includes('fetch'))) {
-                const secondaryUrl = `${CLOUD_WORKER_BASE}${path}`;
-                return await fetch(secondaryUrl, options);
-            }
-            throw primaryErr;
-        }
-    };
-
-    let authToken = localStorage.getItem('chillin_token') || '';
-    let authUser = JSON.parse(localStorage.getItem('chillin_user') || 'null');
-    // DOM Elements for Auth
-    const authOverlay = document.getElementById('auth-overlay');
-    const authForm = document.getElementById('auth-form');
-    const authErrorMsg = document.getElementById('auth-error-msg');
-    const btnAuthSwitch = document.getElementById('btn-auth-switch');
-    const authSwitchText = document.getElementById('auth-switch-text');
-    const btnLogout = document.getElementById('btn-logout');
-    const navUsername = document.getElementById('nav-username');
-
-    let isRegisterMode = false;
-
-    // 显示/隐藏认证覆盖层及导航栏
-    const checkAuth = () => {
-        if (!authToken) {
-            authOverlay.classList.remove('hidden');
-            document.body.classList.add('not-authenticated');
-            return false;
-        }
-        authOverlay.classList.add('hidden');
-        document.body.classList.remove('not-authenticated');
-        if (authUser) navUsername.innerText = `Hi, ${authUser.username}`;
-        return true;
-    };
-
-    const logout = () => {
-        if (authToken) {
-            apiRequest('/api/auth/logout', { method: 'POST' }).catch(() => {});
-        }
-        authToken = '';
-        authUser = null;
-        localStorage.removeItem('chillin_token');
-        localStorage.removeItem('chillin_user');
-        checkAuth();
-    };
-
-    btnLogout.addEventListener('click', logout);
-
-    btnAuthSwitch.addEventListener('click', () => {
-        isRegisterMode = !isRegisterMode;
-        if (isRegisterMode) {
-            document.querySelector('.auth-btn').innerText = '注册并进入';
-            authSwitchText.innerText = '已有账号？';
-            btnAuthSwitch.innerText = '直接登录';
-        } else {
-            document.querySelector('.auth-btn').innerText = '登录';
-            authSwitchText.innerText = '还没有账号？';
-            btnAuthSwitch.innerText = '立即注册';
-        }
-        authErrorMsg.style.display = 'none';
-    });
-
-    const doLogin = async () => {
-        const username = document.getElementById('auth-username').value.trim();
-        const password = document.getElementById('auth-password').value.trim();
-        const btnAuthSubmit = document.getElementById('btn-auth-submit');
-        authErrorMsg.style.display = 'none';
-        if (!username || !password) {
-            authErrorMsg.innerText = '请输入账号和密码';
-            authErrorMsg.style.display = 'block';
-            return;
-        }
-
-        if (btnAuthSubmit) {
-            btnAuthSubmit.disabled = true;
-            btnAuthSubmit.innerText = isRegisterMode ? '注册中...' : '登录中...';
-        }
-
-        try {
-            const endpoint = isRegisterMode ? '/api/auth/register' : '/api/auth/login';
-            if (isRegisterMode) {
-                if (username.length < 3 || username.length > 32) {
-                    throw new Error('账号长度需为 3–32 位');
-                }
-                if (password.length < 8) {
-                    throw new Error('密码至少 8 位');
-                }
-                if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-                    throw new Error('密码需同时包含字母和数字');
-                }
-            }
-            const res = await fetchWithFallback(endpoint, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.error || '登录失败，请检查账号和密码');
-
-            authToken = data.token;
-            authUser = { id: data.userId, username: data.username };
-            localStorage.setItem('chillin_token', authToken);
-            localStorage.setItem('chillin_user', JSON.stringify(authUser));
-            
-            checkAuth();
-            showToast('登录成功，欢迎来到数字花园', 'success');
-            loadLocalData(); // Reload local cache for new user
-            syncFromApi();   // Fetch new API data immediately
-            checkAndMergeGuestData();
-            setTimeout(registerPushNotification, 2000); // Request push permission after 2s
-
-        } catch (err) {
-            const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
-                ? '网络连接失败，请检查手机网络后重试'
-                : (err.message || '登录失败');
-            authErrorMsg.innerText = errorMsg;
-            authErrorMsg.style.display = 'block';
-            showToast(errorMsg, 'error');
-        } finally {
-            if (btnAuthSubmit) {
-                btnAuthSubmit.disabled = false;
-                btnAuthSubmit.innerText = isRegisterMode ? '注册并进入' : '登录';
-            }
-        }
-    };
-
-    // 挂载到全局 window，HTML inline onclick 也能调用
-    window._chillinLogin = doLogin;
-    document.getElementById('btn-auth-submit').addEventListener('click', doLogin);
-    document.getElementById('auth-password').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') doLogin();
-    });
-    document.getElementById('auth-username').addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') document.getElementById('auth-password').focus();
-    });
-
-    const apiRequest = async (path, options = {}) => {
-        const timeoutMs = options.timeout || 25000;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), timeoutMs);
-        try {
-            const headers = {
-                'Content-Type': 'application/json',
-                ...(options.headers || {})
-            };
-            if (authToken) {
-                headers['Authorization'] = `Bearer ${authToken}`;
-            }
-
-            const res = await fetchWithFallback(path, {
-                ...options,
-                signal: controller.signal,
-                headers
-            });
-            
-            if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') {
-                // 防范极速连续请求与边缘同步延迟：单次 401 进行 300ms 重试一次
-                if (!options._isRetry) {
-                    await new Promise(r => setTimeout(r, 300));
-                    return await apiRequest(path, { ...options, _isRetry: true });
-                }
-                logout();
-                throw new Error('未登录或登录状态已过期，请重新登录');
-            }
-            if (!res.ok) {
-                let detail = '';
-                try {
-                    const errBody = await res.json();
-                    detail = errBody && errBody.error ? String(errBody.error) : '';
-                } catch (_) {}
-                throw new Error(detail || `接口请求异常 (${res.status})`);
-            }
-            return res.json();
-        } catch (err) {
-            if (err.name === 'AbortError' || (err.message && (err.message.includes('aborted') || err.message.includes('signal')))) {
-                throw new Error('网络请求超时，请检查网络后重试');
-            }
-            throw err;
-        } finally {
-            clearTimeout(timeout);
-        }
-    };
-
-    // 默认兜底数据
-    const DEFAULT_WEEKLY = [{
-        id: 1, category: "🌸", title: "2023-W42: 记忆切片",
-        summary: "在这个节奏极快的秋周里，抓住了一些微小的确幸：黑塞、坂本龙一、和一碗完美的意面。",
-        date: "2023年10月22日",
-        cover: "https://images.unsplash.com/photo-1505909182942-e2f09aee3e89?q=80&w=800&auto=format&fit=crop",
-        weeklyData: {
-            music: { title: "Merry Christmas Mr. Lawrence", artist: "坂本龙一", lyric: "无需歌词，唯有宁静跨越时间。" },
-            media: [{ icon: "🎬", title: "《奥本海默》", desc: "在 IMAX 厅感受了极其震撼的音效与人类群星闪耀的矛盾。" }],
-            life: { image: "https://images.unsplash.com/photo-1473093295043-cdd812d0e601?q=80&w=600&auto=format&fit=crop", caption: "周五晚上的完美意面 🍝" },
-            podcast: "在《Huberman Lab》里学到了，早晨醒来后不要立刻看手机，而是先去接触自然光 10 分钟，能够完美重置昼夜节律。",
-            work: { title: "Next.js App Router 迁移", desc: "本周踩完了 Server Actions 的坑。结论：将复杂的数据验证逻辑全部移到单独的 API 路由。" }
-        },
-        content: "<p>时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。所以决定用这样的方式，把每周值得记住的时刻切片保存下来。</p>"
-    }];
-    const DEFAULT_NOTES = [
-        { id: 101, title: "下周购物清单", content: "1. 咖啡豆\n2. 全脂牛奶\n3. 极简风马克杯\n4. 绿植（龟背竹）", date: "2023年10月23日" },
-        { id: 102, title: "零碎灵感", content: "也许可以尝试给博客加上深色模式？\n颜色方案可以参考 GitHub 的 Dark Dimmed。", date: "2023年10月24日" }
-    ];
-    const DEFAULT_BOOKMARKS = [
-        { id: 201, type: "🛠️ 工具", title: "Notion", url: "https://notion.so", desc: "极致的块状编辑器，灵感的发源地。", image: "" },
-        { id: 202, type: "🌐 网站", title: "Vercel", url: "https://vercel.com", desc: "前端项目一键部署的神仙平台。" },
-        { id: 203, type: "🎬 电影", title: "豆瓣电影", url: "https://movie.douban.com", desc: "找冷门好片的唯一去处。" }
-    ];
-
-    let database, notesDatabase, bookmarksDatabase, feedsDatabase, echoCardsDatabase;
-
-    const DEFAULT_FEEDS = [
-        {
-            id: 1,
-            content: "今天将数字花园升级接入了 AI 记忆能力与随手记流！可以随时在顶部倾倒思考，AI 也会实时捕捉脉络。",
-            type: "text",
-            tags: ["#技术", "#灵感"],
-            created_at: new Date().toISOString().replace('T', ' ').slice(0, 16)
-        }
-    ];
-
-    // 缓存前缀函数 (按用户隔离)
-    const getLocalKey = (key) => authUser ? `${authUser.id}_${key}` : `default_${key}`;
-
-    // 自动扫描与挽救当前设备上的所有历史 LocalStorage 数据（无论前缀是 default_、数字ID_ 或无前缀，防止切账号或升级导致数据丢失）
-    const rescueAndConsolidateLocalData = () => {
-        let rescuedFeeds = [];
-        let rescuedNotes = [];
-        let rescuedWeeklies = [];
-        let rescuedBookmarks = [];
-
-        try {
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (!key) continue;
-                if (key.includes('gardenFeeds')) {
-                    const items = JSON.parse(localStorage.getItem(key));
-                    if (Array.isArray(items)) rescuedFeeds.push(...items);
-                } else if (key.includes('gardenNotes')) {
-                    const items = JSON.parse(localStorage.getItem(key));
-                    if (Array.isArray(items)) rescuedNotes.push(...items);
-                } else if (key.includes('gardenData')) {
-                    const items = JSON.parse(localStorage.getItem(key));
-                    if (Array.isArray(items)) rescuedWeeklies.push(...items);
-                } else if (key.includes('gardenBookmarks')) {
-                    const items = JSON.parse(localStorage.getItem(key));
-                    if (Array.isArray(items)) rescuedBookmarks.push(...items);
-                }
-            }
-        } catch(e) {}
-
-        const cleanList = (list, defaultIds) => {
-            if (!Array.isArray(list)) return [];
-            const unique = list.filter((item, index, self) => 
-                item && item.id && self.findIndex(t => String(t.id) === String(item.id)) === index
-            );
-            if (unique.length > defaultIds.length) {
-                return unique.filter(item => !defaultIds.includes(Number(item.id)));
-            }
-            return unique;
-        };
-
-        return {
-            feeds: cleanList(rescuedFeeds, [1]),
-            notes: cleanList(rescuedNotes, [101, 102]),
-            weeklies: cleanList(rescuedWeeklies, [1]),
-            bookmarks: cleanList(rescuedBookmarks, [201, 202, 203])
-        };
-    };
-
-    // 立即从本地全量安全缓存加载，保证页面秒开且绝不丢失手机原数据
-    const loadLocalData = () => {
-        const rescued = rescueAndConsolidateLocalData();
-
-        const currentFeeds = JSON.parse(localStorage.getItem(getLocalKey('gardenFeeds'))) || [];
-        const currentNotes = JSON.parse(localStorage.getItem('gardenNotes')) || JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || [];
-        const currentData = JSON.parse(localStorage.getItem('gardenData')) || JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || [];
-        const currentBookmarks = JSON.parse(localStorage.getItem('gardenBookmarks')) || JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || [];
-
-        database = mergeDataLists(currentData, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
-        notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES);
-        bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS);
-        feedsDatabase = mergeDataLists(currentFeeds, rescued.feeds.length > 0 ? rescued.feeds : DEFAULT_FEEDS);
-        echoCardsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenEchoCards'))) || [];
-
-        if (authUser) {
-            saveDatabase();
-            saveNotesDatabase();
-            saveBookmarksDatabase();
-            saveFeedsDatabase();
-        }
-
-        renderCards();
-        renderNotes();
-        renderBookmarks();
-        renderFeeds();
-        renderEchoCards();
-        renderHeatmap();
-    };
-
-    // 已同步与已删除 Tombstones 机制，防止已删除项目在多端智能合并时“死而复活”
-    const getSyncedIds = () => {
-        try {
-            return JSON.parse(localStorage.getItem(getLocalKey('gardenSyncedIds'))) || [];
-        } catch(e) { return []; }
-    };
-    const addSyncedIds = (ids) => {
-        if (!Array.isArray(ids)) return;
-        const current = getSyncedIds();
-        let changed = false;
-        for (const id of ids) {
-            const str = String(id);
-            if (str && !current.includes(str)) {
-                current.push(str);
-                changed = true;
-            }
-        }
-        if (changed) {
-            localStorage.setItem(getLocalKey('gardenSyncedIds'), JSON.stringify(current));
-        }
-    };
-
-    const getDeletedIds = () => {
-        try {
-            return JSON.parse(localStorage.getItem(getLocalKey('gardenDeletedIds'))) || [];
-        } catch(e) { return []; }
-    };
-    const addDeletedId = (id) => {
-        if (!id) return;
-        const current = getDeletedIds();
-        const str = String(id);
-        if (!current.includes(str)) {
-            current.push(str);
-            localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(current));
-        }
-    };
-
-    // 解析 updated_at（支持 ISO / SQLite datetime）
-    const toUpdatedTs = (value) => {
-        if (value == null || value === '') return 0;
-        if (typeof value === 'number' && Number.isFinite(value)) return value;
-        const raw = String(value).trim();
-        if (!raw) return 0;
-        if (/^\d+$/.test(raw)) return Number(raw);
-        let s = raw.includes('T') ? raw : raw.replace(' ', 'T');
-        if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s += 'Z';
-        const t = Date.parse(s);
-        return Number.isFinite(t) ? t : 0;
-    };
-
-    const stampLocalUpdate = (item) => {
-        if (!item || typeof item !== 'object') return item;
-        item.updated_at = new Date().toISOString();
-        item._dirty = true;
-        return item;
-    };
-
-    const stripClientSyncFlags = (item) => {
-        if (!item || typeof item !== 'object') return item;
-        const copy = { ...item };
-        delete copy._dirty;
-        return copy;
-    };
-
-    // 通用双向合并：同 ID 取 updated_at 较新者，避免云端旧数据覆盖本地未同步编辑
-    const mergeDataLists = (localList, apiList) => {
-        if (!Array.isArray(localList)) localList = [];
-        if (!Array.isArray(apiList)) apiList = [];
-
-        const deletedIds = getDeletedIds();
-        const map = new Map();
-
-        for (const item of apiList) {
-            if (item && item.id != null && !deletedIds.includes(String(item.id))) {
-                map.set(String(item.id), item);
-            }
-        }
-
-        for (const item of localList) {
-            if (!item || item.id == null || deletedIds.includes(String(item.id))) continue;
-            const key = String(item.id);
-            if (!map.has(key)) {
-                map.set(key, item);
-                continue;
-            }
-            const cloud = map.get(key);
-            const localTs = toUpdatedTs(item.updated_at || item.updatedAt);
-            const cloudTs = toUpdatedTs(cloud.updated_at || cloud.updatedAt);
-            if (localTs > cloudTs || (localTs === cloudTs && item._dirty)) {
-                map.set(key, item);
-            }
-        }
-
-        return Array.from(map.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-    };
-
-    // 智能处理 API 同步结果：处理其他端删除同步与本地新添加/较新编辑上传
-    const processApiSyncResult = (localList, apiData) => {
-        if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false };
-        const deletedIds = getDeletedIds();
-        const syncedIds = getSyncedIds();
-
-        const apiIds = apiData.map(item => String(item.id));
-        addSyncedIds(apiIds);
-
-        const activeLocal = (localList || []).filter(item => {
-            if (!item || item.id == null) return false;
-            const strId = String(item.id);
-            if (deletedIds.includes(strId)) return false;
-            // 本地有未同步脏数据时，即使云端暂时看不到也不要当「他端已删」丢掉
-            if (item._dirty) return true;
-            if (syncedIds.includes(strId) && !apiIds.includes(strId)) return false;
-            return true;
-        });
-
-        const merged = mergeDataLists(activeLocal, apiData);
-
-        const unsyncedLocal = activeLocal.filter(item => !apiIds.includes(String(item.id)));
-        const newerDirtyLocal = activeLocal.filter(item => {
-            if (!item._dirty) return false;
-            const cloud = apiData.find(a => String(a.id) === String(item.id));
-            if (!cloud) return false;
-            return toUpdatedTs(item.updated_at) >= toUpdatedTs(cloud.updated_at);
-        });
-        const needsUpload = unsyncedLocal.length > 0 || newerDirtyLocal.length > 0;
-
-        return { merged, needsUpload };
-    };
-
-    let syncStatusTimer = null;
-    const setSyncStatus = (message, tone = 'info', autoHideMs = 0) => {
-        const el = document.getElementById('sync-status');
-        if (!el) return;
-        if (!message) {
-            el.hidden = true;
-            el.textContent = '';
-            return;
-        }
-        el.hidden = false;
-        el.textContent = message;
-        el.dataset.tone = tone;
-        if (syncStatusTimer) clearTimeout(syncStatusTimer);
-        if (autoHideMs > 0) {
-            syncStatusTimer = setTimeout(() => {
-                if (el.textContent === message) {
-                    el.hidden = true;
-                    el.textContent = '';
-                }
-            }, autoHideMs);
-        }
-    };
-
-    const getActiveViewId = () => document.querySelector('.view-section.active')?.id || '';
-
-    const isProtectingLocalEdits = () => {
-        const id = getActiveViewId();
-        return id === 'view-editor' || id === 'view-note-editor' || id === 'view-bookmark-editor';
-    };
-
-    // 后台无感自动同步 API 最新数据（有变化则静默刷新；编辑中不重绘，避免打断输入）
-    let isSyncingInBg = false;
-    let pendingSyncRetryTimer = null;
-    const syncFromApi = async () => {
-        if (!authToken || isSyncingInBg) return;
-        isSyncingInBg = true;
-        let needsBatchUpload = false;
-        let hadError = false;
-
-        try {
-            // 周记
-            try {
-                const apiData = await apiRequest('/api/weeklies');
-                if (Array.isArray(apiData)) {
-                    const { merged, needsUpload } = processApiSyncResult(database, apiData);
-                    if (needsUpload) needsBatchUpload = true;
-                    if (JSON.stringify(database) !== JSON.stringify(merged)) {
-                        database = merged;
-                        saveDatabase();
-                        if (getActiveViewId() === 'view-home') {
-                            renderCards(document.querySelector('.filter-btn.active')?.dataset.filter || 'all');
-                        }
-                    }
-                }
-            } catch (e) { hadError = true; }
-
-            // 笔记
-            try {
-                const apiData = await apiRequest('/api/notes');
-                if (Array.isArray(apiData)) {
-                    const { merged, needsUpload } = processApiSyncResult(notesDatabase, apiData);
-                    if (needsUpload) needsBatchUpload = true;
-                    if (JSON.stringify(notesDatabase) !== JSON.stringify(merged)) {
-                        notesDatabase = merged;
-                        saveNotesDatabase();
-                        if (getActiveViewId() === 'view-notes') renderNotes();
-                    }
-                }
-            } catch (e) { hadError = true; }
-
-            // 收藏
-            try {
-                const apiData = await apiRequest('/api/bookmarks');
-                if (Array.isArray(apiData)) {
-                    const { merged, needsUpload } = processApiSyncResult(bookmarksDatabase, apiData);
-                    if (needsUpload) needsBatchUpload = true;
-                    if (JSON.stringify(bookmarksDatabase) !== JSON.stringify(merged)) {
-                        bookmarksDatabase = merged.map((bm) => {
-                            const desc = (bm && (bm.desc || bm.description)) || '';
-                            return { ...bm, desc, description: desc };
-                        });
-                        saveBookmarksDatabase();
-                        if (getActiveViewId() === 'view-bookmarks') renderBookmarks();
-                    }
-                }
-            } catch (e) { hadError = true; }
-
-            // 随手记
-            try {
-                const apiData = await apiRequest('/api/feeds');
-                if (Array.isArray(apiData)) {
-                    const { merged, needsUpload } = processApiSyncResult(feedsDatabase, apiData);
-                    if (needsUpload) needsBatchUpload = true;
-                    if (JSON.stringify(feedsDatabase) !== JSON.stringify(merged)) {
-                        feedsDatabase = merged;
-                        saveFeedsDatabase();
-                        if (getActiveViewId() === 'view-feeds' && !isProtectingLocalEdits()) renderFeeds();
-                    }
-                }
-            } catch (e) { hadError = true; }
-
-            // 本地未上传 / 较新脏数据 → 批量补传
-            if (needsBatchUpload) {
-                try {
-                    await apiRequest('/api/sync/batch', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            weeklies: database.map(stripClientSyncFlags),
-                            notes: notesDatabase.map(stripClientSyncFlags),
-                            bookmarks: bookmarksDatabase.map(stripClientSyncFlags),
-                            feeds: feedsDatabase.map(stripClientSyncFlags)
-                        })
-                    });
-                    database.forEach(i => { if (i) i._dirty = false; });
-                    notesDatabase.forEach(i => { if (i) i._dirty = false; });
-                    bookmarksDatabase.forEach(i => { if (i) i._dirty = false; });
-                    feedsDatabase.forEach(i => { if (i) i._dirty = false; });
-                    saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase();
-                    setSyncStatus('已同步', 'ok', 2000);
-                } catch (e) {
-                    hadError = true;
-                    setSyncStatus('未同步 · 将重试', 'warn');
-                }
-            }
-
-            // 回响卡片
-            try {
-                const apiData = await apiRequest('/api/echo/cards');
-                if (Array.isArray(apiData)) {
-                    if (JSON.stringify(echoCardsDatabase) !== JSON.stringify(apiData)) {
-                        echoCardsDatabase = apiData;
-                        localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
-                        if (getActiveViewId() === 'view-feeds' || getActiveViewId() === 'view-home') {
-                            renderEchoCards();
-                        }
-                    }
-                }
-            } catch (e) { hadError = true; }
-
-            if (!isProtectingLocalEdits() && (getActiveViewId() === 'view-home' || getActiveViewId() === 'view-feeds')) {
-                renderHeatmap();
-            }
-
-            if (hadError) {
-                setSyncStatus('同步异常 · 将重试', 'warn');
-                if (!pendingSyncRetryTimer) {
-                    pendingSyncRetryTimer = setTimeout(() => {
-                        pendingSyncRetryTimer = null;
-                        syncFromApi();
-                    }, 12000);
-                }
-            }
-        } finally {
-            isSyncingInBg = false;
-        }
-    };
-
-    const saveDatabase = () => localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(database));
-    const saveNotesDatabase = () => localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(notesDatabase));
-    const saveBookmarksDatabase = () => localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(bookmarksDatabase));
-    const saveFeedsDatabase = () => localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
-
-    // API 同步辅助：失败可见并触发重试，不再静默吞掉
-    const markSyncedItem = (item) => {
-        if (!item || item.id == null) return;
-        item._dirty = false;
-        if (!item.updated_at) item.updated_at = new Date().toISOString();
-        addSyncedIds([item.id]);
-    };
-
-    const handleSyncFailure = (err) => {
-        console.warn('[sync] failed:', err);
-        setSyncStatus('未同步 · 将重试', 'warn');
-        if (!pendingSyncRetryTimer) {
-            pendingSyncRetryTimer = setTimeout(() => {
-                pendingSyncRetryTimer = null;
-                syncFromApi();
-            }, 8000);
-        }
-    };
-
-    const apiSyncWeekly = (item, method) => {
-        const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-        if (method !== 'DELETE' && item) {
-            item.updated_at = payload.updated_at;
-            item._dirty = true;
-        }
-        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-        const id = method === 'POST' ? '' : `/${item.id}`;
-        return apiRequest(`/api/weeklies${id}`, bm).then((res) => {
-            if (method !== 'DELETE') markSyncedItem(item);
-            setSyncStatus('已同步', 'ok', 1800);
-            return res;
-        }).catch((err) => { handleSyncFailure(err); return null; });
-    };
-    const apiSyncNote = (item, method) => {
-        const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-        if (method !== 'DELETE' && item) {
-            item.updated_at = payload.updated_at;
-            item._dirty = true;
-        }
-        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-        const id = method === 'POST' ? '' : `/${item.id}`;
-        return apiRequest(`/api/notes${id}`, bm).then((res) => {
-            if (method !== 'DELETE') markSyncedItem(item);
-            setSyncStatus('已同步', 'ok', 1800);
-            return res;
-        }).catch((err) => { handleSyncFailure(err); return null; });
-    };
-    const apiSyncBookmark = (item, method) => {
-        const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-        if (method !== 'DELETE' && item) {
-            item.updated_at = payload.updated_at;
-            item._dirty = true;
-        }
-        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-        const id = method === 'POST' ? '' : `/${item.id}`;
-        return apiRequest(`/api/bookmarks${id}`, bm).then((res) => {
-            if (method !== 'DELETE') markSyncedItem(item);
-            setSyncStatus('已同步', 'ok', 1800);
-            return res;
-        }).catch((err) => { handleSyncFailure(err); return null; });
-    };
-    const apiSyncFeed = (item, method) => {
-        const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-        if (method !== 'DELETE' && item) {
-            item.updated_at = payload.updated_at;
-            item._dirty = true;
-        }
-        const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-        const id = method === 'POST' ? '' : `/${item.id}`;
-        return apiRequest(`/api/feeds${id}`, bm).then((res) => {
-            if (method !== 'DELETE') markSyncedItem(item);
-            setSyncStatus('已同步', 'ok', 1800);
-            return res;
-        }).catch((err) => { handleSyncFailure(err); return null; });
-    };
+    // Auth / sync / persistence: ./js/api.js + ./js/state.js
 
     let currentArticleId = null;
     let currentNoteId = null;
@@ -858,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
         aiModalInHistory = false;
 
         if (route.view === 'article' && route.id) {
-            const item = database.find(d => String(d.id) === String(route.id));
+            const item = state.database.find(d => String(d.id) === String(route.id));
             if (item) {
                 openArticle(item, { skipHistory: true });
                 return;
@@ -1061,7 +349,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
                 if (confirm("确定要删除这条批追记吗？")) {
                     currentWeeklyAnnotations = currentWeeklyAnnotations.filter(a => a.id !== ann.id);
-                    const article = database.find(d => d.id === currentArticleId);
+                    const article = state.database.find(d => d.id === currentArticleId);
                     if (article) {
                         article.annotations = currentWeeklyAnnotations;
                         saveDatabase();
@@ -1082,7 +370,7 @@ document.addEventListener('DOMContentLoaded', () => {
             filter = activeBtn ? activeBtn.dataset.filter : 'all';
         }
         galleryContainer.innerHTML = '';
-        const sortedDB = [...database].sort((a, b) => b.id - a.id);
+        const sortedDB = [...state.database].sort((a, b) => b.id - a.id);
         sortedDB.forEach(item => {
             if (filter !== "all" && item.category !== filter) return;
             
@@ -1160,7 +448,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (editId) {
             // 编辑已有文章：与原始数据库文章对比
-            const item = database.find(d => d.id === parseInt(editId));
+            const item = state.database.find(d => d.id === parseInt(editId));
             if (!item) return false;
             const originalMusic = item.weeklyData?.music || {};
             const originalMedia = (item.weeklyData?.media && item.weeklyData.media[0]) || {};
@@ -1303,7 +591,7 @@ document.addEventListener('DOMContentLoaded', () => {
         editorForm.reset();
         if (editId) {
             editorPageTitle.innerText = "编辑记忆";
-            const item = database.find(d => d.id === editId || String(d.id) === String(editId));
+            const item = state.database.find(d => d.id === editId || String(d.id) === String(editId));
             if (item) {
                 document.getElementById('edit-id').value = item.id;
                 document.getElementById('edit-category').value = item.category;
@@ -1346,8 +634,8 @@ document.addEventListener('DOMContentLoaded', () => {
             summary: document.getElementById('edit-summary').value, 
             cover: document.getElementById('edit-cover').value, 
             content: document.getElementById('edit-content').value,
-            date: isEdit ? database.find(d => d.id === parseInt(idStr)).date : getChineseDate(),
-            annotations: isEdit ? (database.find(d => d.id === parseInt(idStr)).annotations || []) : [],
+            date: isEdit ? state.database.find(d => d.id === parseInt(idStr)).date : getChineseDate(),
+            annotations: isEdit ? (state.database.find(d => d.id === parseInt(idStr)).annotations || []) : [],
             weeklyData: {
                 music: { title: document.getElementById('edit-music-title').value, artist: document.getElementById('edit-music-artist').value, lyric: document.getElementById('edit-music-lyric').value },
                 media: [{ icon: document.getElementById('edit-media-icon').value, title: document.getElementById('edit-media-title').value, desc: document.getElementById('edit-media-desc').value }],
@@ -1358,7 +646,7 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
         stampLocalUpdate(newData);
-        if (isEdit) { const index = database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) database[index] = newData; } else { database.push(newData); }
+        if (isEdit) { const index = state.database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) state.database[index] = newData; } else { state.database.push(newData); }
         discardWeeklyDraft();
         saveDatabase(); apiSyncWeekly(newData, isEdit ? 'PUT' : 'POST'); renderCards(document.querySelector('.filter-btn.active').dataset.filter); switchView('home');
     });
@@ -1400,7 +688,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(confirm("确定要永久删除这篇记忆吗？")) { 
             const deletedId = currentArticleId; 
             addDeletedId(deletedId);
-            database = database.filter(d => d.id !== currentArticleId); 
+            state.database = state.database.filter(d => d.id !== currentArticleId); 
             saveDatabase(); 
             apiSyncWeekly({id: deletedId}, 'DELETE'); 
             renderCards(); 
@@ -1420,7 +708,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentWeeklyAnnotations.push(newAnn);
         inputEl.value = '';
         
-        const article = database.find(d => d.id === currentArticleId);
+        const article = state.database.find(d => d.id === currentArticleId);
         if (article) {
             article.annotations = currentWeeklyAnnotations;
             saveDatabase();
@@ -1465,7 +753,7 @@ document.addEventListener('DOMContentLoaded', () => {
             item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
                 if (confirm("确定要删除这条批注吗？")) {
                     currentNoteAnnotations = currentNoteAnnotations.filter(a => a.id !== ann.id);
-                    const note = notesDatabase.find(n => n.id === currentNoteId);
+                    const note = state.notesDatabase.find(n => n.id === currentNoteId);
                     if (note) {
                         note.annotations = currentNoteAnnotations;
                         saveNotesDatabase();
@@ -1482,7 +770,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const renderNotes = () => {
         notesListContainer.innerHTML = '';
-        const sortedNotes = [...notesDatabase].sort((a, b) => b.id - a.id);
+        const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
         sortedNotes.forEach(note => {
             if (currentNotesSearchQuery) {
                 const query = currentNotesSearchQuery.toLowerCase();
@@ -1509,7 +797,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const contentVal = (editNoteContent.value || '').trim();
         const idStr = editNoteId.value;
         if (idStr) {
-            const note = notesDatabase.find(n => String(n.id) === String(idStr));
+            const note = state.notesDatabase.find(n => String(n.id) === String(idStr));
             if (!note) return titleVal !== '' || contentVal !== '';
             return titleVal !== (note.title || '').trim() || contentVal !== (note.content || '').trim();
         }
@@ -1575,7 +863,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const openNoteEditor = (noteId = null, opts = {}) => {
         document.getElementById('new-annotation-content').value = '';
         if (noteId) {
-            currentNoteId = noteId; const note = notesDatabase.find(n => n.id === noteId || String(n.id) === String(noteId));
+            currentNoteId = noteId; const note = state.notesDatabase.find(n => n.id === noteId || String(n.id) === String(noteId));
             if (note) { 
                 editNoteId.value = note.id; 
                 editNoteTitle.value = note.title; 
@@ -1603,11 +891,11 @@ document.addEventListener('DOMContentLoaded', () => {
             id: isEdit ? parseInt(idStr) : Date.now(), 
             title: titleVal || '无标题笔记', 
             content: contentVal, 
-            date: isEdit ? notesDatabase.find(n => n.id === parseInt(idStr)).date : getChineseDate(),
+            date: isEdit ? state.notesDatabase.find(n => n.id === parseInt(idStr)).date : getChineseDate(),
             annotations: currentNoteAnnotations
         };
         stampLocalUpdate(newNote);
-        if (isEdit) { const index = notesDatabase.findIndex(n => n.id === parseInt(idStr)); if(index !== -1) notesDatabase[index] = newNote; } else { notesDatabase.push(newNote); }
+        if (isEdit) { const index = state.notesDatabase.findIndex(n => n.id === parseInt(idStr)); if(index !== -1) state.notesDatabase[index] = newNote; } else { state.notesDatabase.push(newNote); }
         discardNoteDraft();
         saveNotesDatabase(); apiSyncNote(newNote, isEdit ? 'PUT' : 'POST'); renderNotes(); switchView('notes');
     });
@@ -1625,7 +913,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if(confirm("确定删除这条笔记吗？")) { 
             const deletedId = currentNoteId; 
             addDeletedId(deletedId);
-            notesDatabase = notesDatabase.filter(n => n.id !== currentNoteId); 
+            state.notesDatabase = state.notesDatabase.filter(n => n.id !== currentNoteId); 
             saveNotesDatabase(); 
             discardNoteDraft();
             apiSyncNote({id: deletedId}, 'DELETE'); 
@@ -1647,7 +935,7 @@ document.addEventListener('DOMContentLoaded', () => {
         inputEl.value = '';
         
         // 如果是已存笔记，立刻保存到数据库
-        const note = notesDatabase.find(n => n.id === currentNoteId);
+        const note = state.notesDatabase.find(n => n.id === currentNoteId);
         if (note) {
             note.annotations = currentNoteAnnotations;
             saveNotesDatabase();
@@ -1662,7 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // ==========================================
     const renderBookmarks = () => {
         bookmarkListContainer.innerHTML = '';
-        const sortedBookmarks = [...bookmarksDatabase].sort((a, b) => b.id - a.id);
+        const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id);
         
         sortedBookmarks.forEach(bm => {
             if (currentBookmarksSearchQuery) {
@@ -1712,7 +1000,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
                     const deletedId = bm.id;
                     addDeletedId(deletedId);
-                    bookmarksDatabase = bookmarksDatabase.filter(b => b.id !== bm.id);
+                    state.bookmarksDatabase = state.bookmarksDatabase.filter(b => b.id !== bm.id);
                     saveBookmarksDatabase();
                     apiSyncBookmark({id: deletedId}, 'DELETE');
                     renderBookmarks();
@@ -1749,7 +1037,7 @@ document.addEventListener('DOMContentLoaded', () => {
             image: (editBookmarkImage && editBookmarkImage.value || '').trim()
         };
         stampLocalUpdate(newBookmark);
-        bookmarksDatabase.unshift(newBookmark);
+        state.bookmarksDatabase.unshift(newBookmark);
         saveBookmarksDatabase();
         apiSyncBookmark(newBookmark, 'POST');
         renderBookmarks();
@@ -1769,132 +1057,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
 
 
-    // 检测并合并游客/未登录状态下的本地数据
-    const checkAndMergeGuestData = async () => {
-        if (!authUser) return;
-        
-        const guestData = JSON.parse(localStorage.getItem('default_gardenData')) || [];
-        const guestNotes = JSON.parse(localStorage.getItem('default_gardenNotes')) || [];
-        const guestBookmarks = JSON.parse(localStorage.getItem('default_gardenBookmarks')) || [];
-        const guestFeeds = JSON.parse(localStorage.getItem('default_gardenFeeds')) || [];
-        
-        const hasGuestData = guestData.length > 0 && !(guestData.length === 1 && guestData[0].id === 1);
-        const hasGuestNotes = guestNotes.length > 0 && !guestNotes.every(n => n.id === 101 || n.id === 102);
-        const hasGuestBookmarks = guestBookmarks.length > 0 && !guestBookmarks.every(b => b.id === 201 || b.id === 202 || b.id === 203);
-        const hasGuestFeeds = guestFeeds.length > 0 && !(guestFeeds.length === 1 && guestFeeds[0].id === 1);
 
-        if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds) {
-            if (confirm('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记）。是否将这些数据导入并同步到您当前的账号中？')) {
-                try {
-                    // 1. 合并周记到当前用户的本地缓存
-                    const userKey = getLocalKey('gardenData');
-                    let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];
-                    userDatabase = [...userDatabase, ...guestData].filter((item, index, self) => 
-                        self.findIndex(t => t.id === item.id) === index
-                    );
-                    localStorage.setItem(userKey, JSON.stringify(userDatabase));
-                    database = userDatabase;
-
-                    // 2. 合并笔记到当前用户的本地缓存
-                    const userNotesKey = getLocalKey('gardenNotes');
-                    let userNotesDatabase = JSON.parse(localStorage.getItem(userNotesKey)) || [];
-                    userNotesDatabase = [...userNotesDatabase, ...guestNotes].filter((item, index, self) => 
-                        self.findIndex(t => t.id === item.id) === index
-                    );
-                    localStorage.setItem(userNotesKey, JSON.stringify(userNotesDatabase));
-                    notesDatabase = userNotesDatabase;
-
-                    // 3. 合并收藏到当前用户的本地缓存
-                    const userBMKey = getLocalKey('gardenBookmarks');
-                    let userBMDatabase = JSON.parse(localStorage.getItem(userBMKey)) || [];
-                    userBMDatabase = [...userBMDatabase, ...guestBookmarks].filter((item, index, self) => 
-                        self.findIndex(t => t.id === item.id) === index
-                    );
-                    localStorage.setItem(userBMKey, JSON.stringify(userBMDatabase));
-                    bookmarksDatabase = userBMDatabase;
-
-                    // 4. 合并随手记到当前用户的本地缓存
-                    const userFeedsKey = getLocalKey('gardenFeeds');
-                    let userFeedsDatabase = JSON.parse(localStorage.getItem(userFeedsKey)) || [];
-                    userFeedsDatabase = [...userFeedsDatabase, ...guestFeeds].filter((item, index, self) => 
-                        self.findIndex(t => t.id === item.id) === index
-                    );
-                    localStorage.setItem(userFeedsKey, JSON.stringify(userFeedsDatabase));
-                    feedsDatabase = userFeedsDatabase;
-
-                    // 一次性发送到云端
-                    await apiRequest('/api/sync/batch', {
-                        method: 'POST',
-                        body: JSON.stringify({
-                            weeklies: guestData,
-                            notes: guestNotes,
-                            bookmarks: guestBookmarks,
-                            feeds: guestFeeds
-                        })
-                    });
-
-                    // 清空游客数据，防止重复提示
-                    localStorage.removeItem('default_gardenData');
-                    localStorage.removeItem('default_gardenNotes');
-                    localStorage.removeItem('default_gardenBookmarks');
-                    localStorage.removeItem('default_gardenFeeds');
-                    
-                    showToast('本地数据已成功合并并同步至云端！', 'success');
-                } catch (e) {
-                    showToast('合并同步部分数据失败：' + e.message, 'error');
-                }
-            }
-        }
-    };
-
-    // 1. 页面初始化：首先校验登录状态（如果已登录自动隐藏登录遮罩层，免去重复输入密码）
-    checkAuth();
-
-    if (authToken) {
-        setTimeout(registerPushNotification, 2000);
-    }
-    loadLocalData();
-    if (authToken) {
-        syncFromApi();
-    }
-
-    // 4. 后台检测合并游客数据
-    checkAndMergeGuestData();
-
-    // 智能后台无感自动同步引擎 (Seamless Auto-Sync Engine)
-    let autoSyncInterval = null;
-    const startAutoSyncEngine = () => {
-        if (autoSyncInterval) clearInterval(autoSyncInterval);
-        // 每 15 秒后台同步一次（编辑中不会重绘；失败会提示并重试）
-        autoSyncInterval = setInterval(() => {
-            if (document.visibilityState === 'visible' && authToken) {
-                syncFromApi();
-            }
-        }, 15000);
-    };
-
-    // 页面切回、亮屏焦点、网络恢复时立即无感同步
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && authToken) {
-            syncFromApi();
-        }
-    });
-    window.addEventListener('focus', () => {
-        if (authToken) syncFromApi();
-    });
-    window.addEventListener('online', () => {
-        if (authToken) syncFromApi();
-    });
-
-    // 启动后台无感自动同步引擎
-    startAutoSyncEngine();
-
-    // 恢复 URL hash（刷新后回到对应视图）；无 hash 时写入首页，便于系统返回键工作
-    if (location.hash && location.hash !== '#' && location.hash !== '#/home') {
-        applyRoute(parseHashRoute());
-    } else {
-        history.replaceState({ view: currentActiveNavView || 'home' }, '', `#/${currentActiveNavView || 'home'}`);
-    }
 
     // 图片上传处理
     const globalImageUploader = document.getElementById('global-image-uploader');
@@ -1984,8 +1147,8 @@ document.addEventListener('DOMContentLoaded', () => {
             formData.append('file', uploadFile);
 
             const headers = {};
-            if (authToken) {
-                headers['Authorization'] = `Bearer ${authToken}`;
+            if (state.authToken) {
+                headers['Authorization'] = `Bearer ${state.authToken}`;
             }
 
             try {
@@ -2531,7 +1694,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('feeds-stream-container');
         if (!container) return;
 
-        const displayFeeds = feedsDatabase;
+        const displayFeeds = state.feedsDatabase;
 
         if (!displayFeeds || displayFeeds.length === 0) {
             container.innerHTML = `
@@ -2783,8 +1946,8 @@ document.addEventListener('DOMContentLoaded', () => {
         };
         stampLocalUpdate(newFeed);
 
-        feedsDatabase.unshift(newFeed);
-        localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
+        state.feedsDatabase.unshift(newFeed);
+        localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
         renderFeeds();
         renderHeatmap();
 
@@ -2806,11 +1969,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 body: JSON.stringify(newFeed)
             });
             if (apiRes && apiRes.id) {
-                const idx = feedsDatabase.findIndex(f => f.id === newFeed.id);
+                const idx = state.feedsDatabase.findIndex(f => f.id === newFeed.id);
                 if (idx !== -1) {
-                    feedsDatabase[idx] = apiRes;
+                    state.feedsDatabase[idx] = apiRes;
                 } else {
-                    feedsDatabase.unshift(apiRes);
+                    state.feedsDatabase.unshift(apiRes);
                 }
                 saveFeedsDatabase();
                 renderFeeds();
@@ -2835,8 +1998,8 @@ document.addEventListener('DOMContentLoaded', () => {
     window.deleteFeed = function(id) {
         if (!confirm('确定要删除这条随手记吗？')) return;
         addDeletedId(id);
-        feedsDatabase = feedsDatabase.filter(f => String(f.id) !== String(id));
-        localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(feedsDatabase));
+        state.feedsDatabase = state.feedsDatabase.filter(f => String(f.id) !== String(id));
+        localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
         renderFeeds();
         renderHeatmap();
         apiRequest(`/api/feeds/${id}`, { method: 'DELETE' }).catch(() => {});
@@ -2884,10 +2047,10 @@ document.addEventListener('DOMContentLoaded', () => {
             dateMap[key] = (dateMap[key] || 0) + 1;
         };
 
-        (database || []).forEach(w => addCount(w.created_at || w.updated_at || w.date));
-        (notesDatabase || []).forEach(n => addCount(n.created_at || n.updated_at || n.date));
-        (bookmarksDatabase || []).forEach(b => addCount(b.created_at || b.updated_at));
-        (feedsDatabase || []).forEach(f => addCount(f.created_at || f.updated_at));
+        (state.database || []).forEach(w => addCount(w.created_at || w.updated_at || w.date));
+        (state.notesDatabase || []).forEach(n => addCount(n.created_at || n.updated_at || n.date));
+        (state.bookmarksDatabase || []).forEach(b => addCount(b.created_at || b.updated_at));
+        (state.feedsDatabase || []).forEach(f => addCount(f.created_at || f.updated_at));
 
         // Generate columns (52 weeks x 7 days)
         const today = new Date();
@@ -2922,12 +2085,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const container = document.getElementById('echo-cards-container');
         if (!container) return;
 
-        if (!echoCardsDatabase || echoCardsDatabase.length === 0) {
+        if (!state.echoCardsDatabase || state.echoCardsDatabase.length === 0) {
             container.innerHTML = '';
             return;
         }
 
-        container.innerHTML = echoCardsDatabase.map(card => {
+        container.innerHTML = state.echoCardsDatabase.map(card => {
             let feedLinksHtml = '';
             try {
                 // Removed feed links logic
@@ -2951,18 +2114,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.deleteEchoCard = function(id) {
         if (!confirm('确定要删除这张 AI 回响卡片吗？')) return;
-        echoCardsDatabase = echoCardsDatabase.filter(c => String(c.id) !== String(id));
-        localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+        state.echoCardsDatabase = state.echoCardsDatabase.filter(c => String(c.id) !== String(id));
+        localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(state.echoCardsDatabase));
         renderEchoCards();
         apiRequest('/api/echo/cards/' + id, { method: 'DELETE' }).catch(() => {});
     };
 
     function getLocalAiReply(question) {
         const allMemory = [];
-        (feedsDatabase || []).forEach(f => allMemory.push(`[随手记 ${f.created_at || ''}] ${f.content}`));
-        (notesDatabase || []).forEach(n => allMemory.push(`[备忘录 ${n.date || ''}] ${n.title}: ${n.content || ''}`));
-        (database || []).forEach(w => allMemory.push(`[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`));
-        (bookmarksDatabase || []).forEach(b => allMemory.push(`[书签] ${b.title}: ${b.desc || b.description || ''} (${b.url || ''})`));
+        (state.feedsDatabase || []).forEach(f => allMemory.push(`[随手记 ${f.created_at || ''}] ${f.content}`));
+        (state.notesDatabase || []).forEach(n => allMemory.push(`[备忘录 ${n.date || ''}] ${n.title}: ${n.content || ''}`));
+        (state.database || []).forEach(w => allMemory.push(`[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`));
+        (state.bookmarksDatabase || []).forEach(b => allMemory.push(`[书签] ${b.title}: ${b.desc || b.description || ''} (${b.url || ''})`));
 
         if (allMemory.length === 0) {
             return `我在您的记忆花园里还没有找到记录。试试先在“随手记”里记录一些想法吧！`;
@@ -2991,8 +2154,8 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 const newCard = await apiRequest('/api/echo/generate', { method: 'POST', timeout: 60000 });
                 if (newCard && newCard.title) {
-                    echoCardsDatabase.unshift(newCard);
-                    localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(echoCardsDatabase));
+                    state.echoCardsDatabase.unshift(newCard);
+                    localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(state.echoCardsDatabase));
                     renderEchoCards();
                     switchView('feeds');
                     setSyncStatus('回响卡片已生成', 'ok', 2500);
@@ -3117,7 +2280,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const results = [];
 
         // 1. 周记
-        (database || []).forEach(w => {
+        (state.database || []).forEach(w => {
             if ((w.title || '').toLowerCase().includes(q) || (w.summary || '').toLowerCase().includes(q) || (w.content || '').toLowerCase().includes(q)) {
                 results.push({
                     type: '周记',
@@ -3131,7 +2294,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // 2. 随手记
-        (feedsDatabase || []).forEach(f => {
+        (state.feedsDatabase || []).forEach(f => {
             if ((f.content || '').toLowerCase().includes(q) || (f.summary || '').toLowerCase().includes(q)) {
                 results.push({
                     type: '⚡ 随手记',
@@ -3145,7 +2308,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // 3. 笔记
-        (notesDatabase || []).forEach(n => {
+        (state.notesDatabase || []).forEach(n => {
             if ((n.title || '').toLowerCase().includes(q) || (n.content || '').toLowerCase().includes(q)) {
                 results.push({
                     type: '📝 笔记',
@@ -3159,7 +2322,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // 4. 收藏
-        (bookmarksDatabase || []).forEach(b => {
+        (state.bookmarksDatabase || []).forEach(b => {
             if ((b.title || '').toLowerCase().includes(q) || (b.desc || b.description || '').toLowerCase().includes(q) || (b.url || '').toLowerCase().includes(q)) {
                 results.push({
                     type: '🔖 收藏',
@@ -3173,7 +2336,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
 
         // 5. AI 回响卡片
-        (echoCardsDatabase || []).forEach(c => {
+        (state.echoCardsDatabase || []).forEach(c => {
             if ((c.title || '').toLowerCase().includes(q) || (c.summary || '').toLowerCase().includes(q) || (c.topic || '').toLowerCase().includes(q)) {
                 results.push({
                     type: '✨ AI 回响',
@@ -3264,11 +2427,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             const headers = { 'Content-Type': 'application/json' };
-            if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+            if (state.authToken) headers['Authorization'] = `Bearer ${state.authToken}`;
 
             // 多轮对话：保存 user 输入
-            const recentHistory = [...aiChatHistory];
-            aiChatHistory.push({ role: 'user', content: question });
+            const recentHistory = [...state.aiChatHistory];
+            state.aiChatHistory.push({ role: 'user', content: question });
 
             const response = await fetchWithFallback('/api/ai/chat', {
                 method: 'POST',
@@ -3315,14 +2478,14 @@ document.addEventListener('DOMContentLoaded', () => {
                     }
                 }
                 if (fullText) {
-                    aiChatHistory.push({ role: 'assistant', content: fullText });
+                    state.aiChatHistory.push({ role: 'assistant', content: fullText });
                     return;
                 }
             } else if (response.ok) {
                 const res = await response.json();
                 if (res && res.reply) {
                     bubbleEl.innerHTML = markdownToHtml(res.reply);
-                    aiChatHistory.push({ role: 'assistant', content: res.reply });
+                    state.aiChatHistory.push({ role: 'assistant', content: res.reply });
                     aiChatBody.scrollTop = aiChatBody.scrollHeight;
                     return;
                 }
@@ -3334,7 +2497,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
         const localReply = getLocalAiReply(question);
         bubbleEl.innerHTML = markdownToHtml(localReply);
-        aiChatHistory.push({ role: 'assistant', content: localReply });
+        state.aiChatHistory.push({ role: 'assistant', content: localReply });
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
     }
 
@@ -3388,6 +2551,52 @@ document.addEventListener('DOMContentLoaded', () => {
             }, 100);
         }
     });
+
+    bindApiHooks({
+        onRefresh(kind, opts = {}) {
+            if (kind === 'all') {
+                renderCards();
+                renderNotes();
+                renderBookmarks();
+                renderFeeds();
+                renderEchoCards();
+                renderHeatmap();
+                return;
+            }
+            if (kind === 'weeklies') renderCards(opts.filter || 'all');
+            if (kind === 'notes') renderNotes();
+            if (kind === 'bookmarks') renderBookmarks();
+            if (kind === 'feeds') renderFeeds();
+            if (kind === 'echo') renderEchoCards();
+            if (kind === 'heatmap') renderHeatmap();
+        }
+    });
+
+    initAuthUI();
+
+    // 1. 页面初始化：首先校验登录状态（如果已登录自动隐藏登录遮罩层，免去重复输入密码）
+    checkAuth();
+
+    if (state.authToken) {
+        setTimeout(registerPushNotification, 2000);
+    }
+    loadLocalData();
+    if (state.authToken) {
+        syncFromApi();
+    }
+
+    // 4. 后台检测合并游客数据
+    checkAndMergeGuestData();
+
+    // 启动后台无感自动同步引擎
+    startAutoSyncEngine();
+
+    // 恢复 URL hash（刷新后回到对应视图）；无 hash 时写入首页，便于系统返回键工作
+    if (location.hash && location.hash !== '#' && location.hash !== '#/home') {
+        applyRoute(parseHashRoute());
+    } else {
+        history.replaceState({ view: currentActiveNavView || 'home' }, '', `#/${currentActiveNavView || 'home'}`);
+    }
 
     // PWA：注册与自动感知更新 Service Worker
     if ('serviceWorker' in navigator) {
