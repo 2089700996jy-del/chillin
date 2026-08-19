@@ -11,8 +11,8 @@
 - 数据库：Cloudflare D1（`migrations/0001`–`0012`）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`git@github.com:2089700996jy-del/chillin.git`
-- 前端缓存：`app.js`/`style.css` `?v=2.2.1`，SW `chillin-v17`
-- 前端模块化（进行中）：`js/utils.js` + `js/state.js` + `js/api.js`（认证/同步）；入口 `type="module"`
+- 前端缓存：`app.js`/`style.css` `?v=2.3.0`，SW `chillin-v18`
+- 前端模块化（进行中）：`js/utils` + `state` + `api` + `ui`/`actions` + `router`/`weeklies`/`notes`/`bookmarks`；阅读器/随手记/AI/搜索仍在 `app.js`
 - Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制，含 `js/`）
 
 ## 明确不做
@@ -68,5 +68,5 @@ gradlew.bat assembleDebug
 
 ## 可选下一步
 
-- 模块化阶段 3：按周记/笔记/收藏/阅读器/随手记/AI/搜索拆分剩余 `app.js`
+- 模块化阶段 3 续：抽出 `reader` / `feeds` / `echo-ai` / `search`
 - 回响卡片点击跳到相关随手记；AI 多轮上下文
