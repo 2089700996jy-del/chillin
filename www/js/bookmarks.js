@@ -45,16 +45,25 @@ const renderBookmarks = () => {
         if (hasUrl) { card.href = rawUrl; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
 
         const hasImage = bm.image && bm.image.trim();
-        const descDisplay = bm.desc || bm.description || '暂无描述...';
+        const descRaw = (bm.desc || bm.description || '').trim();
+        const typeLabel = (bm.type || '🔖').trim();
+        const emoji = typeLabel.split(' ')[0] || '🔖';
         card.innerHTML = `
             <div class="bookmark-card-inner">
-                ${hasImage
-                    ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-                    : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
-                <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
-                <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
-                <div class="bookmark-card-desc">${escapeHtml(descDisplay)}</div>
-                <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
+                <div class="bookmark-card-media">
+                    ${hasImage
+                        ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.parentElement.classList.add(\'is-fallback\');this.remove();">'
+                        : ''}
+                    <span class="bookmark-card-emoji" aria-hidden="true">${escapeHtml(emoji)}</span>
+                </div>
+                <div class="bookmark-card-body">
+                    <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
+                    <div class="bookmark-card-meta">
+                        <span class="bookmark-card-type">${escapeHtml(typeLabel)}</span>
+                        ${descRaw ? '<span class="bookmark-card-desc">' + escapeHtml(descRaw) + '</span>' : ''}
+                    </div>
+                </div>
+                <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏" type="button">×</button>
             </div>
         `;
 
