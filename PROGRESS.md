@@ -11,8 +11,9 @@
 - 数据库：Cloudflare D1（`migrations/0001`–`0012`）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`git@github.com:2089700996jy-del/chillin.git`
-- 前端缓存：`app.js`/`style.css` `?v=2.1.2`，SW `chillin-v15`
-- Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制）
+- 前端缓存：`app.js`/`style.css` `?v=2.2.0`，SW `chillin-v16`
+- 前端模块化（进行中）：入口 `type="module"`，工具在 `js/utils.js`；后续按域拆 `state` / `api` / 各视图
+- Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制，含 `js/`）
 
 ## 明确不做
 
@@ -67,6 +68,5 @@ gradlew.bat assembleDebug
 
 ## 可选下一步
 
-- 拆分超大 `app.js`（约 3500 行）
-- 全局搜索 Cmd/Ctrl+K
+- 模块化阶段 2/3：`js/state.js` + `js/api.js`，再按周记/笔记/收藏/阅读器/随手记/AI 拆分
 - 回响卡片点击跳到相关随手记；AI 多轮上下文

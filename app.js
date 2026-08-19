@@ -1,32 +1,21 @@
+import {
+    generateUniqueId,
+    showToast,
+    urlBase64ToUint8Array,
+    escapeHtml,
+    markdownToHtml,
+    sanitizeHtml,
+    autoResizeTextarea,
+    getChineseDate,
+    getChineseDateTime,
+} from './js/utils.js';
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // ==========================================
-    // 0. 全局轻提示与防碰撞 ID 生成器
+    // 0. 推送订阅（工具函数见 ./js/utils.js）
     // ==========================================
     let aiChatHistory = [];
-
-    function generateUniqueId() {
-        return Date.now() * 1000 + Math.floor(Math.random() * 1000);
-    }
-
-    function showToast(msg, type = 'info') {
-        const container = document.getElementById('toast-container');
-        if (!container) {
-            console.log(`[Toast ${type}] ${msg}`);
-            return;
-        }
-        const toast = document.createElement('div');
-        toast.className = `toast toast-${type}`;
-        const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
-        toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(msg)}</span>`;
-        container.appendChild(toast);
-        setTimeout(() => {
-            toast.style.opacity = '0';
-            toast.style.transform = 'translateY(10px)';
-            toast.style.transition = 'all 0.25s ease';
-            setTimeout(() => toast.remove(), 250);
-        }, 3000);
-    }
 
     async function registerPushNotification() {
         if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
@@ -52,17 +41,6 @@ document.addEventListener('DOMContentLoaded', () => {
         } catch (e) {
             console.error('Push registration failed:', e);
         }
-    }
-
-    function urlBase64ToUint8Array(base64String) {
-        const padding = '='.repeat((4 - base64String.length % 4) % 4);
-        const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-        const rawData = window.atob(base64);
-        const outputArray = new Uint8Array(rawData.length);
-        for (let i = 0; i < rawData.length; ++i) {
-            outputArray[i] = rawData.charCodeAt(i);
-        }
-        return outputArray;
     }
 
     async function sendSubscriptionToServer(subscription) {
@@ -834,72 +812,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
 
-    const escapeHtml = (str) => {
-        if (!str) return '';
-        return String(str)
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;')
-            .replace(/'/g, '&#039;');
-    };
-
-    // 把 AI 返回的 Markdown 转成安全 HTML（先转义防 XSS，再做轻量格式化），用于对话/本周回顾展示
-    const markdownToHtml = (text) => {
-        if (!text) return '';
-        const lines = escapeHtml(text).split('\n');
-        let html = '';
-        let inUl = false, inOl = false;
-        const closeLists = () => {
-            if (inUl) { html += '</ul>'; inUl = false; }
-            if (inOl) { html += '</ol>'; inOl = false; }
-        };
-        const inline = (s) => s
-            .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
-            .replace(/`([^`]+)`/g, '<code>$1</code>')
-            .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
-        for (const raw of lines) {
-            const line = raw.replace(/[ \t]+$/, '');
-            const h = line.match(/^(#{1,6})\s+(.*)$/);
-            if (h) {
-                closeLists();
-                const lv = h[1].length;
-                html += `<h${lv}>${inline(h[2])}</h${lv}>`;
-                continue;
-            }
-            const ul = line.match(/^\s*[-*]\s+(.*)$/);
-            if (ul) {
-                if (!inUl) { closeLists(); html += '<ul>'; inUl = true; }
-                html += `<li>${inline(ul[1])}</li>`;
-                continue;
-            }
-            const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
-            if (ol) {
-                if (!inOl) { closeLists(); html += '<ol>'; inOl = true; }
-                html += `<li>${inline(ol[1])}</li>`;
-                continue;
-            }
-            if (line.trim() === '') { closeLists(); continue; }
-            closeLists();
-            html += `<p>${inline(line)}</p>`;
-        }
-        closeLists();
-        return html;
-    };
-
-    // 用 DOMPurify 白名单清洗用户可控的 HTML（正文支持标签，但必须防存储型 XSS）；
-    // 若 CDN 未加载成功，则退化为纯文本转义，保证安全优先。
-    const sanitizeHtml = (html) => {
-        if (typeof window.DOMPurify !== 'undefined' && window.DOMPurify.sanitize) {
-            return window.DOMPurify.sanitize(String(html || ''));
-        }
-        return escapeHtml(html);
-    };
-
-    const autoResizeTextarea = (el) => {
-        el.style.height = 'auto';
-        el.style.height = el.scrollHeight + 'px';
-    };
     editNoteContent.addEventListener('input', () => autoResizeTextarea(editNoteContent));
 
 
@@ -1119,11 +1031,6 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (currentActiveNavView === 'bookmarks') openBookmarkEditor();
         else if (currentActiveNavView === 'reader') document.getElementById('book-file-input').click();
     });
-
-    const getChineseDate = () => {
-        const date = new Date();
-        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`;
-    };
 
     // ==========================================
     // 4. 周记画廊逻辑 (Weekly Recaps)
@@ -1533,12 +1440,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 5. 极简备忘录逻辑 (Notes)
     // ==========================================
     let currentNoteAnnotations = [];
-
-    const getChineseDateTime = () => {
-        const date = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
-    };
 
     const renderAnnotationsList = () => {
         const timeline = document.getElementById('annotations-timeline');
