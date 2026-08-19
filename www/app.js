@@ -32,6 +32,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const versionEl = document.getElementById('app-version');
     if (versionEl) versionEl.textContent = APP_BUILD_LABEL;
+    document.title = `Chillin · ${APP_BUILD_LABEL}`;
 
     // Navbar scroll affordance
     const navbar = document.getElementById('navbar');
