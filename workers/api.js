@@ -852,7 +852,7 @@ async function router(path, method, request, env, ctx) {
     // ==================== BOOKMARKS 收藏 ====================
     if (path === '/api/bookmarks' && method === 'GET') {
         const result = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
-        return jsonResponse(result.results, 200);
+        return jsonResponse((result.results || []).map(formatBookmark), 200);
     }
 
     if (path === '/api/bookmarks' && method === 'POST') {
@@ -861,19 +861,27 @@ async function router(path, method, request, env, ctx) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
         const image = body.image || body.img || null;
+        const description = body.desc || body.description || '';
         try {
             await db.prepare(
-                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
-            ).bind(body.id, body.type, body.title, body.url, body.desc || body.description || '', image, userId).run();
+                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))`
+            ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
         } catch (e) {
-            await db.prepare(
-                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
-            ).bind(body.id, body.type, body.title, body.url, body.desc || body.description || '', userId).run();
+            try {
+                await db.prepare(
+                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+                ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
+            } catch (e2) {
+                await db.prepare(
+                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, user_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+                ).bind(body.id, body.type, body.title, body.url, description, userId).run();
+            }
         }
         const row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
-        return jsonResponse(row, 201);
+        return jsonResponse(formatBookmark(row), 201);
     }
 
     const bmMatch = path.match(/^\/api\/bookmarks\/(\d+)$/);
@@ -886,11 +894,7 @@ async function router(path, method, request, env, ctx) {
     // ==================== QUICK FEEDS 随手记流 ====================
     if (path === '/api/feeds' && method === 'GET') {
         const result = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
-        const rows = (result.results || []).map(row => ({
-            ...row,
-            tags: row.tags ? JSON.parse(row.tags) : []
-        }));
-        return jsonResponse(rows, 200);
+        return jsonResponse((result.results || []).map(formatFeed), 200);
     }
 
     if (path === '/api/feeds' && method === 'POST') {
@@ -911,22 +915,33 @@ async function router(path, method, request, env, ctx) {
         const tagsJson = JSON.stringify(tags);
         let res;
         if (body.id) {
-            await db.prepare(
-                `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')))`
-            ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
+            try {
+                await db.prepare(
+                    `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')), datetime('now'))`
+                ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
+            } catch (e) {
+                await db.prepare(
+                    `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')))`
+                ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
+            }
             res = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         } else {
-            res = await db.prepare(
-                `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now')) RETURNING *`
-            ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
+            try {
+                res = await db.prepare(
+                    `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), datetime('now')) RETURNING *`
+                ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
+            } catch (e) {
+                res = await db.prepare(
+                    `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now')) RETURNING *`
+                ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
+            }
         }
 
-        return jsonResponse({
-            ...res,
-            tags: res.tags ? JSON.parse(res.tags) : []
-        }, 201);
+        return jsonResponse(formatFeed(res), 201);
     }
 
     const feedMatch = path.match(/^\/api\/feeds\/(\d+)$/);
@@ -939,14 +954,17 @@ async function router(path, method, request, env, ctx) {
         const summary = body.summary || null;
         const tags = body.tags || extractTagsFromContent(content);
         const tagsJson = JSON.stringify(tags);
-        await db.prepare(
-            `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5 WHERE id=?6 AND user_id=?7`
-        ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
+        try {
+            await db.prepare(
+                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5, updated_at=datetime('now') WHERE id=?6 AND user_id=?7`
+            ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
+        } catch (e) {
+            await db.prepare(
+                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5 WHERE id=?6 AND user_id=?7`
+            ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
+        }
         const row = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
-        return jsonResponse({
-            ...row,
-            tags: row ? (row.tags ? JSON.parse(row.tags) : []) : []
-        }, 200);
+        return jsonResponse(formatFeed(row), 200);
     }
 
     if (feedMatch && method === 'DELETE') {
@@ -1018,11 +1036,12 @@ async function router(path, method, request, env, ctx) {
             if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
             if (item.id != null && !allowedBookmarks.has(item.id)) continue;
             const image = item.image || item.img || null;
+            const description = item.desc || item.description || '';
             statements.push(
                 db.prepare(
-                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
-                ).bind(item.id, item.type, item.title, item.url, item.desc || item.description || '', image, userId)
+                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))`
+                ).bind(item.id, item.type, item.title, item.url, description, image, userId)
             );
         }
 
@@ -1041,15 +1060,15 @@ async function router(path, method, request, env, ctx) {
             if (item.id) {
                 statements.push(
                     db.prepare(
-                        `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')))`
+                        `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')), datetime('now'))`
                     ).bind(item.id, userId, content, type, mediaUrl, summary, tagsJson, item.created_at || null)
                 );
             } else {
                 statements.push(
                     db.prepare(
-                        `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))`
+                        `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), datetime('now'))`
                     ).bind(userId, content, type, mediaUrl, summary, tagsJson)
                 );
             }
@@ -1355,8 +1374,8 @@ async function router(path, method, request, env, ctx) {
             exported_at: new Date().toISOString(),
             weeklies: (weeklies.results || []).map(formatWeekly),
             notes: (notes.results || []).map(row => ({ ...row, annotations: row.annotations ? JSON.parse(row.annotations) : [] })),
-            bookmarks: bookmarks.results || [],
-            feeds: (feeds.results || []).map(row => ({ ...row, tags: row.tags ? JSON.parse(row.tags) : [] }))
+            bookmarks: (bookmarks.results || []).map(formatBookmark),
+            feeds: (feeds.results || []).map(formatFeed)
         }, 200);
     }
 
@@ -1542,6 +1561,43 @@ function formatWeekly(row) {
         weeklyData: row.weekly_data ? JSON.parse(row.weekly_data) : null,
         content: row.content || null,
         annotations: row.annotations ? JSON.parse(row.annotations) : [],
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null
+    };
+}
+
+function formatBookmark(row) {
+    if (!row) return null;
+    const desc = row.description || row.desc || '';
+    return {
+        id: row.id,
+        type: row.type,
+        title: row.title,
+        url: row.url,
+        desc,
+        description: desc,
+        image: row.image || null,
+        user_id: row.user_id,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null
+    };
+}
+
+function formatFeed(row) {
+    if (!row) return null;
+    let tags = [];
+    if (Array.isArray(row.tags)) tags = row.tags;
+    else if (typeof row.tags === 'string' && row.tags) {
+        try { tags = JSON.parse(row.tags); } catch { tags = []; }
+    }
+    return {
+        id: row.id,
+        content: row.content,
+        type: row.type,
+        media_url: row.media_url || null,
+        summary: row.summary || null,
+        tags,
+        user_id: row.user_id,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null
     };
