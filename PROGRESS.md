@@ -11,7 +11,7 @@
 - 数据库：Cloudflare D1（`migrations/0001`–`0012`）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`git@github.com:2089700996jy-del/chillin.git`
-- 前端缓存：`app.js`/`style.css` `?v=2.1.1`，SW `chillin-v14`
+- 前端缓存：`app.js`/`style.css` `?v=2.1.2`，SW `chillin-v15`
 - Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制）
 
 ## 明确不做
@@ -70,4 +70,3 @@ gradlew.bat assembleDebug
 - 拆分超大 `app.js`（约 3500 行）
 - 全局搜索 Cmd/Ctrl+K
 - 回响卡片点击跳到相关随手记；AI 多轮上下文
-- 清理无 DOM 的 CSS 残骸（如 `.import-panel`）
