@@ -1,10 +1,10 @@
 // Chillin Service Worker — 网络优先，离线回退缓存
-const CACHE_NAME = 'chillin-v21';
+const CACHE_NAME = 'chillin-v22';
 const ASSETS = [
     '/',
     '/index.html',
-    '/app.js?v=2.4.2',
-    '/style.css?v=2.4.2',
+    '/app.js?v=2.4.3',
+    '/style.css?v=2.4.3',
     '/js/version.js',
     '/js/utils.js',
     '/js/state.js',
@@ -20,6 +20,7 @@ const ASSETS = [
     '/js/feeds.js',
     '/js/echo-ai.js',
     '/js/search.js',
+    '/js/pwa-update.js',
     '/manifest.json',
     '/icons/icon-192.png',
     '/icons/icon-512.png'
@@ -37,6 +38,12 @@ self.addEventListener('activate', (e) => {
             .then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k))))
             .then(() => self.clients.claim())
     );
+});
+
+self.addEventListener('message', (e) => {
+    if (e.data && e.data.type === 'SKIP_WAITING') {
+        self.skipWaiting();
+    }
 });
 
 self.addEventListener('fetch', (e) => {
