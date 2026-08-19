@@ -2576,32 +2576,24 @@ body.keyboard-open .fab-btn {
   border-color: rgba(99, 102, 241, 0.3);
 }
 
-/* Fixed build version — must stay above mobile bottom nav (z-index 1000) */
+/* Fixed build version — bottom edge, subtle */
 .app-version-badge {
   position: fixed;
-  left: 12px;
-  bottom: 12px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 1100;
-  font-size: 12px;
+  text-align: center;
+  padding: 3px 8px calc(3px + env(safe-area-inset-bottom, 0px));
+  font-size: 10px;
   line-height: 1.2;
-  padding: 5px 10px;
-  border-radius: 999px;
-  background: rgba(24, 24, 27, 0.78);
-  color: #fafafa;
-  opacity: 1;
+  color: var(--text-color-light, #9ca3af);
+  background: transparent;
+  opacity: 0.38;
   pointer-events: none;
   user-select: none;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  letter-spacing: 0.02em;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
-}
-@media (max-width: 768px) {
-  .app-version-badge {
-    bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    left: 10px;
-  }
-  body.hide-bottom-nav .app-version-badge,
-  body.keyboard-open .app-version-badge {
-    bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-  }
+  letter-spacing: 0.04em;
+  box-shadow: none;
+  border-radius: 0;
 }
