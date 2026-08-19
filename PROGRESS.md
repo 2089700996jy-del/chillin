@@ -1,88 +1,73 @@
 # Chillin 项目进度记录
 
-> 更新时间：最近一次会话。供后续会话（或切换模型后）快速接续。
+> 更新时间：2026-08-19。供后续会话快速接续。
 
 ## 项目是什么
 
-个人"数字花园" Web 应用（周记 / 笔记 / 收藏 / 随手记 / 小说阅读 / AI 记忆回响）。
+个人「数字花园」Web 应用（周记 / 笔记 / 收藏 / 随手记 / TXT 阅读 / AI 记忆回响）。
 
 - 前端：`index.html` + `style.css` + `app.js`（原生 HTML/JS，无框架）
 - 后端：Cloudflare Worker `workers/api.js`（REST）
-- 数据库：Cloudflare D1（`migrations/0001–0008`）
-- 站点：Pages `https://chillin-bfc.pages.dev`（前端）+ Worker `https://chillin-api.2089700996jy.workers.dev`（API）
+- 数据库：Cloudflare D1（`migrations/0001`–`0012`）
+- 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`git@github.com:2089700996jy-del/chillin.git`
+- 前端缓存：`app.js`/`style.css` `?v=2.1.1`，SW `chillin-v14`
+- Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制）
 
-## 已完成
+## 明确不做
 
-1. **4 项安全修复**（`workers/api.js`）：审计扫描限本人、链接解析需鉴权、文件访问令牌（migration 0008）、防跨用户 ID 覆盖。已上线。
-2. **git 历史清除旧密钥** `20103cfc7f044a51e7c8c65484abe830`（已重写历史并强推）。
-3. **PWA**：manifest + sw.js + 图标，可"添加到主屏幕"安装；补了 iOS meta。
-4. **Capacitor Android 工程**：`android/`、`www/`、`capacitor.config.json`、`package.json`、`scripts/sync-web.js`。
-5. **白底黑字 "chillin" 图标**：PWA（`icons/icon-180/192/512.png`）+ Android 全部尺寸（`scripts/generate-icons.ps1` 可重新生成）。
-6. **APK 编译成功**：`E:\桌面\Desktop\777\Chillin.apk`（约 3.94 MB，debug 版）。
-7. **修复原生壳登录网络失败**：`app.js` 原生壳/本地调试改走 Pages 代理；`workers/api.js` CORS 放宽 localhost 来源。已重新编译 APK + 重新部署 Worker。
-8. **修复原生壳图片不显示**：`app.js` 加 `resolveAssetUrl`，把 `/api/` 相对图片路径转成绝对地址。已重新编译 APK。
-9. **D1 数据库索引优化**：新增 `migrations/0009_perf_and_cleanup.sql`，给 `weeklies`, `notes`, `bookmarks`, `quick_feeds`, `echo_cards`, `sessions` 添加 `user_id` 与 `expires_at` 索引。
-10. **Batch Sync N+1 查询优化与过期 Session 定时清理**：`workers/api.js` 将批量同步单条 DB 轮询优化为单次查询，并于 `scheduled` 事件中定期删除过期 Session。
-11. **AI 记忆回响 SSE 流式打字机效果**：`/api/ai/chat` 接口支持 SSE 流式转发 DeepSeek / Workers AI 文本，前端 `app.js` 实时解包渲染 Markdown。
-12. **安全加固第二轮**（migration `0010_security_hardening.sql` + Worker/前端/Android/_headers）：
-    - 登录/注册/AI/链接解析/上传 **内存限流**（429 + Retry-After）
-    - 文件表增加 `user_id`；上传绑定归属；历史无令牌文件禁止 UUID 直链（需本人登录）
-    - 上传仅允许 JPEG/PNG/GIF/WEBP，**魔数嗅探**防 MIME 伪装
-    - UGC 审计改为写入 `ugc_quarantine` 隔离区后再删业务行（误报可恢复）
-    - 注册密码 ≥8 且需字母+数字；哈希比较改为近似常量时间
-    - API 500 不再回传内部 err.message；响应补安全头
-    - Pages `_headers` 增加 CSP / XFO / nosniff 等
-    - Android `allowBackup=false` + data extraction 排除规则
+- 收藏编辑
+- 导出 / 导入
 
-### 部署本轮安全改动
+## 近期已完成（摘要）
+
+### 安全
+
+- 限流（login/register/AI/upload/link）、PBKDF2、上传 `user_id` + 魔数校验、UGC 隔离表、CSP/`_headers`、Android `allowBackup=false`
+- VAPID 私钥改为 `wrangler secret`（已轮换）；公钥在 `wrangler.toml` `[vars]` 与 `app.js`
+- 文件访问不再 302 带出 `?t=`；CORS 仅白名单 + localhost；500 不回内部 `err.message`
+
+### 同步 / UX
+
+- 按 `updated_at` 合并；编辑中不重绘；失败可见
+- Hash 历史栈（返回键 / AI 弹窗）
+- 热力图中文日期；viewport 可缩放；笔记草稿
+- 随手记本机传图（压缩 + `/api/upload`）
+- AI 回响：`/api/echo/generate` 走 DeepSeek；生成后切到 feeds
+- 标签筛选 UI 已关；相关死代码已删
+
+### 数据 / API（至 migration 0012）
+
+- `bookmarks` / `feeds` 增加 `updated_at`；`push_subscriptions` 纳入正式 migration
+- `formatBookmark`：`description` ↔ `desc`；GET/POST/export 统一
+- batch 同步收藏带 `image` + `updated_at` + `description`
+- 收藏编辑器仅新建；修登录框重复 `id="auth-password"`
+
+## 部署
 
 ```bat
-npx wrangler d1 migrations apply DB --remote
+cd chillin
+npx wrangler d1 migrations apply chillin-db --remote
 npx wrangler deploy
 git push origin main
 ```
 
-> 提醒：若历史上泄露过 `LLM_API_KEY`，请在 Cloudflare / DeepSeek 控制台确认已轮换。
+Secrets（勿进仓）：`LLM_API_KEY`、`VAPID_PRIVATE_KEY` 等。
 
-## 当前决定
+> 若曾泄露旧 VAPID：用户需重新开启推送订阅。
 
-- **日常使用 PWA 模式**：安卓用 Chrome/Edge"添加到主屏幕"，苹果用 Safari"添加到主屏幕"。
-- APK（`Chillin.apk`）仅用于需要正式分发 / 离线完整的场景；代码改动需重新编译+重装。
-- 数据同步：App 与网页端同一套代码，6 秒后台轮询 + 切前台/联网触发，自动双向同步。
-
-## 本机编译环境（已装好）
-
-- Android Studio：`E:\Android`（自带 JDK 25，但**编译要用 JDK 21**）
-- JDK 21：`E:\Android\jdk21\jdk-21.0.12+8`
-- Android SDK：`C:\Users\20897\AppData\Local\Android\Sdk`（platform-36 + build-tools 36.0.0）
-- 代理：Clash `127.0.0.1:7897`（Gradle 下载依赖要走它）
-
-## 重新编译 APK 的步骤
+## 本机编译 APK
 
 ```bat
-npm run sync:web            :: 根目录网页文件 → www/
-npx cap sync android        :: www/ → android 原生工程
+npm run sync:web
+npx cap sync android
 cd android
-gradlew.bat assembleDebug   :: 产物 app\build\outputs\apk\debug\app-debug.apk
+gradlew.bat assembleDebug
 ```
 
-环境变量（Gradle 需要）：
-```
-JAVA_HOME=E:\Android\jdk21\jdk-21.0.12+8
-ANDROID_HOME=C:\Users\20897\AppData\Local\Android\Sdk
-JAVA_TOOL_OPTIONS=-Dhttps.proxyHost=127.0.0.1 -Dhttps.proxyPort=7897 ...
-```
+## 可选下一步
 
-注意：项目路径含中文 `桌面`，`android/gradle.properties` 已加 `android.overridePathCheck=true` 绕过。
-
-## 待办 / 可能的下一步
-
-- 用户重新安装新 APK 验证登录是否已修复（上次报"网络连接失败"）。
-- 若要上架商店：需做 release 签名版。
-- iOS 安装包需 Mac + Xcode（Windows 做不了）。
-
-## 部署命令
-
-- 后端：`npx wrangler deploy`；迁移：`npx wrangler d1 migrations apply DB --remote`
-- 前端（Pages）：`git push origin main` 触发自动构建
+- 拆分超大 `app.js`（约 3500 行）
+- 全局搜索 Cmd/Ctrl+K
+- 回响卡片点击跳到相关随手记；AI 多轮上下文
+- 清理无 DOM 的 CSS 残骸（如 `.import-panel`）
