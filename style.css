@@ -2575,3 +2575,28 @@ body.keyboard-open .fab-btn {
   box-shadow: var(--shadow-md);
   border-color: rgba(99, 102, 241, 0.3);
 }
+
+/* Fixed build version (footer corner) — used to verify deploys */
+.app-version-badge {
+  position: fixed;
+  left: 12px;
+  bottom: 12px;
+  z-index: 40;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-color-light, #9ca3af);
+  opacity: 0.55;
+  pointer-events: none;
+  user-select: none;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0.02em;
+}
+@media (max-width: 768px) {
+  .app-version-badge {
+    bottom: 78px; /* sit above mobile bottom nav */
+  }
+  body.hide-bottom-nav .app-version-badge,
+  body.keyboard-open .app-version-badge {
+    bottom: 12px;
+  }
+}

@@ -1,6 +1,7 @@
 import {
     showToast,
 } from './js/utils.js';
+import { APP_BUILD_LABEL } from './js/version.js';
 import { state } from './js/state.js';
 import { ui } from './js/ui.js';
 import { actions } from './js/actions.js';
@@ -28,6 +29,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Auth / sync: ./js/api.js + ./js/state.js
     // Feature domains: ./js/{router,weeklies,notes,bookmarks,upload,reader,feeds,echo-ai,search}.js
+
+    const versionEl = document.getElementById('app-version');
+    if (versionEl) versionEl.textContent = APP_BUILD_LABEL;
 
     // Navbar scroll affordance
     const navbar = document.getElementById('navbar');
