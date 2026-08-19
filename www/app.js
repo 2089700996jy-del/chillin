@@ -28,8 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // Auth / sync: ./js/api.js + ./js/state.js
     // Feature domains: ./js/{router,weeklies,notes,bookmarks,upload,reader,feeds,echo-ai,search}.js
 
-    const versionEl = document.getElementById('app-version');
-    if (versionEl) versionEl.textContent = APP_BUILD_LABEL;
+    const versionEls = document.querySelectorAll('[data-app-version]');
+    versionEls.forEach((el) => { el.textContent = APP_BUILD_LABEL; });
     document.title = `Chillin · ${APP_BUILD_LABEL}`;
 
     // Navbar scroll affordance
