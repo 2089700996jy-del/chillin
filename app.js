@@ -1,14 +1,11 @@
 import {
-    generateUniqueId,
     showToast,
     escapeHtml,
     markdownToHtml,
-    sanitizeHtml,
-    autoResizeTextarea,
-    getChineseDate,
-    getChineseDateTime,
 } from './js/utils.js';
 import { state } from './js/state.js';
+import { ui } from './js/ui.js';
+import { actions } from './js/actions.js';
 import {
     API_BASE,
     resolveAssetUrl,
@@ -20,1031 +17,24 @@ import {
     registerPushNotification,
     loadLocalData,
     syncFromApi,
-    saveDatabase,
-    saveNotesDatabase,
-    saveBookmarksDatabase,
-    saveFeedsDatabase,
     stampLocalUpdate,
     addDeletedId,
-    apiSyncWeekly,
-    apiSyncNote,
-    apiSyncBookmark,
     apiSyncFeed,
     checkAndMergeGuestData,
     startAutoSyncEngine,
     bindApiHooks,
 } from './js/api.js';
+import { initRouter } from './js/router.js';
+import { initWeeklies } from './js/weeklies.js';
+import { initNotes } from './js/notes.js';
+import { initBookmarks } from './js/bookmarks.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
     // Auth / sync / persistence: ./js/api.js + ./js/state.js
 
-    let currentArticleId = null;
-    let currentNoteId = null;
-    let currentActiveNavView = 'home'; 
-    let currentHomeSearchQuery = '';
-    let currentNotesSearchQuery = '';
-    let currentBookmarksSearchQuery = ''; 
-
-    // ==========================================
-    // 2. DOM 元素获取
-    // ==========================================
-    const views = document.querySelectorAll('.view-section');
-    const navItems = document.querySelectorAll('.nav-item, .mobile-tab-item');
-    const btnBack = document.getElementById('btn-back');
-    const navMenu = document.getElementById('nav-menu');
-    const fabBtn = document.getElementById('btn-create-new');
-    const mobileBottomNav = document.getElementById('mobile-bottom-nav');
-
-    // Home / Weekly
-    const galleryContainer = document.getElementById('gallery-container');
-    const filterBtns = document.querySelectorAll('.filter-btn');
-    const articleCategory = document.getElementById('article-category');
-    const articleDate = document.getElementById('article-date');
-    const articleTitle = document.getElementById('article-title');
-    const articleCoverContainer = document.getElementById('article-cover-container');
-    const articleBody = document.getElementById('article-body');
-    const btnEditArticle = document.getElementById('btn-edit-article');
-    const btnDeleteArticle = document.getElementById('btn-delete-article');
-    const editorForm = document.getElementById('editor-form');
-    const btnCancelEdit = document.getElementById('btn-cancel-edit');
-    const editorPageTitle = document.getElementById('editor-page-title');
-
-    // Notes
-    const notesListContainer = document.getElementById('notes-list-container');
-    const editNoteTitle = document.getElementById('edit-note-title');
-    const editNoteContent = document.getElementById('edit-note-content');
-    const editNoteId = document.getElementById('edit-note-id');
-    const btnSaveNote = document.getElementById('btn-save-note');
-    const btnDeleteNote = document.getElementById('btn-delete-note');
-    const noteEditorDate = document.getElementById('note-editor-date');
-
-    // Bookmarks
-    const bookmarkListContainer = document.getElementById('bookmark-list-container');
-    const bookmarkEditorForm = document.getElementById('bookmark-editor-form');
-    const btnCancelBookmark = document.getElementById('btn-cancel-bookmark');
-    const editBookmarkId = document.getElementById('edit-bookmark-id');
-    const editBookmarkType = document.getElementById('edit-bookmark-type');
-    const editBookmarkTitle = document.getElementById('edit-bookmark-title');
-    const editBookmarkUrl = document.getElementById('edit-bookmark-url');
-    const editBookmarkDesc = document.getElementById('edit-bookmark-desc');
-    const editBookmarkImage = document.getElementById('edit-bookmark-image');
-
-    // Category chips
-    document.querySelectorAll('.cat-chip').forEach(chip => {
-        chip.addEventListener('click', function() {
-            document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-            this.classList.add('active');
-            editBookmarkType.value = this.dataset.val;
-        });
-    });
-
-
-    editNoteContent.addEventListener('input', () => autoResizeTextarea(editNoteContent));
-
-
-    // ==========================================
-    // 3. 视图切换逻辑（History 返回栈）
-    // ==========================================
-    const MAIN_VIEWS = new Set(['home', 'feeds', 'notes', 'bookmarks', 'reader']);
-    let historyNavLock = false;
-    let aiModalInHistory = false;
-
-    const buildHashForView = (viewId) => {
-        if (viewId === 'article' && currentArticleId != null) return `#/article/${currentArticleId}`;
-        if (viewId === 'editor') {
-            const id = document.getElementById('edit-id')?.value;
-            return id ? `#/editor/${id}` : '#/editor';
-        }
-        if (viewId === 'note-editor') {
-            const id = currentNoteId || document.getElementById('edit-note-id')?.value;
-            return id ? `#/note-editor/${id}` : '#/note-editor';
-        }
-        if (viewId === 'bookmark-editor') return '#/bookmark-editor';
-        if (viewId === 'reader-book') return '#/reader-book';
-        if (viewId === 'ai') return '#/ai';
-        return `#/${viewId || 'home'}`;
-    };
-
-    const parseHashRoute = (hash = location.hash) => {
-        const raw = String(hash || '').replace(/^#\/?/, '').trim();
-        if (!raw) return { view: 'home' };
-        const [view, id] = raw.split('/');
-        return { view: view || 'home', id: id || null };
-    };
-
-    const applyRoute = (route) => {
-        if (!route || !route.view) return;
-        if (route.view === 'ai') {
-            const modal = document.getElementById('ai-chat-modal');
-            if (modal) modal.classList.add('show');
-            aiModalInHistory = true;
-            return;
-        }
-        const modal = document.getElementById('ai-chat-modal');
-        if (modal) modal.classList.remove('show');
-        aiModalInHistory = false;
-
-        if (route.view === 'article' && route.id) {
-            const item = state.database.find(d => String(d.id) === String(route.id));
-            if (item) {
-                openArticle(item, { skipHistory: true });
-                return;
-            }
-            switchView('home', { skipHistory: true });
-            return;
-        }
-        if (route.view === 'editor') {
-            openWeeklyEditor(route.id ? Number(route.id) || route.id : null, { skipHistory: true });
-            return;
-        }
-        if (route.view === 'note-editor') {
-            openNoteEditor(route.id ? Number(route.id) || route.id : null, { skipHistory: true });
-            return;
-        }
-        if (route.view === 'bookmark-editor') {
-            switchView('bookmark-editor', { skipHistory: true });
-            return;
-        }
-        if (route.view === 'reader-book') {
-            if (getActiveViewId() !== 'view-reader-book') switchView('reader', { skipHistory: true });
-            else switchView('reader-book', { skipHistory: true });
-            return;
-        }
-        if (MAIN_VIEWS.has(route.view)) {
-            switchView(route.view, { skipHistory: true });
-            return;
-        }
-        switchView('home', { skipHistory: true });
-    };
-
-    const switchView = (targetViewId, opts = {}) => {
-        const { skipHistory = false, replaceHistory = false } = opts;
-        const targetEl = document.getElementById(`view-${targetViewId}`);
-        if (!targetEl) return;
-
-        views.forEach(view => view.classList.remove('active'));
-        targetEl.classList.add('active');
-        
-        if (MAIN_VIEWS.has(targetViewId)) {
-            currentActiveNavView = targetViewId;
-            navItems.forEach(item => item.classList.remove('active'));
-            const activeNavs = document.querySelectorAll(`.nav-item[data-view="${targetViewId}"], .mobile-tab-item[data-view="${targetViewId}"]`);
-            activeNavs.forEach(nav => nav.classList.add('active'));
-            if (targetViewId === 'reader') {
-                setTimeout(renderBookshelf, 100);
-            } else if (targetViewId === 'feeds') {
-                renderFeeds();
-            } else if (targetViewId === 'home') {
-                renderHeatmap();
-            } else {
-                document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
-            }
-        }
-
-        // Update FAB label
-        const fabLabel = document.getElementById('fab-label');
-        const fabLabels = { home: '记录新片段', feeds: '记录随手记', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
-        if (fabLabel && fabLabels[targetViewId]) fabLabel.textContent = fabLabels[targetViewId];
-
-        if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'reader-book') {
-            navMenu.style.display = 'none';
-            btnBack.style.display = 'block';
-            fabBtn.classList.add('hidden');
-            fabBtn.style.display = 'none';
-            if (mobileBottomNav) {
-                mobileBottomNav.style.display = 'none';
-                mobileBottomNav.classList.add('hidden');
-            }
-            document.body.classList.add('hide-bottom-nav');
-        } else {
-            navMenu.style.display = '';
-            btnBack.style.display = 'none';
-            if (mobileBottomNav) {
-                mobileBottomNav.style.display = '';
-                mobileBottomNav.classList.remove('hidden');
-            }
-            document.body.classList.remove('hide-bottom-nav');
-
-            // 随手记页面已有页内倾倒框，隐藏右下角悬浮 + 按钮
-            if (targetViewId === 'feeds') {
-                fabBtn.classList.add('hidden');
-                fabBtn.style.display = 'none';
-            } else {
-                fabBtn.classList.remove('hidden');
-                fabBtn.style.display = '';
-            }
-        }
-        window.scrollTo(0, 0);
-
-        if (!skipHistory && !historyNavLock) {
-            const hash = buildHashForView(targetViewId);
-            const state = { view: targetViewId, articleId: currentArticleId, noteId: currentNoteId };
-            if (replaceHistory || !location.hash) {
-                history.replaceState(state, '', hash);
-            } else if (location.hash !== hash) {
-                history.pushState(state, '', hash);
-            } else {
-                history.replaceState(state, '', hash);
-            }
-        }
-    };
-
-    const goBackOrHome = () => {
-        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
-        const finish = () => {
-            if (window.history.length > 1 && location.hash && !MAIN_VIEWS.has(parseHashRoute().view)) {
-                history.back();
-                return;
-            }
-            switchView(currentActiveNavView);
-            currentArticleId = null;
-            currentNoteId = null;
-        };
-        const activeView = document.querySelector('.view-section.active');
-        if (activeView && activeView.id === 'view-editor') {
-            handleExitWeeklyEditor(finish);
-        } else {
-            finish();
-        }
-    };
-
-    navItems.forEach(item => {
-        item.addEventListener('click', (e) => {
-            e.preventDefault();
-            const targetEl = e.currentTarget || e.target.closest('[data-view]');
-            const view = targetEl ? targetEl.dataset.view : null;
-            if (view) switchView(view);
-        });
-    });
-
-    btnBack.addEventListener('click', () => goBackOrHome());
-
-    window.addEventListener('popstate', (e) => {
-        const intended = (e.state && e.state.view)
-            ? { view: e.state.view, id: e.state.articleId || e.state.noteId || null }
-            : parseHashRoute();
-
-        const applyIntended = () => {
-            historyNavLock = true;
-            try {
-                applyRoute(intended);
-                let hash = '#/home';
-                if (intended.view === 'ai') hash = '#/ai';
-                else if (intended.id) hash = `#/${intended.view}/${intended.id}`;
-                else hash = `#/${intended.view || 'home'}`;
-                history.replaceState(
-                    { view: intended.view, articleId: intended.id, noteId: intended.id },
-                    '',
-                    hash
-                );
-            } finally {
-                historyNavLock = false;
-            }
-        };
-
-        const activeView = document.querySelector('.view-section.active');
-        if (activeView && activeView.id === 'view-editor' && hasUnsavedChanges()) {
-            // 先顶回编辑页 hash，避免取消确认后 URL 已离开编辑器
-            history.pushState({ view: 'editor', articleId: currentArticleId }, '', buildHashForView('editor'));
-            handleExitWeeklyEditor(applyIntended);
-            return;
-        }
-        applyIntended();
-    });
-
-    fabBtn.addEventListener('click', () => {
-        if (currentActiveNavView === 'home') openWeeklyEditor(null);
-        else if (currentActiveNavView === 'notes') openNoteEditor(null);
-        else if (currentActiveNavView === 'bookmarks') openBookmarkEditor();
-        else if (currentActiveNavView === 'reader') document.getElementById('book-file-input').click();
-    });
-
-    // ==========================================
-    // 4. 周记画廊逻辑 (Weekly Recaps)
-    // ==========================================
-    let currentWeeklyAnnotations = [];
-
-    const renderWeeklyAnnotationsList = () => {
-        const timeline = document.getElementById('weekly-annotations-timeline');
-        timeline.innerHTML = '';
-        if (!currentWeeklyAnnotations || currentWeeklyAnnotations.length === 0) {
-            timeline.innerHTML = '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无追加说明，在下方写下第一条吧</div>';
-            return;
-        }
-        currentWeeklyAnnotations.forEach(ann => {
-            const item = document.createElement('div');
-            item.className = 'annotation-item';
-            item.innerHTML = `
-                <div class="annotation-dot"></div>
-                <div class="annotation-content-box">
-                    <div class="annotation-meta">
-                        <span class="annotation-time">${escapeHtml(ann.date)}</span>
-                        <button type="button" class="btn-delete-annotation" data-id="${ann.id}">删除</button>
-                    </div>
-                    <div class="annotation-text">${escapeHtml(ann.content)}</div>
-                </div>
-            `;
-            
-            item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
-                if (confirm("确定要删除这条批追记吗？")) {
-                    currentWeeklyAnnotations = currentWeeklyAnnotations.filter(a => a.id !== ann.id);
-                    const article = state.database.find(d => d.id === currentArticleId);
-                    if (article) {
-                        article.annotations = currentWeeklyAnnotations;
-                        saveDatabase();
-                        apiSyncWeekly(article, 'PUT');
-                        renderCards();
-                    }
-                    renderWeeklyAnnotationsList();
-                }
-            });
-            
-            timeline.appendChild(item);
-        });
-    };
-
-    const renderCards = (filter) => {
-        if (!filter) {
-            const activeBtn = document.querySelector('.filter-btn.active');
-            filter = activeBtn ? activeBtn.dataset.filter : 'all';
-        }
-        galleryContainer.innerHTML = '';
-        const sortedDB = [...state.database].sort((a, b) => b.id - a.id);
-        sortedDB.forEach(item => {
-            if (filter !== "all" && item.category !== filter) return;
-            
-            if (currentHomeSearchQuery) {
-                const query = currentHomeSearchQuery.toLowerCase();
-                const titleMatch = (item.title || '').toLowerCase().includes(query);
-                const summaryMatch = (item.summary || '').toLowerCase().includes(query);
-                const contentMatch = (item.content || '').toLowerCase().includes(query);
-                if (!titleMatch && !summaryMatch && !contentMatch) return;
-            }
-            
-            const card = document.createElement('div');
-            card.className = "notion-collection-card";
-            card.dataset.id = item.id;
-            let coverHtml = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" class="notion-collection-card__cover">` : '';
-            
-            const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
-            
-            card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${escapeHtml(item.category)}</div><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`;
-            card.addEventListener('click', () => openArticle(item));
-            galleryContainer.appendChild(card);
-        });
-    };
-
-    const generateWeeklyWidgetsHtml = (data) => {
-        if (!data) return '';
-        let html = '';
-        if (data.music && data.music.title) html += `<h2>🎵 本周循环</h2><div class="widget-music"><div class="widget-music-disk"></div><div class="widget-music-info"><div class="widget-music-title">${escapeHtml(data.music.title)}</div><div class="widget-music-artist">${escapeHtml(data.music.artist)}</div>${data.music.lyric ? `<div class="widget-music-lyric">"${escapeHtml(data.music.lyric)}"</div>` : ''}</div></div>`;
-        if (data.media && data.media.length > 0 && data.media[0].title) html += `<h2>🎬 影音书影</h2><div class="widget-media">${data.media.map(m => `<div class="widget-media-item"><div class="widget-media-icon">${escapeHtml(m.icon || '🎬')}</div><div class="widget-media-content"><div class="widget-media-title">${escapeHtml(m.title)}</div><div class="widget-media-desc">${escapeHtml(m.desc)}</div></div></div>`).join('')}</div>`;
-        if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${escapeHtml(resolveAssetUrl(data.life.image))}" alt="Life Snapshot"><div class="widget-polaroid-caption">${escapeHtml(data.life.caption)}</div></div>`;
-        if (data.podcast) html += `<h2>🎙️ 播客新知</h2><div class="widget-callout"><div class="widget-callout-icon">💡</div><div class="widget-callout-text">${escapeHtml(data.podcast)}</div></div>`;
-        if (data.work && data.work.title) html += `<h2>💻 工作切片</h2><div class="widget-work"><div class="widget-work-title">${escapeHtml(data.work.title)}</div><div class="widget-work-desc">${escapeHtml(data.work.desc)}</div></div>`;
-        return html;
-    };
-
-    const openArticle = (item, opts = {}) => {
-        currentArticleId = item.id;
-        articleCategory.innerText = item.category;
-        articleDate.innerText = item.date;
-        articleTitle.innerText = item.title;
-        let finalHtml = item.content || '';
-        if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
-        articleBody.innerHTML = sanitizeHtml(finalHtml);
-        articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover">` : '';
-        
-        // 加载记忆片段的追加批注
-        document.getElementById('new-weekly-annotation-content').value = '';
-        currentWeeklyAnnotations = item.annotations || [];
-        renderWeeklyAnnotationsList();
-        
-        switchView('article', opts);
-    };
-
-    // ==========================================
-    // 草稿保存与恢复逻辑 (Weekly Recap Drafts)
-    // ==========================================
-    const hasUnsavedChanges = () => {
-        const editId = document.getElementById('edit-id').value;
-        const currentCategory = document.getElementById('edit-category').value;
-        const currentTitle = document.getElementById('edit-title').value;
-        const currentSummary = document.getElementById('edit-summary').value;
-        const currentCover = document.getElementById('edit-cover').value;
-        const currentContent = document.getElementById('edit-content').value;
-        const currentMusicTitle = document.getElementById('edit-music-title').value;
-        const currentMusicArtist = document.getElementById('edit-music-artist').value;
-        const currentMusicLyric = document.getElementById('edit-music-lyric').value;
-        const currentMediaIcon = document.getElementById('edit-media-icon').value;
-        const currentMediaTitle = document.getElementById('edit-media-title').value;
-        const currentMediaDesc = document.getElementById('edit-media-desc').value;
-        const currentLifeImage = document.getElementById('edit-life-image').value;
-        const currentLifeCaption = document.getElementById('edit-life-caption').value;
-        const currentPodcast = document.getElementById('edit-podcast').value;
-        const currentWorkTitle = document.getElementById('edit-work-title').value;
-        const currentWorkDesc = document.getElementById('edit-work-desc').value;
-
-        if (editId) {
-            // 编辑已有文章：与原始数据库文章对比
-            const item = state.database.find(d => d.id === parseInt(editId));
-            if (!item) return false;
-            const originalMusic = item.weeklyData?.music || {};
-            const originalMedia = (item.weeklyData?.media && item.weeklyData.media[0]) || {};
-            const originalLife = item.weeklyData?.life || {};
-            const originalPodcast = item.weeklyData?.podcast || '';
-            const originalWork = item.weeklyData?.work || {};
-
-            return currentCategory !== item.category ||
-                   currentTitle !== item.title ||
-                   currentSummary !== item.summary ||
-                   currentCover !== (item.cover || '') ||
-                   currentContent !== (item.content || '') ||
-                   currentMusicTitle !== (originalMusic.title || '') ||
-                   currentMusicArtist !== (originalMusic.artist || '') ||
-                   currentMusicLyric !== (originalMusic.lyric || '') ||
-                   currentMediaIcon !== (originalMedia.icon || '🎬') ||
-                   currentMediaTitle !== (originalMedia.title || '') ||
-                   currentMediaDesc !== (originalMedia.desc || '') ||
-                   currentLifeImage !== (originalLife.image || '') ||
-                   currentLifeCaption !== (originalLife.caption || '') ||
-                   currentPodcast !== originalPodcast ||
-                   currentWorkTitle !== (originalWork.title || '') ||
-                   currentWorkDesc !== (originalWork.desc || '');
-        } else {
-            // 新建文章：只要任一字段不为空即为有修改
-            return currentTitle.trim() !== '' ||
-                   currentSummary.trim() !== '' ||
-                   currentCover.trim() !== '' ||
-                   currentContent.trim() !== '' ||
-                   currentMusicTitle.trim() !== '' ||
-                   currentMusicArtist.trim() !== '' ||
-                   currentMusicLyric.trim() !== '' ||
-                   currentMediaTitle.trim() !== '' ||
-                   currentMediaDesc.trim() !== '' ||
-                   currentLifeImage.trim() !== '' ||
-                   currentLifeCaption.trim() !== '' ||
-                   currentPodcast.trim() !== '' ||
-                   currentWorkTitle.trim() !== '' ||
-                   currentWorkDesc.trim() !== '';
-        }
-    };
-
-    const saveWeeklyDraft = () => {
-        const editId = document.getElementById('edit-id').value;
-        const draft = {
-            id: editId ? parseInt(editId) : '',
-            category: document.getElementById('edit-category').value,
-            title: document.getElementById('edit-title').value,
-            summary: document.getElementById('edit-summary').value,
-            cover: document.getElementById('edit-cover').value,
-            content: document.getElementById('edit-content').value,
-            musicTitle: document.getElementById('edit-music-title').value,
-            musicArtist: document.getElementById('edit-music-artist').value,
-            musicLyric: document.getElementById('edit-music-lyric').value,
-            mediaIcon: document.getElementById('edit-media-icon').value,
-            mediaTitle: document.getElementById('edit-media-title').value,
-            mediaDesc: document.getElementById('edit-media-desc').value,
-            lifeImage: document.getElementById('edit-life-image').value,
-            lifeCaption: document.getElementById('edit-life-caption').value,
-            podcast: document.getElementById('edit-podcast').value,
-            workTitle: document.getElementById('edit-work-title').value,
-            workDesc: document.getElementById('edit-work-desc').value,
-            timestamp: Date.now()
-        };
-        localStorage.setItem(getLocalKey('weeklyDraft'), JSON.stringify(draft));
-    };
-
-    const restoreWeeklyDraft = () => {
-        const draftStr = localStorage.getItem(getLocalKey('weeklyDraft'));
-        if (!draftStr) return;
-        try {
-            const draft = JSON.parse(draftStr);
-            document.getElementById('edit-category').value = draft.category || '🌸';
-            document.getElementById('edit-title').value = draft.title || '';
-            document.getElementById('edit-summary').value = draft.summary || '';
-            document.getElementById('edit-cover').value = draft.cover || '';
-            document.getElementById('edit-content').value = draft.content || '';
-            document.getElementById('edit-music-title').value = draft.musicTitle || '';
-            document.getElementById('edit-music-artist').value = draft.musicArtist || '';
-            document.getElementById('edit-music-lyric').value = draft.musicLyric || '';
-            document.getElementById('edit-media-icon').value = draft.mediaIcon || '🎬';
-            document.getElementById('edit-media-title').value = draft.mediaTitle || '';
-            document.getElementById('edit-media-desc').value = draft.mediaDesc || '';
-            document.getElementById('edit-life-image').value = draft.lifeImage || '';
-            document.getElementById('edit-life-caption').value = draft.lifeCaption || '';
-            document.getElementById('edit-podcast').value = draft.podcast || '';
-            document.getElementById('edit-work-title').value = draft.workTitle || '';
-            document.getElementById('edit-work-desc').value = draft.workDesc || '';
-            
-            // 隐藏横幅
-            document.getElementById('weekly-draft-tip').style.display = 'none';
-        } catch (e) {
-            console.error('Failed to restore draft', e);
-        }
-    };
-
-    const discardWeeklyDraft = () => {
-        localStorage.removeItem(getLocalKey('weeklyDraft'));
-        document.getElementById('weekly-draft-tip').style.display = 'none';
-    };
-
-    const checkAndShowWeeklyDraftTip = (editId) => {
-        const draftStr = localStorage.getItem(getLocalKey('weeklyDraft'));
-        const tipBanner = document.getElementById('weekly-draft-tip');
-        if (!draftStr) {
-            tipBanner.style.display = 'none';
-            return;
-        }
-        try {
-            const draft = JSON.parse(draftStr);
-            const currentIdStr = editId ? String(editId) : '';
-            const draftIdStr = draft.id ? String(draft.id) : '';
-            
-            if (currentIdStr === draftIdStr) {
-                const draftDate = new Date(draft.timestamp);
-                const timeText = draftDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                document.getElementById('weekly-draft-time').innerText = timeText;
-                tipBanner.style.display = 'flex';
-            } else {
-                tipBanner.style.display = 'none';
-            }
-        } catch (e) {
-            tipBanner.style.display = 'none';
-        }
-    };
-
-    const handleExitWeeklyEditor = (onConfirm) => {
-        if (hasUnsavedChanges()) {
-            if (confirm('确定要退出编辑吗？当前未保存的内容将作为草稿保存在本地，下次进入时可以恢复。')) {
-                saveWeeklyDraft();
-                onConfirm();
-            }
-        } else {
-            discardWeeklyDraft();
-            onConfirm();
-        }
-    };
-
-    const openWeeklyEditor = (editId = null, opts = {}) => {
-        editorForm.reset();
-        if (editId) {
-            editorPageTitle.innerText = "编辑记忆";
-            const item = state.database.find(d => d.id === editId || String(d.id) === String(editId));
-            if (item) {
-                document.getElementById('edit-id').value = item.id;
-                document.getElementById('edit-category').value = item.category;
-                document.getElementById('edit-title').value = item.title;
-                document.getElementById('edit-summary').value = item.summary;
-                document.getElementById('edit-cover').value = item.cover || '';
-                document.getElementById('edit-content').value = item.content || '';
-                if (item.weeklyData) {
-                    if(item.weeklyData.music) { document.getElementById('edit-music-title').value = item.weeklyData.music.title || ''; document.getElementById('edit-music-artist').value = item.weeklyData.music.artist || ''; document.getElementById('edit-music-lyric').value = item.weeklyData.music.lyric || ''; }
-                    if(item.weeklyData.media && item.weeklyData.media.length > 0) { document.getElementById('edit-media-icon').value = item.weeklyData.media[0].icon || '🎬'; document.getElementById('edit-media-title').value = item.weeklyData.media[0].title || ''; document.getElementById('edit-media-desc').value = item.weeklyData.media[0].desc || ''; }
-                    if(item.weeklyData.life) { document.getElementById('edit-life-image').value = item.weeklyData.life.image || ''; document.getElementById('edit-life-caption').value = item.weeklyData.life.caption || ''; }
-                    if(item.weeklyData.podcast) document.getElementById('edit-podcast').value = item.weeklyData.podcast || '';
-                    if(item.weeklyData.work) { document.getElementById('edit-work-title').value = item.weeklyData.work.title || ''; document.getElementById('edit-work-desc').value = item.weeklyData.work.desc || ''; }
-                }
-            }
-        } else {
-            editorPageTitle.innerText = "新增记忆";
-            document.getElementById('edit-id').value = '';
-        }
-        checkAndShowWeeklyDraftTip(editId);
-        switchView('editor', opts);
-    };
-
-    btnEditArticle.addEventListener('click', () => openWeeklyEditor(currentArticleId));
-    btnCancelEdit.addEventListener('click', () => {
-        handleExitWeeklyEditor(() => {
-            const isNew = !document.getElementById('edit-id').value;
-            switchView(isNew ? 'home' : 'article');
-        });
-    });
-
-    editorForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const idStr = document.getElementById('edit-id').value;
-        const isEdit = !!idStr;
-        const newData = {
-            id: isEdit ? parseInt(idStr) : Date.now(), 
-            category: document.getElementById('edit-category').value, 
-            title: document.getElementById('edit-title').value, 
-            summary: document.getElementById('edit-summary').value, 
-            cover: document.getElementById('edit-cover').value, 
-            content: document.getElementById('edit-content').value,
-            date: isEdit ? state.database.find(d => d.id === parseInt(idStr)).date : getChineseDate(),
-            annotations: isEdit ? (state.database.find(d => d.id === parseInt(idStr)).annotations || []) : [],
-            weeklyData: {
-                music: { title: document.getElementById('edit-music-title').value, artist: document.getElementById('edit-music-artist').value, lyric: document.getElementById('edit-music-lyric').value },
-                media: [{ icon: document.getElementById('edit-media-icon').value, title: document.getElementById('edit-media-title').value, desc: document.getElementById('edit-media-desc').value }],
-                life: { image: document.getElementById('edit-life-image').value, caption: document.getElementById('edit-life-caption').value },
-                podcast: document.getElementById('edit-podcast').value,
-                work: { title: document.getElementById('edit-work-title').value, desc: document.getElementById('edit-work-desc').value }
-            }
-        };
-        if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
-        stampLocalUpdate(newData);
-        if (isEdit) { const index = state.database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) state.database[index] = newData; } else { state.database.push(newData); }
-        discardWeeklyDraft();
-        saveDatabase(); apiSyncWeekly(newData, isEdit ? 'PUT' : 'POST'); renderCards(document.querySelector('.filter-btn.active').dataset.filter); switchView('home');
-    });
-
-    // 绑定草稿箱相关按钮与自动保存监听
-    document.getElementById('btn-restore-weekly-draft').addEventListener('click', restoreWeeklyDraft);
-    document.getElementById('btn-discard-weekly-draft').addEventListener('click', discardWeeklyDraft);
-
-    editorForm.addEventListener('input', () => {
-        if (hasUnsavedChanges()) {
-            saveWeeklyDraft();
-        } else {
-            discardWeeklyDraft();
-        }
-    });
-    editorForm.addEventListener('change', () => {
-        if (hasUnsavedChanges()) {
-            saveWeeklyDraft();
-        } else {
-            discardWeeklyDraft();
-        }
-    });
-
-    window.addEventListener('beforeunload', (e) => {
-        const activeView = document.querySelector('.view-section.active');
-        if (activeView && activeView.id === 'view-editor' && hasUnsavedChanges()) {
-            saveWeeklyDraft();
-            e.preventDefault();
-            e.returnValue = '';
-        }
-        if (activeView && activeView.id === 'view-note-editor' && hasUnsavedNoteChanges()) {
-            saveNoteDraft();
-            e.preventDefault();
-            e.returnValue = '';
-        }
-    });
-
-    btnDeleteArticle.addEventListener('click', () => {
-        if(confirm("确定要永久删除这篇记忆吗？")) { 
-            const deletedId = currentArticleId; 
-            addDeletedId(deletedId);
-            state.database = state.database.filter(d => d.id !== currentArticleId); 
-            saveDatabase(); 
-            apiSyncWeekly({id: deletedId}, 'DELETE'); 
-            renderCards(); 
-            switchView('home'); 
-        }
-    });
-
-    document.getElementById('btn-add-weekly-annotation').addEventListener('click', () => {
-        const inputEl = document.getElementById('new-weekly-annotation-content');
-        const text = inputEl.value.trim();
-        if (!text) return;
-        const newAnn = {
-            id: Date.now(),
-            content: text,
-            date: getChineseDateTime()
-        };
-        currentWeeklyAnnotations.push(newAnn);
-        inputEl.value = '';
-        
-        const article = state.database.find(d => d.id === currentArticleId);
-        if (article) {
-            article.annotations = currentWeeklyAnnotations;
-            saveDatabase();
-            apiSyncWeekly(article, 'PUT');
-            renderCards();
-        }
-        renderWeeklyAnnotationsList();
-    });
-
-    filterBtns.forEach(btn => {
-        btn.addEventListener('click', (e) => {
-            filterBtns.forEach(b => b.classList.remove('active')); e.target.classList.add('active'); renderCards(e.target.dataset.filter);
-        });
-    });
-
-    // ==========================================
-    // 5. 极简备忘录逻辑 (Notes)
-    // ==========================================
-    let currentNoteAnnotations = [];
-
-    const renderAnnotationsList = () => {
-        const timeline = document.getElementById('annotations-timeline');
-        timeline.innerHTML = '';
-        if (!currentNoteAnnotations || currentNoteAnnotations.length === 0) {
-            timeline.innerHTML = '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无批注，在下方写下第一条吧</div>';
-            return;
-        }
-        currentNoteAnnotations.forEach(ann => {
-            const item = document.createElement('div');
-            item.className = 'annotation-item';
-            item.innerHTML = `
-                <div class="annotation-dot"></div>
-                <div class="annotation-content-box">
-                    <div class="annotation-meta">
-                        <span class="annotation-time">${escapeHtml(ann.date)}</span>
-                        <button type="button" class="btn-delete-annotation" data-id="${ann.id}">删除</button>
-                    </div>
-                    <div class="annotation-text">${escapeHtml(ann.content)}</div>
-                </div>
-            `;
-            
-            item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
-                if (confirm("确定要删除这条批注吗？")) {
-                    currentNoteAnnotations = currentNoteAnnotations.filter(a => a.id !== ann.id);
-                    const note = state.notesDatabase.find(n => n.id === currentNoteId);
-                    if (note) {
-                        note.annotations = currentNoteAnnotations;
-                        saveNotesDatabase();
-                        apiSyncNote(note, 'PUT');
-                        renderNotes();
-                    }
-                    renderAnnotationsList();
-                }
-            });
-            
-            timeline.appendChild(item);
-        });
-    };
-
-    const renderNotes = () => {
-        notesListContainer.innerHTML = '';
-        const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
-        sortedNotes.forEach(note => {
-            if (currentNotesSearchQuery) {
-                const query = currentNotesSearchQuery.toLowerCase();
-                const titleMatch = (note.title || '').toLowerCase().includes(query);
-                const contentMatch = (note.content || '').toLowerCase().includes(query);
-                if (!titleMatch && !contentMatch) return;
-            }
-            const el = document.createElement('div');
-            el.className = 'note-item';
-            el.setAttribute('data-note-id', String(note.id));
-            const previewText = note.content ? escapeHtml(note.content.substring(0, 30)).replace(/\n/g, ' ') + '...' : '无正文内容';
-            
-            // 如果笔记有批注，显示批注数量气泡
-            const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
-            
-            el.innerHTML = `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${escapeHtml(note.date)}</div>`;
-            el.addEventListener('click', () => openNoteEditor(note.id));
-            notesListContainer.appendChild(el);
-        });
-    };
-
-    const hasUnsavedNoteChanges = () => {
-        const titleVal = (editNoteTitle.value || '').trim();
-        const contentVal = (editNoteContent.value || '').trim();
-        const idStr = editNoteId.value;
-        if (idStr) {
-            const note = state.notesDatabase.find(n => String(n.id) === String(idStr));
-            if (!note) return titleVal !== '' || contentVal !== '';
-            return titleVal !== (note.title || '').trim() || contentVal !== (note.content || '').trim();
-        }
-        return titleVal !== '' || contentVal !== '';
-    };
-
-    const saveNoteDraft = () => {
-        const draft = {
-            id: editNoteId.value || '',
-            title: editNoteTitle.value || '',
-            content: editNoteContent.value || '',
-            timestamp: Date.now()
-        };
-        localStorage.setItem(getLocalKey('noteDraft'), JSON.stringify(draft));
-    };
-
-    const restoreNoteDraft = () => {
-        const draftStr = localStorage.getItem(getLocalKey('noteDraft'));
-        if (!draftStr) return;
-        try {
-            const draft = JSON.parse(draftStr);
-            editNoteTitle.value = draft.title || '';
-            editNoteContent.value = draft.content || '';
-            autoResizeTextarea(editNoteContent);
-            document.getElementById('note-draft-tip').style.display = 'none';
-        } catch (e) {
-            console.error('Failed to restore note draft', e);
-        }
-    };
-
-    const discardNoteDraft = () => {
-        localStorage.removeItem(getLocalKey('noteDraft'));
-        const tip = document.getElementById('note-draft-tip');
-        if (tip) tip.style.display = 'none';
-    };
-
-    const checkAndShowNoteDraftTip = (noteId) => {
-        const tipBanner = document.getElementById('note-draft-tip');
-        if (!tipBanner) return;
-        const draftStr = localStorage.getItem(getLocalKey('noteDraft'));
-        if (!draftStr) {
-            tipBanner.style.display = 'none';
-            return;
-        }
-        try {
-            const draft = JSON.parse(draftStr);
-            const currentIdStr = noteId != null && noteId !== '' ? String(noteId) : '';
-            const draftIdStr = draft.id ? String(draft.id) : '';
-            if (currentIdStr !== draftIdStr) {
-                tipBanner.style.display = 'none';
-                return;
-            }
-            const timeEl = document.getElementById('note-draft-time');
-            if (timeEl && draft.timestamp) {
-                timeEl.innerText = new Date(draft.timestamp).toLocaleString();
-            }
-            tipBanner.style.display = 'flex';
-        } catch (e) {
-            tipBanner.style.display = 'none';
-        }
-    };
-
-    const openNoteEditor = (noteId = null, opts = {}) => {
-        document.getElementById('new-annotation-content').value = '';
-        if (noteId) {
-            currentNoteId = noteId; const note = state.notesDatabase.find(n => n.id === noteId || String(n.id) === String(noteId));
-            if (note) { 
-                editNoteId.value = note.id; 
-                editNoteTitle.value = note.title; 
-                editNoteContent.value = note.content; 
-                noteEditorDate.innerText = note.date; 
-                btnDeleteNote.style.display = 'inline-block'; 
-                currentNoteAnnotations = note.annotations || [];
-                renderAnnotationsList();
-                document.getElementById('note-annotations-section').style.display = 'block';
-            }
-        } else {
-            currentNoteId = null; editNoteId.value = ''; editNoteTitle.value = ''; editNoteContent.value = ''; noteEditorDate.innerText = getChineseDate(); btnDeleteNote.style.display = 'none';
-            currentNoteAnnotations = [];
-            document.getElementById('note-annotations-section').style.display = 'none';
-        }
-        checkAndShowNoteDraftTip(noteId);
-        switchView('note-editor', opts);
-        autoResizeTextarea(editNoteContent);
-    };
-
-    btnSaveNote.addEventListener('click', () => {
-        const idStr = editNoteId.value; const isEdit = !!idStr; const titleVal = editNoteTitle.value.trim(); const contentVal = editNoteContent.value.trim();
-        if (!titleVal && !contentVal) { discardNoteDraft(); switchView('notes'); return; }
-        const newNote = { 
-            id: isEdit ? parseInt(idStr) : Date.now(), 
-            title: titleVal || '无标题笔记', 
-            content: contentVal, 
-            date: isEdit ? state.notesDatabase.find(n => n.id === parseInt(idStr)).date : getChineseDate(),
-            annotations: currentNoteAnnotations
-        };
-        stampLocalUpdate(newNote);
-        if (isEdit) { const index = state.notesDatabase.findIndex(n => n.id === parseInt(idStr)); if(index !== -1) state.notesDatabase[index] = newNote; } else { state.notesDatabase.push(newNote); }
-        discardNoteDraft();
-        saveNotesDatabase(); apiSyncNote(newNote, isEdit ? 'PUT' : 'POST'); renderNotes(); switchView('notes');
-    });
-
-    const persistNoteDraftIfNeeded = () => {
-        if (hasUnsavedNoteChanges()) saveNoteDraft();
-        else discardNoteDraft();
-    };
-    editNoteTitle.addEventListener('input', persistNoteDraftIfNeeded);
-    editNoteContent.addEventListener('input', persistNoteDraftIfNeeded);
-    document.getElementById('btn-restore-note-draft')?.addEventListener('click', restoreNoteDraft);
-    document.getElementById('btn-discard-note-draft')?.addEventListener('click', discardNoteDraft);
-
-    btnDeleteNote.addEventListener('click', () => {
-        if(confirm("确定删除这条笔记吗？")) { 
-            const deletedId = currentNoteId; 
-            addDeletedId(deletedId);
-            state.notesDatabase = state.notesDatabase.filter(n => n.id !== currentNoteId); 
-            saveNotesDatabase(); 
-            discardNoteDraft();
-            apiSyncNote({id: deletedId}, 'DELETE'); 
-            renderNotes(); 
-            switchView('notes'); 
-        }
-    });
-
-    document.getElementById('btn-add-annotation').addEventListener('click', () => {
-        const inputEl = document.getElementById('new-annotation-content');
-        const text = inputEl.value.trim();
-        if (!text) return;
-        const newAnn = {
-            id: Date.now(),
-            content: text,
-            date: getChineseDateTime()
-        };
-        currentNoteAnnotations.push(newAnn);
-        inputEl.value = '';
-        
-        // 如果是已存笔记，立刻保存到数据库
-        const note = state.notesDatabase.find(n => n.id === currentNoteId);
-        if (note) {
-            note.annotations = currentNoteAnnotations;
-            saveNotesDatabase();
-            apiSyncNote(note, 'PUT');
-            renderNotes();
-        }
-        renderAnnotationsList();
-    });
-
-    // ==========================================
-    // 6. 收藏夹逻辑 (Bookmarks)
-    // ==========================================
-    const renderBookmarks = () => {
-        bookmarkListContainer.innerHTML = '';
-        const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id);
-        
-        sortedBookmarks.forEach(bm => {
-            if (currentBookmarksSearchQuery) {
-                const query = currentBookmarksSearchQuery.toLowerCase();
-                const titleMatch = (bm.title || '').toLowerCase().includes(query);
-                const descText = bm.desc || bm.description || '';
-                const descMatch = descText.toLowerCase().includes(query);
-                const typeMatch = (bm.type || '').toLowerCase().includes(query);
-                if (!titleMatch && !descMatch && !typeMatch) return;
-            }
-            const rawUrl = (bm.url || '').trim();
-            const hasUrl = /^https?:\/\//i.test(rawUrl);
-            const card = document.createElement(hasUrl ? 'a' : 'div');
-            card.className = 'bookmark-card';
-            card.setAttribute('data-bookmark-id', String(bm.id));
-            if (hasUrl) { card.href = rawUrl; card.target = '_blank'; card.rel = 'noopener noreferrer'; }
-
-            const hasImage = bm.image && bm.image.trim();
-            const descDisplay = bm.desc || bm.description || '暂无描述...';
-            card.innerHTML = `
-                <div class="bookmark-card-inner">
-                    ${hasImage
-                        ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.style.display=\'none\'">'
-                        : '<div class="bookmark-card-image-placeholder">' + (bm.type || '🔖').split(' ')[0] + '</div>'}
-                    <div class="bookmark-card-type">${escapeHtml(bm.type)}</div>
-                    <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
-                    <div class="bookmark-card-desc">${escapeHtml(descDisplay)}</div>
-                    <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏">×</button>
-                </div>
-            `;
-
-            // If no URL but has image, click to view image in modal
-            if (!hasUrl && hasImage) {
-                card.style.cursor = 'zoom-in';
-                card.addEventListener('click', (e) => {
-                    if (e.target.closest('.bookmark-card-delete')) return;
-                    document.getElementById('image-preview-img').src = resolveAssetUrl(bm.image);
-                    document.getElementById('image-preview-modal').classList.add('show');
-                });
-            }
-
-            // 删除按钮
-            const deleteBtn = card.querySelector('.bookmark-card-delete');
-            deleteBtn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
-                    const deletedId = bm.id;
-                    addDeletedId(deletedId);
-                    state.bookmarksDatabase = state.bookmarksDatabase.filter(b => b.id !== bm.id);
-                    saveBookmarksDatabase();
-                    apiSyncBookmark({id: deletedId}, 'DELETE');
-                    renderBookmarks();
-                    showToast('已移除收藏', 'info');
-                }
-            });
-
-            bookmarkListContainer.appendChild(card);
-        });
-    };
-
-    const openBookmarkEditor = () => {
-        bookmarkEditorForm.reset();
-        editBookmarkId.value = '';
-        if (editBookmarkImage) editBookmarkImage.value = '';
-        document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
-        const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');
-        if (firstChip) { firstChip.classList.add('active'); editBookmarkType.value = '🌐 网站'; }
-        switchView('bookmark-editor');
-    };
-
-    btnCancelBookmark.addEventListener('click', () => switchView('bookmarks'));
-
-    bookmarkEditorForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        const descText = editBookmarkDesc.value.trim();
-        const newBookmark = {
-            id: generateUniqueId(),
-            type: editBookmarkType.value,
-            title: editBookmarkTitle.value.trim(),
-            url: editBookmarkUrl.value.trim(),
-            desc: descText,
-            description: descText,
-            image: (editBookmarkImage && editBookmarkImage.value || '').trim()
-        };
-        stampLocalUpdate(newBookmark);
-        state.bookmarksDatabase.unshift(newBookmark);
-        saveBookmarksDatabase();
-        apiSyncBookmark(newBookmark, 'POST');
-        renderBookmarks();
-        switchView('bookmarks');
-        showToast('新增收藏成功', 'success');
-    });
-
+    // ui nav/search state: ./js/ui.js
+    // Domains: router / weeklies / notes / bookmarks → js/*.js
 
     // ==========================================
     // 7. 全局事件与同步备份
@@ -1467,7 +457,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const prog = loadReaderProgress();
         const saved = prog[bookId];
         currentChapterIdx = (saved && saved.chapterIdx < chapterMetas.length) ? saved.chapterIdx : 0;
-        switchView('reader-book');
+        actions.switchView('reader-book');
         document.getElementById('reader-sidebar').classList.add('hidden');
         applyReaderSettings();
         buildChapterTree();
@@ -1486,7 +476,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Clear reader theme when exiting
         document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
         currentBookId = null; chapterMetas = []; currentChapterIdx = 0;
-        switchView('reader'); // switchView will trigger renderBookshelf
+        actions.switchView('reader'); // actions.switchView will trigger renderBookshelf
     };
 
     function onReaderScroll() {
@@ -1652,24 +642,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const searchHomeInput = document.getElementById('search-home');
     if (searchHomeInput) {
         searchHomeInput.addEventListener('input', (e) => {
-            currentHomeSearchQuery = e.target.value;
-            renderCards();
+            ui.currentHomeSearchQuery = e.target.value;
+            actions.renderCards();
         });
     }
 
     const searchNotesInput = document.getElementById('search-notes');
     if (searchNotesInput) {
         searchNotesInput.addEventListener('input', (e) => {
-            currentNotesSearchQuery = e.target.value;
-            renderNotes();
+            ui.currentNotesSearchQuery = e.target.value;
+            actions.renderNotes();
         });
     }
 
     const searchBookmarksInput = document.getElementById('search-bookmarks');
     if (searchBookmarksInput) {
         searchBookmarksInput.addEventListener('input', (e) => {
-            currentBookmarksSearchQuery = e.target.value;
-            renderBookmarks();
+            ui.currentBookmarksSearchQuery = e.target.value;
+            actions.renderBookmarks();
         });
     }
 
@@ -2157,7 +1147,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     state.echoCardsDatabase.unshift(newCard);
                     localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(state.echoCardsDatabase));
                     renderEchoCards();
-                    switchView('feeds');
+                    actions.switchView('feeds');
                     setSyncStatus('回响卡片已生成', 'ok', 2500);
                     return;
                 }
@@ -2187,31 +1177,31 @@ document.addEventListener('DOMContentLoaded', () => {
     if (btnOpenAiChat && aiChatModal) {
         btnOpenAiChat.addEventListener('click', () => {
             aiChatModal.classList.add('show');
-            if (!aiModalInHistory) {
+            if (!ui.aiModalInHistory) {
                 history.pushState({ view: 'ai' }, '', '#/ai');
-                aiModalInHistory = true;
+                ui.aiModalInHistory = true;
             }
             if (aiChatInput) aiChatInput.focus();
         });
     }
     if (btnCloseAiChat && aiChatModal) {
         btnCloseAiChat.addEventListener('click', () => {
-            if (aiModalInHistory && parseHashRoute().view === 'ai') {
+            if (ui.aiModalInHistory && actions.parseHashRoute().view === 'ai') {
                 history.back();
             } else {
                 aiChatModal.classList.remove('show');
-                aiModalInHistory = false;
+                ui.aiModalInHistory = false;
             }
         });
     }
 
     window.closeAiChatModal = function() {
-        if (aiModalInHistory && parseHashRoute().view === 'ai') {
+        if (ui.aiModalInHistory && actions.parseHashRoute().view === 'ai') {
             history.back();
             return;
         }
         if (aiChatModal) aiChatModal.classList.remove('show');
-        aiModalInHistory = false;
+        ui.aiModalInHistory = false;
     };
 
     window.addEventListener('keydown', (e) => {
@@ -2389,7 +1379,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function jumpToElement(targetView, selector) {
-        if (targetView) switchView(targetView);
+        if (targetView) actions.switchView(targetView);
         if (!selector) return;
         setTimeout(() => {
             const el = document.querySelector(selector);
@@ -2552,23 +1542,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    initWeeklies();
+    initNotes();
+    initBookmarks();
+
+    // Remaining views still live in app.js — expose for router actions.switchView
+    actions.renderFeeds = renderFeeds;
+    actions.renderHeatmap = renderHeatmap;
+    actions.renderBookshelf = typeof renderBookshelf === 'function' ? renderBookshelf : null;
+    actions.renderEchoCards = renderEchoCards;
+
+    initRouter();
+
     bindApiHooks({
         onRefresh(kind, opts = {}) {
             if (kind === 'all') {
-                renderCards();
-                renderNotes();
-                renderBookmarks();
-                renderFeeds();
-                renderEchoCards();
-                renderHeatmap();
+                actions.renderCards?.();
+                actions.renderNotes?.();
+                actions.renderBookmarks?.();
+                actions.renderFeeds?.();
+                actions.renderEchoCards?.();
+                actions.renderHeatmap?.();
                 return;
             }
-            if (kind === 'weeklies') renderCards(opts.filter || 'all');
-            if (kind === 'notes') renderNotes();
-            if (kind === 'bookmarks') renderBookmarks();
-            if (kind === 'feeds') renderFeeds();
-            if (kind === 'echo') renderEchoCards();
-            if (kind === 'heatmap') renderHeatmap();
+            if (kind === 'weeklies') actions.renderCards?.(opts.filter || 'all');
+            if (kind === 'notes') actions.renderNotes?.();
+            if (kind === 'bookmarks') actions.renderBookmarks?.();
+            if (kind === 'feeds') actions.renderFeeds?.();
+            if (kind === 'echo') actions.renderEchoCards?.();
+            if (kind === 'heatmap') actions.renderHeatmap?.();
         }
     });
 
@@ -2593,9 +1595,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 恢复 URL hash（刷新后回到对应视图）；无 hash 时写入首页，便于系统返回键工作
     if (location.hash && location.hash !== '#' && location.hash !== '#/home') {
-        applyRoute(parseHashRoute());
+        actions.applyRoute(actions.parseHashRoute());
     } else {
-        history.replaceState({ view: currentActiveNavView || 'home' }, '', `#/${currentActiveNavView || 'home'}`);
+        history.replaceState({ view: ui.currentActiveNavView || 'home' }, '', `#/${ui.currentActiveNavView || 'home'}`);
     }
 
     // PWA：注册与自动感知更新 Service Worker
