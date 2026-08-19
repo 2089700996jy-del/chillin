@@ -1,6 +1,3 @@
-import {
-    showToast,
-} from './js/utils.js';
 import { APP_BUILD_LABEL } from './js/version.js';
 import { state } from './js/state.js';
 import { ui } from './js/ui.js';
@@ -24,6 +21,7 @@ import { initReader } from './js/reader.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
 import { initSearch, initDomainSearchInputs } from './js/search.js';
+import { initPwaUpdates } from './js/pwa-update.js';
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -120,24 +118,8 @@ document.addEventListener('DOMContentLoaded', () => {
         history.replaceState({ view: ui.currentActiveNavView || 'home' }, '', `#/${ui.currentActiveNavView || 'home'}`);
     }
 
-    // PWA：注册与自动感知更新 Service Worker
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('/sw.js').then(reg => {
-                reg.onupdatefound = () => {
-                    const installingWorker = reg.installing;
-                    if (installingWorker) {
-                        installingWorker.onstatechange = () => {
-                            if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                                showToast('手机 PWA 已感知到最新版本，正在加载...', 'success');
-                                setTimeout(() => window.location.reload(), 1200);
-                            }
-                        };
-                    }
-                };
-            }).catch(() => {});
-        });
-    }
+    // PWA：注册 SW，并在打开/切回前台时主动检查更新
+    initPwaUpdates();
 });
 
 
