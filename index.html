@@ -11,9 +11,20 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Chillin">
     <title>Chillin</title>
+    <!-- iOS 主屏幕 PWA：尽早打标，避免顶栏/底栏安全区闪一下 -->
+    <script>
+      (function () {
+        var ua = navigator.userAgent || '';
+        var ios = /iPad|iPhone|iPod/.test(ua)
+          || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        var standalone = window.matchMedia('(display-mode: standalone)').matches
+          || window.navigator.standalone === true;
+        if (ios && standalone) document.documentElement.classList.add('ios-pwa');
+      })();
+    </script>
     <!-- 引入 Inter 字体 -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.7">
+    <link rel="stylesheet" href="style.css?v=2.4.8">
 </head>
 <body>
 
@@ -106,7 +117,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <div class="app-version-badge" data-app-version>v2.4.7</div>
+            <div class="app-version-badge" data-app-version>v2.4.8</div>
         </section>
 
         <!-- ========================================== -->
@@ -252,7 +263,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <div class="app-version-badge" data-app-version>v2.4.7</div>
+            <div class="app-version-badge" data-app-version>v2.4.8</div>
         </section>
 
         <!-- ========================================== -->
@@ -312,7 +323,7 @@
             <div class="bookmark-grid" id="bookmark-list-container">
                 <!-- 收藏卡片由 JavaScript 动态渲染 -->
             </div>
-            <div class="app-version-badge" data-app-version>v2.4.7</div>
+            <div class="app-version-badge" data-app-version>v2.4.8</div>
         </section>
 
         <!-- ========================================== -->
@@ -387,7 +398,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <div class="app-version-badge" data-app-version>v2.4.7</div>
+            <div class="app-version-badge" data-app-version>v2.4.8</div>
         </section>
 
         <!-- ========================================== -->
@@ -457,7 +468,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <div class="app-version-badge" data-app-version>v2.4.7</div>
+            <div class="app-version-badge" data-app-version>v2.4.8</div>
         </section>
 
     </main>
@@ -545,6 +556,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-    <script type="module" src="app.js?v=2.4.7"></script>
+    <script type="module" src="app.js?v=2.4.8"></script>
 </body>
 </html>

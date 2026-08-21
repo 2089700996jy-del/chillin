@@ -2626,3 +2626,77 @@ body.keyboard-open .fab-btn {
   position: static;
   z-index: auto;
 }
+
+/* ========================================== */
+/* iOS Home-Screen PWA only (html.ios-pwa)
+   Fixes notch / Dynamic Island / Home Indicator
+   without changing Android / desktop layout. */
+/* ========================================== */
+html.ios-pwa {
+  --ios-sat: env(safe-area-inset-top, 0px);
+  --ios-sab: env(safe-area-inset-bottom, 0px);
+}
+
+html.ios-pwa body {
+  /* Fill the translucent status bar with page bg */
+  background-color: var(--bg-color);
+}
+
+html.ios-pwa .super-navbar,
+html.ios-pwa .super-navbar.scrolled {
+  top: 0 !important;
+  height: calc(52px + var(--ios-sat)) !important;
+  padding-top: var(--ios-sat) !important;
+  box-sizing: border-box;
+  /* Extend white bar under status icons */
+  background: rgba(255, 255, 255, 0.96) !important;
+}
+
+html.ios-pwa .super-navbar__content {
+  height: 52px;
+  align-items: center;
+}
+
+html.ios-pwa .notion-app {
+  padding-top: calc(66px + var(--ios-sat)) !important;
+  padding-bottom: calc(72px + var(--ios-sab)) !important;
+}
+
+html.ios-pwa .mobile-bottom-nav {
+  height: calc(50px + var(--ios-sab)) !important;
+  padding-top: 2px;
+  padding-bottom: var(--ios-sab) !important;
+  box-sizing: border-box;
+  background: rgba(255, 255, 255, 0.96) !important;
+}
+
+html.ios-pwa .mobile-tab-item {
+  height: 48px;
+  padding: 4px 0 2px;
+  box-sizing: border-box;
+  justify-content: flex-start;
+}
+
+html.ios-pwa .fab-btn {
+  bottom: calc(58px + var(--ios-sab)) !important;
+  right: 16px !important;
+}
+
+html.ios-pwa body.hide-bottom-nav .notion-app {
+  padding-bottom: calc(16px + var(--ios-sab)) !important;
+}
+
+html.ios-pwa body.hide-bottom-nav .reader-layout {
+  height: calc(100vh - 84px - var(--ios-sat));
+  height: calc(100dvh - 84px - var(--ios-sat));
+}
+
+html.ios-pwa .auth-overlay {
+  padding-top: var(--ios-sat);
+  padding-bottom: var(--ios-sab);
+}
+
+html.ios-pwa .app-version-badge {
+  margin-top: 8px;
+  padding-bottom: 4px;
+}
