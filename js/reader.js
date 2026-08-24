@@ -294,6 +294,8 @@ window.closeReaderBook = function() {
     onReaderScroll();
     // Clear reader theme when exiting
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.setAttribute('content', '#ffffff');
     currentBookId = null; chapterMetas = []; currentChapterIdx = 0;
     actions.switchView('reader'); // actions.switchView will trigger renderBookshelf
 };
@@ -411,17 +413,21 @@ function applyReaderSettings() {
     const layout = document.querySelector('.reader-layout');
     if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
     const btn = document.getElementById('btn-theme-toggle');
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
 
     if (theme === 'dark') {
         document.body.classList.add('dark-reader-body');
         if (layout) layout.classList.add('dark-reader');
         if (btn) btn.textContent = '☀️';
+        if (themeMeta) themeMeta.setAttribute('content', '#0d1117');
     } else if (theme === 'eyecare') {
         document.body.classList.add('eyecare-reader-body');
         if (layout) layout.classList.add('eyecare-reader');
         if (btn) btn.textContent = '🌿';
+        if (themeMeta) themeMeta.setAttribute('content', '#dcedc8');
     } else {
         if (btn) btn.textContent = '🌙';
+        if (themeMeta) themeMeta.setAttribute('content', '#ffffff');
     }
 }
 window.toggleReaderTheme = function() {
