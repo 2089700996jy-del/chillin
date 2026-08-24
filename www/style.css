@@ -2700,3 +2700,40 @@ html.ios-pwa .app-version-badge {
   margin-top: 8px;
   padding-bottom: 4px;
 }
+
+/* ========================================== */
+/* PWA 强制主题覆盖 (阅读模式下顶底栏及文字颜色) */
+/* ========================================== */
+
+/* Dark Mode PWA Overrides */
+html.ios-pwa body.dark-reader-body,
+html.ios-pwa body.dark-reader-body .notion-app {
+  background-color: #0d1117 !important;
+}
+html.ios-pwa body.dark-reader-body .super-navbar,
+html.ios-pwa body.dark-reader-body .super-navbar.scrolled,
+html.ios-pwa body.dark-reader-body .mobile-bottom-nav {
+  background: rgba(22, 27, 34, 0.96) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+body.dark-reader-body .nav-brand-mobile,
+body.dark-reader-body .nav-btn-back,
+body.dark-reader-body .nav-item,
+body.dark-reader-body .btn-text,
+body.dark-reader-body .btn-icon-text .btn-icon,
+body.dark-reader-body .btn-icon-text .btn-label {
+  color: #c9d1d9 !important;
+}
+
+/* Eye-care Mode PWA Overrides */
+html.ios-pwa body.eyecare-reader-body,
+html.ios-pwa body.eyecare-reader-body .notion-app {
+  background-color: #dcedc8 !important;
+}
+html.ios-pwa body.eyecare-reader-body .super-navbar,
+html.ios-pwa body.eyecare-reader-body .super-navbar.scrolled,
+html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
+  background: rgba(232, 245, 233, 0.96) !important;
+  border-color: rgba(76, 175, 80, 0.2) !important;
+}
+
