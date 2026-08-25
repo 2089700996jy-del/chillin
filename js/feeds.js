@@ -32,10 +32,10 @@ function renderFeeds() {
 
     if (!displayFeeds || displayFeeds.length === 0) {
         container.innerHTML = `
-            <div style="text-align: center; padding: 40px 20px; color: #9ca3af;">
-                <div style="font-size: 32px; margin-bottom: 8px;">⚡️</div>
-                <div style="font-size: 14px; font-weight: 500;">随手记流空空如也</div>
-                <div style="font-size: 12px; margin-top: 4px;">在上方输入框倾倒你的第一个思考吧</div>
+            <div class="list-empty">
+                <div class="list-empty-icon">⚡️</div>
+                <div class="list-empty-title">随手记流空空如也</div>
+                <div class="list-empty-sub">在上方输入框倾倒你的第一个思考吧</div>
             </div>
         `;
         return;
@@ -112,7 +112,7 @@ function renderFeeds() {
                     </div>
                     <div class="rich-link-footer">
                         <span class="rich-platform-pill">
-                            <span class="platform-icon">${platformIcon}</span>
+                            <span class="platform-icon">${escapeHtml(platformIcon)}</span>
                             <span class="platform-name">${escapeHtml(platformName)}</span>
                             <span class="platform-divider">|</span>
                             <span class="platform-action">链接速览</span>
