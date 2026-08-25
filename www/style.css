@@ -1,4 +1,4 @@
-﻿/* Chillin - iOS HIG style digital garden */
+/* Chillin - iOS HIG style digital garden */
 
 :root {
   /* Apple HIG */
@@ -233,14 +233,14 @@ body {
   border: none;
 }
 .btn-primary { 
-  background: var(--text-color); 
+  background: var(--accent-color, #007AFF); 
   color: #fff; 
-  box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.25);
 }
 .btn-primary:hover { 
   opacity: 0.9; 
   transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+  box-shadow: 0 6px 16px rgba(0, 122, 255, 0.3);
 }
 .btn-secondary { 
   background: rgba(0,0,0,0.05); 
@@ -1144,7 +1144,9 @@ body.not-authenticated #btn-back {
   padding: 14px; 
   border-radius: 12px; 
   font-size: 16px; 
-  margin-top: 8px; 
+  margin-top: 8px;
+  background: #007AFF !important;
+  color: #fff !important;
 }
 .auth-switch { 
   font-size: 14px; 
