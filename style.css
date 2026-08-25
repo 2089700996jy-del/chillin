@@ -1,22 +1,29 @@
-/* 
-  ========================================
-  Super.so x Notion 极简数字花园 (Bento 风格 + SPA交互)
-  ========================================
-*/
+﻿/* Chillin - iOS HIG style digital garden */
 
 :root {
-  --bg-color: #f7f9fc; 
-  --text-color: #1e293b; 
-  --text-color-light: #64748b;
-  --accent-color: #4f46e5; /* Modern Indigo */
-  --accent-gradient: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  --font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  
-  --card-bg: #ffffff;
-  --card-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
-  --card-hover-shadow: 0 20px 25px -5px rgba(79, 70, 229, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.02);
-  --widget-bg: #f1f5f9;
-  --callout-bg: #eef2ff; 
+  /* Apple HIG */
+  --ios-blue: #007AFF;
+  --ios-green: #34C759;
+  --ios-red: #FF3B30;
+  --ios-bg: #F2F2F7;
+  --ios-card-bg: #FFFFFF;
+  --ios-label: #000000;
+  --ios-secondary-label: rgba(60, 60, 67, 0.6);
+
+  --bg-color: var(--ios-bg);
+  --text-color: #1c1c1e;
+  --text-color-light: var(--ios-secondary-label);
+  --accent-color: var(--ios-blue);
+  --accent-gradient: var(--ios-blue);
+  --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+    "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+
+  --card-bg: var(--ios-card-bg);
+  --card-shadow: none;
+  --card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  --widget-bg: rgba(120, 120, 128, 0.12);
+  --callout-bg: rgba(0, 122, 255, 0.08);
+  --danger-color: var(--ios-red);
 }
 
 * { 
@@ -43,7 +50,7 @@ a:focus-visible,
   box-shadow: none;
 }
 
-/* 微弹按压触摸反馈（替代高亮矩形灰色长方框阴影） */
+/* ????????????????????????*/
 .btn-text:active,
 .btn-chip:active,
 .mobile-tab-item:active,
@@ -68,9 +75,7 @@ html, body {
 
 body {
   background-color: var(--bg-color);
-  background-image: 
-    radial-gradient(at 0% 0%, rgba(79, 70, 229, 0.03) 0px, transparent 50%),
-    radial-gradient(at 50% 0%, rgba(124, 58, 237, 0.02) 0px, transparent 50%);
+  background-image: none;
   color: var(--text-color); 
   font-family: var(--font-family);
   -webkit-font-smoothing: antialiased; 
@@ -169,9 +174,9 @@ body {
   color: var(--text-color); 
 }
 #btn-force-upload {
-  background: rgba(79, 70, 229, 0.05);
+  background: rgba(0, 122, 255, 0.05);
   color: var(--accent-color) !important;
-  border: 1px solid rgba(79, 70, 229, 0.12);
+  border: 1px solid rgba(0, 122, 255, 0.12);
   padding: 6px 14px;
   border-radius: 99px;
   font-weight: 500;
@@ -184,10 +189,10 @@ body {
   cursor: pointer;
 }
 #btn-force-upload:hover {
-  background: rgba(79, 70, 229, 0.1);
-  border-color: rgba(79, 70, 229, 0.25);
+  background: rgba(0, 122, 255, 0.1);
+  border-color: rgba(0, 122, 255, 0.25);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.08);
+  box-shadow: 0 4px 12px rgba(0, 122, 255, 0.08);
 }
 #btn-force-upload:active {
   transform: translateY(0);
@@ -255,7 +260,7 @@ body {
   padding: 14px 24px; 
   border-radius: 99px;
   border: none; 
-  box-shadow: 0 10px 30px rgba(79, 70, 229, 0.3); 
+  box-shadow: 0 10px 30px rgba(0, 122, 255, 0.3); 
   cursor: pointer;
   font-family: var(--font-family); 
   font-weight: 500; 
@@ -268,7 +273,7 @@ body {
 }
 .fab-btn:hover { 
   transform: translateY(-4px) scale(1.02); 
-  box-shadow: 0 15px 40px rgba(79, 70, 229, 0.4); 
+  box-shadow: 0 15px 40px rgba(0, 122, 255, 0.4); 
 }
 .fab-btn.hidden { 
   display: none; 
@@ -303,10 +308,10 @@ body {
   padding-top: 20px; 
 }
 .page-title { 
-  font-size: 40px; 
+  font-size: 34px; 
   font-weight: 700; 
   margin-bottom: 16px; 
-  letter-spacing: -1px; 
+  letter-spacing: -0.6px; 
   color: var(--text-color);
 }
 .page-description { 
@@ -395,7 +400,7 @@ body {
 .notion-collection-card:hover { 
   transform: translateY(-6px); 
   box-shadow: var(--card-hover-shadow);
-  border-color: rgba(79, 70, 229, 0.15);
+  border-color: rgba(0, 122, 255, 0.15);
 }
 
 .card-property-category { 
@@ -481,7 +486,7 @@ body {
   margin: 28px 0; 
   color: var(--text-color-light); 
   font-style: italic; 
-  background: rgba(79, 70, 229, 0.03);
+  background: rgba(0, 122, 255, 0.03);
   padding: 16px 20px;
   border-radius: 0 12px 12px 0;
 }
@@ -613,7 +618,7 @@ body {
   gap: 16px; 
   margin-bottom: 24px; 
   align-items: flex-start;
-  border: 1px solid rgba(79, 70, 229, 0.05);
+  border: 1px solid rgba(0, 122, 255, 0.05);
 }
 .widget-callout-icon { 
   font-size: 24px; 
@@ -690,7 +695,7 @@ body {
 }
 .form-group input:focus, .form-group textarea:focus, .form-group select:focus {
   border-color: var(--accent-color); 
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
 }
 
 .widget-form-group {
@@ -731,8 +736,8 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  background: rgba(79, 70, 229, 0.06);
-  border: 1px solid rgba(79, 70, 229, 0.15);
+  background: rgba(0, 122, 255, 0.06);
+  border: 1px solid rgba(0, 122, 255, 0.15);
   border-radius: 12px;
   padding: 12px 18px;
   margin-top: 10px;
@@ -819,7 +824,7 @@ body {
 }
 .note-ann-badge {
   font-size: 11px;
-  background: rgba(79, 70, 229, 0.08);
+  background: rgba(0, 122, 255, 0.08);
   color: var(--accent-color);
   padding: 2px 6px;
   border-radius: 6px;
@@ -906,7 +911,7 @@ body {
   display: block;
 }
 .bookmark-card:hover {
-  border-color: rgba(79, 70, 229, 0.18);
+  border-color: rgba(0, 122, 255, 0.18);
   box-shadow: 0 4px 14px rgba(15, 23, 42, 0.04);
   background: #fcfcfd;
 }
@@ -1019,7 +1024,7 @@ body {
   color: #dc2626;
 }
 
-/* ── Image Preview Modal ── */
+/* ?? Image Preview Modal ?? */
 .modal-overlay {
   position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
   background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px);
@@ -1029,7 +1034,7 @@ body {
 .modal-overlay.show { display: flex; animation: modalFadeIn 0.2s ease; }
 @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-/* ── Category Chips ── */
+/* ?? Category Chips ?? */
 .category-chips {
   display: flex; flex-wrap: wrap; gap: 10px;
 }
@@ -1043,11 +1048,11 @@ body {
 }
 .cat-chip:hover { border-color: var(--accent-color); color: var(--text-color); }
 .cat-chip.active {
-  background: rgba(79, 70, 229, 0.08);
+  background: rgba(0, 122, 255, 0.08);
   border-color: var(--accent-color);
   color: var(--accent-color);
   font-weight: 600;
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1);
 }
 
 /* ========================================== */
@@ -1072,7 +1077,7 @@ body {
   pointer-events: none;
 }
 
-/* 未登录状态下隐藏顶部导航栏、手机底部 Tab 栏及悬浮按钮 */
+/* ???????????????????Tab ?????? */
 body.not-authenticated .super-navbar,
 body.not-authenticated .mobile-bottom-nav,
 body.not-authenticated .fab-btn,
@@ -1125,7 +1130,7 @@ body.not-authenticated #btn-back {
 }
 .auth-input:focus { 
   border-color: var(--accent-color); 
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1); 
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1); 
   background: #FFF; 
 }
 .auth-error { 
@@ -1238,8 +1243,8 @@ body.not-authenticated #btn-back {
     background: rgba(255, 255, 255, 0.94);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
-    border-top: 1px solid rgba(0, 0, 0, 0.06);
-    box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.03);
+    border-top: none;
+    box-shadow: none;
     z-index: 1000;
     padding-bottom: env(safe-area-inset-bottom, 0px);
   }
@@ -1272,7 +1277,7 @@ body.not-authenticated #btn-back {
   }
 
   .mobile-tab-item.active {
-    color: #4f46e5;
+    color: var(--accent-color);
     font-weight: 600;
   }
 
@@ -1307,8 +1312,9 @@ body.not-authenticated #btn-back {
   }
 
   .page-title {
-    font-size: 28px;
+    font-size: 34px;
     margin-bottom: 8px;
+    letter-spacing: -0.6px;
   }
 
   .page-description {
@@ -1326,7 +1332,7 @@ body.not-authenticated #btn-back {
     height: 48px;
     justify-content: center;
     align-items: center;
-    box-shadow: 0 6px 20px rgba(79, 70, 229, 0.3);
+    box-shadow: 0 6px 20px rgba(0, 122, 255, 0.3);
     z-index: 990;
   }
   .fab-btn .fab-label {
@@ -1376,7 +1382,7 @@ body.not-authenticated #btn-back {
 .search-input:focus {
   border-color: var(--accent-color);
   background: rgba(255, 255, 255, 1);
-  box-shadow: 0 4px 16px rgba(79, 70, 229, 0.08);
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.08);
 }
 .search-input::placeholder {
   color: var(--text-color-light);
@@ -1430,7 +1436,7 @@ body.not-authenticated #btn-back {
   top: 8px;
   bottom: 8px;
   width: 2px;
-  background: rgba(79, 70, 229, 0.1);
+  background: rgba(0, 122, 255, 0.1);
 }
 .annotation-item {
   display: flex;
@@ -1443,7 +1449,7 @@ body.not-authenticated #btn-back {
   height: 8px;
   border-radius: 50%;
   background: var(--accent-color);
-  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.15);
+  box-shadow: 0 0 0 4px rgba(0, 122, 255, 0.15);
   margin-top: 6px;
   margin-left: 12px;
   flex-shrink: 0;
@@ -1508,7 +1514,7 @@ body.not-authenticated #btn-back {
 }
 .annotation-input:focus {
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.08);
   background: #ffffff;
 }
 .btn-sm {
@@ -1518,13 +1524,13 @@ body.not-authenticated #btn-back {
   align-self: flex-end;
 }
 
-/* ═══════════ READER & BOOKSHELF STYLES ═══════════ */
+/* ????????????READER & BOOKSHELF STYLES ????????????*/
 
-/* ── Import progress (hidden file input + FAB triggers parse) ── */
+/* ?? Import progress (hidden file input + FAB triggers parse) ?? */
 .import-progress { text-align: center; padding: 12px; }
 .import-progress-text { font-size: 0.85rem; color: var(--accent-color); font-weight: 600; }
 
-/* ── Bookshelf ── */
+/* ?? Bookshelf ?? */
 .bookshelf-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -1550,7 +1556,7 @@ body.not-authenticated #btn-back {
   margin-bottom: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .book-card-author { font-size: 0.73rem; color: var(--text-color-light); margin-bottom: 12px; }
-.book-card-progress { height: 3px; background: rgba(79,70,229,0.12); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
+.book-card-progress { height: 3px; background: rgba(0, 122, 255,0.12); border-radius: 999px; overflow: hidden; margin-bottom: 6px; }
 .book-card-progress-bar { height: 100%; background: var(--accent-gradient); border-radius: 999px; transition: width 0.3s; }
 .book-card-meta { font-size: 0.68rem; color: var(--text-color-light); display: flex; justify-content: space-between; }
 .book-card-delete {
@@ -1590,7 +1596,7 @@ body.not-authenticated #btn-back {
   color: #9ca3af;
 }
 
-/* ── Reader Layout ── */
+/* ?? Reader Layout ?? */
 .reader-layout {
   display: flex; height: calc(100vh - 120px); min-height: 500px; gap: 0;
 }
@@ -1617,11 +1623,11 @@ body.not-authenticated #btn-back {
   padding: 10px 16px; font-size: 0.73rem; font-weight: 700;
   color: var(--accent-color); cursor: pointer; user-select: none;
   display: flex; align-items: center; gap: 8px;
-  border-bottom: 1px solid rgba(79,70,229,0.06);
-  background: rgba(79,70,229,0.03);
+  border-bottom: 1px solid rgba(0, 122, 255,0.06);
+  background: rgba(0, 122, 255,0.03);
   transition: background 0.15s;
 }
-.chapter-group-header:hover { background: rgba(79,70,229,0.06); }
+.chapter-group-header:hover { background: rgba(0, 122, 255,0.06); }
 .chapter-group-header .group-arrow {
   font-size: 0.55rem; transition: transform 0.2s; opacity: 0.6;
 }
@@ -1634,9 +1640,9 @@ body.not-authenticated #btn-back {
   overflow: hidden; text-overflow: ellipsis; border-left: 2px solid transparent;
   line-height: 1.6;
 }
-.chapter-item:hover { background: rgba(79,70,229,0.05); color: var(--text-color); }
+.chapter-item:hover { background: rgba(0, 122, 255,0.05); color: var(--text-color); }
 .chapter-item.active {
-  background: rgba(79,70,229,0.1); color: var(--accent-color);
+  background: rgba(0, 122, 255,0.1); color: var(--accent-color);
   font-weight: 600; border-left-color: var(--accent-color);
 }
 
@@ -1685,7 +1691,7 @@ body.not-authenticated #btn-back {
 .reader-nav-bottom .btn-nav:disabled { opacity: 0.35; cursor: not-allowed; }
 .chapter-indicator { font-size: 0.78rem; color: var(--text-color-light); }
 
-/* ── Reader Dark Theme (整页变黑) ── */
+/* ?? Reader Dark Theme (????) ?? */
 body.dark-reader-body {
   background-color: #0d1117;
   background-image: none;
@@ -1707,7 +1713,7 @@ body.dark-reader-body .chapter-group-header {
   background: #161b22;
 }
 body.dark-reader-body .chapter-group-header:hover {
-  background: rgba(79,70,229,0.1);
+  background: rgba(0, 122, 255,0.1);
 }
 body.dark-reader-body .reader-toolbar .btn-icon {
   background: rgba(255,255,255,0.05);
@@ -1725,11 +1731,11 @@ body.dark-reader-body .chapter-item {
   color: #8b949e;
 }
 body.dark-reader-body .chapter-item:hover {
-  background: rgba(79,70,229,0.1);
+  background: rgba(0, 122, 255,0.1);
   color: #c9d1d9;
 }
 body.dark-reader-body .chapter-item.active {
-  background: rgba(79,70,229,0.18);
+  background: rgba(0, 122, 255,0.18);
   color: #c4b9ff;
 }
 body.dark-reader-body .book-title-inline {
@@ -1739,7 +1745,7 @@ body.dark-reader-body .sidebar-header {
   color: #8b949e;
 }
 
-/* ── Reader Eye-Care Theme (护眼浅绿) ── */
+/* ?? Reader Eye-Care Theme (????) ?? */
 body.eyecare-reader-body {
   background-color: #dcedc8;
   background-image: none;
@@ -1799,7 +1805,7 @@ body.eyecare-reader-body .sidebar-header {
   color: #4a7c59;
 }
 
-/* 移除旧的不完整dark主题 */
+/* ???????dark?? */
 .dark-reader .reader-sidebar,
 .dark-reader .reader-toolbar,
 .dark-reader .reader-content-area,
@@ -1811,15 +1817,15 @@ body.eyecare-reader-body .sidebar-header {
 .dark-reader .chapter-body { color: #c9d1d9; }
 .dark-reader .chapter-title-display { color: #e6e8ec; border-bottom-color: rgba(255,255,255,0.08); }
 .dark-reader .chapter-item { color: #8b949e; }
-.dark-reader .chapter-item:hover { background: rgba(79,70,229,0.1); color: #c9d1d9; }
-.dark-reader .chapter-item.active { background: rgba(79,70,229,0.18); color: #c4b9ff; }
+.dark-reader .chapter-item:hover { background: rgba(0, 122, 255,0.1); color: #c9d1d9; }
+.dark-reader .chapter-item.active { background: rgba(0, 122, 255,0.18); color: #c4b9ff; }
 .dark-reader .reader-toolbar .btn-icon { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); color: #8b949e; }
 .dark-reader .book-title-inline { color: #c9d1d9; }
-.dark-reader .chapter-group-header { background: rgba(79,70,229,0.06); }
-.dark-reader .chapter-group-header:hover { background: rgba(79,70,229,0.1); }
+.dark-reader .chapter-group-header { background: rgba(0, 122, 255,0.06); }
+.dark-reader .chapter-group-header:hover { background: rgba(0, 122, 255,0.1); }
 .dark-reader .sidebar-header { background: #1a1d2e; color: #8b949e; }
 
-/* ── Responsive ── */
+/* ?? Responsive ?? */
 @media (max-width: 768px) {
   .reader-sidebar { position: fixed; left: 0; top: 0; bottom: 0; z-index: 100; width: 280px; border-radius: 0; }
   .reader-sidebar.hidden { margin-left: -290px; }
@@ -1832,7 +1838,7 @@ body.eyecare-reader-body .sidebar-header {
 /* MINDBACK ECHO FEATURES STYLES */
 /* ========================================== */
 
-/* 1. Heatmap Widget (思考轨迹热力图) */
+/* 1. Heatmap Widget (???????) */
 .heatmap-widget {
   background: #ffffff;
   border-radius: 16px;
@@ -1862,13 +1868,12 @@ body.eyecare-reader-body .sidebar-header {
   padding-bottom: 2px;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  scroll-behavior: smooth;
 }
 .heatmap-grid::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
-}
-  scroll-behavior: smooth;
 }
 
 .heatmap-col {
@@ -1890,25 +1895,25 @@ body.eyecare-reader-body .sidebar-header {
   z-index: 2;
 }
 
-.heatmap-cell.level-1 { background-color: #9be9a8; }
-.heatmap-cell.level-2 { background-color: #40c463; }
-.heatmap-cell.level-3 { background-color: #30a14e; }
-.heatmap-cell.level-4 { background-color: #216e39; }
+.heatmap-cell.level-1 { background-color: #a7f3d0; }
+.heatmap-cell.level-2 { background-color: #6ee7b7; }
+.heatmap-cell.level-3 { background-color: var(--ios-green); }
+.heatmap-cell.level-4 { background-color: #248a3d; }
 
-/* 2. Feed Input Card (无感速记框) */
+/* 2. Feed Input Card (?????? */
 .feed-input-card {
   background: #ffffff;
   border-radius: 16px;
   padding: 20px;
   margin-bottom: 28px;
   box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
-  border: 1px solid rgba(79, 70, 229, 0.12);
+  border: 1px solid rgba(0, 122, 255, 0.12);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .feed-input-card:focus-within {
-  border-color: #6366f1;
-  box-shadow: 0 10px 36px rgba(99, 102, 241, 0.12);
+  border-color: var(--accent-color);
+  box-shadow: 0 10px 36px rgba(0, 122, 255, 0.12);
 }
 
 .feed-textarea {
@@ -1923,7 +1928,7 @@ body.eyecare-reader-body .sidebar-header {
   background: transparent;
 }
 
-/* 键盘唤起时对底部 Tab 栏与 FAB 按钮避让隐藏 */
+/* ???????? Tab ?? FAB ?????? */
 body.keyboard-open .mobile-bottom-nav,
 body.keyboard-open .fab-btn {
   display: none !important;
@@ -1963,7 +1968,7 @@ body.keyboard-open .fab-btn {
 
 .btn-chip:hover, .btn-chip.active {
   background: #eef2ff;
-  color: #4f46e5;
+  color: var(--accent-color);
   border-color: #c7d2fe;
 }
 
@@ -1973,13 +1978,13 @@ body.keyboard-open .fab-btn {
   border-radius: 20px;
   font-size: 13px;
   font-weight: 600;
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.3);
+  background: var(--accent-color);
+  box-shadow: 0 4px 14px rgba(0, 122, 255, 0.3);
 }
 
 .btn-feed-send:hover {
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.4);
+  box-shadow: 0 6px 18px rgba(0, 122, 255, 0.4);
 }
 
 /* 3. Feeds Stream Timeline */
@@ -2045,7 +2050,7 @@ body.keyboard-open .fab-btn {
   cursor: pointer;
 }
 
-/* MindBack 风格精美富文本链接预览卡片 */
+/* MindBack ??????????????*/
 .feed-link-preview, .rich-link-card {
   margin-top: 10px;
   padding: 14px 16px;
@@ -2133,8 +2138,8 @@ body.keyboard-open .fab-btn {
 
 .feed-link-preview:hover .rich-platform-pill,
 .rich-link-card:hover .rich-platform-pill {
-  background: rgba(79, 70, 229, 0.08);
-  color: #4f46e5;
+  background: rgba(0, 122, 255, 0.08);
+  color: var(--accent-color);
 }
 
 .platform-icon {
@@ -2160,7 +2165,7 @@ body.keyboard-open .fab-btn {
   opacity: 0.7;
 }
 
-/* 4. Echo Cards (AI 回响总结卡片) */
+/* 4. Echo Cards (AI ??????) */
 .echo-cards-container {
   margin-bottom: 24px;
   display: flex;
@@ -2191,7 +2196,7 @@ body.keyboard-open .fab-btn {
   font-size: 12px;
   font-weight: 600;
   color: var(--primary-color);
-  background: rgba(99, 102, 241, 0.1);
+  background: rgba(0, 122, 255, 0.1);
   padding: 4px 12px;
   border-radius: 20px;
   margin-bottom: 12px;
@@ -2234,7 +2239,7 @@ body.keyboard-open .fab-btn {
   color: #dc2626;
 }
 
-/* 5. AI Memory Chat Modal (AI 记忆回响助手) */
+/* 5. AI Memory Chat Modal (AI ??????) */
 .ai-chat-card {
   width: 90%;
   max-width: 540px;
@@ -2293,7 +2298,7 @@ body.keyboard-open .fab-btn {
 }
 
 .ai-msg-user .ai-msg-bubble {
-  background: #4f46e5;
+  background: var(--accent-color);
   color: #ffffff;
   border-radius: 16px 16px 4px 16px;
 }
@@ -2351,14 +2356,14 @@ body.keyboard-open .fab-btn {
 }
 
 .ai-chat-input:focus {
-  border-color: #6366f1;
+  border-color: var(--accent-color);
 }
 
 #btn-send-ai-chat {
   flex-shrink: 0;
   white-space: nowrap;
   border-radius: 20px;
-  background: #4f46e5;
+  background: var(--accent-color);
   color: #ffffff;
   padding: 10px 16px;
   font-size: 14px;
@@ -2381,7 +2386,7 @@ body.keyboard-open .fab-btn {
   }
 }
 
-/* 同步状态提示 */
+/* ???????*/
 .sync-status {
   font-size: 12px;
   font-weight: 500;
@@ -2412,7 +2417,7 @@ body.keyboard-open .fab-btn {
   }
 }
 
-/* Kbd 快捷键 Badge */
+/* Kbd ????Badge */
 .search-kbd {
   background: rgba(0, 0, 0, 0.06);
   border: 1px solid rgba(0, 0, 0, 0.12);
@@ -2424,15 +2429,15 @@ body.keyboard-open .fab-btn {
   margin-left: 4px;
 }
 
-/* 闪烁高亮动画 */
+/* ?????? */
 @keyframes highlightFlash {
   0% {
-    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.8);
-    background-color: rgba(99, 102, 241, 0.12);
+    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.8);
+    background-color: rgba(0, 122, 255, 0.12);
   }
   50% {
-    box-shadow: 0 0 0 5px rgba(99, 102, 241, 0.9);
-    background-color: rgba(99, 102, 241, 0.18);
+    box-shadow: 0 0 0 5px rgba(0, 122, 255, 0.9);
+    background-color: rgba(0, 122, 255, 0.18);
   }
   100% {
     box-shadow: none;
@@ -2445,7 +2450,7 @@ body.keyboard-open .fab-btn {
   border-radius: 12px;
 }
 
-/* 全局搜索 Modal */
+/* ???? Modal */
 .global-search-overlay {
   align-items: flex-start;
   padding-top: 10vh;
@@ -2532,8 +2537,8 @@ body.keyboard-open .fab-btn {
   font-weight: 600;
   padding: 2px 8px;
   border-radius: 999px;
-  background: rgba(99, 102, 241, 0.1);
-  color: #4f46e5;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--accent-color);
 }
 
 .global-search-title {
@@ -2552,7 +2557,7 @@ body.keyboard-open .fab-btn {
   overflow: hidden;
 }
 
-/* Toast 提示框架 */
+/* Toast ???? */
 .toast-container {
   position: fixed;
   bottom: 24px;
@@ -2607,7 +2612,7 @@ body.keyboard-open .fab-btn {
   }
 }
 
-/* Echo 卡片关联随手记 Link */
+/* Echo ????????Link */
 .echo-card-feeds {
   display: flex;
   flex-wrap: wrap;
@@ -2617,9 +2622,9 @@ body.keyboard-open .fab-btn {
 
 .echo-card-feed-link {
   font-size: 12px;
-  color: #4f46e5;
-  background: rgba(99, 102, 241, 0.08);
-  border: 1px solid rgba(99, 102, 241, 0.16);
+  color: var(--accent-color);
+  background: rgba(0, 122, 255, 0.08);
+  border: 1px solid rgba(0, 122, 255, 0.16);
   padding: 3px 8px;
   border-radius: 6px;
   cursor: pointer;
@@ -2630,11 +2635,11 @@ body.keyboard-open .fab-btn {
 }
 
 .echo-card-feed-link:hover {
-  background: rgba(99, 102, 241, 0.18);
+  background: rgba(0, 122, 255, 0.18);
   transform: translateY(-1px);
 }
 
-/* In-flow build version — appear after scrolling to page bottom.
+/* In-flow build version ??appear after scrolling to page bottom.
    Bottom nav clearance already comes from .notion-app padding-bottom. */
 .app-version-badge {
   display: block;
@@ -2732,7 +2737,7 @@ html.ios-pwa .app-version-badge {
 }
 
 /* ========================================== */
-/* PWA 强制主题覆盖 (阅读模式下顶底栏及文字颜色) */
+/* PWA ?????? (?????????????? */
 /* ========================================== */
 
 /* Dark Mode PWA Overrides */
@@ -2777,4 +2782,5 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   background: rgba(232, 245, 233, 0.96) !important;
   border-color: rgba(76, 175, 80, 0.2) !important;
 }
+
 

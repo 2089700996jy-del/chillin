@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Chillin · iOS 字体+色板预览</title>
+  <style>
+    /* ===== Step 1: SF / 系统字体 + Large Title ===== */
+    :root {
+      --ios-blue: #007AFF;
+      --ios-green: #34C759;
+      --ios-red: #FF3B30;
+      --ios-bg: #F2F2F7;
+      --ios-card-bg: #FFFFFF;
+      --ios-separator: transparent; /* 预览：不要分割线 */
+      --ios-label: #000000;
+      --ios-secondary-label: rgba(60, 60, 67, 0.6);
+      --accent: var(--ios-blue);
+      --accent-soft: rgba(0, 122, 255, 0.12);
+      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
+        "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    }
+    html[data-accent="garden"] {
+      --accent: #2F6F5E;
+      --accent-soft: rgba(47, 111, 94, 0.14);
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--font);
+      background: #111;
+      color: var(--ios-label);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px 14px 36px;
+      gap: 14px;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .bar {
+      width: min(820px, 100%);
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      color: #fff;
+    }
+    .bar h1 { font-size: 16px; font-weight: 700; letter-spacing: -0.2px; }
+    .bar p { font-size: 12px; color: rgba(255,255,255,0.55); margin-top: 3px; }
+    .seg {
+      display: inline-flex; background: rgba(255,255,255,0.12);
+      border-radius: 9px; padding: 2px;
+    }
+    .seg button {
+      border: 0; background: transparent; color: rgba(255,255,255,0.75);
+      font: inherit; font-size: 12px; padding: 6px 11px; border-radius: 7px; cursor: pointer;
+    }
+    .seg button.active { background: #fff; color: #111; font-weight: 600; }
+
+    .stage {
+      width: min(820px, 100%);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 18px;
+      align-items: start;
+    }
+
+    .phone {
+      width: 100%;
+      max-width: 390px;
+      margin: 0 auto;
+      height: 720px;
+      background: var(--ios-bg);
+      border-radius: 40px;
+      border: 8px solid #2c2c2e;
+      box-shadow: 0 24px 70px rgba(0,0,0,0.45);
+      overflow: hidden;
+      position: relative;
+      display: flex;
+      flex-direction: column;
+    }
+    .notch {
+      position: absolute; top: 8px; left: 50%; transform: translateX(-50%);
+      width: 118px; height: 28px; background: #2c2c2e; border-radius: 18px; z-index: 4;
+    }
+    .topbar {
+      padding: 48px 16px 10px;
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(242,242,247,0.84);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-bottom: none;
+    }
+    .brand { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+    .icon-row { display: flex; gap: 8px; }
+    .icon-btn {
+      width: 32px; height: 32px; border-radius: 50%; border: 0;
+      background: rgba(120,120,128,0.16); color: var(--accent);
+      display: grid; place-items: center; font-size: 14px;
+    }
+    .scroll { flex: 1; overflow: auto; padding: 6px 16px 96px; }
+    .large-title {
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: -0.6px;
+      margin: 2px 0 14px;
+    }
+    .inset {
+      background: var(--ios-card-bg);
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 14px;
+    }
+    .inset-h { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .inset-title { font-size: 13px; font-weight: 600; }
+    .link { border: 0; background: none; color: var(--accent); font: inherit; font-size: 13px; }
+    .heat { display: grid; grid-template-columns: repeat(26, 1fr); gap: 3px; }
+    .heat i { aspect-ratio: 1; border-radius: 2px; background: rgba(120,120,128,0.18); display: block; }
+    .heat i.a { background: color-mix(in srgb, var(--ios-green) 35%, #fff); }
+    .heat i.b { background: color-mix(in srgb, var(--ios-green) 65%, #fff); }
+    .heat i.c { background: var(--ios-green); }
+    .filters { display: flex; gap: 8px; margin-bottom: 14px; }
+    .chip {
+      border: 0; border-radius: 999px; padding: 7px 14px; font: inherit; font-size: 13px;
+      background: rgba(120,120,128,0.16); color: var(--ios-label);
+    }
+    .chip.on { background: var(--accent); color: #fff; font-weight: 600; }
+    .card {
+      background: var(--ios-card-bg); border-radius: 16px; overflow: hidden; margin-bottom: 12px;
+    }
+    .cover {
+      height: 150px;
+      background: linear-gradient(145deg, #dbeafe, #93c5fd 45%, #64748b);
+    }
+    .card-body { padding: 12px 14px 14px; }
+    .cat { font-size: 12px; color: var(--accent); font-weight: 600; margin-bottom: 3px; }
+    .title { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; margin-bottom: 4px; }
+    .sub { font-size: 13px; color: var(--ios-secondary-label); line-height: 1.45; }
+    .date { font-size: 12px; color: var(--ios-secondary-label); margin-top: 8px; }
+    .fab {
+      position: absolute; right: 18px; bottom: 78px;
+      width: 44px; height: 44px; border-radius: 50%; border: 0;
+      background: var(--accent); color: #fff; font-size: 28px;
+      box-shadow: 0 8px 18px color-mix(in srgb, var(--accent) 35%, transparent);
+    }
+    .tabbar {
+      position: absolute; left: 0; right: 0; bottom: 0; height: 72px;
+      padding: 6px 4px 18px;
+      display: grid; grid-template-columns: repeat(5, 1fr);
+      background: rgba(255,255,255,0.88);
+      backdrop-filter: saturate(180%) blur(20px);
+      -webkit-backdrop-filter: saturate(180%) blur(20px);
+      border-top: none;
+    }
+    .tab {
+      border: 0; background: none; font: inherit; font-size: 10px;
+      color: var(--ios-secondary-label);
+      display: flex; flex-direction: column; align-items: center; gap: 2px;
+    }
+    .tab .g { font-size: 17px; }
+    .tab.on { color: var(--accent); font-weight: 600; }
+
+    /* 右侧：token 说明卡 */
+    .panel {
+      background: #1c1c1e;
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px;
+      padding: 18px;
+      color: #fff;
+    }
+    .panel h2 { font-size: 15px; margin-bottom: 12px; }
+    .swatches { display: grid; gap: 10px; }
+    .swatch {
+      display: grid; grid-template-columns: 36px 1fr; gap: 10px; align-items: center;
+    }
+    .dot { width: 36px; height: 36px; border-radius: 10px; border: 1px solid rgba(255,255,255,0.12); }
+    .swatch b { font-size: 13px; display: block; }
+    .swatch span { font-size: 11px; color: rgba(255,255,255,0.5); }
+    .typo {
+      margin-top: 16px; padding-top: 14px;
+    }
+    .typo .sample-lg {
+      font-size: 34px; font-weight: 700; letter-spacing: -0.6px; margin-bottom: 6px;
+    }
+    .typo .sample-body {
+      font-size: 15px; color: rgba(255,255,255,0.72); line-height: 1.45;
+    }
+    .typo .sample-sec {
+      font-size: 13px; color: rgba(255,255,255,0.45); margin-top: 6px;
+    }
+    .note {
+      width: min(820px, 100%);
+      color: rgba(255,255,255,0.5);
+      font-size: 12px; line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="bar">
+    <div>
+      <h1>预览 v2 · 字体 + HIG 色板</h1>
+      <p>左侧手机为页面效果；右侧是 token。未改正式 App。</p>
+    </div>
+    <div class="seg" id="accent-seg" style="display:none">
+      <button type="button" class="active" data-accent="blue">系统蓝 #007AFF</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <div class="phone">
+      <div class="notch"></div>
+      <header class="topbar">
+        <div class="brand">Chillin.</div>
+        <div class="icon-row">
+          <button class="icon-btn" type="button">⌕</button>
+          <button class="icon-btn" type="button">✦</button>
+          <button class="icon-btn" type="button">⎋</button>
+        </div>
+      </header>
+      <main class="scroll">
+        <div class="large-title">Chillin.</div>
+        <section class="inset">
+          <div class="inset-h">
+            <div class="inset-title">思考与记忆轨迹</div>
+            <button class="link" type="button">本周回顾</button>
+          </div>
+          <div class="heat" id="heat"></div>
+        </section>
+        <div class="filters">
+          <button class="chip on" type="button">全部</button>
+          <button class="chip" type="button">技术</button>
+          <button class="chip" type="button">生活</button>
+        </div>
+        <article class="card">
+          <div class="cover"></div>
+          <div class="card-body">
+            <div class="cat">生活</div>
+            <div class="title">亲情 · 重拾阅读 · 社交</div>
+            <div class="sub">正文用系统字体；次要说明用 secondary label，更接近 iOS 列表层级。</div>
+            <div class="date">2026年8月5日</div>
+          </div>
+        </article>
+      </main>
+      <button class="fab" type="button">+</button>
+      <nav class="tabbar">
+        <button class="tab on" type="button"><span class="g">⌂</span>首页</button>
+        <button class="tab" type="button"><span class="g">⚡</span>随手记</button>
+        <button class="tab" type="button"><span class="g">☰</span>笔记</button>
+        <button class="tab" type="button"><span class="g">◎</span>收藏</button>
+        <button class="tab" type="button"><span class="g">▤</span>阅读</button>
+      </nav>
+    </div>
+
+    <aside class="panel">
+      <h2>采用的 token</h2>
+      <div class="swatches">
+        <div class="swatch"><div class="dot" style="background:#007AFF"></div><div><b>--ios-blue</b><span>#007AFF · 选中 / 链接 / 主按钮</span></div></div>
+        <div class="swatch"><div class="dot" style="background:#34C759"></div><div><b>--ios-green</b><span>#34C759 · 热力图 / 同步成功</span></div></div>
+        <div class="swatch"><div class="dot" style="background:#FF3B30"></div><div><b>--ios-red</b><span>#FF3B30 · 删除等危险操作</span></div></div>
+        <div class="swatch"><div class="dot" style="background:#F2F2F7;border-color:#666"></div><div><b>--ios-bg</b><span>#F2F2F7 · 页面底</span></div></div>
+        <div class="swatch"><div class="dot" style="background:#FFFFFF;border-color:#666"></div><div><b>--ios-card-bg</b><span>#FFFFFF · inset 卡片</span></div></div>
+        <div class="swatch"><div class="dot" style="background:#1c1c1e;border-color:#666"></div><div><b>分割线</b><span>已去掉 · 靠灰底与留白分层</span></div></div>
+      </div>
+      <div class="typo">
+        <div class="sample-lg">Large Title 34</div>
+        <div class="sample-body">正文 15–17 · SF / PingFang</div>
+        <div class="sample-sec">次要文字 · secondary label</div>
+      </div>
+    </aside>
+  </div>
+
+  <p class="note">
+    文件：<code>preview-ios.html</code>。确认方向后，我可以把这套变量接到正式 <code>style.css</code>（先换皮，不动功能）。
+  </p>
+
+  <script>
+    const heat = document.getElementById('heat');
+    for (let i = 0; i < 26 * 7; i++) {
+      const el = document.createElement('i');
+      const r = Math.random();
+      if (r > 0.82) el.className = 'c';
+      else if (r > 0.64) el.className = 'b';
+      else if (r > 0.45) el.className = 'a';
+      heat.appendChild(el);
+    }
+    document.getElementById('accent-seg').addEventListener('click', (e) => {
+      const btn = e.target.closest('button[data-accent]');
+      if (!btn) return;
+      document.querySelectorAll('#accent-seg button').forEach((b) => b.classList.toggle('active', b === btn));
+      document.documentElement.dataset.accent = btn.dataset.accent === 'garden' ? 'garden' : '';
+    });
+  </script>
+</body>
+</html>
