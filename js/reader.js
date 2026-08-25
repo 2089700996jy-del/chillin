@@ -302,7 +302,7 @@ function clearReaderSession() {
     const layout = document.querySelector('.reader-layout');
     if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', '#ffffff');
+    if (themeMeta) themeMeta.setAttribute('content', '#F2F2F7');
     currentBookId = null;
     chapterMetas = [];
     currentChapterIdx = 0;

@@ -65,6 +65,7 @@ html, body {
   touch-action: manipulation;
   -webkit-text-size-adjust: 100%;
   overflow-x: hidden;
+  background-color: var(--ios-bg, #F2F2F7);
 }
 
 @media screen and (max-width: 768px) {
