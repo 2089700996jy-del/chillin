@@ -70,6 +70,16 @@ const renderAnnotationsList = () => {
 const renderNotes = () => {
     notesListContainer.innerHTML = '';
     const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
+    if (sortedNotes.length === 0) {
+        notesListContainer.innerHTML = `
+            <div class="list-empty">
+                <div class="list-empty-icon">📝</div>
+                <div class="list-empty-title">还没有笔记</div>
+                <div class="list-empty-sub">点右下角「+」捕捉一闪而过的想法</div>
+            </div>
+        `;
+        return;
+    }
     sortedNotes.forEach(note => {
         const el = document.createElement('div');
         el.className = 'note-item';

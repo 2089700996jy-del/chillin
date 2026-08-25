@@ -67,7 +67,7 @@ function renderGlobalSearchResults(query) {
                 id: w.id,
                 title: w.title || '无标题周记',
                 snippet: w.summary || (w.content || '').slice(0, 80),
-                targetElSelector: `#weekly-card-${w.id}`
+                targetElSelector: `.notion-collection-card[data-id="${CSS.escape(String(w.id))}"]`
             });
         }
     });
@@ -81,7 +81,7 @@ function renderGlobalSearchResults(query) {
                 id: f.id,
                 title: f.created_at || '随手记切片',
                 snippet: f.content,
-                targetElSelector: `[data-feed-id="${f.id}"]`
+                targetElSelector: `[data-feed-id="${CSS.escape(String(f.id))}"]`
             });
         }
     });
@@ -95,7 +95,7 @@ function renderGlobalSearchResults(query) {
                 id: n.id,
                 title: n.title || '无标题笔记',
                 snippet: (n.content || '').slice(0, 80),
-                targetElSelector: `[data-note-id="${n.id}"]`
+                targetElSelector: `[data-note-id="${CSS.escape(String(n.id))}"]`
             });
         }
     });
@@ -109,26 +109,26 @@ function renderGlobalSearchResults(query) {
                 id: b.id,
                 title: b.title || '无标题收藏',
                 snippet: (b.desc || b.description || b.url || ''),
-                targetElSelector: `[data-bookmark-id="${b.id}"]`
+                targetElSelector: `[data-bookmark-id="${CSS.escape(String(b.id))}"]`
             });
         }
     });
 
-    // 5. AI 回响卡片
+    // 5. AI 回响卡片（渲染在随手记页）
     (state.echoCardsDatabase || []).forEach(c => {
         if ((c.title || '').toLowerCase().includes(q) || (c.summary || '').toLowerCase().includes(q) || (c.topic || '').toLowerCase().includes(q)) {
             results.push({
                 type: '✨ AI 回响',
-                view: 'home',
+                view: 'feeds',
                 id: c.id,
                 title: c.title || 'AI 回响卡片',
                 snippet: c.summary,
-                targetElSelector: `#echo-card-${c.id}`
+                targetElSelector: `#echo-card-${CSS.escape(String(c.id))}`
             });
         }
     });
 
-    // 6. 阅读批注
+    // 6. 阅读批注（尚未落地 DOM，仅有实现时才出现在结果里）
     (actions.getReaderAnnotations?.() || []).forEach(a => {
         if ((a.text || '').toLowerCase().includes(q)) {
             results.push({
@@ -137,7 +137,7 @@ function renderGlobalSearchResults(query) {
                 id: a.id,
                 title: a.bookTitle ? `《${a.bookTitle}》批注` : '阅读批注',
                 snippet: a.text,
-                targetElSelector: `[data-annotation-id="${a.id}"]`
+                targetElSelector: a.targetElSelector || ''
             });
         }
     });
@@ -178,10 +178,10 @@ function jumpToElement(targetView, selector) {
             void el.offsetWidth;
             el.classList.add('highlight-flash');
         }
-    }, 150);
+    }, 220);
 }
 
+    actions.jumpToElement = jumpToElement;
 
-
-    return { openGlobalSearch, closeGlobalSearch };
+    return { openGlobalSearch, closeGlobalSearch, jumpToElement };
 }

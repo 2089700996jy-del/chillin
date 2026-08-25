@@ -6,6 +6,8 @@ import {
     getLocalKey,
     apiRequest,
     fetchWithFallback,
+    setSyncStatus,
+    logout,
 } from './api.js';
 
 export function initEchoAi() {
@@ -38,7 +40,7 @@ function renderEchoCards() {
 }
 
 window.jumpToFeed = function(feedId) {
-    jumpToElement('feeds', `[data-feed-id="${feedId}"]`);
+    actions.jumpToElement?.('feeds', `[data-feed-id="${CSS.escape(String(feedId))}"]`);
 };
 
 window.deleteEchoCard = function(id) {
@@ -48,6 +50,27 @@ window.deleteEchoCard = function(id) {
     renderEchoCards();
     apiRequest('/api/echo/cards/' + id, { method: 'DELETE' }).catch(() => {});
 };
+
+async function fetchAiChatStream(body, isRetry = false) {
+    const headers = { 'Content-Type': 'application/json' };
+    if (state.authToken) headers['Authorization'] = `Bearer ${state.authToken}`;
+
+    const response = await fetchWithFallback('/api/ai/chat', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+    });
+
+    if (response.status === 401) {
+        if (!isRetry) {
+            await new Promise((r) => setTimeout(r, 300));
+            return fetchAiChatStream(body, true);
+        }
+        logout({ reason: 'expired' });
+        return null;
+    }
+    return response;
+}
 
 function getLocalAiReply(question) {
     const allMemory = [];
@@ -181,18 +204,16 @@ async function sendAiChatMessage() {
     const bubbleEl = botMsgDiv.querySelector('.ai-msg-bubble');
 
     try {
-        const headers = { 'Content-Type': 'application/json' };
-        if (state.authToken) headers['Authorization'] = `Bearer ${state.authToken}`;
-
         // 多轮对话：保存 user 输入
         const recentHistory = [...state.aiChatHistory];
         state.aiChatHistory.push({ role: 'user', content: question });
 
-        const response = await fetchWithFallback('/api/ai/chat', {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({ question, stream: true, history: recentHistory })
-        });
+        const response = await fetchAiChatStream({ question, stream: true, history: recentHistory });
+        if (!response) {
+            state.aiChatHistory.pop();
+            bubbleEl.innerHTML = '🤖 登录已过期，请重新登录后再试';
+            return;
+        }
 
         if (response.ok && response.headers.get('content-type')?.includes('text/event-stream')) {
             const reader = response.body.getReader();

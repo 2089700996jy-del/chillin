@@ -22,7 +22,7 @@ export function showToast(msg, type = 'info') {
     }
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
-    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️';
+    const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warn' ? '⚠️' : 'ℹ️';
     toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(msg)}</span>`;
     container.appendChild(toast);
     setTimeout(() => {

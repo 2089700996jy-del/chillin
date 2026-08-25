@@ -1572,6 +1572,29 @@ body.not-authenticated #btn-back {
 .empty-bookshelf .empty-title { font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; color: var(--text-color); }
 .empty-bookshelf .empty-sub { font-size: 0.85rem; }
 
+.list-empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: #9ca3af;
+  grid-column: 1 / -1;
+  width: 100%;
+}
+.list-empty-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+  line-height: 1;
+}
+.list-empty-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6b7280;
+}
+.list-empty-sub {
+  font-size: 12px;
+  margin-top: 4px;
+  color: #9ca3af;
+}
+
 /* ── Reader Layout ── */
 .reader-layout {
   display: flex; height: calc(100vh - 120px); min-height: 500px; gap: 0;
@@ -2564,6 +2587,10 @@ body.keyboard-open .fab-btn {
 
 .toast-info {
   border-left: 4px solid #3b82f6;
+}
+
+.toast-warn {
+  border-left: 4px solid #f59e0b;
 }
 
 @keyframes toastIn {

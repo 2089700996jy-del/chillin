@@ -71,7 +71,7 @@ export function checkAuth() {
     return true;
 }
 
-export function logout() {
+export function logout(opts = {}) {
     if (state.authToken) {
         apiRequest('/api/auth/logout', { method: 'POST' }).catch(() => {});
     }
@@ -80,6 +80,12 @@ export function logout() {
     localStorage.removeItem('chillin_token');
     localStorage.removeItem('chillin_user');
     checkAuth();
+    if (opts.silent) return;
+    if (opts.reason === 'expired') {
+        showToast('登录已过期，请重新登录', 'warn');
+    } else {
+        showToast('已退出登录', 'info');
+    }
 }
 
 export async function doLogin() {
@@ -197,12 +203,12 @@ export async function apiRequest(path, options = {}) {
             headers
         });
 
-        if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register') {
+        if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register' && path !== '/api/auth/logout') {
             if (!options._isRetry) {
                 await new Promise(r => setTimeout(r, 300));
                 return await apiRequest(path, { ...options, _isRetry: true });
             }
-            logout();
+            logout({ reason: 'expired' });
             throw new Error('未登录或登录状态已过期，请重新登录');
         }
         if (!res.ok) {

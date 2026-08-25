@@ -22,4 +22,5 @@ export const actions = {
     renderBookshelf: null,
     renderEchoCards: null,
     getReaderAnnotations: null,
+    jumpToElement: null,
 };

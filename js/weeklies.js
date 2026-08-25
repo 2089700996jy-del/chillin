@@ -78,6 +78,7 @@ const renderCards = (filter) => {
     }
     galleryContainer.innerHTML = '';
     const sortedDB = [...state.database].sort((a, b) => b.id - a.id);
+    let rendered = 0;
     sortedDB.forEach(item => {
         if (filter !== "all" && item.category !== filter) return;
 
@@ -91,7 +92,18 @@ const renderCards = (filter) => {
         card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-property-category">${escapeHtml(item.category)}</div><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`;
         card.addEventListener('click', () => openArticle(item));
         galleryContainer.appendChild(card);
+        rendered += 1;
     });
+    if (rendered === 0) {
+        const isFiltered = filter && filter !== 'all';
+        galleryContainer.innerHTML = `
+            <div class="list-empty">
+                <div class="list-empty-icon">🌱</div>
+                <div class="list-empty-title">${isFiltered ? '这个分类还没有周记' : '还没有记忆切片'}</div>
+                <div class="list-empty-sub">${isFiltered ? '试试切换「全部」，或点右下角记下这一周' : '点右下角「+」写下第一篇周记吧'}</div>
+            </div>
+        `;
+    }
 };
 
 const generateWeeklyWidgetsHtml = (data) => {

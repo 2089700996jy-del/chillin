@@ -35,6 +35,17 @@ export function initBookmarks() {
 const renderBookmarks = () => {
     bookmarkListContainer.innerHTML = '';
     const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id);
+
+    if (sortedBookmarks.length === 0) {
+        bookmarkListContainer.innerHTML = `
+            <div class="list-empty">
+                <div class="list-empty-icon">🔖</div>
+                <div class="list-empty-title">还没有收藏</div>
+                <div class="list-empty-sub">点右下角「+」收下一站宝藏</div>
+            </div>
+        `;
+        return;
+    }
     
     sortedBookmarks.forEach(bm => {
         const rawUrl = (bm.url || '').trim();
