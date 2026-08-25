@@ -23,4 +23,5 @@ export const actions = {
     renderEchoCards: null,
     getReaderAnnotations: null,
     jumpToElement: null,
+    clearReaderSession: null,
 };

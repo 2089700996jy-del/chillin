@@ -290,15 +290,23 @@ window.openReaderBook = async function(bookId) {
 };
 
 window.closeReaderBook = function() {
+    actions.clearReaderSession?.();
+    actions.switchView('reader');
+};
+
+/** Leave reader chrome/theme without switching views (swipe-back / route change). */
+function clearReaderSession() {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-    onReaderScroll();
-    // Clear reader theme when exiting
+    if (currentBookId) onReaderScroll();
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+    const layout = document.querySelector('.reader-layout');
+    if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.setAttribute('content', '#ffffff');
-    currentBookId = null; chapterMetas = []; currentChapterIdx = 0;
-    actions.switchView('reader'); // actions.switchView will trigger renderBookshelf
-};
+    currentBookId = null;
+    chapterMetas = [];
+    currentChapterIdx = 0;
+}
 
 function onReaderScroll() {
     if (saveTimer) clearTimeout(saveTimer);
@@ -465,6 +473,7 @@ openReaderDB().then(() => {
 
     actions.renderBookshelf = renderBookshelf;
     actions.getReaderAnnotations = () => [];
+    actions.clearReaderSession = clearReaderSession;
 
     return { renderBookshelf, openReaderDB };
 }
