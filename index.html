@@ -24,7 +24,7 @@
     </script>
     <!-- 引入 Inter 字体 -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=2.4.11">
+    <link rel="stylesheet" href="style.css?v=2.4.13">
 </head>
 <body>
 
@@ -95,10 +95,6 @@
         <section id="view-home" class="view-section active">
             <header class="page-header">
                 <h1 class="page-title">Chillin.</h1>
-                <p class="page-description">
-                    一个极简的数字空间，用来记录我每周的记忆切片、工作总结、播客新知和代码片段。<br>
-                    用心培育，保持简单。
-                </p>
 
                 <!-- 思考轨迹热力图 Widget -->
                 <div class="heatmap-widget">
@@ -117,7 +113,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <div class="app-version-badge" data-app-version>v2.4.11</div>
+            <div class="app-version-badge" data-app-version>v2.4.13</div>
         </section>
 
         <!-- ========================================== -->
@@ -157,7 +153,6 @@
         <section id="view-editor" class="view-section">
             <div class="editor-container">
                 <h1 class="page-title" id="editor-page-title">新增记忆</h1>
-                <p class="page-description">填写以下字段，自动生成一篇精美的记忆切片排版。</p>
                 
                 <!-- 草稿提示横幅 -->
                 <div id="weekly-draft-tip" class="draft-tip-banner" style="display: none;">
@@ -257,13 +252,10 @@
         <section id="view-notes" class="view-section">
             <header class="page-header">
                 <h1 class="page-title">备忘录.</h1>
-                <p class="page-description">
-                    随时捕捉脑海中的一闪而过。绝对纯粹，无需排版。
-                </p>
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <div class="app-version-badge" data-app-version>v2.4.11</div>
+            <div class="app-version-badge" data-app-version>v2.4.13</div>
         </section>
 
         <!-- ========================================== -->
@@ -315,15 +307,12 @@
         <section id="view-bookmarks" class="view-section">
             <header class="page-header">
                 <h1 class="page-title">收藏.</h1>
-                <p class="page-description">
-                    收藏的站点与工具，点一下就到。
-                </p>
             </header>
             
             <div class="bookmark-grid" id="bookmark-list-container">
                 <!-- 收藏卡片由 JavaScript 动态渲染 -->
             </div>
-            <div class="app-version-badge" data-app-version>v2.4.11</div>
+            <div class="app-version-badge" data-app-version>v2.4.13</div>
         </section>
 
         <!-- ========================================== -->
@@ -382,9 +371,6 @@
         <section id="view-reader" class="view-section">
             <header class="page-header">
                 <h1 class="page-title">📚 阅读.</h1>
-                <p class="page-description">
-                    导入 TXT 小说文件，自动分章，记忆阅读进度。
-                </p>
             </header>
 
             <div class="import-progress" id="import-progress" style="display:none;">
@@ -398,7 +384,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <div class="app-version-badge" data-app-version>v2.4.11</div>
+            <div class="app-version-badge" data-app-version>v2.4.13</div>
         </section>
 
         <!-- ========================================== -->
@@ -439,7 +425,6 @@
         <section id="view-feeds" class="view-section">
             <header class="page-header">
                 <h1 class="page-title">⚡️ 随手记流</h1>
-                <p class="page-description">无分类负重感，像聊天一样随手倾倒你的思考、音频、图片与网页链接。</p>
             </header>
 
             <!-- 无感速记输入框卡片 -->
@@ -468,7 +453,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <div class="app-version-badge" data-app-version>v2.4.11</div>
+            <div class="app-version-badge" data-app-version>v2.4.13</div>
         </section>
 
     </main>
@@ -556,6 +541,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-    <script type="module" src="app.js?v=2.4.11"></script>
+    <script type="module" src="app.js?v=2.4.13"></script>
 </body>
 </html>
