@@ -80,12 +80,12 @@ function renderFeeds() {
                 try {
                     const u = new URL(targetUrl);
                     const host = u.hostname;
-                    if (host.includes('xiaoyuzhoufm.com')) { platformName = '小宇�?; platformIcon = '🪐'; }
-                    else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) { platformName = '小红�?; platformIcon = '📕'; }
+                    if (host.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🪐'; }
+                    else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) { platformName = '小红书'; platformIcon = '📕'; }
                     else if (host.includes('bilibili.com') || host.includes('b23.tv')) { platformName = 'Bilibili'; platformIcon = '📺'; }
                     else if (host.includes('weixin.qq.com')) { platformName = '微信文章'; platformIcon = '💬'; }
                     else if (host.includes('zhihu.com')) { platformName = '知乎'; platformIcon = '💡'; }
-                    else if (host.includes('music.163.com')) { platformName = '网易云音�?; platformIcon = '🎵'; }
+                    else if (host.includes('music.163.com')) { platformName = '网易云音乐'; platformIcon = '🎵'; }
                     else if (host.includes('weibo.com') || host.includes('weibo.cn')) { platformName = '微博'; platformIcon = '🔴'; }
                     else { platformName = host; platformIcon = '🌐'; }
                 } catch {
@@ -137,7 +137,7 @@ function renderFeeds() {
 
         let textHtml = '';
         if (contentText) {
-            const formattedContent = escapeHtml(contentText).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:var(--accent-color,#007AFF);">$1</a>');
+            const formattedContent = escapeHtml(contentText).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#007AFF;">$1</a>');
             textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
         }
 
@@ -245,7 +245,7 @@ async function sendFeed() {
     if (!content && !mediaUrl) return;
 
     btnSendFeed.disabled = true;
-    btnSendFeed.innerText = '解析�?..';
+    btnSendFeed.innerText = '解析中...';
 
     let summary = null;
     let type = mediaUrl ? 'image' : 'text';
@@ -271,7 +271,7 @@ async function sendFeed() {
 
     const newFeed = {
         id: Date.now(),
-        content: content || '分享了图�?链接',
+        content: content || '分享了图片/链接',
         type,
         media_url: mediaUrl || parsedCover || null,
         summary,
@@ -294,7 +294,7 @@ async function sendFeed() {
     if (feedPreviewImg) feedPreviewImg.removeAttribute('src');
 
     btnSendFeed.disabled = false;
-    btnSendFeed.innerText = '发�?🚀';
+    btnSendFeed.innerText = '发送 🚀';
 
     // Sync with Cloudflare Worker API
     try {
@@ -349,7 +349,7 @@ window.previewImage = function(src) {
     }
 };
 
-// 3. Render Heatmap (思考与记忆轨迹热力�?
+// 3. Render Heatmap (思考与记忆轨迹热力图)
 function renderHeatmap() {
     const grid = document.getElementById('heatmap-grid');
     if (!grid) return;
@@ -367,7 +367,7 @@ function renderHeatmap() {
         const s = String(value).trim();
         const iso = s.match(/^(\d{4}-\d{2}-\d{2})/);
         if (iso) return iso[1];
-        const cn = s.match(/^(\d{4})�?\d{1,2})�?\d{1,2})�?);
+        const cn = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
         if (cn) {
             return `${cn[1]}-${String(cn[2]).padStart(2, '0')}-${String(cn[3]).padStart(2, '0')}`;
         }
@@ -405,7 +405,7 @@ function renderHeatmap() {
             else if (count >= 2) levelClass = 'level-2';
             else if (count >= 1) levelClass = 'level-1';
 
-            cellsHtml += `<div class="heatmap-cell ${levelClass}" title="${dateKey}: ${count} 次记�?></div>`;
+            cellsHtml += `<div class="heatmap-cell ${levelClass}" title="${dateKey}: ${count} 次记录"></div>`;
         }
         colsHtml += `<div class="heatmap-col">${cellsHtml}</div>`;
     }
