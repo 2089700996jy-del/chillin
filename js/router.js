@@ -85,6 +85,11 @@ const switchView = (targetViewId, opts = {}) => {
     const targetEl = document.getElementById(`view-${targetViewId}`);
     if (!targetEl) return;
 
+    const prevActiveId = document.querySelector('.view-section.active')?.id || '';
+    if (prevActiveId === 'view-reader-book' && targetViewId !== 'reader-book') {
+        actions.clearReaderSession?.();
+    }
+
     views.forEach(view => view.classList.remove('active'));
     targetEl.classList.add('active');
     
@@ -93,14 +98,20 @@ const switchView = (targetViewId, opts = {}) => {
         navItems.forEach(item => item.classList.remove('active'));
         const activeNavs = document.querySelectorAll(`.nav-item[data-view="${targetViewId}"], .mobile-tab-item[data-view="${targetViewId}"]`);
         activeNavs.forEach(nav => nav.classList.add('active'));
+        // Always leave reader chrome when on a main tab (fixes swipe-back theme leak)
+        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+        const readerLayout = document.querySelector('.reader-layout');
+        if (readerLayout) readerLayout.classList.remove('dark-reader', 'eyecare-reader');
+        const themeMeta = document.querySelector('meta[name="theme-color"]');
+        if (themeMeta && (themeMeta.getAttribute('content') === '#0d1117' || themeMeta.getAttribute('content') === '#dcedc8')) {
+            themeMeta.setAttribute('content', '#ffffff');
+        }
         if (targetViewId === 'reader') {
             setTimeout(actions.renderBookshelf, 100);
         } else if (targetViewId === 'feeds') {
             actions.renderFeeds();
         } else if (targetViewId === 'home') {
             actions.renderHeatmap();
-        } else {
-            document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
         }
     }
 
@@ -180,7 +191,14 @@ navItems.forEach(item => {
     });
 });
 
-btnBack.addEventListener('click', () => goBackOrHome());
+btnBack.addEventListener('click', () => {
+    const activeView = document.querySelector('.view-section.active');
+    if (activeView && activeView.id === 'view-reader-book') {
+        window.closeReaderBook?.();
+        return;
+    }
+    goBackOrHome();
+});
 
 window.addEventListener('popstate', (e) => {
     const intended = (e.state && e.state.view)
