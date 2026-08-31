@@ -164,17 +164,36 @@ function renderFeeds() {
             apiRequest('/api/link/parse', {
                 method: 'POST',
                 body: JSON.stringify({ url })
-            }).then(parseRes => {
-                if (parseRes && parseRes.title) {
-                    feed.summary = JSON.stringify(parseRes);
-                    if (parseRes.cover) feed.media_url = parseRes.cover;
-                    feed.updated_at = new Date().toISOString();
-                    feed._dirty = true;
-                    saveFeedsDatabase();
-                    renderFeeds();
-                    apiSyncFeed(feed, 'PUT');
+            }).then(async parseRes => {
+                if (parseRes) {
+                    if ((!parseRes.title || parseRes.title === 'www.xiaoyuzhoufm.com' || parseRes.title === parseRes.url) && !parseRes.cover) {
+                        try {
+                            const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+                            const microData = await microRes.json();
+                            if (microData.status === 'success' && microData.data) {
+                                parseRes.title = microData.data.title || parseRes.title;
+                                parseRes.description = microData.data.description || parseRes.description;
+                                parseRes.cover = microData.data.image?.url || parseRes.cover;
+                            }
+                        } catch (e) {
+                            console.error('Client Microlink fallback failed for enrich:', e);
+                        }
+                    }
+                    
+                    // Only update if we ACTUALLY got a useful title or cover
+                    if (parseRes.cover || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
+                        feed.summary = JSON.stringify(parseRes);
+                        if (parseRes.cover) feed.media_url = parseRes.cover;
+                        feed.updated_at = new Date().toISOString();
+                        feed._dirty = true;
+                        // saveFeedsDatabase() is global, assuming defined in context
+                        saveFeedsDatabase();
+                        renderFeeds();
+                        apiSyncFeed(feed, 'PUT');
+                    }
                 }
-            }).catch(() => {});
+                feed._enriching = false;
+            }).catch(() => { feed._enriching = false; });
         });
     }
 }
@@ -261,6 +280,19 @@ async function sendFeed() {
                 body: JSON.stringify({ url: extracted.normalized })
             });
             if (parseRes) {
+                if ((!parseRes.title || parseRes.title === 'www.xiaoyuzhoufm.com' || parseRes.title === parseRes.url) && !parseRes.cover) {
+                    try {
+                        const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(extracted.normalized)}`);
+                        const microData = await microRes.json();
+                        if (microData.status === 'success' && microData.data) {
+                            parseRes.title = microData.data.title || parseRes.title;
+                            parseRes.description = microData.data.description || parseRes.description;
+                            parseRes.cover = microData.data.image?.url || parseRes.cover;
+                        }
+                    } catch (e) {
+                        console.error('Client Microlink fallback failed:', e);
+                    }
+                }
                 summary = JSON.stringify(parseRes);
                 if (parseRes.cover) parsedCover = parseRes.cover;
             }
