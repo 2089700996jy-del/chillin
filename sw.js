@@ -1,5 +1,5 @@
 // Chillin Service Worker — 网络优先，离线回退缓存
-const CACHE_NAME = 'chillin-v46';
+const CACHE_NAME = 'chillin-v47';
 const ASSETS = [
     '/',
     '/index.html',

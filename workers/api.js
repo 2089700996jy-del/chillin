@@ -817,7 +817,7 @@ async function router(path, method, request, env, ctx) {
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
             `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'))`
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'))`
         ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
         const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(formatWeekly(row), 201);
@@ -830,7 +830,7 @@ async function router(path, method, request, env, ctx) {
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, annotations=?8, updated_at=datetime('now')
+            `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, annotations=?8, updated_at=datetime('now', '+8 hours')
              WHERE id=?9 AND user_id=?10`
         ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, id, userId).run();
         const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
@@ -839,7 +839,7 @@ async function router(path, method, request, env, ctx) {
 
     if (weeklyMatch && method === 'DELETE') {
         const id = parseInt(weeklyMatch[1]);
-        await db.prepare("UPDATE weeklies SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
+        await db.prepare("UPDATE weeklies SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
@@ -868,7 +868,7 @@ async function router(path, method, request, env, ctx) {
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
             `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))`
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))`
         ).bind(body.id, body.title, body.content || '', body.date, annotations, userId).run();
         const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse({
@@ -883,7 +883,7 @@ async function router(path, method, request, env, ctx) {
         const body = await request.json();
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now') WHERE id=?5 AND user_id=?6`
+            `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now', '+8 hours') WHERE id=?5 AND user_id=?6`
         ).bind(body.title, body.content || '', body.date, annotations, id, userId).run();
         const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
         return jsonResponse({
@@ -894,7 +894,7 @@ async function router(path, method, request, env, ctx) {
 
     if (noteMatch && method === 'DELETE') {
         const id = parseInt(noteMatch[1]);
-        await db.prepare("UPDATE notes SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
+        await db.prepare("UPDATE notes SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
@@ -920,7 +920,7 @@ async function router(path, method, request, env, ctx) {
         try {
             await db.prepare(
                 `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))`
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'))`
             ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
         } catch (e) {
             try {
@@ -942,7 +942,7 @@ async function router(path, method, request, env, ctx) {
     const bmMatch = path.match(/^\/api\/bookmarks\/(\d+)$/);
     if (bmMatch && method === 'DELETE') {
         const id = parseInt(bmMatch[1]);
-        await db.prepare("UPDATE bookmarks SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
+        await db.prepare("UPDATE bookmarks SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
@@ -979,12 +979,12 @@ async function router(path, method, request, env, ctx) {
             try {
                 await db.prepare(
                     `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')), datetime('now'))`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'))`
                 ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
             } catch (e) {
                 await db.prepare(
                     `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')))`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')))`
                 ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
             }
             res = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
@@ -992,12 +992,12 @@ async function router(path, method, request, env, ctx) {
             try {
                 res = await db.prepare(
                     `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), datetime('now')) RETURNING *`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours')) RETURNING *`
                 ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
             } catch (e) {
                 res = await db.prepare(
                     `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now')) RETURNING *`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours')) RETURNING *`
                 ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
             }
         }
@@ -1017,7 +1017,7 @@ async function router(path, method, request, env, ctx) {
         const tagsJson = JSON.stringify(tags);
         try {
             await db.prepare(
-                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5, updated_at=datetime('now') WHERE id=?6 AND user_id=?7`
+                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5, updated_at=datetime('now', '+8 hours') WHERE id=?6 AND user_id=?7`
             ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
         } catch (e) {
             await db.prepare(
@@ -1030,7 +1030,7 @@ async function router(path, method, request, env, ctx) {
 
     if (feedMatch && method === 'DELETE') {
         const id = parseInt(feedMatch[1]);
-        await db.prepare("UPDATE quick_feeds SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
+        await db.prepare("UPDATE quick_feeds SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
@@ -1074,7 +1074,7 @@ async function router(path, method, request, env, ctx) {
             statements.push(
                 db.prepare(
                     `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now'))`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'))`
                 ).bind(item.id, item.category, item.title, item.summary, item.date, item.cover || '', weeklyData, item.content || '', annotations, userId)
             );
         }
@@ -1087,7 +1087,7 @@ async function router(path, method, request, env, ctx) {
             statements.push(
                 db.prepare(
                     `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'))`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))`
                 ).bind(item.id, item.title, item.content || '', item.date, annotations, userId)
             );
         }
@@ -1101,7 +1101,7 @@ async function router(path, method, request, env, ctx) {
             statements.push(
                 db.prepare(
                     `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))`
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'))`
                 ).bind(item.id, item.type, item.title, item.url, description, image, userId)
             );
         }
@@ -1122,14 +1122,14 @@ async function router(path, method, request, env, ctx) {
                 statements.push(
                     db.prepare(
                         `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now')), datetime('now'))`
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'))`
                     ).bind(item.id, userId, content, type, mediaUrl, summary, tagsJson, item.created_at || null)
                 );
             } else {
                 statements.push(
                     db.prepare(
                         `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now'), datetime('now'))`
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'))`
                     ).bind(userId, content, type, mediaUrl, summary, tagsJson)
                 );
             }
@@ -1361,7 +1361,7 @@ async function router(path, method, request, env, ctx) {
         const feedIds = JSON.stringify(feeds.results.map(f => f.id));
         const newCard = await db.prepare(
             `INSERT INTO echo_cards (user_id, title, summary, topic, related_feed_ids, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now')) RETURNING *`
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours')) RETURNING *`
         ).bind(userId, moderatedTitle.text, moderatedSummary.text, moderatedTopic.text, feedIds).first();
 
         // 尝试发送推送通知给用户的所有设备
@@ -1742,7 +1742,7 @@ async function scanAndAudit(db, userId) {
                     await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1`).bind(row.id).run();
                 }
                 await db.prepare(
-                    `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'quarantined', datetime('now'))`
+                    `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'quarantined', datetime('now', '+8 hours'))`
                 ).bind(t.name, String(row.id), snippet).run();
                 results.quarantined++;
                 results.removed++; // 兼容旧字段

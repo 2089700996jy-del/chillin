@@ -110,3 +110,12 @@ export function getChineseDateTime() {
     const pad = (n) => String(n).padStart(2, '0');
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
+
+export function getEast8Time() {
+    const d = new Date();
+    // 强制转换为东八区时间，不论用户当前所处时区
+    const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
+    const east8 = new Date(utc + (3600000 * 8));
+    const pad = n => String(n).padStart(2, '0');
+    return `${east8.getFullYear()}-${pad(east8.getMonth()+1)}-${pad(east8.getDate())} ${pad(east8.getHours())}:${pad(east8.getMinutes())}:${pad(east8.getSeconds())}`;
+}
