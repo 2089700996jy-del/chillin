@@ -28,7 +28,8 @@ function renderFeeds() {
     const container = document.getElementById('feeds-stream-container');
     if (!container) return;
 
-    const displayFeeds = state.feedsDatabase;
+    // Limit to latest 100 feeds for performance (infinite scroll can be added later)
+    const displayFeeds = state.feedsDatabase.slice(0, 100);
 
     if (!displayFeeds || displayFeeds.length === 0) {
         container.innerHTML = `
