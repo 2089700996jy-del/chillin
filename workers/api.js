@@ -633,7 +633,7 @@ async function router(path, method, request, env, ctx) {
 
                 // 1b. Check for Xiaoyuzhou NEXT_DATA json
                 if (html && isXiaoyuzhou) {
-                    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+                    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]+?)<\/script>/);
                     if (nextDataMatch) {
                         try {
                             const nextData = JSON.parse(nextDataMatch[1]);
