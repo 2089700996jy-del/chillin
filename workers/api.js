@@ -355,6 +355,7 @@ async function isOwnedRecord(db, table, id, userId) {
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
+    const url = new URL(request.url);
 
     // Push notifications route
     if (path === '/api/push/subscribe' && method === 'POST') {
