@@ -571,7 +571,7 @@ async function router(path, method, request, env, ctx) {
                 const bvidMatch = url.match(/(BV[a-zA-Z0-9]+)/);
                 if (bvidMatch) {
                     try {
-                        const apiRes = await fetchWithTimeout(`https://api.bilibili.com/x/web-interface/view?bvid=${bvidMatch[1]}`, { timeout: 5000 });
+                        const apiRes = await fetchWithTimeout(`https://api.bilibili.com/x/web-interface/view?bvid=${bvidMatch[1]}`, { timeout: 8000 });
                         if (apiRes.ok) {
                             const apiData = await apiRes.json();
                             if (apiData.code === 0 && apiData.data) {
@@ -591,7 +591,7 @@ async function router(path, method, request, env, ctx) {
                     ? [
                         'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
                         'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/437.36'
                       ]
                     : [
                         'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
@@ -602,10 +602,10 @@ async function router(path, method, request, env, ctx) {
                     try {
                         let currentUrl = url;
                         let pageRes = null;
-                        for (let hop = 0; hop < 3; hop++) {
+                        for (let hop = 0; hop < 2; hop++) {
                             if (!isSafeFetchUrl(currentUrl)) { pageRes = null; break; }
                             pageRes = await fetchWithTimeout(currentUrl, {
-                                timeout: 5000,
+                                timeout: 8000,
                                 headers: {
                                     'User-Agent': ua,
                                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -689,7 +689,7 @@ async function router(path, method, request, env, ctx) {
             if (isGenericTitle || !cover) {
                 try {
                     const microRes = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, {
-                        timeout: 5000,
+                        timeout: 15000,
                         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
                     });
                     if (microRes.ok) {
