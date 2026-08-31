@@ -559,79 +559,98 @@ async function router(path, method, request, env, ctx) {
 
         try {
             const isXiaoyuzhou = url.includes('xiaoyuzhoufm.com');
-            const userAgents = isXiaoyuzhou 
-                ? [
-                    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-                    'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
-                  ]
-                : [
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                    'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
-                  ];
+            const isBilibili = url.includes('bilibili.com') || url.includes('b23.tv');
 
-            let html = '';
-            for (const ua of userAgents) {
-                try {
-                    let currentUrl = url;
-                    let pageRes = null;
-                    for (let hop = 0; hop < 3; hop++) {
-                        if (!isSafeFetchUrl(currentUrl)) { pageRes = null; break; }
-                        pageRes = await fetchWithTimeout(currentUrl, {
-                            timeout: 5000,
-                            headers: {
-                                'User-Agent': ua,
-                                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
-                            },
-                            redirect: 'manual'
-                        });
-                        if (pageRes.status >= 300 && pageRes.status < 400) {
-                            const loc = pageRes.headers.get('Location');
-                            if (!loc) { pageRes = null; break; }
-                            currentUrl = new URL(loc, currentUrl).href;
-                            continue;
-                        }
-                        break;
-                    }
-                    if (pageRes && pageRes.ok) {
-                        const text = await pageRes.text();
-                        if (text && text.length > 500) {
-                            html = text;
-                            break;
-                        }
-                    }
-                } catch {}
-            }
-
-            if (!html) {
-                throw new Error('Fetch HTML failed');
-            }
-            
             let title = '';
             let description = '';
             let cover = '';
             let siteName = platformName;
 
-            // 1. Check for Xiaoyuzhou NEXT_DATA json
-            if (isXiaoyuzhou) {
-                const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
-                if (nextDataMatch) {
+            // 1a. Bilibili API Fast Path
+            if (isBilibili) {
+                const bvidMatch = url.match(/(BV[a-zA-Z0-9]+)/);
+                if (bvidMatch) {
                     try {
-                        const nextData = JSON.parse(nextDataMatch[1]);
-                        const ep = nextData.props?.pageProps?.episode;
-                        if (ep) {
-                            title = ep.title || '';
-                            description = ep.description || '';
-                            cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || ep.podcast?.image?.thumbnailUrl || '';
-                            siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
+                        const apiRes = await fetchWithTimeout(`https://api.bilibili.com/x/web-interface/view?bvid=${bvidMatch[1]}`, { timeout: 5000 });
+                        if (apiRes.ok) {
+                            const apiData = await apiRes.json();
+                            if (apiData.code === 0 && apiData.data) {
+                                title = apiData.data.title || '';
+                                description = apiData.data.desc || '';
+                                cover = apiData.data.pic || '';
+                            }
                         }
                     } catch {}
                 }
             }
 
-            // 2. Priority OG title / twitter title / <title>
+            let html = '';
+            // Fetch HTML if metadata is still missing
             if (!title) {
+                const userAgents = isXiaoyuzhou 
+                    ? [
+                        'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+                        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1',
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
+                      ]
+                    : [
+                        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                        'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+                      ];
+
+                for (const ua of userAgents) {
+                    try {
+                        let currentUrl = url;
+                        let pageRes = null;
+                        for (let hop = 0; hop < 3; hop++) {
+                            if (!isSafeFetchUrl(currentUrl)) { pageRes = null; break; }
+                            pageRes = await fetchWithTimeout(currentUrl, {
+                                timeout: 5000,
+                                headers: {
+                                    'User-Agent': ua,
+                                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                                    'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
+                                },
+                                redirect: 'manual'
+                            });
+                            if (pageRes.status >= 300 && pageRes.status < 400) {
+                                const loc = pageRes.headers.get('Location');
+                                if (!loc) { pageRes = null; break; }
+                                currentUrl = new URL(loc, currentUrl).href;
+                                continue;
+                            }
+                            break;
+                        }
+                        if (pageRes && pageRes.ok) {
+                            const text = await pageRes.text();
+                            if (text && text.length > 500) {
+                                html = text;
+                                break;
+                            }
+                        }
+                    } catch {}
+                }
+
+                // 1b. Check for Xiaoyuzhou NEXT_DATA json
+                if (html && isXiaoyuzhou) {
+                    const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([^<]+)<\/script>/);
+                    if (nextDataMatch) {
+                        try {
+                            const nextData = JSON.parse(nextDataMatch[1]);
+                            const ep = nextData.props?.pageProps?.episode;
+                            if (ep) {
+                                title = ep.title || '';
+                                description = ep.description || '';
+                                cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || ep.podcast?.image?.thumbnailUrl || '';
+                                siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
+                            }
+                        } catch {}
+                    }
+                }
+            } // CLOSE if (!title)
+
+            // 2. Priority OG title / twitter title / <title>
+            if (!title && html) {
                 const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
                                      html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i) ||
                                      html.match(/<meta[^>]*name=["']twitter:title["'][^>]*content=["']([^"']+)["']/i);
