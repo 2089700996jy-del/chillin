@@ -1,1 +1,0 @@
-export default { async fetch(request) { const url = 'https://www.xiaoyuzhoufm.com/episode/6a93eaf1a0210c197dca71c0'; const res = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }); const text = await res.text(); return new Response(JSON.stringify({ status: res.status, text: text.substring(0,200) })); } }
