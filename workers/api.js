@@ -838,16 +838,23 @@ async function router(path, method, request, env, ctx) {
 
     if (weeklyMatch && method === 'DELETE') {
         const id = parseInt(weeklyMatch[1]);
-        await db.prepare('DELETE FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
+        await db.prepare("UPDATE weeklies SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
     // ==================== NOTES 备忘录 ====================
     if (path === '/api/notes' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
+        const since = url.searchParams.get('since');
+        let result;
+        if (since) {
+            result = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, since).all();
+        } else {
+            result = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all();
+        }
         const rows = result.results.map(row => ({
             ...row,
-            annotations: row.annotations ? JSON.parse(row.annotations) : []
+            annotations: row.annotations ? JSON.parse(row.annotations) : [],
+            is_deleted: row.is_deleted === 1
         }));
         return jsonResponse(rows, 200);
     }
@@ -886,13 +893,19 @@ async function router(path, method, request, env, ctx) {
 
     if (noteMatch && method === 'DELETE') {
         const id = parseInt(noteMatch[1]);
-        await db.prepare('DELETE FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
+        await db.prepare("UPDATE notes SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
     // ==================== BOOKMARKS 收藏 ====================
     if (path === '/api/bookmarks' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
+        const since = url.searchParams.get('since');
+        let result;
+        if (since) {
+            result = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, since).all();
+        } else {
+            result = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all();
+        }
         return jsonResponse((result.results || []).map(formatBookmark), 200);
     }
 
@@ -928,13 +941,19 @@ async function router(path, method, request, env, ctx) {
     const bmMatch = path.match(/^\/api\/bookmarks\/(\d+)$/);
     if (bmMatch && method === 'DELETE') {
         const id = parseInt(bmMatch[1]);
-        await db.prepare('DELETE FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
+        await db.prepare("UPDATE bookmarks SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
     // ==================== QUICK FEEDS 随手记流 ====================
     if (path === '/api/feeds' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
+        const since = url.searchParams.get('since');
+        let result;
+        if (since) {
+            result = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, since).all();
+        } else {
+            result = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all();
+        }
         return jsonResponse((result.results || []).map(formatFeed), 200);
     }
 
@@ -1010,7 +1029,7 @@ async function router(path, method, request, env, ctx) {
 
     if (feedMatch && method === 'DELETE') {
         const id = parseInt(feedMatch[1]);
-        await db.prepare('DELETE FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).run();
+        await db.prepare("UPDATE quick_feeds SET is_deleted = 1, updated_at = datetime('now') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
         return jsonResponse({ success: true }, 200);
     }
 
@@ -1603,7 +1622,8 @@ function formatWeekly(row) {
         content: row.content || null,
         annotations: row.annotations ? JSON.parse(row.annotations) : [],
         created_at: row.created_at || null,
-        updated_at: row.updated_at || null
+        updated_at: row.updated_at || null,
+        is_deleted: row.is_deleted === 1
     };
 }
 
@@ -1620,7 +1640,8 @@ function formatBookmark(row) {
         image: row.image || null,
         user_id: row.user_id,
         created_at: row.created_at || null,
-        updated_at: row.updated_at || null
+        updated_at: row.updated_at || null,
+        is_deleted: row.is_deleted === 1
     };
 }
 
@@ -1640,7 +1661,8 @@ function formatFeed(row) {
         tags,
         user_id: row.user_id,
         created_at: row.created_at || null,
-        updated_at: row.updated_at || null
+        updated_at: row.updated_at || null,
+        is_deleted: row.is_deleted === 1
     };
 }
 
