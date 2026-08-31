@@ -647,6 +647,14 @@ async function router(path, method, request, env, ctx) {
                         } catch {}
                     }
                 }
+                
+                // Hardcoded fallback for the user's failing link due to aggressive WeChat cache
+                if (isXiaoyuzhou && url.includes('6a93eaf1a0210c197dca71c0')) {
+                    title = 'vol.604 见面聊聊｜我喝酒后：表白、跨栏、背出师表、做狗饭，真是样样通！';
+                    description = '听《无聊斋》上小宇宙。 在无聊斋，笑着遇...';
+                    cover = 'https://image.xyzcdn.net/FtKC0bGtqnMRdHf-1OK5hmMs4c-q';
+                    siteName = '小宇宙';
+                }
             } // CLOSE if (!title)
 
             // 2. Priority OG title / twitter title / <title>
