@@ -275,6 +275,18 @@ function isSafeFetchUrl(rawUrl) {
     }
 }
 
+async function fetchWithTimeout(resource, options = {}) {
+    const { timeout = 5000 } = options;
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    const response = await fetch(resource, {
+        ...options,
+        signal: controller.signal
+    });
+    clearTimeout(id);
+    return response;
+}
+
 // ==================== 外链解析合规黑名单 ====================
 // 命中即拦截，严禁写入 D1 数据库
 const BLOCKED_LINK_HOSTS = ['pages.dev', 'workers.dev', 'workers.cloud'];
@@ -565,7 +577,8 @@ async function router(path, method, request, env, ctx) {
                     let pageRes = null;
                     for (let hop = 0; hop < 3; hop++) {
                         if (!isSafeFetchUrl(currentUrl)) { pageRes = null; break; }
-                        pageRes = await fetch(currentUrl, {
+                        pageRes = await fetchWithTimeout(currentUrl, {
+                            timeout: 5000,
                             headers: {
                                 'User-Agent': ua,
                                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -653,10 +666,11 @@ async function router(path, method, request, env, ctx) {
             description = decodeEntities(description);
 
             // 5. Microlink API Fallback for blocked, generic, or incomplete metadata
-            const isGenericTitle = !title || title === hostname || title.toLowerCase() === hostname.toLowerCase() || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title);
+            const isGenericTitle = !title || title === hostname || title.toLowerCase() === hostname.toLowerCase() || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare|验证码拦截|Please Wait)/i.test(title);
             if (isGenericTitle || !cover) {
                 try {
-                    const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, {
+                    const microRes = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, {
+                        timeout: 5000,
                         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
                     });
                     if (microRes.ok) {
@@ -685,7 +699,7 @@ async function router(path, method, request, env, ctx) {
         } catch (e) {
             // Ultimate fallback to Microlink API on fetch failure
             try {
-                const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
+                const microRes = await fetchWithTimeout(`https://api.microlink.io/?url=${encodeURIComponent(url)}`, { timeout: 5000 });
                 if (microRes.ok) {
                     const microData = await microRes.json();
                     if (microData.status === 'success' && microData.data) {

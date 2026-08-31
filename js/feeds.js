@@ -14,7 +14,7 @@ export function initFeeds() {
 // 1. Render Feeds Stream (随手记流)
 function extractUrlFromText(text) {
     if (!text) return null;
-    const match = text.match(/(https?:\/\/[^\s]+|(?:www\.)?[a-zA-Z0-9-]+\.(?:com|net|org|cn|fm|cc|co|tv|me|io|xyz)[^\s]*)/i);
+    const match = text.match(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+|(?:www\.)?[a-zA-Z0-9-]+\.(?:com|net|org|cn|fm|cc|co|tv|me|io|xyz)[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]*)/i);
     if (!match) return null;
     let raw = match[0].trim();
     let normalized = raw;
@@ -137,7 +137,7 @@ function renderFeeds() {
 
         let textHtml = '';
         if (contentText) {
-            const formattedContent = escapeHtml(contentText).replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#007AFF;">$1</a>');
+            const formattedContent = escapeHtml(contentText).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" style="color:#007AFF;">$1</a>');
             textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
         }
 
