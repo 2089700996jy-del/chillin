@@ -1,6 +1,6 @@
 /** Auth, persistence, and cloud sync. UI refresh via bindApiHooks. */
 
-import { showToast, urlBase64ToUint8Array } from './utils.js';
+import { showToast, urlBase64ToUint8Array, getEast8Time } from './utils.js';
 import {
     state,
     DEFAULT_WEEKLY,
@@ -356,14 +356,14 @@ export function toUpdatedTs(value) {
     if (!raw) return 0;
     if (/^\d+$/.test(raw)) return Number(raw);
     let s = raw.includes('T') ? raw : raw.replace(' ', 'T');
-    if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s += 'Z';
+    if (!/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)) s += '+08:00';
     const t = Date.parse(s);
     return Number.isFinite(t) ? t : 0;
 }
 
 export function stampLocalUpdate(item) {
     if (!item || typeof item !== 'object') return item;
-    item.updated_at = new Date().toISOString();
+    item.updated_at = getEast8Time();
     item._dirty = true;
     return item;
 }
@@ -406,33 +406,45 @@ export function mergeDataLists(localList, apiList) {
     return Array.from(map.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 }
 
-export function processApiSyncResult(localList, apiData) {
+export function processApiSyncResult(localList, apiData, isIncremental = false) {
     if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false };
     const deletedIds = getDeletedIds();
     const syncedIds = getSyncedIds();
 
     const apiIds = apiData.map(item => String(item.id));
-    addSyncedIds(apiIds);
+    if (!isIncremental) {
+        addSyncedIds(apiIds);
+    } else {
+        const newSynced = new Set([...syncedIds, ...apiIds]);
+        addSyncedIds(Array.from(newSynced));
+    }
 
     const activeLocal = (localList || []).filter(item => {
         if (!item || item.id == null) return false;
         const strId = String(item.id);
         if (deletedIds.includes(strId)) return false;
+        
+        // Soft delete from incremental sync
+        const cloudItem = apiData.find(a => String(a.id) === strId);
+        if (cloudItem && cloudItem.is_deleted) return false;
+
         if (item._dirty) return true;
-        if (syncedIds.includes(strId) && !apiIds.includes(strId)) return false;
+        
+        // Full sync: if synced but missing from cloud, it was deleted
+        if (!isIncremental && syncedIds.includes(strId) && !apiIds.includes(strId)) return false;
+        
         return true;
     });
 
-    const merged = mergeDataLists(activeLocal, apiData);
+    const validApiData = apiData.filter(item => !item.is_deleted);
+    const merged = mergeDataLists(activeLocal, validApiData);
 
-    const unsyncedLocal = activeLocal.filter(item => !apiIds.includes(String(item.id)));
-    const newerDirtyLocal = activeLocal.filter(item => {
+    const needsUpload = activeLocal.some(item => {
         if (!item._dirty) return false;
-        const cloud = apiData.find(a => String(a.id) === String(item.id));
-        if (!cloud) return false;
+        const cloud = validApiData.find(a => String(a.id) === String(item.id));
+        if (!cloud) return true;
         return toUpdatedTs(item.updated_at) >= toUpdatedTs(cloud.updated_at);
     });
-    const needsUpload = unsyncedLocal.length > 0 || newerDirtyLocal.length > 0;
 
     return { merged, needsUpload };
 }
@@ -504,9 +516,11 @@ export async function syncFromApi() {
 
     try {
         try {
-            const apiData = await apiRequest('/api/weeklies');
+            const lastSync = localStorage.getItem('chillin_sync_weeklies');
+            const url = lastSync ? `/api/weeklies?since=${encodeURIComponent(lastSync)}` : '/api/weeklies';
+            const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.database, apiData);
+                const { merged, needsUpload } = processApiSyncResult(state.database, apiData, !!lastSync);
                 if (needsUpload) needsBatchUpload = true;
                 if (JSON.stringify(state.database) !== JSON.stringify(merged)) {
                     state.database = merged;
@@ -517,26 +531,38 @@ export async function syncFromApi() {
                         });
                     }
                 }
+                if (apiData.length > 0) {
+                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
+                    if (maxTs) localStorage.setItem('chillin_sync_weeklies', maxTs);
+                }
             }
         } catch (e) { hadError = true; }
 
         try {
-            const apiData = await apiRequest('/api/notes');
+            const lastSync = localStorage.getItem('chillin_sync_notes');
+            const url = lastSync ? `/api/notes?since=${encodeURIComponent(lastSync)}` : '/api/notes';
+            const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.notesDatabase, apiData);
+                const { merged, needsUpload } = processApiSyncResult(state.notesDatabase, apiData, !!lastSync);
                 if (needsUpload) needsBatchUpload = true;
                 if (JSON.stringify(state.notesDatabase) !== JSON.stringify(merged)) {
                     state.notesDatabase = merged;
                     saveNotesDatabase();
                     if (getActiveViewId() === 'view-notes') refresh('notes');
                 }
+                if (apiData.length > 0) {
+                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
+                    if (maxTs) localStorage.setItem('chillin_sync_notes', maxTs);
+                }
             }
         } catch (e) { hadError = true; }
 
         try {
-            const apiData = await apiRequest('/api/bookmarks');
+            const lastSync = localStorage.getItem('chillin_sync_bookmarks');
+            const url = lastSync ? `/api/bookmarks?since=${encodeURIComponent(lastSync)}` : '/api/bookmarks';
+            const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.bookmarksDatabase, apiData);
+                const { merged, needsUpload } = processApiSyncResult(state.bookmarksDatabase, apiData, !!lastSync);
                 if (needsUpload) needsBatchUpload = true;
                 if (JSON.stringify(state.bookmarksDatabase) !== JSON.stringify(merged)) {
                     state.bookmarksDatabase = merged.map((bm) => {
@@ -546,18 +572,28 @@ export async function syncFromApi() {
                     saveBookmarksDatabase();
                     if (getActiveViewId() === 'view-bookmarks') refresh('bookmarks');
                 }
+                if (apiData.length > 0) {
+                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
+                    if (maxTs) localStorage.setItem('chillin_sync_bookmarks', maxTs);
+                }
             }
         } catch (e) { hadError = true; }
 
         try {
-            const apiData = await apiRequest('/api/feeds');
+            const lastSync = localStorage.getItem('chillin_sync_feeds');
+            const url = lastSync ? `/api/feeds?since=${encodeURIComponent(lastSync)}` : '/api/feeds';
+            const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.feedsDatabase, apiData);
+                const { merged, needsUpload } = processApiSyncResult(state.feedsDatabase, apiData, !!lastSync);
                 if (needsUpload) needsBatchUpload = true;
                 if (JSON.stringify(state.feedsDatabase) !== JSON.stringify(merged)) {
                     state.feedsDatabase = merged;
                     saveFeedsDatabase();
                     if (getActiveViewId() === 'view-feeds' && !isProtectingLocalEdits()) refresh('feeds');
+                }
+                if (apiData.length > 0) {
+                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
+                    if (maxTs) localStorage.setItem('chillin_sync_feeds', maxTs);
                 }
             }
         } catch (e) { hadError = true; }
@@ -632,7 +668,7 @@ export function saveFeedsDatabase() {
 function markSyncedItem(item) {
     if (!item || item.id == null) return;
     item._dirty = false;
-    if (!item.updated_at) item.updated_at = new Date().toISOString();
+    if (!item.updated_at) item.updated_at = getEast8Time();
     addSyncedIds([item.id]);
 }
 

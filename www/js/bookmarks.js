@@ -34,7 +34,8 @@ export function initBookmarks() {
 
 const renderBookmarks = () => {
     bookmarkListContainer.innerHTML = '';
-    const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id);
+    // Limit to latest 100 bookmarks for performance
+    const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id).slice(0, 100);
 
     if (sortedBookmarks.length === 0) {
         bookmarkListContainer.innerHTML = `

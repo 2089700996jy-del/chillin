@@ -803,7 +803,13 @@ async function router(path, method, request, env, ctx) {
 
     // ==================== WEEKLY 周记 ====================
     if (path === '/api/weeklies' && method === 'GET') {
-        const result = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all();
+        const since = url.searchParams.get('since');
+        let result;
+        if (since) {
+            result = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, since).all();
+        } else {
+            result = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all();
+        }
         const rows = result.results.map(formatWeekly);
         return jsonResponse(rows, 200);
     }
@@ -1151,13 +1157,13 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/stats/heatmap' && method === 'GET') {
         const result = await db.prepare(`
             SELECT date_str, COUNT(*) as count FROM (
-                SELECT substr(created_at, 1, 10) as date_str FROM weeklies WHERE user_id = ?1
+                SELECT substr(created_at, 1, 10) as date_str FROM weeklies WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
                 UNION ALL
-                SELECT substr(created_at, 1, 10) as date_str FROM notes WHERE user_id = ?1
+                SELECT substr(created_at, 1, 10) as date_str FROM notes WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
                 UNION ALL
-                SELECT substr(created_at, 1, 10) as date_str FROM bookmarks WHERE user_id = ?1
+                SELECT substr(created_at, 1, 10) as date_str FROM bookmarks WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
                 UNION ALL
-                SELECT substr(created_at, 1, 10) as date_str FROM quick_feeds WHERE user_id = ?1
+                SELECT substr(created_at, 1, 10) as date_str FROM quick_feeds WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
             ) GROUP BY date_str ORDER BY date_str ASC
         `).bind(userId).all();
 
@@ -1173,10 +1179,10 @@ async function router(path, method, request, env, ctx) {
         if (!question) return jsonResponse({ error: '请输入问题' }, 400);
 
         const [feedsRes, notesRes, weekliesRes, bookmarksRes] = await Promise.all([
-            db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 10').bind(userId).all(),
-            db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all(),
-            db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all(),
-            db.prepare('SELECT title, url, description FROM bookmarks WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all()
+            db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 10').bind(userId).all(),
+            db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all(),
+            db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all(),
+            db.prepare('SELECT title, url, description FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all()
         ]);
 
         const rawContext = [
@@ -1258,9 +1264,9 @@ async function router(path, method, request, env, ctx) {
         const reviewLimit = checkRateLimit(`ai-review:${userId}`, 20, 10 * 60 * 1000);
         if (!reviewLimit.ok) return rateLimitedResponse(reviewLimit.retryAfter);
 
-        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 30').bind(userId).all();
-        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 15').bind(userId).all();
-        const weeklies = await db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 ORDER BY id DESC LIMIT 8').bind(userId).all();
+        const feeds = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 30').bind(userId).all();
+        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 15').bind(userId).all();
+        const weeklies = await db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 8').bind(userId).all();
 
         const contextText = [
             ...(feeds.results || []).map(f => `[随手记 ${f.created_at}] ${f.content}`),
@@ -1298,12 +1304,12 @@ async function router(path, method, request, env, ctx) {
         const echoLimit = checkRateLimit(`echo:${userId}`, 20, 10 * 60 * 1000);
         if (!echoLimit.ok) return rateLimitedResponse(echoLimit.retryAfter);
 
-        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 ORDER BY id DESC LIMIT 12').bind(userId).all();
+        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 12').bind(userId).all();
         if (!feeds.results || feeds.results.length === 0) {
             return jsonResponse({ error: '暂无足够的随手记生成回响卡片，请先多记录一些思考吧！' }, 400);
         }
 
-        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 ORDER BY id DESC LIMIT 5').bind(userId).all();
+        const notes = await db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all();
         const contextText = [
             ...(feeds.results || []).map(f => `[随手记 ${f.created_at || ''}] ${f.content || ''}`),
             ...(notes.results || []).map(n => `[笔记 ${n.date || ''}] ${n.title}: ${(n.content || '').slice(0, 120)}`)
@@ -1426,10 +1432,10 @@ async function router(path, method, request, env, ctx) {
 
     // ==================== 一键导出备份 ====================
     if (path === '/api/export' && method === 'GET') {
-        const weeklies = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1').bind(userId).all();
-        const notes = await db.prepare('SELECT * FROM notes WHERE user_id = ?1').bind(userId).all();
-        const bookmarks = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1').bind(userId).all();
-        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1').bind(userId).all();
+        const weeklies = await db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
+        const notes = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
+        const bookmarks = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
+        const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
 
         return jsonResponse({
             exported_at: new Date().toISOString(),
