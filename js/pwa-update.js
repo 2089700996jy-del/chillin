@@ -2,13 +2,98 @@ import { showToast } from './utils.js';
 import { APP_VERSION } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
 
+let forceRefreshing = false;
+
+/**
+ * 注销 Service Worker、清空 Cache Storage，再带时间戳硬刷新。
+ * 不清理 localStorage（登录态保留）。
+ */
+export async function forceRefreshToLatest(opts = {}) {
+    if (forceRefreshing) return;
+    const skipConfirm = !!opts.skipConfirm;
+    if (!skipConfirm) {
+        const ok = window.confirm(
+            '将清除应用缓存并强制加载最新版（登录状态会保留）。是否继续？'
+        );
+        if (!ok) return;
+    }
+
+    forceRefreshing = true;
+    showToast('正在清除缓存并刷新到最新版…', 'success');
+
+    try {
+        if ('serviceWorker' in navigator) {
+            const regs = await navigator.serviceWorker.getRegistrations();
+            await Promise.all(regs.map((r) => r.unregister().catch(() => false)));
+        }
+    } catch (_) {}
+
+    try {
+        if ('caches' in window) {
+            const keys = await caches.keys();
+            await Promise.all(keys.map((k) => caches.delete(k).catch(() => false)));
+        }
+    } catch (_) {}
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('_fresh', String(Date.now()));
+    // 稍等让 toast 可见，再跳转
+    setTimeout(() => {
+        window.location.replace(url.pathname + url.search + url.hash);
+    }, 400);
+}
+
+function stripFreshParam() {
+    try {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('_fresh')) return;
+        url.searchParams.delete('_fresh');
+        const next = url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') + url.hash;
+        history.replaceState(null, '', next);
+    } catch (_) {}
+}
+
+if (typeof window !== 'undefined') {
+    window._chillinForceRefresh = () => forceRefreshToLatest();
+}
+
+function bindForceRefreshControls() {
+    document.querySelectorAll('[data-force-refresh]').forEach((el) => {
+        if (el.dataset.forceBound === '1') return;
+        el.dataset.forceBound = '1';
+        el.addEventListener('click', (e) => {
+            e.preventDefault();
+            forceRefreshToLatest({ skipConfirm: el.dataset.forceConfirm === '0' });
+        });
+    });
+
+    document.querySelectorAll('[data-app-version]').forEach((el) => {
+        if (el.dataset.forceBound === '1') return;
+        el.dataset.forceBound = '1';
+        el.setAttribute('role', 'button');
+        el.setAttribute('tabindex', '0');
+        el.title = '点击强制刷新到最新版';
+        el.addEventListener('click', () => forceRefreshToLatest());
+        el.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                forceRefreshToLatest();
+            }
+        });
+    });
+}
+
 /**
  * Faster, smoother PWA updates:
  * 1) register SW with updateViaCache:'none' (ignore HTTP cache for sw.js)
  * 2) probe Worker /api/app-version (bypasses Pages CDN — helps without proxy)
  * 3) soft bottom banner instead of hard auto-reload while typing
+ * 4) forceRefreshToLatest for stuck / stale installs
  */
 export function initPwaUpdates() {
+    stripFreshParam();
+    bindForceRefreshControls();
+
     if (!('serviceWorker' in navigator)) return;
 
     let reloading = false;
@@ -16,7 +101,7 @@ export function initPwaUpdates() {
     let pendingReloadReason = '';
 
     const softReload = (reason) => {
-        if (reloading) return;
+        if (reloading || forceRefreshing) return;
         reloading = true;
         showToast(reason || '正在刷新到新版本…', 'success');
         setTimeout(() => window.location.reload(), 600);
@@ -39,11 +124,17 @@ export function initPwaUpdates() {
             ].join(';');
             bar.innerHTML = `
                 <span id="pwa-update-msg" style="flex:1"></span>
-                <button type="button" id="pwa-update-btn" style="border:0;border-radius:999px;padding:8px 12px;background:#007AFF;color:#fff;font:600 12px/1 inherit;cursor:pointer">立即刷新</button>
+                <span style="display:flex;gap:8px;flex-shrink:0">
+                  <button type="button" id="pwa-force-btn" style="border:0;border-radius:999px;padding:8px 10px;background:rgba(255,255,255,0.14);color:#fff;font:600 12px/1 inherit;cursor:pointer">强制更新</button>
+                  <button type="button" id="pwa-update-btn" style="border:0;border-radius:999px;padding:8px 12px;background:#007AFF;color:#fff;font:600 12px/1 inherit;cursor:pointer">立即刷新</button>
+                </span>
             `;
             document.body.appendChild(bar);
             bar.querySelector('#pwa-update-btn')?.addEventListener('click', () => {
                 softReload(pendingReloadReason || '正在刷新到新版本…');
+            });
+            bar.querySelector('#pwa-force-btn')?.addEventListener('click', () => {
+                forceRefreshToLatest({ skipConfirm: true });
             });
             requestAnimationFrame(() => { bar.style.transform = 'translateY(0)'; });
         }
@@ -55,7 +146,7 @@ export function initPwaUpdates() {
         const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
         if (!typing) {
             setTimeout(() => {
-                if (!reloading && bannerShown && document.visibilityState === 'visible') {
+                if (!reloading && !forceRefreshing && bannerShown && document.visibilityState === 'visible') {
                     const stillTyping = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
                     if (!stillTyping) softReload(pendingReloadReason || '新版本已就绪，正在刷新…');
                 }
@@ -63,14 +154,12 @@ export function initPwaUpdates() {
         }
     };
 
-    const watchInstalling = (worker, reg) => {
+    const watchInstalling = (worker) => {
         if (!worker) return;
         worker.addEventListener('statechange', () => {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
                 worker.postMessage({ type: 'SKIP_WAITING' });
                 ensureBanner('手机端已下载新版本');
-            } else if (worker.state === 'installed' && !navigator.serviceWorker.controller) {
-                // first install — no reload needed
             }
         });
     };
@@ -111,7 +200,7 @@ export function initPwaUpdates() {
             }
 
             reg.addEventListener('updatefound', () => {
-                watchInstalling(reg.installing, reg);
+                watchInstalling(reg.installing);
             });
 
             navigator.serviceWorker.addEventListener('controllerchange', () => {
@@ -129,7 +218,6 @@ export function initPwaUpdates() {
             });
             window.addEventListener('focus', checkForUpdate);
             window.addEventListener('online', checkForUpdate);
-            // Visible: every 20s; cheap Worker JSON probe helps without proxy
             setInterval(() => {
                 if (document.visibilityState === 'visible') checkForUpdate();
             }, 20 * 1000);

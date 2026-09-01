@@ -2671,15 +2671,37 @@ body.keyboard-open .fab-btn {
   line-height: 1.2;
   color: var(--text-color-light, #9ca3af);
   background: transparent;
-  opacity: 0.38;
-  pointer-events: none;
+  border: 0;
+  opacity: 0.45;
+  pointer-events: auto;
   user-select: none;
+  cursor: pointer;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   letter-spacing: 0.04em;
   box-shadow: none;
   border-radius: 0;
   position: static;
   z-index: auto;
+}
+.app-version-badge:active {
+  opacity: 0.8;
+}
+
+.auth-force-refresh {
+  display: inline-block;
+  margin-top: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-color-light, #94a3b8);
+  font-size: 12px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.auth-force-refresh:active {
+  color: var(--accent-color, #007AFF);
 }
 
 /* ========================================== */
