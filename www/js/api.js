@@ -48,6 +48,33 @@ async function readErrorMessage(res) {
     return `请求失败 (${res.status})`;
 }
 
+/** 登录/注册错误：区分密码错、限流、网络、服务异常 */
+function formatAuthError(err, res, data) {
+    if (!res && err) {
+        if (err.name === 'AbortError') return '请求超时，请检查网络后重试';
+        if (err.message === 'Failed to fetch' || err.name === 'TypeError') {
+            return '网络连接失败，请检查手机网络后重试';
+        }
+        return err.message || '登录失败';
+    }
+    const status = res ? res.status : 0;
+    const serverMsg = (data && data.error) ? String(data.error) : '';
+    if (status === 429) {
+        const retry = (data && data.retryAfter)
+            || (res && res.headers.get('Retry-After'))
+            || null;
+        const tip = serverMsg.includes('登录') ? serverMsg : '登录过于频繁，请稍后再试';
+        if (retry) return `${tip}（约 ${retry} 秒）`;
+        return tip;
+    }
+    if (status === 401) return '账号或密码错误';
+    if (status === 403) return serverMsg || '暂无权限，请联系管理员';
+    if (status === 400) return serverMsg || '请检查账号和密码格式';
+    if (status >= 500) return '服务暂时不可用，请稍后重试';
+    if (status === 0) return '网络连接失败，请检查手机网络后重试';
+    return serverMsg || (err && err.message) || '登录失败';
+}
+
 export async function fetchWithFallback(path, options = {}) {
     const primaryUrl = `${API_BASE}${path}`;
     const workerUrl = `${CLOUD_WORKER_BASE}${path}`;
@@ -195,8 +222,16 @@ export async function doLogin() {
             headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
             body: JSON.stringify({ username, password }),
         });
-        const data = await parseJsonSafe(res);
-        if (!res.ok) throw new Error(data.error || await readErrorMessage(res) || '登录失败，请检查账号和密码');
+        let data = null;
+        try {
+            data = await parseJsonSafe(res);
+        } catch (parseErr) {
+            throw Object.assign(parseErr, { _authRes: res, _authData: null });
+        }
+        if (!res.ok) {
+            const msg = formatAuthError(null, res, data);
+            throw Object.assign(new Error(msg), { _authRes: res, _authData: data });
+        }
         if (!data.token) throw new Error('登录响应异常，请刷新后重试');
 
         state.authToken = data.token;
@@ -214,9 +249,7 @@ export async function doLogin() {
         try { checkAndMergeGuestData(); } catch (_) {}
         setTimeout(registerPushNotification, 2000);
     } catch (err) {
-        const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
-            ? '网络连接失败，请检查手机网络后重试'
-            : (err.message || '登录失败');
+        const errorMsg = formatAuthError(err, err._authRes, err._authData);
         if (authErrorMsg) {
             authErrorMsg.innerText = errorMsg;
             authErrorMsg.style.display = 'block';
