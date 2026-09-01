@@ -25,7 +25,6 @@ function refresh(kind, opts) {
 // ── API base / fetch ──────────────────────────────────────────
 let API_BASE = resolveApiBase();
 export { API_BASE };
-export { CLOUD_WORKER_BASE };
 
 export function resolveAssetUrl(src) {
     if (src && API_BASE && (src.startsWith('/api/') || src.startsWith('/uploads/'))) {
@@ -130,7 +129,7 @@ export function getLocalKey(key) {
 const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds'];
 
 /** Per-user incremental sync cursor (migrates legacy global keys once). */
-export function getSyncCursor(resource) {
+function getSyncCursor(resource) {
     const keyed = localStorage.getItem(getLocalKey(`sync_${resource}`));
     if (keyed) return keyed;
     const legacy = localStorage.getItem(`chillin_sync_${resource}`);
@@ -142,12 +141,12 @@ export function getSyncCursor(resource) {
     return null;
 }
 
-export function setSyncCursor(resource, value) {
+function setSyncCursor(resource, value) {
     if (!value) return;
     localStorage.setItem(getLocalKey(`sync_${resource}`), value);
 }
 
-export function clearSyncCursorsForUser(userId) {
+function clearSyncCursorsForUser(userId) {
     if (userId == null) return;
     for (const resource of SYNC_RESOURCES) {
         localStorage.removeItem(`${userId}_sync_${resource}`);
@@ -427,13 +426,13 @@ function rescueAndConsolidateLocalData() {
     };
 }
 
-export function getSyncedIds() {
+function getSyncedIds() {
     try {
         return JSON.parse(localStorage.getItem(getLocalKey('gardenSyncedIds'))) || [];
     } catch (e) { return []; }
 }
 
-export function addSyncedIds(ids) {
+function addSyncedIds(ids) {
     if (!Array.isArray(ids)) return;
     const current = getSyncedIds();
     let changed = false;
@@ -449,7 +448,7 @@ export function addSyncedIds(ids) {
     }
 }
 
-export function getDeletedIds() {
+function getDeletedIds() {
     try {
         return JSON.parse(localStorage.getItem(getLocalKey('gardenDeletedIds'))) || [];
     } catch (e) { return []; }
@@ -465,7 +464,7 @@ export function addDeletedId(id) {
     }
 }
 
-export function toUpdatedTs(value) {
+function toUpdatedTs(value) {
     if (value == null || value === '') return 0;
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     const raw = String(value).trim();
@@ -484,14 +483,14 @@ export function stampLocalUpdate(item) {
     return item;
 }
 
-export function stripClientSyncFlags(item) {
+function stripClientSyncFlags(item) {
     if (!item || typeof item !== 'object') return item;
     const copy = { ...item };
     delete copy._dirty;
     return copy;
 }
 
-export function mergeDataLists(localList, apiList) {
+function mergeDataLists(localList, apiList) {
     if (!Array.isArray(localList)) localList = [];
     if (!Array.isArray(apiList)) apiList = [];
 
@@ -522,7 +521,7 @@ export function mergeDataLists(localList, apiList) {
     return Array.from(map.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 }
 
-export function processApiSyncResult(localList, apiData, isIncremental = false) {
+function processApiSyncResult(localList, apiData, isIncremental = false) {
     if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false };
     const syncedIds = getSyncedIds();
 
@@ -642,89 +641,74 @@ export async function syncFromApi() {
     let hadError = false;
     setSyncStatus('同步中', 'info');
 
+    const pullSpecs = [
+        {
+            resource: 'weeklies',
+            path: '/api/weeklies',
+            getList: () => state.database,
+            setList: (list) => { state.database = list; },
+            save: saveDatabase,
+            shouldRefresh: () => getActiveViewId() === 'view-home',
+            refresh: () => refresh('weeklies', {
+                filter: document.querySelector('.filter-btn.active')?.dataset.filter || 'all'
+            }),
+        },
+        {
+            resource: 'notes',
+            path: '/api/notes',
+            getList: () => state.notesDatabase,
+            setList: (list) => { state.notesDatabase = list; },
+            save: saveNotesDatabase,
+            shouldRefresh: () => getActiveViewId() === 'view-notes',
+            refresh: () => refresh('notes'),
+        },
+        {
+            resource: 'bookmarks',
+            path: '/api/bookmarks',
+            getList: () => state.bookmarksDatabase,
+            setList: (list) => {
+                state.bookmarksDatabase = list.map((bm) => {
+                    const desc = (bm && (bm.desc || bm.description)) || '';
+                    return { ...bm, desc, description: desc };
+                });
+            },
+            save: saveBookmarksDatabase,
+            shouldRefresh: () => getActiveViewId() === 'view-bookmarks',
+            refresh: () => refresh('bookmarks'),
+        },
+        {
+            resource: 'feeds',
+            path: '/api/feeds',
+            getList: () => state.feedsDatabase,
+            setList: (list) => { state.feedsDatabase = list; },
+            save: saveFeedsDatabase,
+            shouldRefresh: () => getActiveViewId() === 'view-feeds' && !isProtectingLocalEdits(),
+            refresh: () => refresh('feeds'),
+        },
+    ];
+
     try {
-        try {
-            const lastSync = getSyncCursor('weeklies');
-            const url = lastSync ? `/api/weeklies?since=${encodeURIComponent(lastSync)}` : '/api/weeklies';
-            const apiData = await apiRequest(url);
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.database, apiData, !!lastSync);
+        for (const spec of pullSpecs) {
+            try {
+                const lastSync = getSyncCursor(spec.resource);
+                const url = lastSync ? `${spec.path}?since=${encodeURIComponent(lastSync)}` : spec.path;
+                const apiData = await apiRequest(url);
+                if (!Array.isArray(apiData)) continue;
+                const { merged, needsUpload } = processApiSyncResult(spec.getList(), apiData, !!lastSync);
                 if (needsUpload) needsBatchUpload = true;
-                if (JSON.stringify(state.database) !== JSON.stringify(merged)) {
-                    state.database = merged;
-                    saveDatabase();
-                    if (getActiveViewId() === 'view-home') {
-                        refresh('weeklies', {
-                            filter: document.querySelector('.filter-btn.active')?.dataset.filter || 'all'
-                        });
-                    }
+                if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
+                    spec.setList(merged);
+                    spec.save();
+                    if (spec.shouldRefresh()) spec.refresh();
                 }
                 if (apiData.length > 0) {
                     const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) setSyncCursor('weeklies', maxTs);
+                    if (maxTs) setSyncCursor(spec.resource, maxTs);
                 }
+            } catch (e) {
+                hadError = true;
             }
-        } catch (e) { hadError = true; }
-
-        try {
-            const lastSync = getSyncCursor('notes');
-            const url = lastSync ? `/api/notes?since=${encodeURIComponent(lastSync)}` : '/api/notes';
-            const apiData = await apiRequest(url);
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.notesDatabase, apiData, !!lastSync);
-                if (needsUpload) needsBatchUpload = true;
-                if (JSON.stringify(state.notesDatabase) !== JSON.stringify(merged)) {
-                    state.notesDatabase = merged;
-                    saveNotesDatabase();
-                    if (getActiveViewId() === 'view-notes') refresh('notes');
-                }
-                if (apiData.length > 0) {
-                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) setSyncCursor('notes', maxTs);
-                }
-            }
-        } catch (e) { hadError = true; }
-
-        try {
-            const lastSync = getSyncCursor('bookmarks');
-            const url = lastSync ? `/api/bookmarks?since=${encodeURIComponent(lastSync)}` : '/api/bookmarks';
-            const apiData = await apiRequest(url);
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.bookmarksDatabase, apiData, !!lastSync);
-                if (needsUpload) needsBatchUpload = true;
-                if (JSON.stringify(state.bookmarksDatabase) !== JSON.stringify(merged)) {
-                    state.bookmarksDatabase = merged.map((bm) => {
-                        const desc = (bm && (bm.desc || bm.description)) || '';
-                        return { ...bm, desc, description: desc };
-                    });
-                    saveBookmarksDatabase();
-                    if (getActiveViewId() === 'view-bookmarks') refresh('bookmarks');
-                }
-                if (apiData.length > 0) {
-                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) setSyncCursor('bookmarks', maxTs);
-                }
-            }
-        } catch (e) { hadError = true; }
-
-        try {
-            const lastSync = getSyncCursor('feeds');
-            const url = lastSync ? `/api/feeds?since=${encodeURIComponent(lastSync)}` : '/api/feeds';
-            const apiData = await apiRequest(url);
-            if (Array.isArray(apiData)) {
-                const { merged, needsUpload } = processApiSyncResult(state.feedsDatabase, apiData, !!lastSync);
-                if (needsUpload) needsBatchUpload = true;
-                if (JSON.stringify(state.feedsDatabase) !== JSON.stringify(merged)) {
-                    state.feedsDatabase = merged;
-                    saveFeedsDatabase();
-                    if (getActiveViewId() === 'view-feeds' && !isProtectingLocalEdits()) refresh('feeds');
-                }
-                if (apiData.length > 0) {
-                    const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) setSyncCursor('feeds', maxTs);
-                }
-            }
-        } catch (e) { hadError = true; }
+        }
 
         if (needsBatchUpload) {
             try {
@@ -817,64 +801,37 @@ function handleSyncFailure(err) {
     }
 }
 
-export function apiSyncWeekly(item, method) {
+function apiSyncResource(apiPath, item, method) {
     const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
     if (method !== 'DELETE' && item) {
         item.updated_at = payload.updated_at;
         item._dirty = true;
     }
-    const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
+    const bm = method === 'DELETE'
+        ? { method: 'DELETE' }
+        : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
     const id = method === 'POST' ? '' : `/${item.id}`;
-    return apiRequest(`/api/weeklies${id}`, bm).then((res) => {
+    return apiRequest(`${apiPath}${id}`, bm).then((res) => {
         if (method !== 'DELETE') markSyncedItem(item);
         setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
+}
+
+export function apiSyncWeekly(item, method) {
+    return apiSyncResource('/api/weeklies', item, method);
 }
 
 export function apiSyncNote(item, method) {
-    const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-    if (method !== 'DELETE' && item) {
-        item.updated_at = payload.updated_at;
-        item._dirty = true;
-    }
-    const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-    const id = method === 'POST' ? '' : `/${item.id}`;
-    return apiRequest(`/api/notes${id}`, bm).then((res) => {
-        if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('已同步', 'ok', 1800);
-        return res;
-    }).catch((err) => { handleSyncFailure(err); return null; });
+    return apiSyncResource('/api/notes', item, method);
 }
 
 export function apiSyncBookmark(item, method) {
-    const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-    if (method !== 'DELETE' && item) {
-        item.updated_at = payload.updated_at;
-        item._dirty = true;
-    }
-    const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-    const id = method === 'POST' ? '' : `/${item.id}`;
-    return apiRequest(`/api/bookmarks${id}`, bm).then((res) => {
-        if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('已同步', 'ok', 1800);
-        return res;
-    }).catch((err) => { handleSyncFailure(err); return null; });
+    return apiSyncResource('/api/bookmarks', item, method);
 }
 
 export function apiSyncFeed(item, method) {
-    const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-    if (method !== 'DELETE' && item) {
-        item.updated_at = payload.updated_at;
-        item._dirty = true;
-    }
-    const bm = method === 'DELETE' ? { method: 'DELETE' } : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-    const id = method === 'POST' ? '' : `/${item.id}`;
-    return apiRequest(`/api/feeds${id}`, bm).then((res) => {
-        if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('已同步', 'ok', 1800);
-        return res;
-    }).catch((err) => { handleSyncFailure(err); return null; });
+    return apiSyncResource('/api/feeds', item, method);
 }
 
 export async function checkAndMergeGuestData() {

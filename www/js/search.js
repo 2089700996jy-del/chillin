@@ -128,20 +128,6 @@ function renderGlobalSearchResults(query) {
         }
     });
 
-    // 6. 阅读批注（尚未落地 DOM，仅有实现时才出现在结果里）
-    (actions.getReaderAnnotations?.() || []).forEach(a => {
-        if ((a.text || '').toLowerCase().includes(q)) {
-            results.push({
-                type: '📚 阅读批注',
-                view: 'reader',
-                id: a.id,
-                title: a.bookTitle ? `《${a.bookTitle}》批注` : '阅读批注',
-                snippet: a.text,
-                targetElSelector: a.targetElSelector || ''
-            });
-        }
-    });
-
     if (results.length === 0) {
         globalSearchResults.innerHTML = `<div class="global-search-empty">未匹配到与 "${escapeHtml(query)}" 相关的切片</div>`;
         return;

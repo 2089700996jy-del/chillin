@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-09-01。供后续会话快速接续。当前前端/Worker：**v2.5.9**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-09-01。供后续会话快速接续。当前前端/Worker：**v2.5.10**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -34,6 +34,7 @@
 - PWA：`updateViaCache:'none'`、Worker `/api/app-version` 探测、更新横幅
 - **强制刷新到最新版**（清 SW + Cache Storage，保留登录态）：登录页链接 / 版本号点击 / 横幅「强制更新」
 - 登录：Pages 代理失败自动回落 Worker；错误区分密码错 / 限流 / 网络 / 服务异常
+- 清理：合并 `apiSync*` / `syncFromApi` 表驱动；收紧 `api.js` 内部 export；修 `feeds.js` 缺 import；删 `preview-ios.html` / `schema-push.sql` 与死钩子 `getReaderAnnotations`
 
 ### AI
 

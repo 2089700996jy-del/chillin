@@ -472,7 +472,6 @@ openReaderDB().then(() => {
 
 
     actions.renderBookshelf = renderBookshelf;
-    actions.getReaderAnnotations = () => [];
     actions.clearReaderSession = clearReaderSession;
 
     return { renderBookshelf, openReaderDB };
