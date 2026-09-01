@@ -1,6 +1,6 @@
 import { showToast } from './utils.js';
 import { APP_VERSION } from './version.js';
-import { CLOUD_WORKER_BASE } from './api.js';
+import { CLOUD_WORKER_BASE } from './config.js';
 
 /**
  * Faster, smoother PWA updates:
