@@ -1,6 +1,7 @@
 /** Auth, persistence, and cloud sync. UI refresh via bindApiHooks. */
 
 import { showToast, urlBase64ToUint8Array, getEast8Time } from './utils.js';
+import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import {
     state,
     DEFAULT_WEEKLY,
@@ -22,16 +23,9 @@ function refresh(kind, opts) {
 }
 
 // ── API base / fetch ──────────────────────────────────────────
-let API_BASE = '';
-if (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) {
-    API_BASE = CHILLIN_API_URL;
-} else if (window.location.protocol === 'file:' || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
-    API_BASE = 'https://chillin-bfc.pages.dev';
-} else {
-    API_BASE = '';
-}
+let API_BASE = resolveApiBase();
 export { API_BASE };
-export const CLOUD_WORKER_BASE = 'https://chillin-api.2089700996jy.workers.dev';
+export { CLOUD_WORKER_BASE };
 
 export function resolveAssetUrl(src) {
     if (src && API_BASE && (src.startsWith('/api/') || src.startsWith('/uploads/'))) {
@@ -40,15 +34,65 @@ export function resolveAssetUrl(src) {
     return src;
 }
 
+async function readErrorMessage(res) {
+    try {
+        const data = await res.clone().json();
+        if (data && data.error) return String(data.error);
+    } catch (_) {}
+    try {
+        const text = (await res.clone().text()).trim();
+        if (text && text.length < 200 && !text.startsWith('<')) return text;
+    } catch (_) {}
+    if (res.status === 429) return '请求过于频繁，请稍后再试';
+    if (res.status >= 500) return `服务暂时不可用 (${res.status})`;
+    return `请求失败 (${res.status})`;
+}
+
 export async function fetchWithFallback(path, options = {}) {
     const primaryUrl = `${API_BASE}${path}`;
+    const workerUrl = `${CLOUD_WORKER_BASE}${path}`;
+    const isAuth = path.startsWith('/api/auth/');
+
+    const looksBad = (res) => {
+        if (!res) return true;
+        if (res.status >= 500) return true;
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        return ct.includes('text/html');
+    };
+
+    let primaryRes = null;
+    let primaryErr = null;
     try {
-        return await fetch(primaryUrl, options);
-    } catch (primaryErr) {
-        if (API_BASE === '' && (primaryErr.name === 'TypeError' || (primaryErr.message && primaryErr.message.includes('fetch')))) {
-            return await fetch(`${CLOUD_WORKER_BASE}${path}`, options);
+        primaryRes = await fetch(primaryUrl, options);
+    } catch (err) {
+        primaryErr = err;
+    }
+
+    if (primaryRes && !looksBad(primaryRes)) return primaryRes;
+
+    // 同源代理失败 / 5xx / HTML：改打 Worker（登录尤其依赖）
+    if (isAuth || primaryErr || looksBad(primaryRes)) {
+        try {
+            return await fetch(workerUrl, options);
+        } catch (workerErr) {
+            if (primaryRes) return primaryRes;
+            throw primaryErr || workerErr;
         }
-        throw primaryErr;
+    }
+
+    if (primaryRes) return primaryRes;
+    throw primaryErr || new Error('网络连接失败');
+}
+
+async function parseJsonSafe(res) {
+    const ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (ct.includes('text/html')) {
+        throw new Error('服务返回异常页面，请刷新后重试');
+    }
+    try {
+        return await res.json();
+    } catch {
+        throw new Error(await readErrorMessage(res) || '无法解析服务器响应');
     }
 }
 
@@ -119,8 +163,8 @@ export function logout(opts = {}) {
 }
 
 export async function doLogin() {
-    const username = document.getElementById('auth-username').value.trim();
-    const password = document.getElementById('auth-password').value.trim();
+    const username = document.getElementById('auth-username')?.value.trim() || '';
+    const password = document.getElementById('auth-password')?.value.trim() || '';
     const btnAuthSubmit = document.getElementById('btn-auth-submit');
     const authErrorMsg = document.getElementById('auth-error-msg');
     if (authErrorMsg) authErrorMsg.style.display = 'none';
@@ -148,11 +192,12 @@ export async function doLogin() {
         }
         const res = await fetchWithFallback(endpoint, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password })
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+            body: JSON.stringify({ username, password }),
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '登录失败，请检查账号和密码');
+        const data = await parseJsonSafe(res);
+        if (!res.ok) throw new Error(data.error || await readErrorMessage(res) || '登录失败，请检查账号和密码');
+        if (!data.token) throw new Error('登录响应异常，请刷新后重试');
 
         state.authToken = data.token;
         state.authUser = { id: data.userId, username: data.username };
@@ -161,9 +206,12 @@ export async function doLogin() {
 
         checkAuth();
         showToast('登录成功，欢迎来到数字花园', 'success');
-        loadLocalData();
-        syncFromApi();
-        checkAndMergeGuestData();
+        try { loadLocalData(); } catch (_) {}
+        // 同步失败不应把用户踢回登录页
+        Promise.resolve()
+            .then(() => syncFromApi())
+            .catch((e) => console.warn('[login] sync after login failed', e));
+        try { checkAndMergeGuestData(); } catch (_) {}
         setTimeout(registerPushNotification, 2000);
     } catch (err) {
         const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
@@ -180,6 +228,11 @@ export async function doLogin() {
             btnAuthSubmit.innerText = state.isRegisterMode ? '注册并进入' : '登录';
         }
     }
+}
+
+// 模块加载后立刻挂上，避免后续 init 抛错导致按钮无响应
+if (typeof window !== 'undefined') {
+    window._chillinLogin = doLogin;
 }
 
 export function initAuthUI() {

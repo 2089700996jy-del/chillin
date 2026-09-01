@@ -61,16 +61,15 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
-    initUpload();
-    initWeeklies();
-    initNotes();
-    initBookmarks();
-    initReader();
-    initFeeds();
-    initEchoAi();
-    initSearch();
-    initRouter();
+    const safeInit = (name, fn) => {
+        try {
+            fn();
+        } catch (err) {
+            console.error(`[init] ${name} failed`, err);
+        }
+    };
 
+    // 登录 UI 优先挂载，避免其它模块初始化失败导致按钮无响应
     bindApiHooks({
         onRefresh(kind, opts = {}) {
             if (kind === 'all') {
@@ -90,35 +89,43 @@ document.addEventListener('DOMContentLoaded', () => {
             if (kind === 'heatmap') actions.renderHeatmap?.();
         }
     });
-
-    initAuthUI();
-
-    // 1. 页面初始化：首先校验登录状态（如果已登录自动隐藏登录遮罩层，免去重复输入密码）
+    safeInit('authUI', initAuthUI);
     checkAuth();
+
+    safeInit('upload', initUpload);
+    safeInit('weeklies', initWeeklies);
+    safeInit('notes', initNotes);
+    safeInit('bookmarks', initBookmarks);
+    safeInit('reader', initReader);
+    safeInit('feeds', initFeeds);
+    safeInit('echoAi', initEchoAi);
+    safeInit('search', initSearch);
+    safeInit('router', initRouter);
 
     if (state.authToken) {
         setTimeout(registerPushNotification, 2000);
     }
     loadLocalData();
     if (state.authToken) {
-        syncFromApi();
+        syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
     }
 
-    // 4. 后台检测合并游客数据
-    checkAndMergeGuestData();
-
-    // 启动后台无感自动同步引擎
-    startAutoSyncEngine();
+    safeInit('mergeGuest', checkAndMergeGuestData);
+    safeInit('autoSync', startAutoSyncEngine);
 
     // 恢复 URL hash（刷新后回到对应视图）；无 hash 时写入首页，便于系统返回键工作
-    if (location.hash && location.hash !== '#' && location.hash !== '#/home') {
-        actions.applyRoute(actions.parseHashRoute());
-    } else {
-        history.replaceState({ view: ui.currentActiveNavView || 'home' }, '', `#/${ui.currentActiveNavView || 'home'}`);
+    try {
+        if (location.hash && location.hash !== '#' && location.hash !== '#/home') {
+            actions.applyRoute(actions.parseHashRoute());
+        } else {
+            history.replaceState({ view: ui.currentActiveNavView || 'home' }, '', `#/${ui.currentActiveNavView || 'home'}`);
+        }
+    } catch (err) {
+        console.warn('[init] route restore failed', err);
     }
 
     // PWA：注册 SW，并在打开/切回前台时主动检查更新
-    initPwaUpdates();
+    safeInit('pwaUpdates', initPwaUpdates);
 });
 
 

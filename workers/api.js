@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.5';
+const APP_VERSION = '2.5.6';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -334,16 +334,27 @@ async function verifyPassword(password, stored) {
     const encoder = new TextEncoder();
     const toHex = (buf) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 
-    if (!stored || !stored.startsWith('pbkdf2$')) {
+    if (!stored || typeof stored !== 'string') {
+        return { valid: false, upgrade: false };
+    }
+
+    if (!stored.startsWith('pbkdf2$')) {
         const hashBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(password));
         const legacy = toHex(hashBuffer);
-        return { valid: timingSafeEqualStr(legacy, stored), upgrade: timingSafeEqualStr(legacy, stored) };
+        const ok = timingSafeEqualStr(legacy, stored);
+        return { valid: ok, upgrade: ok };
     }
 
     const parts = stored.split('$');
     const iter = parseInt(parts[1], 10);
-    const salt = new Uint8Array(parts[2].match(/.{2}/g).map(h => parseInt(h, 16)));
-    const expected = parts[3];
+    const saltHex = parts[2] || '';
+    const expected = parts[3] || '';
+    const saltPairs = saltHex.match(/.{2}/g);
+    if (!Number.isFinite(iter) || iter < 1 || !saltPairs || !expected) {
+        // 损坏的哈希记录：当作校验失败，避免整条登录 500
+        return { valid: false, upgrade: false };
+    }
+    const salt = new Uint8Array(saltPairs.map(h => parseInt(h, 16)));
     const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
     const bits = await crypto.subtle.deriveBits(
         { name: 'PBKDF2', salt: salt, iterations: iter, hash: 'SHA-256' },
@@ -482,10 +493,18 @@ async function router(path, method, request, env, ctx) {
     }
 
     if (path === '/api/auth/login' && method === 'POST') {
-        const loginLimit = checkRateLimit(`login:${getClientIp(request)}`, 10, 15 * 60 * 1000);
+        // 移动端共享出口 IP 较多，放宽到 40 次 / 15 分钟
+        const loginLimit = checkRateLimit(`login:${getClientIp(request)}`, 40, 15 * 60 * 1000);
         if (!loginLimit.ok) return rateLimitedResponse(loginLimit.retryAfter);
 
-        const { username, password } = await request.json();
+        let body;
+        try {
+            body = await request.json();
+        } catch {
+            return jsonResponse({ error: '请求格式错误，请重试' }, 400);
+        }
+        const username = body && typeof body.username === 'string' ? body.username.trim() : '';
+        const password = body && typeof body.password === 'string' ? body.password : '';
         if (!username || !password) return jsonResponse({ error: '请输入账号和密码' }, 400);
 
         const user = await db.prepare('SELECT id, password_hash FROM users WHERE username = ?1').bind(username).first();
