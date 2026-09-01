@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.8';
+const APP_VERSION = '2.5.9';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -108,8 +108,12 @@ function checkRateLimit(key, limit, windowMs) {
     return { ok: true };
 }
 
-function rateLimitedResponse(retryAfter) {
-    const res = jsonResponse({ error: '请求过于频繁，请稍后再试' }, 429);
+function rateLimitedResponse(retryAfter, tip) {
+    const res = jsonResponse({
+        error: tip || '请求过于频繁，请稍后再试',
+        code: 'RATE_LIMITED',
+        retryAfter: retryAfter || 60
+    }, 429);
     const headers = new Headers(res.headers);
     headers.set('Retry-After', String(retryAfter || 60));
     return new Response(res.body, { status: 429, headers });
@@ -495,7 +499,9 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/auth/login' && method === 'POST') {
         // 移动端共享出口 IP 较多，放宽到 40 次 / 15 分钟
         const loginLimit = checkRateLimit(`login:${getClientIp(request)}`, 40, 15 * 60 * 1000);
-        if (!loginLimit.ok) return rateLimitedResponse(loginLimit.retryAfter);
+        if (!loginLimit.ok) {
+            return rateLimitedResponse(loginLimit.retryAfter, '登录过于频繁，请稍后再试');
+        }
 
         let body;
         try {

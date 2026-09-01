@@ -1,4 +1,6 @@
--- Add soft delete support for incremental sync
+-- Soft delete support for incremental sync
+-- NOTE: 若线上曾跑过 Worker ensureSoftDeleteSchema，列可能已存在；
+-- apply 遇 duplicate column 时勿强行重跑 ALTER，应补索引并登记 d1_migrations。
 ALTER TABLE weeklies ADD COLUMN is_deleted INTEGER DEFAULT 0;
 ALTER TABLE notes ADD COLUMN is_deleted INTEGER DEFAULT 0;
 ALTER TABLE bookmarks ADD COLUMN is_deleted INTEGER DEFAULT 0;
