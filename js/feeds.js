@@ -29,6 +29,7 @@ function renderFeeds() {
     if (!container) return;
 
     // Limit to latest 100 feeds for performance (infinite scroll can be added later)
+    const totalFeeds = state.feedsDatabase.length;
     const displayFeeds = state.feedsDatabase.slice(0, 100);
 
     if (!displayFeeds || displayFeeds.length === 0) {
@@ -157,6 +158,12 @@ function renderFeeds() {
             </div>
         `;
     }).join('');
+
+    if (totalFeeds > 100) {
+        container.insertAdjacentHTML('beforeend',
+            `<div class="list-truncate-hint" style="text-align:center;padding:12px 8px;color:rgba(60,60,67,0.55);font-size:12px;">仅显示最近 100 条，共 ${totalFeeds} 条</div>`
+        );
+    }
 
     // Async auto enrichment for historical unparsed links
     if (pendingEnrichFeeds.length > 0) {
@@ -414,10 +421,10 @@ function renderHeatmap() {
         dateMap[key] = (dateMap[key] || 0) + 1;
     };
 
-    (state.database || []).forEach(w => addCount(w.created_at || w.updated_at || w.date));
-    (state.notesDatabase || []).forEach(n => addCount(n.created_at || n.updated_at || n.date));
-    (state.bookmarksDatabase || []).forEach(b => addCount(b.created_at || b.updated_at));
-    (state.feedsDatabase || []).forEach(f => addCount(f.created_at || f.updated_at));
+    (state.database || []).forEach(w => addCount(w.created_at || w.date));
+    (state.notesDatabase || []).forEach(n => addCount(n.created_at || n.date));
+    (state.bookmarksDatabase || []).forEach(b => addCount(b.created_at));
+    (state.feedsDatabase || []).forEach(f => addCount(f.created_at));
 
     // Generate columns (52 weeks x 7 days)
     const today = new Date();
