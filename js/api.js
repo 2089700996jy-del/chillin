@@ -21,7 +21,7 @@ function refresh(kind, opts) {
     if (typeof hooks.onRefresh === 'function') hooks.onRefresh(kind, opts);
 }
 
-// 鈹€鈹€ API base / fetch 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── API base / fetch ──────────────────────────────────────────
 let API_BASE = '';
 if (typeof CHILLIN_API_URL !== 'undefined' && CHILLIN_API_URL) {
     API_BASE = CHILLIN_API_URL;
@@ -56,7 +56,7 @@ export function getLocalKey(key) {
     return state.authUser ? `${state.authUser.id}_${key}` : `default_${key}`;
 }
 
-// 鈹€鈹€ Auth UI 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Auth UI ───────────────────────────────────────────────────
 export function checkAuth() {
     const authOverlay = document.getElementById('auth-overlay');
     const navUsername = document.getElementById('nav-username');
@@ -82,9 +82,9 @@ export function logout(opts = {}) {
     checkAuth();
     if (opts.silent) return;
     if (opts.reason === 'expired') {
-        showToast('鐧诲綍宸茶繃鏈燂紝璇烽噸鏂扮櫥褰?, 'warn');
+        showToast('登录已过期，请重新登录', 'warn');
     } else {
-        showToast('宸查€€鍑虹櫥褰?, 'info');
+        showToast('已退出登录', 'info');
     }
 }
 
@@ -96,7 +96,7 @@ export async function doLogin() {
     if (authErrorMsg) authErrorMsg.style.display = 'none';
     if (!username || !password) {
         if (authErrorMsg) {
-            authErrorMsg.innerText = '璇疯緭鍏ヨ处鍙峰拰瀵嗙爜';
+            authErrorMsg.innerText = '请输入账号和密码';
             authErrorMsg.style.display = 'block';
         }
         return;
@@ -104,16 +104,16 @@ export async function doLogin() {
 
     if (btnAuthSubmit) {
         btnAuthSubmit.disabled = true;
-        btnAuthSubmit.innerText = state.isRegisterMode ? '娉ㄥ唽涓?..' : '鐧诲綍涓?..';
+        btnAuthSubmit.innerText = state.isRegisterMode ? '注册中...' : '登录中...';
     }
 
     try {
         const endpoint = state.isRegisterMode ? '/api/auth/register' : '/api/auth/login';
         if (state.isRegisterMode) {
-            if (username.length < 3 || username.length > 32) throw new Error('璐﹀彿闀垮害闇€涓?3鈥?2 浣?);
-            if (password.length < 8) throw new Error('瀵嗙爜鑷冲皯 8 浣?);
+            if (username.length < 3 || username.length > 32) throw new Error('账号长度需为 3–32 位');
+            if (password.length < 8) throw new Error('密码至少 8 位');
             if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
-                throw new Error('瀵嗙爜闇€鍚屾椂鍖呭惈瀛楁瘝鍜屾暟瀛?);
+                throw new Error('密码需同时包含字母和数字');
             }
         }
         const res = await fetchWithFallback(endpoint, {
@@ -122,7 +122,7 @@ export async function doLogin() {
             body: JSON.stringify({ username, password })
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data.error || '鐧诲綍澶辫触锛岃妫€鏌ヨ处鍙峰拰瀵嗙爜');
+        if (!res.ok) throw new Error(data.error || '登录失败，请检查账号和密码');
 
         state.authToken = data.token;
         state.authUser = { id: data.userId, username: data.username };
@@ -130,15 +130,15 @@ export async function doLogin() {
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
 
         checkAuth();
-        showToast('鐧诲綍鎴愬姛锛屾杩庢潵鍒版暟瀛楄姳鍥?, 'success');
+        showToast('登录成功，欢迎来到数字花园', 'success');
         loadLocalData();
         syncFromApi();
         checkAndMergeGuestData();
         setTimeout(registerPushNotification, 2000);
     } catch (err) {
         const errorMsg = (err.message === 'Failed to fetch' || err.name === 'TypeError')
-            ? '缃戠粶杩炴帴澶辫触锛岃妫€鏌ユ墜鏈虹綉缁滃悗閲嶈瘯'
-            : (err.message || '鐧诲綍澶辫触');
+            ? '网络连接失败，请检查手机网络后重试'
+            : (err.message || '登录失败');
         if (authErrorMsg) {
             authErrorMsg.innerText = errorMsg;
             authErrorMsg.style.display = 'block';
@@ -147,7 +147,7 @@ export async function doLogin() {
     } finally {
         if (btnAuthSubmit) {
             btnAuthSubmit.disabled = false;
-            btnAuthSubmit.innerText = state.isRegisterMode ? '娉ㄥ唽骞惰繘鍏? : '鐧诲綍';
+            btnAuthSubmit.innerText = state.isRegisterMode ? '注册并进入' : '登录';
         }
     }
 }
@@ -163,13 +163,13 @@ export function initAuthUI() {
     btnAuthSwitch?.addEventListener('click', () => {
         state.isRegisterMode = !state.isRegisterMode;
         if (state.isRegisterMode) {
-            document.querySelector('.auth-btn').innerText = '娉ㄥ唽骞惰繘鍏?;
-            if (authSwitchText) authSwitchText.innerText = '宸叉湁璐﹀彿锛?;
-            btnAuthSwitch.innerText = '鐩存帴鐧诲綍';
+            document.querySelector('.auth-btn').innerText = '注册并进入';
+            if (authSwitchText) authSwitchText.innerText = '已有账号？';
+            btnAuthSwitch.innerText = '直接登录';
         } else {
-            document.querySelector('.auth-btn').innerText = '鐧诲綍';
-            if (authSwitchText) authSwitchText.innerText = '杩樻病鏈夎处鍙凤紵';
-            btnAuthSwitch.innerText = '绔嬪嵆娉ㄥ唽';
+            document.querySelector('.auth-btn').innerText = '登录';
+            if (authSwitchText) authSwitchText.innerText = '还没有账号？';
+            btnAuthSwitch.innerText = '立即注册';
         }
         if (authErrorMsg) authErrorMsg.style.display = 'none';
     });
@@ -209,7 +209,7 @@ export async function apiRequest(path, options = {}) {
                 return await apiRequest(path, { ...options, _isRetry: true });
             }
             logout({ reason: 'expired' });
-            throw new Error('鏈櫥褰曟垨鐧诲綍鐘舵€佸凡杩囨湡锛岃閲嶆柊鐧诲綍');
+            throw new Error('未登录或登录状态已过期，请重新登录');
         }
         if (!res.ok) {
             let detail = '';
@@ -217,12 +217,12 @@ export async function apiRequest(path, options = {}) {
                 const errBody = await res.json();
                 detail = errBody && errBody.error ? String(errBody.error) : '';
             } catch (_) {}
-            throw new Error(detail || `鎺ュ彛璇锋眰寮傚父 (${res.status})`);
+            throw new Error(detail || `接口请求异常 (${res.status})`);
         }
         return res.json();
     } catch (err) {
         if (err.name === 'AbortError' || (err.message && (err.message.includes('aborted') || err.message.includes('signal')))) {
-            throw new Error('缃戠粶璇锋眰瓒呮椂锛岃妫€鏌ョ綉缁滃悗閲嶈瘯');
+            throw new Error('网络请求超时，请检查网络后重试');
         }
         throw err;
     } finally {
@@ -265,7 +265,7 @@ async function sendSubscriptionToServer(subscription) {
     }
 }
 
-// 鈹€鈹€ Local storage / merge 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+// ── Local storage / merge ─────────────────────────────────────
 function rescueAndConsolidateLocalData() {
     let rescuedFeeds = [];
     let rescuedNotes = [];
@@ -356,7 +356,7 @@ export function toUpdatedTs(value) {
     if (!raw) return 0;
     if (/^\d+$/.test(raw)) return Number(raw);
     let s = raw.includes('T') ? raw : raw.replace(' ', 'T');
-    if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) s += 'Z';
+    if (!/[zZ]|[+\-]\d{2}:?\d{2}$/.test(s)) s += '+08:00';
     const t = Date.parse(s);
     return Number.isFinite(t) ? t : 0;
 }
@@ -614,10 +614,10 @@ export async function syncFromApi() {
                 state.bookmarksDatabase.forEach(i => { if (i) i._dirty = false; });
                 state.feedsDatabase.forEach(i => { if (i) i._dirty = false; });
                 saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase();
-                setSyncStatus('宸插悓姝?, 'ok', 2000);
+                setSyncStatus('已同步', 'ok', 2000);
             } catch (e) {
                 hadError = true;
-                setSyncStatus('鏈悓姝?路 灏嗛噸璇?, 'warn');
+                setSyncStatus('未同步 · 将重试', 'warn');
             }
         }
 
@@ -639,7 +639,7 @@ export async function syncFromApi() {
         }
 
         if (hadError) {
-            setSyncStatus('鍚屾寮傚父 路 灏嗛噸璇?, 'warn');
+            setSyncStatus('同步异常 · 将重试', 'warn');
             if (!pendingSyncRetryTimer) {
                 pendingSyncRetryTimer = setTimeout(() => {
                     pendingSyncRetryTimer = null;
@@ -674,7 +674,7 @@ function markSyncedItem(item) {
 
 function handleSyncFailure(err) {
     console.warn('[sync] failed:', err);
-    setSyncStatus('鏈悓姝?路 灏嗛噸璇?, 'warn');
+    setSyncStatus('未同步 · 将重试', 'warn');
     if (!pendingSyncRetryTimer) {
         pendingSyncRetryTimer = setTimeout(() => {
             pendingSyncRetryTimer = null;
@@ -693,7 +693,7 @@ export function apiSyncWeekly(item, method) {
     const id = method === 'POST' ? '' : `/${item.id}`;
     return apiRequest(`/api/weeklies${id}`, bm).then((res) => {
         if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('宸插悓姝?, 'ok', 1800);
+        setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
 }
@@ -708,7 +708,7 @@ export function apiSyncNote(item, method) {
     const id = method === 'POST' ? '' : `/${item.id}`;
     return apiRequest(`/api/notes${id}`, bm).then((res) => {
         if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('宸插悓姝?, 'ok', 1800);
+        setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
 }
@@ -723,7 +723,7 @@ export function apiSyncBookmark(item, method) {
     const id = method === 'POST' ? '' : `/${item.id}`;
     return apiRequest(`/api/bookmarks${id}`, bm).then((res) => {
         if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('宸插悓姝?, 'ok', 1800);
+        setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
 }
@@ -738,7 +738,7 @@ export function apiSyncFeed(item, method) {
     const id = method === 'POST' ? '' : `/${item.id}`;
     return apiRequest(`/api/feeds${id}`, bm).then((res) => {
         if (method !== 'DELETE') markSyncedItem(item);
-        setSyncStatus('宸插悓姝?, 'ok', 1800);
+        setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
 }
@@ -757,7 +757,7 @@ export async function checkAndMergeGuestData() {
     const hasGuestFeeds = guestFeeds.length > 0 && !(guestFeeds.length === 1 && guestFeeds[0].id === 1);
 
     if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds) {
-        if (confirm('妫€娴嬪埌鎮ㄥ湪鏈櫥褰曟椂鍦ㄥ綋鍓嶈澶囦笂鍒涘缓浜嗘湰鍦版暟鎹紙鍛ㄨ/绗旇/鏀惰棌/闅忔墜璁帮級銆傛槸鍚﹀皢杩欎簺鏁版嵁瀵煎叆骞跺悓姝ュ埌鎮ㄥ綋鍓嶇殑璐﹀彿涓紵')) {
+        if (confirm('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记）。是否将这些数据导入并同步到您当前的账号中？')) {
             try {
                 const userKey = getLocalKey('gardenData');
                 let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];
@@ -806,10 +806,10 @@ export async function checkAndMergeGuestData() {
                 localStorage.removeItem('default_gardenBookmarks');
                 localStorage.removeItem('default_gardenFeeds');
 
-                showToast('鏈湴鏁版嵁宸叉垚鍔熷悎骞跺苟鍚屾鑷充簯绔紒', 'success');
+                showToast('本地数据已成功合并并同步至云端！', 'success');
                 refresh('all');
             } catch (e) {
-                showToast('鍚堝苟鍚屾閮ㄥ垎鏁版嵁澶辫触锛? + e.message, 'error');
+                showToast('合并同步部分数据失败：' + e.message, 'error');
             }
         }
     }

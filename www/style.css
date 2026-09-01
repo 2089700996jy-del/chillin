@@ -2179,11 +2179,21 @@ body.keyboard-open .fab-btn {
 .echo-cards-container {
   margin-bottom: 24px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
   gap: 14px;
+  padding-bottom: 8px; /* For scrollbar breathing room */
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none; /* Firefox */
+}
+.echo-cards-container::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
 }
 
 .echo-card {
+  flex: 0 0 92%;
+  scroll-snap-align: center;
   background: var(--surface-color);
   border: 1px solid var(--border-color);
   border-radius: 16px;
