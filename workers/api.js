@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.4';
+const APP_VERSION = '2.5.5';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -1268,23 +1268,16 @@ async function router(path, method, request, env, ctx) {
         const { question, stream, history } = await request.json();
         if (!question) return jsonResponse({ error: '请输入问题' }, 400);
 
-        const [feedsRes, notesRes, weekliesRes, bookmarksRes] = await Promise.all([
-            db.prepare('SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 10').bind(userId).all(),
-            db.prepare('SELECT title, content, date FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all(),
-            db.prepare('SELECT title, summary, date FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all(),
-            db.prepare('SELECT title, url, description FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 5').bind(userId).all()
-        ]);
+        const rag = await retrieveGardenMemories(db, userId, question);
+        const contextText = rag.contextText;
+        const sources = rag.sources;
 
-        const rawContext = [
-            ...(feedsRes.results || []).map(f => `[随手记 ${f.created_at || ''}] ${f.content}`),
-            ...(notesRes.results || []).map(n => `[备忘录 ${n.date || ''}] ${n.title}: ${(n.content || '').slice(0, 100)}`),
-            ...(weekliesRes.results || []).map(w => `[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`),
-            ...(bookmarksRes.results || []).map(b => `[收藏] ${b.title}: ${b.description || ''}`)
-        ].join('\n');
-
-        const contextText = rawContext.length > 1500 ? rawContext.slice(0, 1500) + '\n...' : rawContext;
-
-        const systemPrompt = '你是用户在数字花园 Chillin 中的 AI 记忆助手。请根据用户过往花园记忆切片及对话历史，用温暖简炼的中文回答。未查到的内容请友好回答。';
+        const systemPrompt = [
+            '你是用户在数字花园 Chillin 中的 AI 记忆助手。',
+            '下面【检索到的记忆片段】已由系统按用户问题做过 RAG 筛选，请【只依据这些片段】回答，不要假设还有未提供的日记全文。',
+            '若片段为空或不相关，请明确说没有找到相关记忆，不要编造。',
+            '回答用温暖简炼的中文；可引用片段中的日期或标题，但不要逐字粘贴过长原文。'
+        ].join('');
 
         // 整理多轮对话历史
         const sanitizedHistory = (Array.isArray(history) ? history : [])
@@ -1292,12 +1285,10 @@ async function router(path, method, request, env, ctx) {
             .slice(-6);
 
         const messages = [
-            { role: 'system', content: `${systemPrompt}\n\n【用户花园记忆切片】:\n${contextText}` },
+            { role: 'system', content: `${systemPrompt}\n\n【检索到的记忆片段】:\n${contextText}` },
             ...sanitizedHistory,
             { role: 'user', content: question }
         ];
-
-        const userPrompt = `用户过往记忆上下文：\n${contextText}\n\n用户的问题：${question}`;
 
         if (stream) {
             const readable = new ReadableStream({
@@ -1307,6 +1298,7 @@ async function router(path, method, request, env, ctx) {
                         controller.enqueue(encoder.encode(`data: ${JSON.stringify(obj)}\n\n`));
                     };
                     try {
+                        push({ type: 'rag', sources, query_tokens: rag.tokens, time_range: rag.timeRange });
                         const streamed = await callCustomLlmStreamWithMessages(env, messages, (chunk) => {
                             const moderated = moderateText(chunk, env);
                             if (moderated.ok && moderated.text) {
@@ -1346,7 +1338,13 @@ async function router(path, method, request, env, ctx) {
             return jsonResponse({ error: '内容不合规，已拒绝输出' }, 403);
         }
 
-        return jsonResponse({ reply: moderated.text, question }, 200);
+        return jsonResponse({
+            reply: moderated.text,
+            question,
+            sources,
+            query_tokens: rag.tokens,
+            time_range: rag.timeRange
+        }, 200);
     }
 
     // ==================== AI 本周回顾 ====================
@@ -1548,21 +1546,279 @@ function extractTagsFromContent(text) {
     return tags;
 }
 
-function generateFallbackReply(question, contextText) {
-    if (!contextText || contextText.trim().length === 0) {
-        return `我在您的记忆花园里还没有找到相关记录。试着在顶部“随手记”里多记录一些想法吧！`;
+const RAG_STOPWORDS = new Set(
+    ('的了呢吗啊呀么吧就都也和与或在是有我你他她它们这那什么怎么为什么如何关于一下一些还是但是如果因为所以可以会能要到从上中下内被把让给对为及等着过了嘛嗯哈请问帮我看看说说讲讲总结一下最近有没有')
+        .match(/[\u4e00-\u9fff]{1,4}/g) || []
+);
+
+function east8NowParts(base = new Date()) {
+    const utc = base.getTime() + base.getTimezoneOffset() * 60000;
+    const east8 = new Date(utc + 8 * 3600000);
+    return {
+        y: east8.getFullYear(),
+        m: east8.getMonth(), // 0-11
+        d: east8.getDate(),
+        date: east8
+    };
+}
+
+function pad2(n) {
+    return String(n).padStart(2, '0');
+}
+
+function ymd(y, m0, d) {
+    return `${y}-${pad2(m0 + 1)}-${pad2(d)}`;
+}
+
+function parseTimeRangeFromQuestion(question) {
+    const q = String(question || '');
+    const { y, m, d, date } = east8NowParts();
+    if (/上个月|上月/.test(q)) {
+        const prev = new Date(y, m - 1, 1);
+        const last = new Date(y, m, 0);
+        return {
+            label: '上个月',
+            start: ymd(prev.getFullYear(), prev.getMonth(), 1),
+            end: ymd(last.getFullYear(), last.getMonth(), last.getDate())
+        };
     }
-    const keywords = question.replace(/[？?！!，,。.]/g, '').split('').filter(c => c.trim());
-    const lines = contextText.split('\n');
-    const matchedLines = lines.filter(line => keywords.some(kw => line.includes(kw)));
-    
-    if (matchedLines.length > 0) {
-        return `针对您的提问 **“${question}”**，我在您的过往记忆中找到了以下匹配片段：\n\n` +
-            matchedLines.slice(0, 5).map(l => `• ${l}`).join('\n') +
-            `\n\n💡 *提示：您可以持续添加随手记，让记忆网络更加丰富！*`;
+    if (/本月|这个月/.test(q)) {
+        const last = new Date(y, m + 1, 0);
+        return { label: '本月', start: ymd(y, m, 1), end: ymd(y, m, last.getDate()) };
+    }
+    if (/上周|上星期/.test(q)) {
+        const day = date.getDay() || 7; // Mon=1..Sun=7 style via getDay
+        const end = new Date(date);
+        end.setDate(d - day);
+        const start = new Date(end);
+        start.setDate(end.getDate() - 6);
+        return {
+            label: '上周',
+            start: ymd(start.getFullYear(), start.getMonth(), start.getDate()),
+            end: ymd(end.getFullYear(), end.getMonth(), end.getDate())
+        };
+    }
+    if (/本周|这周|这个星期/.test(q)) {
+        const day = date.getDay() || 7;
+        const start = new Date(date);
+        start.setDate(d - day + 1);
+        return {
+            label: '本周',
+            start: ymd(start.getFullYear(), start.getMonth(), start.getDate()),
+            end: ymd(y, m, d)
+        };
+    }
+    if (/昨天/.test(q)) {
+        const yest = new Date(date);
+        yest.setDate(d - 1);
+        const s = ymd(yest.getFullYear(), yest.getMonth(), yest.getDate());
+        return { label: '昨天', start: s, end: s };
+    }
+    if (/今天|今日/.test(q)) {
+        const s = ymd(y, m, d);
+        return { label: '今天', start: s, end: s };
+    }
+    if (/今年/.test(q)) {
+        return { label: '今年', start: `${y}-01-01`, end: `${y}-12-31` };
+    }
+    if (/去年/.test(q)) {
+        return { label: '去年', start: `${y - 1}-01-01`, end: `${y - 1}-12-31` };
+    }
+    const ym = q.match(/(\d{4})\s*年\s*(\d{1,2})\s*月/);
+    if (ym) {
+        const yy = Number(ym[1]);
+        const mm = Number(ym[2]) - 1;
+        const last = new Date(yy, mm + 1, 0);
+        return {
+            label: `${yy}年${mm + 1}月`,
+            start: ymd(yy, mm, 1),
+            end: ymd(yy, mm, last.getDate())
+        };
+    }
+    const yOnly = q.match(/(\d{4})\s*年/);
+    if (yOnly && !/月/.test(q)) {
+        const yy = Number(yOnly[1]);
+        return { label: `${yy}年`, start: `${yy}-01-01`, end: `${yy}-12-31` };
+    }
+    return null;
+}
+
+function tokenizeQuery(question) {
+    const text = String(question || '').toLowerCase()
+        .replace(/(上个月|上月|本月|这个月|上周|上星期|本周|这周|这个星期|昨天|今天|今日|今年|去年|\d{4}\s*年\s*\d{1,2}\s*月|\d{4}\s*年)/g, ' ');
+    const tokens = new Set();
+    for (const m of text.matchAll(/[a-z0-9_]{2,}/g)) tokens.add(m[0]);
+    const cjkRuns = text.match(/[\u4e00-\u9fff]+/g) || [];
+    for (const run of cjkRuns) {
+        if (run.length >= 2 && !RAG_STOPWORDS.has(run)) tokens.add(run);
+        for (let i = 0; i < run.length - 1; i++) {
+            const bi = run.slice(i, i + 2);
+            if (!RAG_STOPWORDS.has(bi)) tokens.add(bi);
+        }
+        for (let i = 0; i < run.length - 2; i++) {
+            tokens.add(run.slice(i, i + 3));
+        }
+    }
+    return [...tokens].filter(t => t && t.length >= 2);
+}
+
+function extractItemDate(item) {
+    const raw = item.date || item.created_at || item.updated_at || '';
+    const m = String(raw).match(/(\d{4}-\d{2}-\d{2})/);
+    return m ? m[1] : '';
+}
+
+function scoreMemoryChunk(item, tokens, timeRange) {
+    const dateStr = extractItemDate(item);
+    if (timeRange) {
+        if (!dateStr) return -1;
+        if (dateStr < timeRange.start || dateStr > timeRange.end) return -1;
+    }
+    const title = String(item.title || '');
+    const body = String(item.body || '');
+    const hayTitle = title.toLowerCase();
+    const hayBody = body.toLowerCase();
+    let score = 0;
+    let hits = 0;
+    for (const t of tokens) {
+        if (hayTitle.includes(t)) { score += 4; hits += 1; }
+        if (hayBody.includes(t)) { score += 2; hits += 1; }
+    }
+    if (tokens.length > 0 && hits === 0) {
+        return -1; // 有主题词时必须命中，避免整月日记被灌进上下文
+    }
+    if (timeRange) score += 3;
+    // 轻微偏好更新近的内容
+    if (dateStr) {
+        const ageDays = Math.max(0, (Date.now() - Date.parse(dateStr + 'T00:00:00+08:00')) / 86400000);
+        score += Math.max(0, 2 - ageDays / 180);
+    }
+    return score;
+}
+
+async function retrieveGardenMemories(db, userId, question, opts = {}) {
+    const topK = opts.topK || 8;
+    const maxChars = opts.maxChars || 1600;
+    const tokens = tokenizeQuery(question);
+    const timeRange = parseTimeRangeFromQuestion(question);
+
+    const [feedsRes, notesRes, weekliesRes, bookmarksRes] = await Promise.all([
+        db.prepare('SELECT id, content, created_at, updated_at, tags FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 100').bind(userId).all(),
+        db.prepare('SELECT id, title, content, date, created_at, updated_at FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all(),
+        db.prepare('SELECT id, title, summary, content, date, created_at, updated_at FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all(),
+        db.prepare('SELECT id, title, description, url, created_at, updated_at FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all()
+    ]);
+
+    const corpus = [];
+    for (const f of (feedsRes.results || [])) {
+        let tagText = '';
+        try { tagText = Array.isArray(JSON.parse(f.tags || '[]')) ? JSON.parse(f.tags || '[]').join(' ') : ''; } catch (_) {}
+        corpus.push({
+            type: '随手记',
+            id: f.id,
+            title: '',
+            body: `${f.content || ''} ${tagText}`.trim(),
+            date: f.created_at || f.updated_at || '',
+            created_at: f.created_at,
+            updated_at: f.updated_at
+        });
+    }
+    for (const n of (notesRes.results || [])) {
+        corpus.push({
+            type: '笔记',
+            id: n.id,
+            title: n.title || '',
+            body: n.content || '',
+            date: n.date || n.created_at || n.updated_at || '',
+            created_at: n.created_at,
+            updated_at: n.updated_at
+        });
+    }
+    for (const w of (weekliesRes.results || [])) {
+        corpus.push({
+            type: '周记',
+            id: w.id,
+            title: w.title || '',
+            body: `${w.summary || ''}\n${w.content || ''}`.trim(),
+            date: w.date || w.created_at || w.updated_at || '',
+            created_at: w.created_at,
+            updated_at: w.updated_at
+        });
+    }
+    for (const b of (bookmarksRes.results || [])) {
+        corpus.push({
+            type: '收藏',
+            id: b.id,
+            title: b.title || '',
+            body: `${b.description || ''} ${b.url || ''}`.trim(),
+            date: b.created_at || b.updated_at || '',
+            created_at: b.created_at,
+            updated_at: b.updated_at
+        });
     }
 
-    return `针对问题 **“${question}”**，基于您最近的记忆片段摘要：\n\n${lines.slice(0, 3).join('\n')}\n\n以上是为您整理的相关回响，请继续记录更多精彩灵感！`;
+    const ranked = corpus
+        .map(item => ({ ...item, score: scoreMemoryChunk(item, tokens, timeRange) }))
+        .filter(item => item.score >= 0)
+        .sort((a, b) => b.score - a.score || Number(b.id || 0) - Number(a.id || 0));
+
+    // 无关键词且无时间：不要倾倒全文，只取少量最近片段并标明
+    let selected = ranked.slice(0, topK);
+    if (tokens.length === 0 && !timeRange) {
+        selected = corpus
+            .slice()
+            .sort((a, b) => String(extractItemDate(b)).localeCompare(String(extractItemDate(a))))
+            .slice(0, Math.min(5, topK))
+            .map(item => ({ ...item, score: 0 }));
+    }
+
+    if (selected.length === 0) {
+        return {
+            tokens,
+            timeRange,
+            sources: [],
+            contextText: '（未检索到与问题匹配的记忆片段。请如实告知用户没有找到相关记录，不要编造。）'
+        };
+    }
+
+    const sources = [];
+    const blocks = [];
+    let used = 0;
+    selected.forEach((item, idx) => {
+        const dateLabel = extractItemDate(item) || '未知日期';
+        const titlePart = item.title ? ` · ${item.title}` : '';
+        const snippet = String(item.body || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+        const header = `[${idx + 1}] ${item.type}${titlePart} · ${dateLabel}`;
+        const block = `${header}\n${snippet}`;
+        if (used + block.length > maxChars && blocks.length > 0) return;
+        blocks.push(block);
+        used += block.length + 1;
+        sources.push({
+            type: item.type,
+            id: item.id,
+            date: dateLabel,
+            title: item.title || '',
+            snippet: snippet.slice(0, 80),
+            score: Math.round(item.score * 10) / 10
+        });
+    });
+
+    return {
+        tokens,
+        timeRange,
+        sources,
+        contextText: blocks.join('\n\n')
+    };
+}
+
+function generateFallbackReply(question, contextText) {
+    if (!contextText || contextText.trim().length === 0 || contextText.includes('未检索到')) {
+        return `我在您的记忆花园里没有检索到与「${question}」直接相关的片段。可以换个关键词，或先在随手记/笔记里多记下一些想法。`;
+    }
+    const lines = contextText.split('\n').filter(Boolean);
+    return `针对您的提问 **“${question}”**，系统检索到以下相关记忆片段：\n\n` +
+        lines.slice(0, 12).map(l => l.startsWith('[') ? l : `• ${l}`).join('\n') +
+        `\n\n💡 以上为检索结果摘要；接入模型后会基于这些片段作答，而不会吞掉全部日记。`;
 }
 
 async function cleanExpiredSessions(db) {
