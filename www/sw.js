@@ -1,26 +1,11 @@
 // Chillin Service Worker — 网络优先，离线回退缓存
-const CACHE_NAME = 'chillin-v48';
+const CACHE_NAME = 'chillin-v49';
+const APP_V = '2.5.3';
 const ASSETS = [
     '/',
     '/index.html',
-    '/app.js?v=2.5.2',
-    '/style.css?v=2.5.2',
-    '/js/version.js',
-    '/js/utils.js',
-    '/js/state.js',
-    '/js/api.js',
-    '/js/ui.js',
-    '/js/actions.js',
-    '/js/router.js',
-    '/js/weeklies.js',
-    '/js/notes.js',
-    '/js/bookmarks.js',
-    '/js/upload.js',
-    '/js/reader.js',
-    '/js/feeds.js',
-    '/js/echo-ai.js',
-    '/js/search.js',
-    '/js/pwa-update.js',
+    `/app.js?v=${APP_V}`,
+    `/style.css?v=${APP_V}`,
     '/manifest.json',
     '/icons/icon-192.png',
     '/icons/icon-512.png'
@@ -51,6 +36,16 @@ self.addEventListener('fetch', (e) => {
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;      // 只处理同源
     if (url.pathname.startsWith('/api/')) return;          // API 不缓存，交给网络
+
+    // ES modules / app shell JS: network-only so PWA doesn't stick on stale modules
+    const isModuleJs = url.pathname.startsWith('/js/') || url.pathname.endsWith('/app.js') || url.pathname === '/app.js';
+    if (isModuleJs) {
+        e.respondWith(
+            fetch(e.request).catch(() => caches.match(e.request).then((m) => m || caches.match('/index.html')))
+        );
+        return;
+    }
+
     e.respondWith(
         fetch(e.request)
             .then((res) => {

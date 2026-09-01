@@ -56,6 +56,34 @@ export function getLocalKey(key) {
     return state.authUser ? `${state.authUser.id}_${key}` : `default_${key}`;
 }
 
+const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds'];
+
+/** Per-user incremental sync cursor (migrates legacy global keys once). */
+export function getSyncCursor(resource) {
+    const keyed = localStorage.getItem(getLocalKey(`sync_${resource}`));
+    if (keyed) return keyed;
+    const legacy = localStorage.getItem(`chillin_sync_${resource}`);
+    if (legacy && state.authUser) {
+        localStorage.setItem(getLocalKey(`sync_${resource}`), legacy);
+        localStorage.removeItem(`chillin_sync_${resource}`);
+        return legacy;
+    }
+    return null;
+}
+
+export function setSyncCursor(resource, value) {
+    if (!value) return;
+    localStorage.setItem(getLocalKey(`sync_${resource}`), value);
+}
+
+export function clearSyncCursorsForUser(userId) {
+    if (userId == null) return;
+    for (const resource of SYNC_RESOURCES) {
+        localStorage.removeItem(`${userId}_sync_${resource}`);
+        localStorage.removeItem(`chillin_sync_${resource}`);
+    }
+}
+
 // ── Auth UI ───────────────────────────────────────────────────
 export function checkAuth() {
     const authOverlay = document.getElementById('auth-overlay');
@@ -72,6 +100,7 @@ export function checkAuth() {
 }
 
 export function logout(opts = {}) {
+    const uid = state.authUser?.id;
     if (state.authToken) {
         apiRequest('/api/auth/logout', { method: 'POST' }).catch(() => {});
     }
@@ -79,6 +108,7 @@ export function logout(opts = {}) {
     state.authUser = null;
     localStorage.removeItem('chillin_token');
     localStorage.removeItem('chillin_user');
+    clearSyncCursorsForUser(uid);
     checkAuth();
     if (opts.silent) return;
     if (opts.reason === 'expired') {
@@ -408,7 +438,6 @@ export function mergeDataLists(localList, apiList) {
 
 export function processApiSyncResult(localList, apiData, isIncremental = false) {
     if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false };
-    const deletedIds = getDeletedIds();
     const syncedIds = getSyncedIds();
 
     const apiIds = apiData.map(item => String(item.id));
@@ -419,10 +448,16 @@ export function processApiSyncResult(localList, apiData, isIncremental = false) 
         addSyncedIds(Array.from(newSynced));
     }
 
+    // Soft-delete tombstones from cloud → remember locally so we don't re-upload
+    for (const item of apiData) {
+        if (item && item.is_deleted && item.id != null) addDeletedId(item.id);
+    }
+    const deletedIdSet = new Set(getDeletedIds().map(String));
+
     const activeLocal = (localList || []).filter(item => {
         if (!item || item.id == null) return false;
         const strId = String(item.id);
-        if (deletedIds.includes(strId)) return false;
+        if (deletedIdSet.has(strId)) return false;
         
         // Soft delete from incremental sync
         const cloudItem = apiData.find(a => String(a.id) === strId);
@@ -516,7 +551,7 @@ export async function syncFromApi() {
 
     try {
         try {
-            const lastSync = localStorage.getItem('chillin_sync_weeklies');
+            const lastSync = getSyncCursor('weeklies');
             const url = lastSync ? `/api/weeklies?since=${encodeURIComponent(lastSync)}` : '/api/weeklies';
             const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
@@ -533,13 +568,13 @@ export async function syncFromApi() {
                 }
                 if (apiData.length > 0) {
                     const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) localStorage.setItem('chillin_sync_weeklies', maxTs);
+                    if (maxTs) setSyncCursor('weeklies', maxTs);
                 }
             }
         } catch (e) { hadError = true; }
 
         try {
-            const lastSync = localStorage.getItem('chillin_sync_notes');
+            const lastSync = getSyncCursor('notes');
             const url = lastSync ? `/api/notes?since=${encodeURIComponent(lastSync)}` : '/api/notes';
             const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
@@ -552,13 +587,13 @@ export async function syncFromApi() {
                 }
                 if (apiData.length > 0) {
                     const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) localStorage.setItem('chillin_sync_notes', maxTs);
+                    if (maxTs) setSyncCursor('notes', maxTs);
                 }
             }
         } catch (e) { hadError = true; }
 
         try {
-            const lastSync = localStorage.getItem('chillin_sync_bookmarks');
+            const lastSync = getSyncCursor('bookmarks');
             const url = lastSync ? `/api/bookmarks?since=${encodeURIComponent(lastSync)}` : '/api/bookmarks';
             const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
@@ -574,13 +609,13 @@ export async function syncFromApi() {
                 }
                 if (apiData.length > 0) {
                     const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) localStorage.setItem('chillin_sync_bookmarks', maxTs);
+                    if (maxTs) setSyncCursor('bookmarks', maxTs);
                 }
             }
         } catch (e) { hadError = true; }
 
         try {
-            const lastSync = localStorage.getItem('chillin_sync_feeds');
+            const lastSync = getSyncCursor('feeds');
             const url = lastSync ? `/api/feeds?since=${encodeURIComponent(lastSync)}` : '/api/feeds';
             const apiData = await apiRequest(url);
             if (Array.isArray(apiData)) {
@@ -593,20 +628,24 @@ export async function syncFromApi() {
                 }
                 if (apiData.length > 0) {
                     const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
-                    if (maxTs) localStorage.setItem('chillin_sync_feeds', maxTs);
+                    if (maxTs) setSyncCursor('feeds', maxTs);
                 }
             }
         } catch (e) { hadError = true; }
 
         if (needsBatchUpload) {
             try {
+                const deleted = new Set(getDeletedIds().map(String));
+                const alive = (list) => (list || [])
+                    .filter(item => item && item.id != null && !deleted.has(String(item.id)))
+                    .map(stripClientSyncFlags);
                 await apiRequest('/api/sync/batch', {
                     method: 'POST',
                     body: JSON.stringify({
-                        weeklies: state.database.map(stripClientSyncFlags),
-                        notes: state.notesDatabase.map(stripClientSyncFlags),
-                        bookmarks: state.bookmarksDatabase.map(stripClientSyncFlags),
-                        feeds: state.feedsDatabase.map(stripClientSyncFlags)
+                        weeklies: alive(state.database),
+                        notes: alive(state.notesDatabase),
+                        bookmarks: alive(state.bookmarksDatabase),
+                        feeds: alive(state.feedsDatabase)
                     })
                 });
                 state.database.forEach(i => { if (i) i._dirty = false; });

@@ -35,6 +35,7 @@ export function initBookmarks() {
 const renderBookmarks = () => {
     bookmarkListContainer.innerHTML = '';
     // Limit to latest 100 bookmarks for performance
+    const totalBookmarks = state.bookmarksDatabase.length;
     const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id).slice(0, 100);
 
     if (sortedBookmarks.length === 0) {
@@ -107,6 +108,14 @@ const renderBookmarks = () => {
 
         bookmarkListContainer.appendChild(card);
     });
+
+    if (totalBookmarks > 100) {
+        const hint = document.createElement('div');
+        hint.className = 'list-truncate-hint';
+        hint.style.cssText = 'text-align:center;padding:12px 8px;color:rgba(60,60,67,0.55);font-size:12px;';
+        hint.textContent = `仅显示最近 100 条，共 ${totalBookmarks} 条`;
+        bookmarkListContainer.appendChild(hint);
+    }
 };
 
 const openBookmarkEditor = () => {

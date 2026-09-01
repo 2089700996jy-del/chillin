@@ -353,6 +353,51 @@ async function isOwnedRecord(db, table, id, userId) {
     return Number(existing.user_id) === Number(userId);
 }
 
+/** 软删墓碑：已删除记录禁止被 INSERT OR REPLACE 复活 */
+async function isSoftDeletedRecord(db, table, id, userId) {
+    if (id == null || id === '') return false;
+    const row = await db.prepare(
+        `SELECT is_deleted FROM ${table} WHERE id = ?1 AND user_id = ?2`
+    ).bind(id, userId).first();
+    return !!(row && Number(row.is_deleted) === 1);
+}
+
+async function fetchSoftDeletedIdSet(db, tableName, userId, items) {
+    const ids = items.map(i => i.id).filter(id => id != null && id !== '');
+    if (ids.length === 0) return new Set();
+    const placeholders = ids.map((_, idx) => `?${idx + 2}`).join(',');
+    const res = await db.prepare(
+        `SELECT id FROM ${tableName} WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 1 AND id IN (${placeholders})`
+    ).bind(userId, ...ids).all();
+    return new Set((res.results || []).map(r => Number(r.id)));
+}
+
+/** 线上若未跑到 0013，启动时尽力补齐 is_deleted（重复列错误忽略） */
+let softDeleteSchemaReady = false;
+async function ensureSoftDeleteSchema(db) {
+    if (softDeleteSchemaReady) return;
+    const stmts = [
+        "ALTER TABLE weeklies ADD COLUMN is_deleted INTEGER DEFAULT 0",
+        "ALTER TABLE notes ADD COLUMN is_deleted INTEGER DEFAULT 0",
+        "ALTER TABLE bookmarks ADD COLUMN is_deleted INTEGER DEFAULT 0",
+        "ALTER TABLE quick_feeds ADD COLUMN is_deleted INTEGER DEFAULT 0",
+        "CREATE INDEX IF NOT EXISTS idx_weeklies_updated_at ON weeklies(updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)",
+        "CREATE INDEX IF NOT EXISTS idx_weeklies_is_deleted ON weeklies(is_deleted)",
+        "CREATE INDEX IF NOT EXISTS idx_notes_is_deleted ON notes(is_deleted)",
+        "CREATE INDEX IF NOT EXISTS idx_bookmarks_is_deleted ON bookmarks(is_deleted)",
+        "CREATE INDEX IF NOT EXISTS idx_quick_feeds_is_deleted ON quick_feeds(is_deleted)"
+    ];
+    for (const sql of stmts) {
+        try {
+            await db.prepare(sql).run();
+        } catch (_) {
+            // duplicate column / already exists
+        }
+    }
+    softDeleteSchemaReady = true;
+}
+
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
     const url = new URL(request.url);
@@ -749,6 +794,7 @@ async function router(path, method, request, env, ctx) {
     if (!userId) {
         return jsonResponse({ error: '未登录或登录已过期' }, 401);
     }
+    await ensureSoftDeleteSchema(db);
 
     // ==================== UPLOAD 上传 ====================
     if (path === '/api/upload' && method === 'POST') {
@@ -819,11 +865,14 @@ async function router(path, method, request, env, ctx) {
         if (!(await isOwnedRecord(db, 'weeklies', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
+        if (await isSoftDeletedRecord(db, 'weeklies', body.id, userId)) {
+            return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+        }
         const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'))`
+            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), 0)`
         ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
         const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse(formatWeekly(row), 201);
@@ -837,9 +886,10 @@ async function router(path, method, request, env, ctx) {
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
             `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, annotations=?8, updated_at=datetime('now', '+8 hours')
-             WHERE id=?9 AND user_id=?10`
+             WHERE id=?9 AND user_id=?10 AND IFNULL(is_deleted, 0) = 0`
         ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, id, userId).run();
         const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
+        if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
         return jsonResponse(formatWeekly(row), 200);
     }
 
@@ -871,15 +921,19 @@ async function router(path, method, request, env, ctx) {
         if (!(await isOwnedRecord(db, 'notes', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
+        if (await isSoftDeletedRecord(db, 'notes', body.id, userId)) {
+            return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+        }
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))`
+            `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0)`
         ).bind(body.id, body.title, body.content || '', body.date, annotations, userId).run();
         const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
         return jsonResponse({
             ...row,
-            annotations: row.annotations ? JSON.parse(row.annotations) : []
+            annotations: row.annotations ? JSON.parse(row.annotations) : [],
+            is_deleted: row.is_deleted === 1
         }, 201);
     }
 
@@ -889,12 +943,14 @@ async function router(path, method, request, env, ctx) {
         const body = await request.json();
         const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
         await db.prepare(
-            `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now', '+8 hours') WHERE id=?5 AND user_id=?6`
+            `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now', '+8 hours') WHERE id=?5 AND user_id=?6 AND IFNULL(is_deleted, 0) = 0`
         ).bind(body.title, body.content || '', body.date, annotations, id, userId).run();
         const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
+        if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
         return jsonResponse({
             ...row,
-            annotations: row.annotations ? JSON.parse(row.annotations) : []
+            annotations: row.annotations ? JSON.parse(row.annotations) : [],
+            is_deleted: row.is_deleted === 1
         }, 200);
     }
 
@@ -921,12 +977,15 @@ async function router(path, method, request, env, ctx) {
         if (!(await isOwnedRecord(db, 'bookmarks', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
+        if (await isSoftDeletedRecord(db, 'bookmarks', body.id, userId)) {
+            return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+        }
         const image = body.image || body.img || null;
         const description = body.desc || body.description || '';
         try {
             await db.prepare(
-                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'))`
+                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at, is_deleted)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), 0)`
             ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
         } catch (e) {
             try {
@@ -969,6 +1028,9 @@ async function router(path, method, request, env, ctx) {
         if (!(await isOwnedRecord(db, 'quick_feeds', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
+        if (body.id && await isSoftDeletedRecord(db, 'quick_feeds', body.id, userId)) {
+            return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+        }
         const content = body.content || '';
         const type = body.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
         const mediaUrl = body.media_url || body.mediaUrl || null;
@@ -984,8 +1046,8 @@ async function router(path, method, request, env, ctx) {
         if (body.id) {
             try {
                 await db.prepare(
-                    `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'))`
+                    `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'), 0)`
                 ).bind(body.id, userId, content, type, mediaUrl, summary, tagsJson, body.created_at || null).run();
             } catch (e) {
                 await db.prepare(
@@ -997,8 +1059,8 @@ async function router(path, method, request, env, ctx) {
         } else {
             try {
                 res = await db.prepare(
-                    `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours')) RETURNING *`
+                    `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0) RETURNING *`
                 ).bind(userId, content, type, mediaUrl, summary, tagsJson).first();
             } catch (e) {
                 res = await db.prepare(
@@ -1023,14 +1085,15 @@ async function router(path, method, request, env, ctx) {
         const tagsJson = JSON.stringify(tags);
         try {
             await db.prepare(
-                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5, updated_at=datetime('now', '+8 hours') WHERE id=?6 AND user_id=?7`
+                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5, updated_at=datetime('now', '+8 hours') WHERE id=?6 AND user_id=?7 AND IFNULL(is_deleted, 0) = 0`
             ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
         } catch (e) {
             await db.prepare(
-                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5 WHERE id=?6 AND user_id=?7`
+                `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5 WHERE id=?6 AND user_id=?7 AND IFNULL(is_deleted, 0) = 0`
             ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
         }
         const row = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
+        if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
         return jsonResponse(formatFeed(row), 200);
     }
 
@@ -1071,16 +1134,22 @@ async function router(path, method, request, env, ctx) {
         const allowedBookmarks = await fetchOwnedSet('bookmarks', bookmarks);
         const allowedFeeds = await fetchOwnedSet('quick_feeds', feeds);
 
+        const deletedWeeklies = await fetchSoftDeletedIdSet(db, 'weeklies', userId, weeklies);
+        const deletedNotes = await fetchSoftDeletedIdSet(db, 'notes', userId, notes);
+        const deletedBookmarks = await fetchSoftDeletedIdSet(db, 'bookmarks', userId, bookmarks);
+        const deletedFeeds = await fetchSoftDeletedIdSet(db, 'quick_feeds', userId, feeds);
+
         // 1. 周记
         for (const item of weeklies) {
             if (weeklies.length > 1 && item.id === 1) continue;
             if (item.id != null && !allowedWeeklies.has(item.id)) continue;
+            if (item.id != null && deletedWeeklies.has(Number(item.id))) continue;
             const weeklyData = item.weeklyData ? JSON.stringify(item.weeklyData) : null;
             const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
             statements.push(
                 db.prepare(
-                    `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'))`
+                    `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), 0)`
                 ).bind(item.id, item.category, item.title, item.summary, item.date, item.cover || '', weeklyData, item.content || '', annotations, userId)
             );
         }
@@ -1089,11 +1158,12 @@ async function router(path, method, request, env, ctx) {
         for (const item of notes) {
             if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
             if (item.id != null && !allowedNotes.has(item.id)) continue;
+            if (item.id != null && deletedNotes.has(Number(item.id))) continue;
             const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
             statements.push(
                 db.prepare(
-                    `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))`
+                    `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0)`
                 ).bind(item.id, item.title, item.content || '', item.date, annotations, userId)
             );
         }
@@ -1102,12 +1172,13 @@ async function router(path, method, request, env, ctx) {
         for (const item of bookmarks) {
             if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
             if (item.id != null && !allowedBookmarks.has(item.id)) continue;
+            if (item.id != null && deletedBookmarks.has(Number(item.id))) continue;
             const image = item.image || item.img || null;
             const description = item.desc || item.description || '';
             statements.push(
                 db.prepare(
-                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'))`
+                    `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), 0)`
                 ).bind(item.id, item.type, item.title, item.url, description, image, userId)
             );
         }
@@ -1116,6 +1187,7 @@ async function router(path, method, request, env, ctx) {
         for (const item of feeds) {
             if (feeds.length > 1 && item.id === 1) continue;
             if (item.id != null && !allowedFeeds.has(item.id)) continue;
+            if (item.id != null && deletedFeeds.has(Number(item.id))) continue;
             const content = item.content || '';
             const type = item.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
             const mediaUrl = item.media_url || item.mediaUrl || null;
@@ -1127,15 +1199,15 @@ async function router(path, method, request, env, ctx) {
             if (item.id) {
                 statements.push(
                     db.prepare(
-                        `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'))`
+                        `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'), 0)`
                     ).bind(item.id, userId, content, type, mediaUrl, summary, tagsJson, item.created_at || null)
                 );
             } else {
                 statements.push(
                     db.prepare(
-                        `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'))`
+                        `INSERT INTO quick_feeds (user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)`
                     ).bind(userId, content, type, mediaUrl, summary, tagsJson)
                 );
             }
@@ -1157,14 +1229,14 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/stats/heatmap' && method === 'GET') {
         const result = await db.prepare(`
             SELECT date_str, COUNT(*) as count FROM (
-                SELECT substr(created_at, 1, 10) as date_str FROM weeklies WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
+                SELECT substr(COALESCE(created_at, date, updated_at), 1, 10) as date_str FROM weeklies WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
                 UNION ALL
-                SELECT substr(created_at, 1, 10) as date_str FROM notes WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
+                SELECT substr(COALESCE(created_at, date, updated_at), 1, 10) as date_str FROM notes WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
                 UNION ALL
-                SELECT substr(created_at, 1, 10) as date_str FROM bookmarks WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
+                SELECT substr(COALESCE(created_at, updated_at), 1, 10) as date_str FROM bookmarks WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
                 UNION ALL
-                SELECT substr(created_at, 1, 10) as date_str FROM quick_feeds WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
-            ) GROUP BY date_str ORDER BY date_str ASC
+                SELECT substr(COALESCE(created_at, updated_at), 1, 10) as date_str FROM quick_feeds WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0
+            ) WHERE date_str IS NOT NULL AND date_str != '' GROUP BY date_str ORDER BY date_str ASC
         `).bind(userId).all();
 
         return jsonResponse(result.results || [], 200);
