@@ -23,7 +23,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.6">
+    <link rel="stylesheet" href="style.css?v=2.5.7">
 </head>
 <body>
 
@@ -46,6 +46,10 @@
                 <span id="auth-switch-text">还没有账号？</span>
                 <button id="btn-auth-switch" class="btn-text" type="button">立即注册</button>
             </div>
+            <button type="button" class="auth-force-refresh"
+                onclick="window._chillinForceRefresh && window._chillinForceRefresh()">
+                登录异常？强制刷新到最新版
+            </button>
         </div>
     </div>
 
@@ -112,7 +116,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <div class="app-version-badge" data-app-version>v2.5.5</div>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.7</button>
         </section>
 
         <!-- ========================================== -->
@@ -254,7 +258,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <div class="app-version-badge" data-app-version>v2.5.5</div>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.7</button>
         </section>
 
         <!-- ========================================== -->
@@ -311,7 +315,7 @@
             <div class="bookmark-grid" id="bookmark-list-container">
                 <!-- 收藏卡片由 JavaScript 动态渲染 -->
             </div>
-            <div class="app-version-badge" data-app-version>v2.5.5</div>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.7</button>
         </section>
 
         <!-- ========================================== -->
@@ -383,7 +387,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <div class="app-version-badge" data-app-version>v2.5.5</div>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.7</button>
         </section>
 
         <!-- ========================================== -->
@@ -451,7 +455,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <div class="app-version-badge" data-app-version>v2.5.5</div>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.7</button>
         </section>
 
     </main>
@@ -539,6 +543,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js"></script>
-    <script type="module" src="app.js?v=2.5.6"></script>
+    <script type="module" src="app.js?v=2.5.7"></script>
 </body>
 </html>
