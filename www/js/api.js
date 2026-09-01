@@ -538,23 +538,29 @@ export function processApiSyncResult(localList, apiData, isIncremental = false) 
 }
 
 let syncStatusTimer = null;
+/** 同步指示灯：ok=绿 / warn|info=黄 / error=红；无可见文字 */
 export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
     const el = document.getElementById('sync-status');
     if (!el) return;
     if (!message) {
         el.hidden = true;
-        el.textContent = '';
+        el.removeAttribute('data-tone');
+        el.removeAttribute('aria-label');
         return;
     }
+    // ok→绿，error→红，其余（同步中/将重试）→黄
+    const light = tone === 'ok' ? 'ok' : (tone === 'error' ? 'error' : 'warn');
     el.hidden = false;
-    el.textContent = message;
-    el.dataset.tone = tone;
+    el.textContent = '';
+    el.dataset.tone = light;
+    el.setAttribute('aria-label', message);
     if (syncStatusTimer) clearTimeout(syncStatusTimer);
     if (autoHideMs > 0) {
         syncStatusTimer = setTimeout(() => {
-            if (el.textContent === message) {
+            if (el.getAttribute('aria-label') === message) {
                 el.hidden = true;
-                el.textContent = '';
+                el.removeAttribute('data-tone');
+                el.removeAttribute('aria-label');
             }
         }, autoHideMs);
     }
@@ -601,6 +607,7 @@ export async function syncFromApi() {
     isSyncingInBg = true;
     let needsBatchUpload = false;
     let hadError = false;
+    setSyncStatus('同步中', 'info');
 
     try {
         try {
@@ -709,7 +716,7 @@ export async function syncFromApi() {
                 setSyncStatus('已同步', 'ok', 2000);
             } catch (e) {
                 hadError = true;
-                setSyncStatus('未同步 · 将重试', 'warn');
+                setSyncStatus('未同步', 'warn');
             }
         }
 
@@ -731,13 +738,15 @@ export async function syncFromApi() {
         }
 
         if (hadError) {
-            setSyncStatus('同步异常 · 将重试', 'warn');
+            setSyncStatus('同步异常', 'error');
             if (!pendingSyncRetryTimer) {
                 pendingSyncRetryTimer = setTimeout(() => {
                     pendingSyncRetryTimer = null;
                     syncFromApi();
                 }, 12000);
             }
+        } else if (!needsBatchUpload) {
+            setSyncStatus('已同步', 'ok', 2000);
         }
     } finally {
         isSyncingInBg = false;
@@ -766,7 +775,7 @@ function markSyncedItem(item) {
 
 function handleSyncFailure(err) {
     console.warn('[sync] failed:', err);
-    setSyncStatus('未同步 · 将重试', 'warn');
+    setSyncStatus('未同步', 'warn');
     if (!pendingSyncRetryTimer) {
         pendingSyncRetryTimer = setTimeout(() => {
             pendingSyncRetryTimer = null;
