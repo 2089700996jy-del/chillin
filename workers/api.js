@@ -1,6 +1,9 @@
 // Chillin API Worker — REST API for auth, weeklies, notes, bookmarks
 import webPush from 'web-push';
 
+/** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
+const APP_VERSION = '2.5.4';
+
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
     'https://chillin-bfc.pages.dev',
@@ -167,8 +170,14 @@ function corsResponse(body, status) {
     return new Response(JSON.stringify(body), { status, headers });
 }
 
-function jsonResponse(body, status) {
-    return corsResponse(body, status);
+function jsonResponse(body, status = 200, extraHeaders = null) {
+    const res = corsResponse(body, status);
+    if (extraHeaders && typeof extraHeaders === 'object') {
+        const headers = new Headers(res.headers);
+        for (const [k, v] of Object.entries(extraHeaders)) headers.set(k, v);
+        return new Response(res.body, { status: res.status, statusText: res.statusText, headers });
+    }
+    return res;
 }
 
 function validatePassword(password) {
@@ -401,6 +410,15 @@ async function ensureSoftDeleteSchema(db) {
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
     const url = new URL(request.url);
+
+    // Public: app version beacon (no auth) — PWA uses this to detect updates without Pages CDN lag
+    if (path === '/api/app-version' && method === 'GET') {
+        return jsonResponse(
+            { version: APP_VERSION, build: `v${APP_VERSION}` },
+            200,
+            { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'CDN-Cache-Control': 'no-store' }
+        );
+    }
 
     // Push notifications route
     if (path === '/api/push/subscribe' && method === 'POST') {
