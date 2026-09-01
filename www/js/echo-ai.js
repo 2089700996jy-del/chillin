@@ -221,6 +221,26 @@ async function sendAiChatMessage() {
             let buffer = '';
             let fullText = '';
             let isFirstChunk = true;
+            let sourcesMounted = false;
+
+            const mountSources = (sources) => {
+                if (sourcesMounted || !Array.isArray(sources) || sources.length === 0) return;
+                sourcesMounted = true;
+                const box = document.createElement('div');
+                box.className = 'ai-rag-sources';
+                box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(120,120,128,0.12);font-size:12px;color:rgba(60,60,67,0.75);line-height:1.45;';
+                const title = document.createElement('div');
+                title.style.cssText = 'font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85)';
+                title.textContent = `已检索 ${sources.length} 条相关记忆`;
+                box.appendChild(title);
+                sources.slice(0, 6).forEach((s) => {
+                    const row = document.createElement('div');
+                    const label = [s.type, s.date, s.title].filter(Boolean).join(' · ');
+                    row.textContent = `· ${label}${s.snippet ? ' — ' + s.snippet : ''}`;
+                    box.appendChild(row);
+                });
+                botMsgDiv.insertBefore(box, bubbleEl);
+            };
 
             while (true) {
                 const { done, value } = await reader.read();
@@ -239,6 +259,13 @@ async function sendAiChatMessage() {
                             if (payload.error) {
                                 bubbleEl.innerHTML = '🤖 ' + escapeHtml(payload.error);
                                 break;
+                            }
+                            if (payload.type === 'rag' && payload.sources) {
+                                mountSources(payload.sources);
+                                if (!payload.sources.length) {
+                                    bubbleEl.innerHTML = '🤖 未检索到直接相关记忆，正在据此回答…';
+                                }
+                                continue;
                             }
                             if (payload.delta) {
                                 if (isFirstChunk) {
@@ -260,6 +287,17 @@ async function sendAiChatMessage() {
         } else if (response.ok) {
             const res = await response.json();
             if (res && res.reply) {
+                if (Array.isArray(res.sources) && res.sources.length) {
+                    const box = document.createElement('div');
+                    box.className = 'ai-rag-sources';
+                    box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(120,120,128,0.12);font-size:12px;color:rgba(60,60,67,0.75);line-height:1.45;';
+                    box.innerHTML = `<div style="font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85)">已检索 ${res.sources.length} 条相关记忆</div>` +
+                        res.sources.slice(0, 6).map(s => {
+                            const label = [s.type, s.date, s.title].filter(Boolean).join(' · ');
+                            return `<div>· ${escapeHtml(label)}${s.snippet ? ' — ' + escapeHtml(s.snippet) : ''}</div>`;
+                        }).join('');
+                    botMsgDiv.insertBefore(box, bubbleEl);
+                }
                 bubbleEl.innerHTML = markdownToHtml(res.reply);
                 state.aiChatHistory.push({ role: 'assistant', content: res.reply });
                 aiChatBody.scrollTop = aiChatBody.scrollHeight;
