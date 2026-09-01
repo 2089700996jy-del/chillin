@@ -1,2 +1,0 @@
--- 已并入 migrations/0012_updated_at_and_push.sql
--- 请勿再手工执行本文件；使用：npx wrangler d1 migrations apply chillin-db --remote

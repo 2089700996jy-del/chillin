@@ -3,11 +3,11 @@ import { state } from './state.js';
 import { actions } from './actions.js';
 import {
     resolveAssetUrl,
-    getLocalKey,
     apiRequest,
     apiSyncFeed,
     stampLocalUpdate,
     addDeletedId,
+    saveFeedsDatabase,
 } from './api.js';
 
 export function initFeeds() {
@@ -194,7 +194,6 @@ function renderFeeds() {
                         if (parseRes.cover) feed.media_url = parseRes.cover;
                         feed.updated_at = getEast8Time();
                         feed._dirty = true;
-                        // saveFeedsDatabase() is global, assuming defined in context
                         saveFeedsDatabase();
                         renderFeeds();
                         apiSyncFeed(feed, 'PUT');
@@ -321,7 +320,7 @@ async function sendFeed() {
     stampLocalUpdate(newFeed);
 
     state.feedsDatabase.unshift(newFeed);
-    localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
+    saveFeedsDatabase();
     renderFeeds();
     actions.renderHeatmap();
 
@@ -373,10 +372,10 @@ window.deleteFeed = function(id) {
     if (!confirm('确定要删除这条随手记吗？')) return;
     addDeletedId(id);
     state.feedsDatabase = state.feedsDatabase.filter(f => String(f.id) !== String(id));
-    localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
+    saveFeedsDatabase();
     renderFeeds();
     actions.renderHeatmap();
-    apiRequest(`/api/feeds/${id}`, { method: 'DELETE' }).catch(() => {});
+    apiSyncFeed({ id }, 'DELETE');
 };
 
 window.previewImage = function(src) {
