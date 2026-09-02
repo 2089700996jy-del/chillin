@@ -1,3 +1,7 @@
+/**
+ * AI echo cards + chat modal (RAG-backed stream).
+ * Depends on api.js for requests; wires renderEchoCards onto actions.
+ */
 import { escapeHtml, markdownToHtml } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -21,27 +25,15 @@ function renderEchoCards() {
         return;
     }
 
-    container.innerHTML = state.echoCardsDatabase.map(card => {
-        let feedLinksHtml = '';
-        try {
-            // Removed feed links logic
-        } catch (e) {}
-
-        return `
+    container.innerHTML = state.echoCardsDatabase.map(card => `
             <div class="echo-card" id="echo-card-${card.id}">
                 <button class="echo-card-delete" onclick="deleteEchoCard(${card.id})" title="删除卡片">×</button>
                 <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
                 <div class="echo-card-title">${escapeHtml(card.title)}</div>
                 <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
-                ${feedLinksHtml}
             </div>
-        `;
-    }).join('');
+        `).join('');
 }
-
-window.jumpToFeed = function(feedId) {
-    actions.jumpToElement?.('feeds', `[data-feed-id="${CSS.escape(String(feedId))}"]`);
-};
 
 window.deleteEchoCard = function(id) {
     if (!confirm('确定要删除这张 AI 回响卡片吗？')) return;

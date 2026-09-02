@@ -1,3 +1,4 @@
+/** Bookmarks list and create-only editor (no edit-in-place). */
 import {
     generateUniqueId,
     escapeHtml,

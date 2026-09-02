@@ -1,3 +1,4 @@
+/** Global search across weeklies, notes, bookmarks, feeds, echo cards. */
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';

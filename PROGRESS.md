@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-09-01。供后续会话快速接续。当前前端/Worker：**v2.5.10**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-09-02。供后续会话快速接续。当前前端/Worker：**v2.5.11**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -12,8 +12,34 @@
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
 - 版本：`js/version.js` + `version.json` + Worker `APP_VERSION` + `sw.js` `CACHE_NAME`/`APP_V` + `index.html?v=` 需同步 bump
-- 前端模块：入口 `app.js` + `js/`（含 `config.js` / `pwa-update.js` / `version.js` 等）
 - Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制）
+
+## 模块地图（前端）
+
+依赖方向：`app.js`（编排）→ 业务模块 → `api.js` facade → `auth.js` / `sync.js` → `state` / `utils` / `config`。
+
+| 文件 | 职责 |
+|------|------|
+| `app.js` | DOMContentLoaded 编排：挂 hooks、init 各域、鉴权与自动同步 |
+| `js/config.js` | Worker Base URL、`resolveApiBase`（避免循环依赖） |
+| `js/version.js` | 可见版本号 `APP_VERSION` |
+| `js/state.js` | 共享可变状态与默认种子数据 |
+| `js/utils.js` | 纯函数工具（escapeHtml、东八区时间等） |
+| `js/actions.js` | 跨模块晚绑定动作表（避免循环 import） |
+| `js/ui.js` | UI 瞬态标志 |
+| `js/auth.js` | 登录/登出、`apiRequest`、push 订阅 |
+| `js/sync.js` | 本地持久化、增量同步、`apiSync*`、自动同步引擎 |
+| `js/api.js` | **薄 facade**：再导出 auth+sync，业务仍 `from './api.js'` |
+| `js/router.js` | Hash 路由与视图切换 |
+| `js/weeklies.js` | 周记画廊/编辑/批注 |
+| `js/notes.js` | 笔记列表/编辑/批注 |
+| `js/bookmarks.js` | 收藏（仅新建） |
+| `js/feeds.js` | 随手记流、热力图 |
+| `js/reader.js` | TXT 阅读器 |
+| `js/echo-ai.js` | AI 回响卡片与对话 |
+| `js/search.js` | 全局搜索 |
+| `js/upload.js` | 图片上传 |
+| `js/pwa-update.js` | SW 注册、版本探测、强制刷新 |
 
 ## 明确不做
 
@@ -22,35 +48,20 @@
 
 ## 近期已完成（摘要）
 
-### 安全
+### 结构清理（v2.5.11）
 
-- 限流（login/register/AI/upload/link）、PBKDF2、上传 `user_id` + 魔数校验、UGC 隔离表、CSP/`_headers`、Android `allowBackup=false`
-- VAPID 私钥为 `wrangler secret`；CORS 白名单；500 不回内部堆栈
+- 删除 echo-ai 死桩（`jumpToFeed` / 空 feedLinks）、Worker 未用 `callCustomLlmStream`、无用 `[data-force-refresh]` 绑定
+- `api.js` 拆为 `auth.js` + `sync.js` + facade（对外 import 不变）
 
-### 同步 / UX
+### 安全 / 同步 / PWA / AI
 
-- 按 `updated_at` 增量合并；软删防复活；按用户同步游标
-- 导航栏同步状态：**红黄绿灯**（无文字）
-- PWA：`updateViaCache:'none'`、Worker `/api/app-version` 探测、更新横幅
-- **强制刷新到最新版**（清 SW + Cache Storage，保留登录态）：登录页链接 / 版本号点击 / 横幅「强制更新」
-- 登录：Pages 代理失败自动回落 Worker；错误区分密码错 / 限流 / 网络 / 服务异常
-- 清理：合并 `apiSync*` / `syncFromApi` 表驱动；收紧 `api.js` 内部 export；修 `feeds.js` 缺 import；删 `preview-ios.html` / `schema-push.sql` 与死钩子 `getReaderAnnotations`
-
-### AI
-
-- 轻量 RAG（关键词 + 时间窗 Top-K）后再回答；UI 可展示来源
-
-### 数据 / API（至 migration 0013）
-
-- `is_deleted` 软删列 + 相关索引（0013）
-- 说明：线上曾由 Worker `ensureSoftDeleteSchema` 先补列，正式 `wrangler d1 migrations apply` 会因 duplicate column 失败；已手工补齐索引并写入 `d1_migrations` 记录，**远端现无待执行 migration**
+- 限流、PBKDF2、文件归属、CSP、软删增量同步、红黄绿灯、强制刷新、登录错误分类、轻量 RAG
 
 ## 部署
 
 ```bat
 cd chillin
 npx wrangler d1 migrations list chillin-db --remote
-npx wrangler d1 migrations apply chillin-db --remote
 npx wrangler deploy
 npm run sync:web
 git push origin main

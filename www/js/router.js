@@ -1,3 +1,4 @@
+/** Hash router: view switching, history stack, mobile bottom nav. */
 import { state } from './state.js';
 import { ui } from './ui.js';
 import { actions } from './actions.js';
