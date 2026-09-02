@@ -5,6 +5,9 @@
   "private": true,
   "scripts": {
     "sync:web": "node scripts/sync-web.js",
+    "bump": "node scripts/bump-version.mjs",
+    "bump:patch": "node scripts/bump-version.mjs patch --sync",
+    "bump:minor": "node scripts/bump-version.mjs minor --sync",
     "cap:sync": "npm run sync:web && npx cap sync",
     "cap:add:android": "npx cap add android"
   },
