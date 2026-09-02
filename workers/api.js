@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.10';
+const APP_VERSION = '2.5.11';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -1971,13 +1971,6 @@ async function callCustomLlmWithMessages(env, messages) {
         }
     }
     return '';
-}
-
-async function callCustomLlmStream(env, systemPrompt, userPrompt, onChunk) {
-    return callCustomLlmStreamWithMessages(env, [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt }
-    ], onChunk);
 }
 
 async function callCustomLlm(env, systemPrompt, userPrompt) {

@@ -1,3 +1,7 @@
+/**
+ * App bootstrap: wire hooks, init feature modules, auth + auto-sync + PWA.
+ * Feature domains live under ./js/*.js; HTTP/sync via ./js/api.js facade.
+ */
 import { APP_BUILD_LABEL } from './js/version.js';
 import { state } from './js/state.js';
 import { ui } from './js/ui.js';

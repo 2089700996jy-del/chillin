@@ -1,3 +1,4 @@
+/** Local TXT reader (IndexedDB bookshelf, chapters, themes). */
 import { escapeHtml } from './utils.js';
 import { actions } from './actions.js';
 

@@ -1,3 +1,4 @@
+/** Notes list, editor, drafts, and annotations. */
 import {
     escapeHtml,
     autoResizeTextarea,

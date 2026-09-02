@@ -1,3 +1,4 @@
+/** Weeklies gallery, article view, editor, and annotations. */
 import {
     escapeHtml,
     sanitizeHtml,

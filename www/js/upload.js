@@ -1,3 +1,4 @@
+/** Global image upload to /api/upload; writes resolved URL into target input. */
 import { state } from './state.js';
 import { API_BASE, resolveAssetUrl } from './api.js';
 

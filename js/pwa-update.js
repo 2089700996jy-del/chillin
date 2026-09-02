@@ -1,3 +1,7 @@
+/**
+ * PWA Service Worker registration, remote version probe, soft update banner,
+ * and forceRefreshToLatest (clear SW/Cache; keep login in localStorage).
+ */
 import { showToast } from './utils.js';
 import { APP_VERSION } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
@@ -8,7 +12,7 @@ let forceRefreshing = false;
  * 注销 Service Worker、清空 Cache Storage，再带时间戳硬刷新。
  * 不清理 localStorage（登录态保留）。
  */
-export async function forceRefreshToLatest(opts = {}) {
+async function forceRefreshToLatest(opts = {}) {
     if (forceRefreshing) return;
     const skipConfirm = !!opts.skipConfirm;
     if (!skipConfirm) {
@@ -58,15 +62,6 @@ if (typeof window !== 'undefined') {
 }
 
 function bindForceRefreshControls() {
-    document.querySelectorAll('[data-force-refresh]').forEach((el) => {
-        if (el.dataset.forceBound === '1') return;
-        el.dataset.forceBound = '1';
-        el.addEventListener('click', (e) => {
-            e.preventDefault();
-            forceRefreshToLatest({ skipConfirm: el.dataset.forceConfirm === '0' });
-        });
-    });
-
     document.querySelectorAll('[data-app-version]').forEach((el) => {
         if (el.dataset.forceBound === '1') return;
         el.dataset.forceBound = '1';
