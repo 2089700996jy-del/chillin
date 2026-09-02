@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-09-02。供后续会话快速接续。当前前端/Worker：**v2.5.11**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-09-02。供后续会话快速接续。当前前端/Worker：**v2.5.12**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -11,7 +11,7 @@
 - 数据库：Cloudflare D1（`migrations/0001`–`0013`，远端已对齐）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
-- 版本：`js/version.js` + `version.json` + Worker `APP_VERSION` + `sw.js` `CACHE_NAME`/`APP_V` + `index.html?v=` 需同步 bump
+- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `js/version.js`、`version.json`、Worker、`sw.js`、`index.html`（可加 `--sync`）
 - Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制）
 
 ## 模块地图（前端）
