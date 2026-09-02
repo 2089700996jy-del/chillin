@@ -4,20 +4,14 @@
   "description": "Chillin 数字花园 - 个人数字花园",
   "private": true,
   "scripts": {
-    "sync:web": "node scripts/sync-web.js",
     "bump": "node scripts/bump-version.mjs",
-    "bump:patch": "node scripts/bump-version.mjs patch --sync",
-    "bump:minor": "node scripts/bump-version.mjs minor --sync",
-    "cap:sync": "npm run sync:web && npx cap sync",
-    "cap:add:android": "npx cap add android"
+    "bump:patch": "node scripts/bump-version.mjs patch",
+    "bump:minor": "node scripts/bump-version.mjs minor"
   },
   "dependencies": {
-    "@capacitor/core": "^8.5.0",
     "web-push": "^3.6.7"
   },
   "devDependencies": {
-    "@capacitor/android": "^8.5.0",
-    "@capacitor/cli": "^8.5.0",
     "wrangler": "^4.86.0"
   }
 }

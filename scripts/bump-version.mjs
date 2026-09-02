@@ -7,20 +7,17 @@
  *   node scripts/bump-version.mjs minor
  *   node scripts/bump-version.mjs major
  *   node scripts/bump-version.mjs 2.6.0
- *   node scripts/bump-version.mjs 2.5.12 --sync   # also npm run sync:web
  *   node scripts/bump-version.mjs patch --dry-run
  */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { spawnSync } from 'child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 
 const args = process.argv.slice(2).filter((a) => a !== '--');
 const dryRun = args.includes('--dry-run');
-const doSync = args.includes('--sync');
 const targetArg = args.find((a) => !a.startsWith('--')) || 'patch';
 
 function read(rel) {
@@ -130,18 +127,7 @@ write('version.json', JSON.stringify({ version: next, build: `v${next}` }, null,
     }
 }
 
-if (doSync && !dryRun) {
-    console.log('running npm run sync:web ...');
-    const r = spawnSync(process.platform === 'win32' ? 'npm.cmd' : 'npm', ['run', 'sync:web'], {
-        cwd: root,
-        stdio: 'inherit',
-        shell: true,
-    });
-    if (r.status !== 0) process.exit(r.status || 1);
-}
-
 console.log('');
 console.log('Next:');
-console.log('  npm run sync:web          # if you did not pass --sync');
 console.log('  npx wrangler deploy');
 console.log('  git add -A && git commit && git push');

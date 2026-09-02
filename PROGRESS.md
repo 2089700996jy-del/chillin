@@ -11,8 +11,8 @@
 - 数据库：Cloudflare D1（`migrations/0001`–`0013`，远端已对齐）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
-- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `js/version.js`、`version.json`、Worker、`sw.js`、`index.html`（可加 `--sync`）
-- Android：Capacitor（`www/` 由 `npm run sync:web` 从根目录复制）
+- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `js/version.js`、`version.json`、Worker、`sw.js`、`index.html`
+- 形态：Web / PWA（Pages）；已移除 Capacitor Android 工程
 
 ## 模块地图（前端）
 
@@ -63,22 +63,12 @@
 cd chillin
 npx wrangler d1 migrations list chillin-db --remote
 npx wrangler deploy
-npm run sync:web
 git push origin main
 ```
 
 Secrets（勿进仓）：`LLM_API_KEY`、`VAPID_PRIVATE_KEY` 等。
 
 弱网推送可用代理：`HTTP_PROXY` / `HTTPS_PROXY=http://127.0.0.1:7888`
-
-## 本机编译 APK
-
-```bat
-npm run sync:web
-npx cap sync android
-cd android
-gradlew.bat assembleDebug
-```
 
 ## 可选下一步
 
