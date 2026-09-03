@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.12';
+const APP_VERSION = '2.5.13';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([

@@ -213,9 +213,10 @@ export function initPwaUpdates() {
             });
             window.addEventListener('focus', checkForUpdate);
             window.addEventListener('online', checkForUpdate);
+            // 省电：前台常开时约每 5 分钟探一次（原 20 秒）
             setInterval(() => {
                 if (document.visibilityState === 'visible') checkForUpdate();
-            }, 20 * 1000);
+            }, 5 * 60 * 1000);
         } catch (_) {}
     };
 
