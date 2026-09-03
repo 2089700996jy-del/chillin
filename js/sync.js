@@ -562,24 +562,27 @@ export async function checkAndMergeGuestData() {
 }
 
 let autoSyncInterval = null;
+let lastAutoSyncAt = 0;
+
+function requestAutoSync(minGapMs = 2500) {
+    if (!state.authToken) return;
+    const now = Date.now();
+    if (now - lastAutoSyncAt < minGapMs) return;
+    lastAutoSyncAt = now;
+    syncFromApi();
+}
+
 export function startAutoSyncEngine() {
     if (autoSyncInterval) clearInterval(autoSyncInterval);
+    // 省电：以前台切回/联网为主；前台常开时最多约每 5 分钟兜底一次（原 15 秒）
     autoSyncInterval = setInterval(() => {
-        if (document.visibilityState === 'visible' && state.authToken) {
-            syncFromApi();
-        }
-    }, 15000);
+        if (document.visibilityState === 'visible') requestAutoSync(60 * 1000);
+    }, 5 * 60 * 1000);
 
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'visible' && state.authToken) {
-            syncFromApi();
-        }
+        if (document.visibilityState === 'visible') requestAutoSync();
     });
-    window.addEventListener('focus', () => {
-        if (state.authToken) syncFromApi();
-    });
-    window.addEventListener('online', () => {
-        if (state.authToken) syncFromApi();
-    });
+    window.addEventListener('focus', () => requestAutoSync());
+    window.addEventListener('online', () => requestAutoSync(0));
 }
 
