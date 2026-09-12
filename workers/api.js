@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.13';
+const APP_VERSION = '2.5.14';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -369,10 +369,18 @@ async function verifyPassword(password, stored) {
 
 
 
+function isValidRecordId(id) {
+    if (id == null || id === '') return true;
+    const n = Number(id);
+    return Number.isSafeInteger(n) && n > 0;
+}
+
 // 越权防护：客户端可传 id 触发 INSERT OR REPLACE，写入前校验该 id 是否属于他人，防止跨用户覆盖
 async function isOwnedRecord(db, table, id, userId) {
     if (id == null || id === '') return true;
-    const existing = await db.prepare(`SELECT user_id FROM ${table} WHERE id = ?1`).bind(id).first();
+    const n = Number(id);
+    if (!Number.isSafeInteger(n) || n <= 0) return false;
+    const existing = await db.prepare(`SELECT user_id FROM ${table} WHERE id = ?1`).bind(n).first();
     if (!existing) return true;
     return Number(existing.user_id) === Number(userId);
 }
@@ -380,9 +388,11 @@ async function isOwnedRecord(db, table, id, userId) {
 /** 软删墓碑：已删除记录禁止被 INSERT OR REPLACE 复活 */
 async function isSoftDeletedRecord(db, table, id, userId) {
     if (id == null || id === '') return false;
+    const n = Number(id);
+    if (!Number.isSafeInteger(n) || n <= 0) return false;
     const row = await db.prepare(
         `SELECT is_deleted FROM ${table} WHERE id = ?1 AND user_id = ?2`
-    ).bind(id, userId).first();
+    ).bind(n, userId).first();
     return !!(row && Number(row.is_deleted) === 1);
 }
 
@@ -905,6 +915,9 @@ async function router(path, method, request, env, ctx) {
 
     if (path === '/api/weeklies' && method === 'POST') {
         const body = await request.json();
+        if (body.id != null && !isValidRecordId(body.id)) {
+            return jsonResponse({ error: '无效的记录 ID' }, 400);
+        }
         if (!(await isOwnedRecord(db, 'weeklies', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
@@ -961,6 +974,9 @@ async function router(path, method, request, env, ctx) {
 
     if (path === '/api/notes' && method === 'POST') {
         const body = await request.json();
+        if (body.id != null && !isValidRecordId(body.id)) {
+            return jsonResponse({ error: '无效的记录 ID' }, 400);
+        }
         if (!(await isOwnedRecord(db, 'notes', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
@@ -1017,6 +1033,9 @@ async function router(path, method, request, env, ctx) {
 
     if (path === '/api/bookmarks' && method === 'POST') {
         const body = await request.json();
+        if (body.id != null && !isValidRecordId(body.id)) {
+            return jsonResponse({ error: '无效的记录 ID' }, 400);
+        }
         if (!(await isOwnedRecord(db, 'bookmarks', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
@@ -1068,6 +1087,9 @@ async function router(path, method, request, env, ctx) {
 
     if (path === '/api/feeds' && method === 'POST') {
         const body = await request.json();
+        if (body.id != null && !isValidRecordId(body.id)) {
+            return jsonResponse({ error: '无效的记录 ID' }, 400);
+        }
         if (!(await isOwnedRecord(db, 'quick_feeds', body.id, userId))) {
             return jsonResponse({ error: '无权操作该记录' }, 403);
         }
@@ -1158,7 +1180,7 @@ async function router(path, method, request, env, ctx) {
 
         // 批量校验归属，消除 N+1 DB 轮询性能卡顿
         const fetchOwnedSet = async (tableName, items) => {
-            const ids = items.map(i => i.id).filter(id => id != null && id !== '');
+            const ids = items.map(i => i.id).filter(id => id != null && id !== '' && isValidRecordId(id));
             if (ids.length === 0) return new Set();
             const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(',');
             const res = await db.prepare(`SELECT id, user_id FROM ${tableName} WHERE id IN (${placeholders})`).bind(...ids).all();
@@ -1184,6 +1206,7 @@ async function router(path, method, request, env, ctx) {
 
         // 1. 周记
         for (const item of weeklies) {
+            if (item.id != null && !isValidRecordId(item.id)) continue;
             if (weeklies.length > 1 && item.id === 1) continue;
             if (item.id != null && !allowedWeeklies.has(item.id)) continue;
             if (item.id != null && deletedWeeklies.has(Number(item.id))) continue;
@@ -1199,6 +1222,7 @@ async function router(path, method, request, env, ctx) {
 
         // 2. 笔记
         for (const item of notes) {
+            if (item.id != null && !isValidRecordId(item.id)) continue;
             if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
             if (item.id != null && !allowedNotes.has(item.id)) continue;
             if (item.id != null && deletedNotes.has(Number(item.id))) continue;
@@ -1213,6 +1237,7 @@ async function router(path, method, request, env, ctx) {
 
         // 3. 收藏（必须带 image，避免 INSERT OR REPLACE 把封面刷成 NULL）
         for (const item of bookmarks) {
+            if (item.id != null && !isValidRecordId(item.id)) continue;
             if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
             if (item.id != null && !allowedBookmarks.has(item.id)) continue;
             if (item.id != null && deletedBookmarks.has(Number(item.id))) continue;
@@ -1228,6 +1253,7 @@ async function router(path, method, request, env, ctx) {
 
         // 4. 随手记
         for (const item of feeds) {
+            if (item.id != null && !isValidRecordId(item.id)) continue;
             if (feeds.length > 1 && item.id === 1) continue;
             if (item.id != null && !allowedFeeds.has(item.id)) continue;
             if (item.id != null && deletedFeeds.has(Number(item.id))) continue;

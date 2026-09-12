@@ -150,7 +150,7 @@ function renderFeeds() {
                     <div class="feed-tags">${tagHtml}</div>
                     <div style="display:flex;align-items:center;gap:10px;">
                         <span class="feed-date">${escapeHtml(feed.created_at || '')}</span>
-                        <button class="btn-text text-danger" onclick="deleteFeed(${feed.id})" style="font-size:12px;">删除</button>
+                        <button class="btn-text text-danger feed-delete-btn" data-feed-id="${escapeHtml(String(feed.id))}" style="font-size:12px;" type="button">删除</button>
                     </div>
                 </div>
                 ${textHtml}
@@ -365,6 +365,18 @@ if (feedInputText) {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             sendFeed();
+        }
+    });
+}
+
+const feedsStreamContainer = document.getElementById('feeds-stream-container');
+if (feedsStreamContainer) {
+    feedsStreamContainer.addEventListener('click', (e) => {
+        const deleteBtn = e.target.closest('.feed-delete-btn');
+        if (deleteBtn && deleteBtn.dataset.feedId) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.deleteFeed(deleteBtn.dataset.feedId);
         }
     });
 }
