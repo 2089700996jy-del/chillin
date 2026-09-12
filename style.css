@@ -37,17 +37,27 @@ button, a, input, textarea, select, div, span {
   -webkit-tap-highlight-color: transparent !important;
 }
 
-button:focus,
-button:focus-visible,
-a:focus,
-a:focus-visible,
-.btn-text:focus,
-.btn-chip:focus,
-.mobile-tab-item:focus,
-.nav-item:focus,
-.fab-btn:focus {
-  outline: none !important;
+/* 触控与鼠标点击时不显示默认高亮框 */
+button:focus:not(:focus-visible),
+a:focus:not(:focus-visible),
+.btn-text:focus:not(:focus-visible),
+.btn-chip:focus:not(:focus-visible),
+.mobile-tab-item:focus:not(:focus-visible),
+.nav-item:focus:not(:focus-visible),
+.fab-btn:focus:not(:focus-visible) {
+  outline: none;
   box-shadow: none;
+}
+
+/* 键盘导航时提供清晰的 iOS 蓝焦点指示（符合 WCAG 2.4.7 可访问性规范） */
+button:focus-visible,
+a:focus-visible,
+.btn-text:focus-visible,
+.btn-chip:focus-visible,
+.nav-item:focus-visible,
+.fab-btn:focus-visible {
+  outline: 2px solid var(--accent-color, #007AFF);
+  outline-offset: 2px;
 }
 
 /* ????????????????????????*/
