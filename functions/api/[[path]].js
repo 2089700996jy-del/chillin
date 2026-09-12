@@ -22,7 +22,7 @@ export async function onRequest(context) {
     try {
         return await fetch(targetUrl.toString(), init);
     } catch (err) {
-        return new Response(JSON.stringify({ error: 'Proxy error: ' + (err && err.message ? err.message : 'unknown') }), {
+        return new Response(JSON.stringify({ error: '网关连接异常，请稍后重试' }), {
             status: 502,
             headers: { 'Content-Type': 'application/json' },
         });
