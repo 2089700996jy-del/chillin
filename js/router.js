@@ -100,7 +100,8 @@ const switchView = (targetViewId, opts = {}) => {
         const activeNavs = document.querySelectorAll(`.nav-item[data-view="${targetViewId}"], .mobile-tab-item[data-view="${targetViewId}"]`);
         activeNavs.forEach(nav => nav.classList.add('active'));
         // Always leave reader chrome when on a main tab (fixes swipe-back theme leak)
-        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+        document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
+        document.documentElement.classList.remove('in-reader-book');
         const readerLayout = document.querySelector('.reader-layout');
         if (readerLayout) readerLayout.classList.remove('dark-reader', 'eyecare-reader');
         const themeMeta = document.querySelector('meta[name="theme-color"]');
@@ -149,6 +150,15 @@ const switchView = (targetViewId, opts = {}) => {
             fabBtn.style.display = '';
         }
     }
+
+    if (targetViewId === 'reader-book') {
+        document.body.classList.add('in-reader-book');
+        document.documentElement.classList.add('in-reader-book');
+    } else {
+        document.body.classList.remove('in-reader-book');
+        document.documentElement.classList.remove('in-reader-book');
+    }
+
     window.scrollTo(0, 0);
 
     if (!skipHistory && !ui.historyNavLock) {

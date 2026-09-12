@@ -299,7 +299,8 @@ window.closeReaderBook = function() {
 function clearReaderSession() {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
     if (currentBookId) onReaderScroll();
-    document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+    document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
+    document.documentElement.classList.remove('in-reader-book');
     const layout = document.querySelector('.reader-layout');
     if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
     const themeMeta = document.querySelector('meta[name="theme-color"]');
@@ -470,7 +471,40 @@ openReaderDB().then(() => {
     if (document.getElementById('view-reader').classList.contains('active')) renderBookshelf();
 });
 
+// Prevent outer page overscroll pull/bounce when reading on mobile touch devices
+let readerTouchStartY = 0;
+document.addEventListener('touchstart', (e) => {
+    if (!document.body.classList.contains('in-reader-book')) return;
+    if (e.touches && e.touches.length === 1) {
+        readerTouchStartY = e.touches[0].clientY;
+    }
+}, { passive: true });
 
+document.addEventListener('touchmove', (e) => {
+    if (!document.body.classList.contains('in-reader-book')) return;
+    const scrollContainer = e.target.closest('#reader-content-area, #sidebar-chapter-list');
+    if (!scrollContainer) {
+        // Prevent outer dragging on toolbar, bottom navigation, and screen edges
+        e.preventDefault();
+        return;
+    }
+    if (!e.touches || e.touches.length !== 1) return;
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - readerTouchStartY;
+    const isAtTop = scrollContainer.scrollTop <= 0;
+    const isAtBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 1;
+
+    // Pulling down while already at the top
+    if (isAtTop && deltaY > 0) {
+        e.preventDefault();
+        return;
+    }
+    // Pulling up while already at the bottom (prevents pulling out blank gap)
+    if (isAtBottom && deltaY < 0) {
+        e.preventDefault();
+        return;
+    }
+}, { passive: false });
 
     actions.renderBookshelf = renderBookshelf;
     actions.clearReaderSession = clearReaderSession;
