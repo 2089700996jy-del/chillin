@@ -2,7 +2,7 @@
 import webPush from 'web-push';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.16';
+const APP_VERSION = '2.5.17';
 
 // CORS 白名单：仅允许本站及本地调试域名跨域访问，防止流量被第三方站点盗用
 const ALLOWED_ORIGINS = new Set([
@@ -1073,6 +1073,70 @@ async function router(path, method, request, env, ctx) {
         return jsonResponse({ success: true }, 200);
     }
 
+    // ==================== PROMPTS 提示词库 ====================
+    if (path === '/api/prompts' && method === 'GET') {
+        const since = url.searchParams.get('since');
+        const project = url.searchParams.get('project');
+        const scene = url.searchParams.get('scene');
+        let query = 'SELECT * FROM prompts WHERE user_id = ?1';
+        const params = [userId];
+
+        if (since) {
+            query += ' AND updated_at > ?2 ORDER BY is_pinned DESC, id DESC';
+            params.push(since);
+        } else {
+            query += ' AND is_deleted = 0';
+            if (project && project !== 'all') {
+                params.push(project);
+                query += ` AND project = ?${params.length}`;
+            }
+            if (scene && scene !== 'all') {
+                params.push(scene);
+                query += ` AND scene = ?${params.length}`;
+            }
+            query += ' ORDER BY is_pinned DESC, id DESC';
+        }
+        const result = await db.prepare(query).bind(...params).all();
+        return jsonResponse((result.results || []).map(formatPrompt), 200);
+    }
+
+    if (path === '/api/prompts' && method === 'POST') {
+        const body = await request.json();
+        if (body.id != null && !isValidRecordId(body.id)) {
+            return jsonResponse({ error: '无效的记录 ID' }, 400);
+        }
+        if (!(await isOwnedRecord(db, 'prompts', body.id, userId))) {
+            return jsonResponse({ error: '无权操作该记录' }, 403);
+        }
+        if (await isSoftDeletedRecord(db, 'prompts', body.id, userId)) {
+            return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+        }
+        const title = (body.title || '').trim();
+        if (!title) return jsonResponse({ error: '提示词标题不能为空' }, 400);
+        const content = (body.content || '').trim();
+        if (!content) return jsonResponse({ error: '提示词正文不能为空' }, 400);
+        const project = (body.project || '通用').trim();
+        const scene = (body.scene || '开发').trim();
+        const description = (body.description || body.desc || '').trim();
+        const tags = (body.tags || '').trim();
+        const isPinned = body.is_pinned ? 1 : 0;
+
+        await db.prepare(
+            `INSERT OR REPLACE INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)`
+        ).bind(body.id, title, project, scene, content, description, tags, isPinned, userId).run();
+
+        const row = await db.prepare('SELECT * FROM prompts WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+        return jsonResponse(formatPrompt(row), 201);
+    }
+
+    const promptMatch = path.match(/^\/api\/prompts\/(\d+)$/);
+    if (promptMatch && method === 'DELETE') {
+        const id = parseInt(promptMatch[1]);
+        await db.prepare("UPDATE prompts SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
+        return jsonResponse({ success: true }, 200);
+    }
+
     // ==================== QUICK FEEDS 随手记流 ====================
     if (path === '/api/feeds' && method === 'GET') {
         const since = url.searchParams.get('since');
@@ -1175,6 +1239,7 @@ async function router(path, method, request, env, ctx) {
         const notes = body.notes || [];
         const bookmarks = body.bookmarks || [];
         const feeds = body.feeds || [];
+        const prompts = body.prompts || [];
 
         const statements = [];
 
@@ -1198,11 +1263,13 @@ async function router(path, method, request, env, ctx) {
         const allowedNotes = await fetchOwnedSet('notes', notes);
         const allowedBookmarks = await fetchOwnedSet('bookmarks', bookmarks);
         const allowedFeeds = await fetchOwnedSet('quick_feeds', feeds);
+        const allowedPrompts = await fetchOwnedSet('prompts', prompts);
 
         const deletedWeeklies = await fetchSoftDeletedIdSet(db, 'weeklies', userId, weeklies);
         const deletedNotes = await fetchSoftDeletedIdSet(db, 'notes', userId, notes);
         const deletedBookmarks = await fetchSoftDeletedIdSet(db, 'bookmarks', userId, bookmarks);
         const deletedFeeds = await fetchSoftDeletedIdSet(db, 'quick_feeds', userId, feeds);
+        const deletedPrompts = await fetchSoftDeletedIdSet(db, 'prompts', userId, prompts);
 
         // 1. 周记
         for (const item of weeklies) {
@@ -1280,6 +1347,27 @@ async function router(path, method, request, env, ctx) {
                     ).bind(userId, content, type, mediaUrl, summary, tagsJson)
                 );
             }
+        }
+
+        // 5. 提示词
+        for (const item of prompts) {
+            if (item.id != null && !isValidRecordId(item.id)) continue;
+            if (item.id != null && !allowedPrompts.has(item.id)) continue;
+            if (item.id != null && deletedPrompts.has(Number(item.id))) continue;
+            const title = (item.title || '').trim();
+            const content = (item.content || '').trim();
+            if (!title || !content) continue;
+            const project = (item.project || '通用').trim();
+            const scene = (item.scene || '开发').trim();
+            const description = (item.description || item.desc || '').trim();
+            const tags = (item.tags || '').trim();
+            const isPinned = item.is_pinned ? 1 : 0;
+            statements.push(
+                db.prepare(
+                    `INSERT OR REPLACE INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)`
+                ).bind(item.id, title, project, scene, content, description, tags, isPinned, userId)
+            );
         }
 
         if (statements.length > 0) {
@@ -1575,13 +1663,15 @@ async function router(path, method, request, env, ctx) {
         const notes = await db.prepare('SELECT * FROM notes WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
         const bookmarks = await db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
         const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
+        const prompts = await db.prepare('SELECT * FROM prompts WHERE user_id = ?1 AND is_deleted = 0').bind(userId).all();
 
         return jsonResponse({
             exported_at: new Date().toISOString(),
             weeklies: (weeklies.results || []).map(formatWeekly),
             notes: (notes.results || []).map(row => ({ ...row, annotations: row.annotations ? JSON.parse(row.annotations) : [] })),
             bookmarks: (bookmarks.results || []).map(formatBookmark),
-            feeds: (feeds.results || []).map(formatFeed)
+            feeds: (feeds.results || []).map(formatFeed),
+            prompts: (prompts.results || []).map(formatPrompt)
         }, 200);
     }
 
@@ -2035,6 +2125,24 @@ function formatBookmark(row) {
         desc,
         description: desc,
         image: row.image || null,
+        user_id: row.user_id,
+        created_at: row.created_at || null,
+        updated_at: row.updated_at || null,
+        is_deleted: row.is_deleted === 1
+    };
+}
+
+function formatPrompt(row) {
+    if (!row) return null;
+    return {
+        id: row.id,
+        title: row.title,
+        project: row.project || '通用',
+        scene: row.scene || '开发',
+        content: row.content || '',
+        description: row.description || '',
+        tags: row.tags || '',
+        is_pinned: row.is_pinned === 1 ? 1 : 0,
         user_id: row.user_id,
         created_at: row.created_at || null,
         updated_at: row.updated_at || null,

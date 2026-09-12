@@ -9,6 +9,7 @@ import {
     DEFAULT_NOTES,
     DEFAULT_BOOKMARKS,
     DEFAULT_FEEDS,
+    DEFAULT_PROMPTS,
 } from './state.js';
 import {
     apiRequest,
@@ -16,7 +17,7 @@ import {
     refresh,
 } from './auth.js';
 
-const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds'];
+const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds', 'prompts'];
 
 /** Per-user incremental sync cursor (migrates legacy global keys once). */
 function getSyncCursor(resource) {
@@ -41,6 +42,7 @@ function rescueAndConsolidateLocalData() {
     let rescuedNotes = [];
     let rescuedWeeklies = [];
     let rescuedBookmarks = [];
+    let rescuedPrompts = [];
 
     try {
         for (let i = 0; i < localStorage.length; i++) {
@@ -58,6 +60,9 @@ function rescueAndConsolidateLocalData() {
             } else if (key.includes('gardenBookmarks')) {
                 const items = JSON.parse(localStorage.getItem(key));
                 if (Array.isArray(items)) rescuedBookmarks.push(...items);
+            } else if (key.includes('gardenPrompts')) {
+                const items = JSON.parse(localStorage.getItem(key));
+                if (Array.isArray(items)) rescuedPrompts.push(...items);
             }
         }
     } catch (e) {}
@@ -77,7 +82,8 @@ function rescueAndConsolidateLocalData() {
         feeds: cleanList(rescuedFeeds, [1]),
         notes: cleanList(rescuedNotes, [101, 102]),
         weeklies: cleanList(rescuedWeeklies, [1]),
-        bookmarks: cleanList(rescuedBookmarks, [201, 202, 203])
+        bookmarks: cleanList(rescuedBookmarks, [201, 202, 203]),
+        prompts: cleanList(rescuedPrompts, [301, 302, 303, 304])
     };
 }
 
@@ -272,10 +278,12 @@ export function loadLocalData() {
     const currentNotes = JSON.parse(localStorage.getItem('gardenNotes')) || JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || [];
     const currentData = JSON.parse(localStorage.getItem('gardenData')) || JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || [];
     const currentBookmarks = JSON.parse(localStorage.getItem('gardenBookmarks')) || JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || [];
+    const currentPrompts = JSON.parse(localStorage.getItem(getLocalKey('gardenPrompts'))) || [];
 
     state.database = mergeDataLists(currentData, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
     state.notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES);
     state.bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS);
+    state.promptsDatabase = mergeDataLists(currentPrompts, rescued.prompts.length > 0 ? rescued.prompts : DEFAULT_PROMPTS);
     state.feedsDatabase = mergeDataLists(currentFeeds, rescued.feeds.length > 0 ? rescued.feeds : DEFAULT_FEEDS);
     state.echoCardsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenEchoCards'))) || [];
 
@@ -283,6 +291,7 @@ export function loadLocalData() {
         saveDatabase();
         saveNotesDatabase();
         saveBookmarksDatabase();
+        savePromptsDatabase();
         saveFeedsDatabase();
     }
 
@@ -332,6 +341,15 @@ export async function syncFromApi() {
             refresh: () => refresh('bookmarks'),
         },
         {
+            resource: 'prompts',
+            path: '/api/prompts',
+            getList: () => state.promptsDatabase,
+            setList: (list) => { state.promptsDatabase = list; },
+            save: savePromptsDatabase,
+            shouldRefresh: () => getActiveViewId() === 'view-bookmarks',
+            refresh: () => actions.renderPrompts?.(),
+        },
+        {
             resource: 'feeds',
             path: '/api/feeds',
             getList: () => state.feedsDatabase,
@@ -377,14 +395,16 @@ export async function syncFromApi() {
                         weeklies: alive(state.database),
                         notes: alive(state.notesDatabase),
                         bookmarks: alive(state.bookmarksDatabase),
-                        feeds: alive(state.feedsDatabase)
+                        feeds: alive(state.feedsDatabase),
+                        prompts: alive(state.promptsDatabase)
                     })
                 });
                 state.database.forEach(i => { if (i) i._dirty = false; });
                 state.notesDatabase.forEach(i => { if (i) i._dirty = false; });
                 state.bookmarksDatabase.forEach(i => { if (i) i._dirty = false; });
                 state.feedsDatabase.forEach(i => { if (i) i._dirty = false; });
-                saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase();
+                state.promptsDatabase.forEach(i => { if (i) i._dirty = false; });
+                saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase(); savePromptsDatabase();
                 setSyncStatus('已同步', 'ok', 2000);
             } catch (e) {
                 hadError = true;
@@ -433,6 +453,9 @@ export function saveNotesDatabase() {
 }
 export function saveBookmarksDatabase() {
     localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(state.bookmarksDatabase));
+}
+export function savePromptsDatabase() {
+    localStorage.setItem(getLocalKey('gardenPrompts'), JSON.stringify(state.promptsDatabase));
 }
 export function saveFeedsDatabase() {
     localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
@@ -483,6 +506,10 @@ export function apiSyncNote(item, method) {
 
 export function apiSyncBookmark(item, method) {
     return apiSyncResource('/api/bookmarks', item, method);
+}
+
+export function apiSyncPrompt(item, method) {
+    return apiSyncResource('/api/prompts', item, method);
 }
 
 export function apiSyncFeed(item, method) {

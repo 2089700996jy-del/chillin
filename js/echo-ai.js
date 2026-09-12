@@ -352,9 +352,18 @@ if (aiChatInput) {
     });
 }
 
-
+function sendToAiChat(promptText) {
+    if (!aiChatModal || !aiChatInput) return;
+    aiChatModal.classList.add('show');
+    aiChatInput.value = promptText;
+    aiChatInput.focus();
+    if (typeof aiChatInput.setSelectionRange === 'function') {
+        aiChatInput.setSelectionRange(promptText.length, promptText.length);
+    }
+}
 
     actions.renderEchoCards = renderEchoCards;
+    actions.sendToAiChat = sendToAiChat;
 
-    return { renderEchoCards };
+    return { renderEchoCards, sendToAiChat };
 }

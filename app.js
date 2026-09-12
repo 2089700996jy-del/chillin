@@ -20,6 +20,7 @@ import { initRouter } from './js/router.js';
 import { initWeeklies } from './js/weeklies.js';
 import { initNotes } from './js/notes.js';
 import { initBookmarks } from './js/bookmarks.js';
+import { initPrompts } from './js/prompts.js';
 import { initUpload } from './js/upload.js';
 import { initReader } from './js/reader.js';
 import { initFeeds } from './js/feeds.js';
@@ -80,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.renderCards?.();
                 actions.renderNotes?.();
                 actions.renderBookmarks?.();
+                actions.renderPrompts?.();
                 actions.renderFeeds?.();
                 actions.renderEchoCards?.();
                 actions.renderHeatmap?.();
@@ -88,6 +90,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (kind === 'weeklies') actions.renderCards?.(opts.filter || 'all');
             if (kind === 'notes') actions.renderNotes?.();
             if (kind === 'bookmarks') actions.renderBookmarks?.();
+            if (kind === 'prompts') actions.renderPrompts?.();
             if (kind === 'feeds') actions.renderFeeds?.();
             if (kind === 'echo') actions.renderEchoCards?.();
             if (kind === 'heatmap') actions.renderHeatmap?.();
@@ -100,6 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('weeklies', initWeeklies);
     safeInit('notes', initNotes);
     safeInit('bookmarks', initBookmarks);
+    safeInit('prompts', initPrompts);
     safeInit('reader', initReader);
     safeInit('feeds', initFeeds);
     safeInit('echoAi', initEchoAi);

@@ -36,12 +36,56 @@ export const DEFAULT_FEEDS = [
     }
 ];
 
+export const DEFAULT_PROMPTS = [
+    {
+        id: 301,
+        title: "代码审查与重构专家",
+        project: "Chillin",
+        scene: "开发",
+        content: "你是一位资深全栈工程师与架构专家。请审查以下代码，指出潜在缺陷、性能瓶颈、可维护性问题，并给出符合最佳实践的重构版本：\n\n```\n{{输入代码}}\n```\n\n要求：\n1. 先给出核心问题清单（按严重程度排序）\n2. 给出简洁清晰的优化后完整代码\n3. 简短说明重构前后的改进点",
+        description: "深度审查代码质量，找出性能与安全性隐患并重构",
+        tags: "#代码,#重构",
+        is_pinned: 1
+    },
+    {
+        id: 302,
+        title: "周报与工作成果提炼",
+        project: "日常工作",
+        scene: "写作",
+        content: "请根据我本周的零散工作记录，提炼整理一份结构清晰、重点突出的专业周报：\n\n【本周原始记录】：\n{{本周工作碎片}}\n\n要求格式：\n- 🎯 核心产出与成果（数据化量化）\n- 🚀 重点攻关与解决的问题\n- 💡 经验复盘与下周规划",
+        description: "将零碎想法或日志整理为大厂级专业周报",
+        tags: "#周报,#工作",
+        is_pinned: 1
+    },
+    {
+        id: 303,
+        title: "深度思考追问与反思",
+        project: "思维模型",
+        scene: "推演",
+        content: "请针对我当前的观点或决策进行批判性思维（Critical Thinking）审视：\n\n【我的观点/决策】：\n{{输入你的想法}}\n\n请扮演严厉但富有洞察力的苏格拉底式导师：\n1. 寻找该论点背后的隐含假设（这些假设一定成立吗？）\n2. 列出最强烈的 3 个反面证据或潜在盲区\n3. 提供 2 个能从根本上检验该想法的可行性微实验",
+        description: "用苏格拉底式追问识别盲区与底层假设",
+        tags: "#思维,#决策",
+        is_pinned: 0
+    },
+    {
+        id: 304,
+        title: "结构化 Markdown 润色",
+        project: "内容创作",
+        scene: "润色",
+        content: "请阅读以下草稿，在保留原作者口吻和核心信息的前提下，进行中文语言润色与排版优化：\n\n【草稿原文】：\n{{输入草稿}}\n\n润色原则：\n1. 消除啰嗦赘字，增强节奏感与表现力\n2. 统一中英文排版规范（中英文混排加空格）\n3. 梳理清晰的层级标题与要点列表，提升阅读愉悦感",
+        description: "精修中英文混排、标点规范与表达节奏",
+        tags: "#写作,#排版",
+        is_pinned: 0
+    }
+];
+
 export const state = {
     authToken: localStorage.getItem('chillin_token') || '',
     authUser: JSON.parse(localStorage.getItem('chillin_user') || 'null'),
     database: [],
     notesDatabase: [],
     bookmarksDatabase: [],
+    promptsDatabase: [],
     feedsDatabase: [],
     echoCardsDatabase: [],
     aiChatHistory: [],
