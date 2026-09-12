@@ -2194,18 +2194,18 @@ body.keyboard-open .fab-btn {
 .echo-card {
   flex: 0 0 92%;
   scroll-snap-align: center;
-  background: var(--surface-color);
-  border: 1px solid var(--border-color);
+  background: var(--card-bg, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 16px;
   padding: 20px;
   position: relative;
   overflow: hidden;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   transition: box-shadow 0.2s, transform 0.2s;
 }
 
 .echo-card:hover {
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--card-hover-shadow, 0 8px 24px rgba(0, 0, 0, 0.06));
   transform: translateY(-2px);
 }
 
@@ -2215,7 +2215,7 @@ body.keyboard-open .fab-btn {
   gap: 6px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--primary-color);
+  color: var(--accent-color, var(--ios-blue));
   background: rgba(0, 122, 255, 0.1);
   padding: 4px 12px;
   border-radius: 20px;
@@ -2225,7 +2225,7 @@ body.keyboard-open .fab-btn {
 .echo-card-title {
   font-size: 17px;
   font-weight: 700;
-  color: var(--text-main);
+  color: var(--text-color, #1c1c1e);
   margin-bottom: 8px;
   line-height: 1.4;
 }
@@ -2233,7 +2233,7 @@ body.keyboard-open .fab-btn {
 .echo-card-summary {
   font-size: 14px;
   line-height: 1.6;
-  color: var(--text-secondary);
+  color: var(--text-color-light, rgba(60, 60, 67, 0.6));
 }
 
 .echo-card-delete {

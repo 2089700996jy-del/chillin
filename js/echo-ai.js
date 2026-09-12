@@ -27,7 +27,7 @@ function renderEchoCards() {
 
     container.innerHTML = state.echoCardsDatabase.map(card => `
             <div class="echo-card" id="echo-card-${card.id}">
-                <button class="echo-card-delete" onclick="deleteEchoCard(${card.id})" title="删除卡片">×</button>
+                <button class="echo-card-delete" data-card-id="${escapeHtml(String(card.id))}" title="删除卡片" type="button">×</button>
                 <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
                 <div class="echo-card-title">${escapeHtml(card.title)}</div>
                 <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
@@ -42,6 +42,18 @@ window.deleteEchoCard = function(id) {
     renderEchoCards();
     apiRequest('/api/echo/cards/' + id, { method: 'DELETE' }).catch(() => {});
 };
+
+const echoCardsContainer = document.getElementById('echo-cards-container');
+if (echoCardsContainer) {
+    echoCardsContainer.addEventListener('click', (e) => {
+        const deleteBtn = e.target.closest('.echo-card-delete');
+        if (deleteBtn && deleteBtn.dataset.cardId) {
+            e.preventDefault();
+            e.stopPropagation();
+            window.deleteEchoCard(deleteBtn.dataset.cardId);
+        }
+    });
+}
 
 async function fetchAiChatStream(body, isRetry = false) {
     const headers = { 'Content-Type': 'application/json' };
