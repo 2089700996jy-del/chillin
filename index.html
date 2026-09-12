@@ -23,7 +23,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.16">
+    <link rel="stylesheet" href="style.css?v=2.5.17">
 </head>
 <body>
 
@@ -116,7 +116,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.16</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.17</button>
         </section>
 
         <!-- ========================================== -->
@@ -258,7 +258,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.16</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.17</button>
         </section>
 
         <!-- ========================================== -->
@@ -307,15 +307,70 @@
         <!-- ========================================== -->
         <!-- VIEW 6: BOOKMARKS LIST -->
         <!-- ========================================== -->
+        <!-- ========================================== -->
+        <!-- VIEW 6: BOOKMARKS LIST -->
+        <!-- ========================================== -->
         <section id="view-bookmarks" class="view-section">
             <header class="page-header">
-                <h1 class="page-title">收藏.</h1>
+                <div class="page-header-row">
+                    <h1 class="page-title">收藏.</h1>
+                    <div class="segmented-control" id="bookmarks-tab-switcher">
+                        <button type="button" class="segment-btn active" data-subtab="resources">🔖 网址资源</button>
+                        <button type="button" class="segment-btn" data-subtab="prompts">🤖 提示词库</button>
+                    </div>
+                </div>
             </header>
             
-            <div class="bookmark-grid" id="bookmark-list-container">
-                <!-- 收藏卡片由 JavaScript 动态渲染 -->
+            <!-- 子面板 1: 网址与资源 -->
+            <div id="subview-resources" class="bookmarks-subview active">
+                <div class="bookmark-grid" id="bookmark-list-container">
+                    <!-- 收藏卡片由 JavaScript 动态渲染 -->
+                </div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.16</button>
+
+            <!-- 子面板 2: AI 提示词库 -->
+            <div id="subview-prompts" class="bookmarks-subview" style="display:none;">
+                <div class="prompts-toolbar">
+                    <div class="prompts-search-row">
+                        <div class="prompts-search-wrapper">
+                            <span class="prompts-search-icon">🔍</span>
+                            <input type="text" id="prompts-search-input" class="prompts-search-input" placeholder="搜索提示词标题、正文、标签或项目...">
+                            <button type="button" id="prompts-search-clear" class="btn-clear-search" style="display:none;">✕</button>
+                        </div>
+                        <button type="button" class="btn-primary btn-new-prompt" id="btn-create-prompt">
+                            <span>+ 新建提示词</span>
+                        </button>
+                    </div>
+
+                    <!-- 双维度筛选条 -->
+                    <div class="prompts-filter-section">
+                        <div class="prompts-filter-row">
+                            <span class="prompts-filter-tag-label">📁 项目</span>
+                            <div class="chips-scroll-container" id="prompts-project-chips">
+                                <button type="button" class="prompt-chip active" data-project="all">全部项目</button>
+                            </div>
+                        </div>
+                        <div class="prompts-filter-row">
+                            <span class="prompts-filter-tag-label">🎯 场景</span>
+                            <div class="chips-scroll-container" id="prompts-scene-chips">
+                                <button type="button" class="prompt-chip active" data-scene="all">全部场景</button>
+                                <button type="button" class="prompt-chip" data-scene="开发">💻 开发</button>
+                                <button type="button" class="prompt-chip" data-scene="写作">✍️ 写作</button>
+                                <button type="button" class="prompt-chip" data-scene="润色">🎨 润色</button>
+                                <button type="button" class="prompt-chip" data-scene="推演">🧠 推演</button>
+                                <button type="button" class="prompt-chip" data-scene="翻译">🌐 翻译</button>
+                                <button type="button" class="prompt-chip" data-scene="角色">🎭 角色</button>
+                                <button type="button" class="prompt-chip" data-scene="通用">⚡ 通用</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 提示词卡片流 -->
+                <div class="prompts-grid" id="prompts-list-container"></div>
+            </div>
+
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.17</button>
         </section>
 
         <!-- ========================================== -->
@@ -369,6 +424,75 @@
         </section>
 
         <!-- ========================================== -->
+        <!-- VIEW 7B: PROMPT EDITOR -->
+        <!-- ========================================== -->
+        <section id="view-prompt-editor" class="view-section">
+            <div class="editor-container">
+                <h1 class="page-title" id="prompt-editor-page-title">新建提示词</h1>
+
+                <form id="prompt-editor-form" class="editor-form">
+                    <input type="hidden" id="edit-prompt-id">
+
+                    <div class="form-row form-row-2col">
+                        <div class="form-group">
+                            <label for="edit-prompt-project">所属项目</label>
+                            <input type="text" id="edit-prompt-project" list="prompt-project-options" placeholder="例如：Chillin、工作、自媒体" required>
+                            <datalist id="prompt-project-options"></datalist>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-prompt-scene">使用场景</label>
+                            <select id="edit-prompt-scene" class="prompt-select">
+                                <option value="开发">💻 代码开发</option>
+                                <option value="写作">✍️ 文章写作</option>
+                                <option value="润色">🎨 语言润色</option>
+                                <option value="推演">🧠 逻辑推演</option>
+                                <option value="翻译">🌐 多语翻译</option>
+                                <option value="角色">🎭 角色扮演</option>
+                                <option value="通用">⚡ 通用场景</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="edit-prompt-title">提示词名称 / 简述</label>
+                        <input type="text" id="edit-prompt-title" placeholder="例如：代码审查与重构专家" required>
+                    </div>
+
+                    <div class="form-group">
+                        <div class="label-with-hint">
+                            <label for="edit-prompt-content">提示词正文 (Prompt)</label>
+                            <button type="button" class="btn-text-hint" id="btn-insert-variable" title="插入占位符">+ 插入占位符 {{变量}}</button>
+                        </div>
+                        <textarea id="edit-prompt-content" class="prompt-textarea" rows="8" placeholder="在此输入完整提示词。支持使用 {{输入代码}} 或 {{待办内容}} 作为变量占位符..." required></textarea>
+                    </div>
+
+                    <div class="form-row form-row-2col">
+                        <div class="form-group">
+                            <label for="edit-prompt-tags">快捷标签 (选填)</label>
+                            <input type="text" id="edit-prompt-tags" placeholder="如：#代码,#重构">
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-prompt-desc">使用说明 / 备注 (选填)</label>
+                            <input type="text" id="edit-prompt-desc" placeholder="例如：建议搭配 DeepSeek-R1 使用">
+                        </div>
+                    </div>
+
+                    <div class="form-group form-checkbox-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="edit-prompt-pinned">
+                            <span>📌 置顶此提示词（常用显示在最前）</span>
+                        </label>
+                    </div>
+
+                    <div class="editor-actions">
+                        <button type="button" class="btn-secondary" id="btn-cancel-prompt">取消</button>
+                        <button type="submit" class="btn-primary" id="btn-save-prompt">保存提示词</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- ========================================== -->
         <!-- VIEW 8: READER (Bookshelf) -->
         <!-- ========================================== -->
         <section id="view-reader" class="view-section">
@@ -387,7 +511,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.16</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.17</button>
         </section>
 
         <!-- ========================================== -->
@@ -455,7 +579,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.16</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.17</button>
         </section>
 
     </main>
@@ -484,6 +608,35 @@
             <div class="ai-chat-footer">
                 <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="提问你的过往记忆...">
                 <button class="btn-primary" id="btn-send-ai-chat">提问</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示词参数填充弹窗 (Prompt Variable Filler) -->
+    <div class="modal-overlay" id="prompt-variable-modal" onclick="if(event.target===this)this.classList.remove('show')">
+        <div class="prompt-variable-card" onclick="event.stopPropagation()">
+            <div class="prompt-variable-header">
+                <div class="prompt-variable-title-wrap">
+                    <span class="prompt-var-icon">🧩</span>
+                    <h3 id="prompt-variable-modal-title" class="prompt-variable-title">填入参数</h3>
+                </div>
+                <button type="button" class="btn-icon" onclick="document.getElementById('prompt-variable-modal').classList.remove('show')" title="关闭">✕</button>
+            </div>
+            <div class="prompt-variable-body">
+                <div class="prompt-variable-section-label">📌 变量填写</div>
+                <div id="prompt-variable-inputs-container" class="prompt-variable-inputs"></div>
+                
+                <div class="prompt-variable-section-label">👁️ 实时预览</div>
+                <div class="prompt-variable-preview-wrapper">
+                    <pre id="prompt-variable-preview-text" class="prompt-variable-preview-text"></pre>
+                </div>
+            </div>
+            <div class="prompt-variable-footer">
+                <button type="button" class="btn-secondary" id="btn-copy-raw-prompt" title="直接复制未填变量的模板">复制原模板</button>
+                <div class="prompt-variable-footer-right">
+                    <button type="button" class="btn-secondary" id="btn-copy-filled-prompt">📋 复制填参内容</button>
+                    <button type="button" class="btn-primary" id="btn-send-filled-to-ai">✨ 直发 AI 助手</button>
+                </div>
             </div>
         </div>
     </div>
@@ -543,6 +696,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
-    <script type="module" src="app.js?v=2.5.16"></script>
+    <script type="module" src="app.js?v=2.5.17"></script>
 </body>
 </html>

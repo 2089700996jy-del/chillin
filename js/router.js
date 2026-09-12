@@ -24,6 +24,7 @@ export function initRouter() {
         return id ? `#/note-editor/${id}` : '#/note-editor';
     }
     if (viewId === 'bookmark-editor') return '#/bookmark-editor';
+    if (viewId === 'prompt-editor') return '#/prompt-editor';
     if (viewId === 'reader-book') return '#/reader-book';
     if (viewId === 'ai') return '#/ai';
     return `#/${viewId || 'home'}`;
@@ -67,6 +68,10 @@ const applyRoute = (route) => {
     }
     if (route.view === 'bookmark-editor') {
         switchView('bookmark-editor', { skipHistory: true });
+        return;
+    }
+    if (route.view === 'prompt-editor') {
+        switchView('prompt-editor', { skipHistory: true });
         return;
     }
     if (route.view === 'reader-book') {
@@ -122,7 +127,7 @@ const switchView = (targetViewId, opts = {}) => {
     const fabLabels = { home: '记录新片段', feeds: '记录随手记', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
     if (fabLabel && fabLabels[targetViewId]) fabLabel.textContent = fabLabels[targetViewId];
 
-    if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'reader-book') {
+    if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'prompt-editor' || targetViewId === 'reader-book') {
         navMenu.style.display = 'none';
         btnBack.style.display = 'block';
         fabBtn.classList.add('hidden');
@@ -247,7 +252,11 @@ window.addEventListener('popstate', (e) => {
 fabBtn.addEventListener('click', () => {
     if (ui.currentActiveNavView === 'home') actions.openWeeklyEditor(null);
     else if (ui.currentActiveNavView === 'notes') actions.openNoteEditor(null);
-    else if (ui.currentActiveNavView === 'bookmarks') actions.openBookmarkEditor();
+    else if (ui.currentActiveNavView === 'bookmarks') {
+        const isPromptsActive = document.querySelector('.segment-btn.active[data-subtab="prompts"]');
+        if (isPromptsActive) actions.openPromptEditor?.();
+        else actions.openBookmarkEditor?.();
+    }
     else if (ui.currentActiveNavView === 'reader') document.getElementById('book-file-input').click();
 });
 
