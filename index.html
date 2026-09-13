@@ -23,7 +23,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.18">
+    <link rel="stylesheet" href="style.css?v=2.5.19">
 </head>
 <body>
 
@@ -116,7 +116,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.18</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
         </section>
 
         <!-- ========================================== -->
@@ -258,7 +258,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.18</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
         </section>
 
         <!-- ========================================== -->
@@ -365,7 +365,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.18</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
         </section>
 
         <!-- ========================================== -->
@@ -456,9 +456,18 @@
                     <div class="form-group">
                         <div class="label-with-hint">
                             <label for="edit-prompt-content">提示词正文 (Prompt)</label>
-                            <button type="button" class="btn-text-hint" id="btn-insert-variable" title="插入占位符">+ 插入占位符 {{变量}}</button>
+                            <span class="prompt-meta-counter" id="prompt-content-counter">共 0 字 · 0 个参数</span>
                         </div>
                         <textarea id="edit-prompt-content" class="prompt-textarea" rows="8" placeholder="在此输入完整提示词。支持使用 {{输入代码}} 或 {{待办内容}} 作为变量占位符..." required></textarea>
+                        <!-- Konsta 风格快捷参数插入胶囊栏 -->
+                        <div class="quick-var-pills" id="quick-var-pills">
+                            <span class="quick-var-label">快捷参数:</span>
+                            <button type="button" class="quick-var-btn" data-var="待处理内容">+ {{待处理内容}}</button>
+                            <button type="button" class="quick-var-btn" data-var="代码">+ {{代码}}</button>
+                            <button type="button" class="quick-var-btn" data-var="目标要求">+ {{目标要求}}</button>
+                            <button type="button" class="quick-var-btn" data-var="语言">+ {{语言}}</button>
+                            <button type="button" class="quick-var-btn quick-var-custom" id="btn-custom-variable">+ 自定义</button>
+                        </div>
                     </div>
 
                     <div class="form-row form-row-2col">
@@ -506,7 +515,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.18</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
         </section>
 
         <!-- ========================================== -->
@@ -574,7 +583,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.18</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
         </section>
 
     </main>
@@ -610,6 +619,7 @@
     <!-- 提示词参数填充弹窗 (Prompt Variable Filler) -->
     <div class="modal-overlay" id="prompt-variable-modal" onclick="if(event.target===this)this.classList.remove('show')">
         <div class="prompt-variable-card" onclick="event.stopPropagation()">
+            <div class="sheet-pull-handle"></div>
             <div class="prompt-variable-header">
                 <div class="prompt-variable-title-wrap">
                     <span class="prompt-var-icon">🧩</span>
@@ -691,6 +701,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
-    <script type="module" src="app.js?v=2.5.18"></script>
+    <script type="module" src="app.js?v=2.5.19"></script>
 </body>
 </html>

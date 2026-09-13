@@ -1,7 +1,7 @@
 /**
- * AI Prompt Library (提示词库) Module
+ * AI Prompt Library (提示词库) Module - Konsta iOS HIG Standard
  * Handles dual-dimension filtering (Project & Scene), search, one-click copy,
- * variable replacement, AI chat pipeline, and editor CRUD.
+ * variable replacement, AI chat pipeline, tactile haptic feedback, and editor CRUD.
  */
 import { generateUniqueId, escapeHtml, showToast } from './utils.js';
 import { state, DEFAULT_PROMPTS } from './state.js';
@@ -24,7 +24,6 @@ export function initPrompts() {
     const promptsSearchClear = document.getElementById('prompts-search-clear');
     const projectChipsContainer = document.getElementById('prompts-project-chips');
     const sceneChipsContainer = document.getElementById('prompts-scene-chips');
-    const btnCreatePrompt = document.getElementById('btn-create-prompt');
     const subviewResources = document.getElementById('subview-resources');
     const subviewPrompts = document.getElementById('subview-prompts');
     const tabSwitcher = document.getElementById('bookmarks-tab-switcher');
@@ -40,8 +39,10 @@ export function initPrompts() {
     const editPromptDesc = document.getElementById('edit-prompt-desc');
     const editPromptTags = document.getElementById('edit-prompt-tags');
     const editPromptPinned = document.getElementById('edit-prompt-pinned');
-    const btnInsertVariable = document.getElementById('btn-insert-variable');
     const projectDatalist = document.getElementById('prompt-project-options');
+    const promptContentCounter = document.getElementById('prompt-content-counter');
+    const quickVarPills = document.getElementById('quick-var-pills');
+    const btnCustomVariable = document.getElementById('btn-custom-variable');
 
     // Variable fill modal elements
     const variableModal = document.getElementById('prompt-variable-modal');
@@ -60,6 +61,17 @@ export function initPrompts() {
             if (pr && pr !== '通用') set.add(pr);
         });
         return Array.from(set);
+    }
+
+    // ── Dynamic Subtab Badges ──
+    function updateSubtabBadges() {
+        if (!tabSwitcher) return;
+        const bookmarksCount = (state.bookmarksDatabase || []).length;
+        const promptsCount = (state.promptsDatabase || []).length;
+        const resBtn = tabSwitcher.querySelector('.segment-btn[data-subtab="resources"]');
+        const prBtn = tabSwitcher.querySelector('.segment-btn[data-subtab="prompts"]');
+        if (resBtn) resBtn.innerHTML = `🔖 网址 <span class="tab-count-badge">${bookmarksCount}</span>`;
+        if (prBtn) prBtn.innerHTML = `🤖 提示词 <span class="tab-count-badge">${promptsCount}</span>`;
     }
 
     // ── Render Project Chips ──
@@ -83,11 +95,12 @@ export function initPrompts() {
         projectChipsContainer.appendChild(commonBtn);
 
         projects.forEach(pr => {
+            const count = (state.promptsDatabase || []).filter(p => p.project === pr).length;
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'prompt-chip' + (currentProjectFilter === pr ? ' active' : '');
             btn.dataset.project = pr;
-            btn.textContent = pr;
+            btn.textContent = count > 1 ? pr + ' (' + count + ')' : pr;
             projectChipsContainer.appendChild(btn);
         });
 
@@ -112,11 +125,18 @@ export function initPrompts() {
         return SCENE_ICONS[scene] || '✨';
     }
 
+    // ── Variable Highlight in Prompt Content ──
+    function formatPromptContentHtml(text) {
+        const safe = escapeHtml(text || '');
+        return safe.replace(/\{\{([^}]+)\}\}/g, '<mark class="prompt-var-tag">{{$1}}</mark>');
+    }
+
     // ── Render Prompts List ──
     function renderPrompts() {
         if (!promptsListContainer) return;
         promptsListContainer.innerHTML = '';
 
+        updateSubtabBadges();
         renderProjectChips();
 
         let list = [...(state.promptsDatabase || [])];
@@ -182,9 +202,27 @@ export function initPrompts() {
                 <div class="list-empty">
                     <div class="list-empty-icon">🔍</div>
                     <div class="list-empty-title">未找到匹配的提示词</div>
-                    <div class="list-empty-sub">尝试更换筛选项目、使用场景或清空搜索词</div>
+                    <div class="list-empty-sub">当前已按项目或场景过滤，可一键重置视图</div>
+                    <button type="button" class="btn-secondary" id="btn-reset-filters" style="margin-top: 12px;">↺ 清空所有筛选与搜索</button>
                 </div>
             `;
+            const btnReset = document.getElementById('btn-reset-filters');
+            if (btnReset) {
+                btnReset.addEventListener('click', () => {
+                    currentProjectFilter = 'all';
+                    currentSceneFilter = 'all';
+                    currentSearchKeyword = '';
+                    if (promptsSearchInput) promptsSearchInput.value = '';
+                    if (promptsSearchClear) promptsSearchClear.style.display = 'none';
+                    if (sceneChipsContainer) {
+                        sceneChipsContainer.querySelectorAll('.prompt-chip').forEach(c => {
+                            c.classList.toggle('active', c.dataset.scene === 'all');
+                        });
+                    }
+                    renderPrompts();
+                    if ('vibrate' in navigator) navigator.vibrate(25);
+                });
+            }
             return;
         }
 
@@ -194,11 +232,13 @@ export function initPrompts() {
             card.className = 'prompt-card' + (prompt.is_pinned ? ' is-pinned' : '');
             card.setAttribute('data-prompt-id', String(prompt.id));
 
-            const hasVariables = /\{\{([^}]+)\}\}/.test(prompt.content || '');
+            const vars = extractVariables(prompt.content || '');
+            const hasVariables = vars.length > 0;
             const sceneIcon = getSceneIcon(prompt.scene || '通用');
+            const charCount = (prompt.content || '').length;
 
             const tagHtml = prompt.tags
-                ? prompt.tags.split(/[,，\s]+/).filter(Boolean).map(t => '<span class="prompt-tag">' + escapeHtml(t.startsWith('#') ? t : '#' + t) + '</span>').join('')
+                ? prompt.tags.split(/[,，\s]+/).filter(Boolean).map(t => '<span class="prompt-tag" role="button" title="点击筛选此标签">' + escapeHtml(t.startsWith('#') ? t : '#' + t) + '</span>').join('')
                 : '';
 
             card.innerHTML = `
@@ -208,6 +248,7 @@ export function initPrompts() {
                         <span class="prompt-card-title">${escapeHtml(prompt.title)}</span>
                     </div>
                     <div class="prompt-card-badges">
+                        ${hasVariables ? `<span class="prompt-badge prompt-badge-vars" title="包含 ${vars.length} 个可填参数">🧩 ${vars.length}参数</span>` : ''}
                         <span class="prompt-badge prompt-badge-project" title="所属项目">📁 ${escapeHtml(prompt.project || '通用')}</span>
                         <span class="prompt-badge prompt-badge-scene" title="使用场景">${sceneIcon} ${escapeHtml(prompt.scene || '通用')}</span>
                     </div>
@@ -216,8 +257,8 @@ export function initPrompts() {
                 ${prompt.description ? '<div class="prompt-card-desc">' + escapeHtml(prompt.description) + '</div>' : ''}
 
                 <div class="prompt-card-content-wrapper">
-                    <div class="prompt-card-content" id="prompt-content-${prompt.id}">${escapeHtml(prompt.content)}</div>
-                    <div class="prompt-expand-mask"><span class="btn-expand-text">展开全文 ▾</span></div>
+                    <div class="prompt-card-content" id="prompt-content-${prompt.id}">${formatPromptContentHtml(prompt.content)}</div>
+                    <div class="prompt-expand-mask"><span class="btn-expand-text">展开全文 (共 ${charCount} 字) ▾</span></div>
                 </div>
 
                 ${tagHtml ? '<div class="prompt-card-tags">' + tagHtml + '</div>' : ''}
@@ -247,12 +288,25 @@ export function initPrompts() {
             // Expand / Collapse toggling
             const contentWrapper = card.querySelector('.prompt-card-content-wrapper');
             contentWrapper.addEventListener('click', (e) => {
-                if (e.target.closest('button')) return;
+                if (e.target.closest('button') || e.target.closest('.prompt-tag')) return;
                 contentWrapper.classList.toggle('expanded');
                 const maskText = contentWrapper.querySelector('.btn-expand-text');
                 if (maskText) {
-                    maskText.textContent = contentWrapper.classList.contains('expanded') ? '收起全文 ▴' : '展开全文 ▾';
+                    maskText.textContent = contentWrapper.classList.contains('expanded') ? '收起全文 ▴' : `展开全文 (共 ${charCount} 字) ▾`;
                 }
+            });
+
+            // 点击标签直接快捷筛选
+            card.querySelectorAll('.prompt-tag').forEach(tagEl => {
+                tagEl.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    const tag = tagEl.textContent.replace(/^#/, '').trim();
+                    if (promptsSearchInput) {
+                        promptsSearchInput.value = tag;
+                        promptsSearchInput.dispatchEvent(new Event('input'));
+                        if ('vibrate' in navigator) navigator.vibrate(25);
+                    }
+                });
             });
 
             // 复制按钮
@@ -307,6 +361,7 @@ export function initPrompts() {
         if (vars.length > 0) {
             openVariableModal(prompt, true);
         } else {
+            if ('vibrate' in navigator) navigator.vibrate(35);
             if (actions.sendToAiChat) {
                 actions.sendToAiChat(content);
                 showToast('已填入 AI 记忆助手！', 'success');
@@ -317,6 +372,7 @@ export function initPrompts() {
     }
 
     function doCopyText(text, btnEl, successMsg = '已复制到剪贴板！') {
+        if ('vibrate' in navigator) navigator.vibrate(35);
         const afterCopy = () => {
             showToast(successMsg, 'success');
             if (btnEl) {
@@ -365,9 +421,10 @@ export function initPrompts() {
         return matches;
     }
 
-    // ── Open Variable Filler Modal ──
+    // ── Open Variable Filler Modal (Konsta iOS Bottom Sheet Style) ──
     function openVariableModal(prompt, autoSendToAi = false) {
         if (!variableModal || !variableInputsContainer) return;
+        if ('vibrate' in navigator) navigator.vibrate(25);
 
         const vars = extractVariables(prompt.content);
         if (variableModalTitle) variableModalTitle.textContent = '填入参数：' + prompt.title;
@@ -414,6 +471,7 @@ export function initPrompts() {
             btnSendFilledToAi.onclick = () => {
                 const filled = buildFilledPrompt(prompt.content, varValues);
                 variableModal.classList.remove('show');
+                if ('vibrate' in navigator) navigator.vibrate(35);
                 if (actions.sendToAiChat) {
                     actions.sendToAiChat(filled);
                     showToast('已将完整提示词填入 AI 助手！', 'success');
@@ -427,7 +485,7 @@ export function initPrompts() {
         setTimeout(() => {
             const first = variableInputsContainer.querySelector('textarea');
             if (first) first.focus();
-        }, 120);
+        }, 140);
     }
 
     function buildFilledPrompt(template, varValues) {
@@ -445,6 +503,26 @@ export function initPrompts() {
     }
 
     // ── Editor Form Open / Save / Cancel ──
+    function updateContentCounter() {
+        if (!editPromptContent || !promptContentCounter) return;
+        const text = editPromptContent.value || '';
+        const vars = extractVariables(text);
+        promptContentCounter.textContent = `共 ${text.length} 字 · ${vars.length} 个参数`;
+    }
+
+    function insertVariableIntoEditor(varName) {
+        if (!editPromptContent) return;
+        const insertText = '{{' + varName + '}}';
+        const start = editPromptContent.selectionStart || 0;
+        const end = editPromptContent.selectionEnd || 0;
+        const val = editPromptContent.value;
+        editPromptContent.value = val.substring(0, start) + insertText + val.substring(end);
+        editPromptContent.focus();
+        editPromptContent.selectionStart = editPromptContent.selectionEnd = start + insertText.length;
+        updateContentCounter();
+        if ('vibrate' in navigator) navigator.vibrate(20);
+    }
+
     function openPromptEditor(promptId = null) {
         promptEditorForm.reset();
         editPromptId.value = '';
@@ -453,18 +531,17 @@ export function initPrompts() {
         const pageTitle = document.getElementById('prompt-editor-page-title');
 
         if (promptId) {
-            const prompt = (state.promptsDatabase || []).find(p => String(p.id) === String(promptId));
-            if (prompt) {
-                if (pageTitle) pageTitle.textContent = '编辑提示词';
-                editPromptId.value = prompt.id;
-                editPromptTitle.value = prompt.title || '';
-                editPromptProject.value = prompt.project || '通用';
-                editPromptScene.value = prompt.scene || '开发';
-                editPromptContent.value = prompt.content || '';
-                editPromptDesc.value = prompt.description || '';
-                editPromptTags.value = prompt.tags || '';
-                editPromptPinned.checked = !!prompt.is_pinned;
-            }
+            const prompt = (state.promptsDatabase || []).find(p => p.id === promptId);
+            if (!prompt) return;
+            if (pageTitle) pageTitle.textContent = '编辑提示词';
+            editPromptId.value = prompt.id;
+            editPromptTitle.value = prompt.title || '';
+            editPromptProject.value = prompt.project || '通用';
+            editPromptScene.value = prompt.scene || '开发';
+            editPromptContent.value = prompt.content || '';
+            editPromptDesc.value = prompt.description || '';
+            editPromptTags.value = prompt.tags || '';
+            editPromptPinned.checked = !!prompt.is_pinned;
         } else {
             if (pageTitle) pageTitle.textContent = '新建提示词';
             editPromptProject.value = currentProjectFilter !== 'all' ? currentProjectFilter : '通用';
@@ -472,11 +549,13 @@ export function initPrompts() {
             editPromptPinned.checked = false;
         }
 
+        updateContentCounter();
         actions.switchView('prompt-editor');
     }
 
     function deletePrompt(id, title) {
         if (!confirm('确定要删除提示词「' + title + '」吗？')) return;
+        if ('vibrate' in navigator) navigator.vibrate(30);
         addDeletedId(id);
         state.promptsDatabase = (state.promptsDatabase || []).filter(p => String(p.id) !== String(id));
         savePromptsDatabase();
@@ -485,36 +564,42 @@ export function initPrompts() {
         showToast('已删除提示词', 'info');
     }
 
+    // ── Switch Bookmarks Subtab (Public Facade) ──
+    function switchBookmarksSubtab(subtab) {
+        if (!tabSwitcher) return;
+        tabSwitcher.querySelectorAll('.segment-btn').forEach(b => {
+            b.classList.toggle('active', b.dataset.subtab === subtab);
+        });
+
+        localStorage.setItem('chillin_bookmarks_subtab', subtab);
+        updateSubtabBadges();
+
+        if (subtab === 'prompts') {
+            if (subviewResources) subviewResources.style.display = 'none';
+            if (subviewPrompts) subviewPrompts.style.display = 'block';
+            renderPrompts();
+            const fabLabel = document.getElementById('fab-label');
+            if (fabLabel) fabLabel.textContent = '新建提示词';
+        } else {
+            if (subviewResources) subviewResources.style.display = 'block';
+            if (subviewPrompts) subviewPrompts.style.display = 'none';
+            actions.renderBookmarks?.();
+            const fabLabel = document.getElementById('fab-label');
+            if (fabLabel) fabLabel.textContent = '收藏新链接';
+        }
+    }
+
     // ── Event Handlers ──
 
-    // Subtab Switcher: Bookmarks vs Prompts
+    // Subtab Switcher click
     if (tabSwitcher) {
         tabSwitcher.addEventListener('click', (e) => {
             const btn = e.target.closest('.segment-btn');
             if (!btn) return;
             const subtab = btn.dataset.subtab;
-            tabSwitcher.querySelectorAll('.segment-btn').forEach(b => b.classList.remove('active'));
-            btn.classList.add('active');
-
-            if (subtab === 'prompts') {
-                if (subviewResources) subviewResources.style.display = 'none';
-                if (subviewPrompts) subviewPrompts.style.display = 'block';
-                renderPrompts();
-                const fabLabel = document.getElementById('fab-label');
-                if (fabLabel) fabLabel.textContent = '新建提示词';
-            } else {
-                if (subviewResources) subviewResources.style.display = 'block';
-                if (subviewPrompts) subviewPrompts.style.display = 'none';
-                actions.renderBookmarks?.();
-                const fabLabel = document.getElementById('fab-label');
-                if (fabLabel) fabLabel.textContent = '收藏新链接';
-            }
+            if ('vibrate' in navigator) navigator.vibrate(25);
+            switchBookmarksSubtab(subtab);
         });
-    }
-
-    // Top New Prompt Button
-    if (btnCreatePrompt) {
-        btnCreatePrompt.addEventListener('click', () => openPromptEditor());
     }
 
     // Project Chips Click
@@ -522,6 +607,7 @@ export function initPrompts() {
         projectChipsContainer.addEventListener('click', (e) => {
             const chip = e.target.closest('.prompt-chip');
             if (!chip) return;
+            if ('vibrate' in navigator) navigator.vibrate(15);
             currentProjectFilter = chip.dataset.project || 'all';
             projectChipsContainer.querySelectorAll('.prompt-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
@@ -534,6 +620,7 @@ export function initPrompts() {
         sceneChipsContainer.addEventListener('click', (e) => {
             const chip = e.target.closest('.prompt-chip');
             if (!chip) return;
+            if ('vibrate' in navigator) navigator.vibrate(15);
             currentSceneFilter = chip.dataset.scene || 'all';
             sceneChipsContainer.querySelectorAll('.prompt-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
@@ -546,7 +633,7 @@ export function initPrompts() {
         promptsSearchInput.addEventListener('input', () => {
             currentSearchKeyword = promptsSearchInput.value.trim();
             if (promptsSearchClear) {
-                promptsSearchClear.style.display = currentSearchKeyword ? 'block' : 'none';
+                promptsSearchClear.style.display = currentSearchKeyword ? 'inline-flex' : 'none';
             }
             renderPrompts();
         });
@@ -559,27 +646,39 @@ export function initPrompts() {
             promptsSearchClear.style.display = 'none';
             promptsSearchInput.focus();
             renderPrompts();
+            if ('vibrate' in navigator) navigator.vibrate(15);
         });
     }
 
-    // Cancel in Editor
+    // Cancel in Editor -> return to prompts
     if (btnCancelPrompt) {
-        btnCancelPrompt.addEventListener('click', () => actions.switchView('bookmarks'));
+        btnCancelPrompt.addEventListener('click', () => {
+            actions.switchView('bookmarks');
+            switchBookmarksSubtab('prompts');
+        });
     }
 
-    // Insert placeholder in Editor
-    if (btnInsertVariable) {
-        btnInsertVariable.addEventListener('click', () => {
-            const placeholder = prompt('请输入占位符名称（例如：输入代码、待润色内容）：', '待填内容');
-            if (!placeholder) return;
-            const insertText = '{{' + placeholder.trim() + '}}';
-            const start = editPromptContent.selectionStart;
-            const end = editPromptContent.selectionEnd;
-            const val = editPromptContent.value;
-            editPromptContent.value = val.substring(0, start) + insertText + val.substring(end);
-            editPromptContent.focus();
-            editPromptContent.selectionStart = editPromptContent.selectionEnd = start + insertText.length;
+    // Quick Variable Pills in Editor
+    if (quickVarPills) {
+        quickVarPills.querySelectorAll('.quick-var-btn:not(#btn-custom-variable)').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const varName = btn.dataset.var;
+                if (varName) insertVariableIntoEditor(varName);
+            });
         });
+    }
+
+    if (btnCustomVariable) {
+        btnCustomVariable.addEventListener('click', () => {
+            const val = prompt('请输入占位符名称（无需加花括号，例如：待润色内容、报错日志）：', '待填参数');
+            if (val && val.trim()) {
+                insertVariableIntoEditor(val.trim());
+            }
+        });
+    }
+
+    if (editPromptContent) {
+        editPromptContent.addEventListener('input', updateContentCounter);
     }
 
     // Save Prompt Form Submit
@@ -615,19 +714,21 @@ export function initPrompts() {
             apiSyncPrompt(newPrompt, 'POST');
 
             actions.switchView('bookmarks');
+            switchBookmarksSubtab('prompts');
 
-            // Switch subtab to prompts
-            const promptTabBtn = document.querySelector('.segment-btn[data-subtab="prompts"]');
-            if (promptTabBtn) promptTabBtn.click();
-            else renderPrompts();
-
+            if ('vibrate' in navigator) navigator.vibrate(35);
             showToast(isEditing ? '提示词修改已保存！' : '新建提示词成功！', 'success');
         });
     }
 
+    // Restore saved subtab on initial load
+    const savedSubtab = localStorage.getItem('chillin_bookmarks_subtab') || 'resources';
+    switchBookmarksSubtab(savedSubtab);
+
     // Expose actions
     actions.renderPrompts = renderPrompts;
     actions.openPromptEditor = openPromptEditor;
+    actions.switchBookmarksSubtab = switchBookmarksSubtab;
 
-    return { renderPrompts, openPromptEditor };
+    return { renderPrompts, openPromptEditor, switchBookmarksSubtab };
 }
