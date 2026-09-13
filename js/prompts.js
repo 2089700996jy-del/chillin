@@ -220,7 +220,7 @@ export function initPrompts() {
                         });
                     }
                     renderPrompts();
-                    if ('vibrate' in navigator) navigator.vibrate(25);
+                    
                 });
             }
             return;
@@ -304,7 +304,7 @@ export function initPrompts() {
                     if (promptsSearchInput) {
                         promptsSearchInput.value = tag;
                         promptsSearchInput.dispatchEvent(new Event('input'));
-                        if ('vibrate' in navigator) navigator.vibrate(25);
+                        
                     }
                 });
             });
@@ -361,7 +361,7 @@ export function initPrompts() {
         if (vars.length > 0) {
             openVariableModal(prompt, true);
         } else {
-            if ('vibrate' in navigator) navigator.vibrate(35);
+            
             if (actions.sendToAiChat) {
                 actions.sendToAiChat(content);
                 showToast('已填入 AI 记忆助手！', 'success');
@@ -372,7 +372,7 @@ export function initPrompts() {
     }
 
     function doCopyText(text, btnEl, successMsg = '已复制到剪贴板！') {
-        if ('vibrate' in navigator) navigator.vibrate(35);
+        
         const afterCopy = () => {
             showToast(successMsg, 'success');
             if (btnEl) {
@@ -424,7 +424,7 @@ export function initPrompts() {
     // ── Open Variable Filler Modal (Konsta iOS Bottom Sheet Style) ──
     function openVariableModal(prompt, autoSendToAi = false) {
         if (!variableModal || !variableInputsContainer) return;
-        if ('vibrate' in navigator) navigator.vibrate(25);
+        
 
         const vars = extractVariables(prompt.content);
         if (variableModalTitle) variableModalTitle.textContent = '填入参数：' + prompt.title;
@@ -471,7 +471,7 @@ export function initPrompts() {
             btnSendFilledToAi.onclick = () => {
                 const filled = buildFilledPrompt(prompt.content, varValues);
                 variableModal.classList.remove('show');
-                if ('vibrate' in navigator) navigator.vibrate(35);
+                
                 if (actions.sendToAiChat) {
                     actions.sendToAiChat(filled);
                     showToast('已将完整提示词填入 AI 助手！', 'success');
@@ -520,7 +520,7 @@ export function initPrompts() {
         editPromptContent.focus();
         editPromptContent.selectionStart = editPromptContent.selectionEnd = start + insertText.length;
         updateContentCounter();
-        if ('vibrate' in navigator) navigator.vibrate(20);
+        
     }
 
     function openPromptEditor(promptId = null) {
@@ -555,7 +555,7 @@ export function initPrompts() {
 
     function deletePrompt(id, title) {
         if (!confirm('确定要删除提示词「' + title + '」吗？')) return;
-        if ('vibrate' in navigator) navigator.vibrate(30);
+        
         addDeletedId(id);
         state.promptsDatabase = (state.promptsDatabase || []).filter(p => String(p.id) !== String(id));
         savePromptsDatabase();
@@ -597,7 +597,7 @@ export function initPrompts() {
             const btn = e.target.closest('.segment-btn');
             if (!btn) return;
             const subtab = btn.dataset.subtab;
-            if ('vibrate' in navigator) navigator.vibrate(25);
+            
             switchBookmarksSubtab(subtab);
         });
     }
@@ -607,7 +607,7 @@ export function initPrompts() {
         projectChipsContainer.addEventListener('click', (e) => {
             const chip = e.target.closest('.prompt-chip');
             if (!chip) return;
-            if ('vibrate' in navigator) navigator.vibrate(15);
+            
             currentProjectFilter = chip.dataset.project || 'all';
             projectChipsContainer.querySelectorAll('.prompt-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
@@ -620,7 +620,7 @@ export function initPrompts() {
         sceneChipsContainer.addEventListener('click', (e) => {
             const chip = e.target.closest('.prompt-chip');
             if (!chip) return;
-            if ('vibrate' in navigator) navigator.vibrate(15);
+            
             currentSceneFilter = chip.dataset.scene || 'all';
             sceneChipsContainer.querySelectorAll('.prompt-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
@@ -646,7 +646,7 @@ export function initPrompts() {
             promptsSearchClear.style.display = 'none';
             promptsSearchInput.focus();
             renderPrompts();
-            if ('vibrate' in navigator) navigator.vibrate(15);
+            
         });
     }
 
@@ -716,7 +716,7 @@ export function initPrompts() {
             actions.switchView('bookmarks');
             switchBookmarksSubtab('prompts');
 
-            if ('vibrate' in navigator) navigator.vibrate(35);
+            
             showToast(isEditing ? '提示词修改已保存！' : '新建提示词成功！', 'success');
         });
     }
