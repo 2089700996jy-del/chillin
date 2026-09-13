@@ -209,10 +209,11 @@ body {
   transform: translateY(0);
 }
 #btn-logout {
-  background: rgba(239, 68, 68, 0.05);
-  color: #ef4444 !important;
-  border: 1px solid rgba(239, 68, 68, 0.12);
-  padding: 6px 14px;
+  background: transparent;
+  color: #8e8e93 !important;
+  border: none;
+  box-shadow: none;
+  padding: 6px 10px;
   border-radius: 99px;
   font-weight: 500;
   font-size: 13px;
@@ -220,14 +221,15 @@ body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  margin-left: 12px;
+  margin-left: 10px;
   cursor: pointer;
 }
 #btn-logout:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.08);
+  color: #ef4444 !important;
+  border: none;
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08);
+  box-shadow: none;
 }
 #btn-logout:active {
   transform: translateY(0);
@@ -1182,25 +1184,28 @@ body.not-authenticated #btn-back {
 /* MOBILE RESPONSIVE OPTIMIZATION (Tab Bar) */
 /* ========================================== */
 @media (max-width: 768px) {
-  /* Top Navbar in Mobile */
+  /* Top Navbar in Mobile: Seamless blending with status bar & page, ZERO lines, zero shadows */
   .super-navbar, .super-navbar.scrolled {
     top: 0 !important;
     left: 0 !important;
     transform: none !important;
     width: 100% !important;
-    height: 52px;
-    border-radius: 0;
-    border: none;
-    border-bottom: none;
-    /* Match page gray so chrome doesn't read as a white strip */
-    background: rgba(242, 242, 247, 0.92);
-    backdrop-filter: saturate(180%) blur(20px);
-    -webkit-backdrop-filter: saturate(180%) blur(20px);
-    box-shadow: none;
+    height: calc(52px + env(safe-area-inset-top, 0px)) !important;
+    padding-top: env(safe-area-inset-top, 0px) !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    /* Match page gray seamlessly with zero lines or shadows */
+    background: var(--bg-color, #F2F2F7) !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    box-shadow: none !important;
   }
 
   .super-navbar__content {
     padding: 0 16px;
+    height: 52px;
   }
 
   /* Hide top menu items on mobile (moved to bottom tab bar) */
@@ -1212,12 +1217,12 @@ body.not-authenticated #btn-back {
     display: block !important;
     font-size: 18px;
     font-weight: 700;
-    color: #111827;
+    color: var(--text-color, #111827);
     letter-spacing: -0.5px;
   }
 
   .nav-right {
-    gap: 8px !important;
+    gap: 4px !important;
     margin-left: auto;
   }
 
@@ -1229,23 +1234,45 @@ body.not-authenticated #btn-back {
     display: none !important;
   }
 
-  .btn-icon-text {
-    font-size: 16px !important;
-    padding: 0;
+  /* Clean, shadowless, backgroundless top right icons */
+  .btn-icon-text,
+  #btn-logout {
+    font-size: 18px !important;
+    padding: 0 !important;
     margin: 0 !important;
-    background: rgba(120, 120, 128, 0.12);
-    border-radius: 50%;
-    width: 34px;
-    height: 34px;
+    background: transparent !important;
+    border-radius: 8px !important;
+    width: 38px !important;
+    height: 38px !important;
+    min-width: 38px !important;
+    min-height: 38px !important;
     display: inline-flex !important;
     align-items: center;
     justify-content: center;
-    border: none;
-    color: var(--accent-color, #007AFF);
+    border: none !important;
+    box-shadow: none !important;
+    color: var(--text-color, #1c1c1e) !important;
+    cursor: pointer;
+    transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease !important;
   }
 
-  .btn-icon-text:active {
-    background: rgba(120, 120, 128, 0.2);
+  #btn-open-global-search {
+    color: var(--text-color, #1c1c1e) !important;
+  }
+
+  #btn-open-ai-chat {
+    color: var(--accent-color, #007AFF) !important;
+  }
+
+  #btn-logout {
+    color: #8e8e93 !important;
+  }
+
+  .btn-icon-text:active,
+  #btn-logout:active {
+    background: transparent !important;
+    transform: scale(0.86) !important;
+    opacity: 0.55 !important;
   }
 
   /* Mobile bottom tab: opaque page gray fills gesture/nav inset (fixes Redmi color band) */
@@ -1276,10 +1303,10 @@ body.not-authenticated #btn-back {
     justify-content: flex-start;
     text-decoration: none;
     color: #8e8e93;
-    font-size: 10px;
+    font-size: 10.5px;
     font-weight: 500;
-    transition: color 0.15s ease;
-    padding: 4px 0 0;
+    transition: color 0.18s ease;
+    padding: 5px 0 0;
     min-height: 48px;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
@@ -1291,18 +1318,37 @@ body.not-authenticated #btn-back {
   }
 
   .mobile-tab-item .tab-icon {
-    font-size: 19px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
     margin-bottom: 2px;
-    transition: transform 0.15s ease;
+    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .mobile-tab-item .tab-svg {
+    display: block;
+    stroke: currentColor;
+    transition: stroke 0.18s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .mobile-tab-item.active {
-    color: var(--accent-color);
+    color: var(--accent-color, #007AFF) !important;
     font-weight: 600;
   }
 
+  .mobile-tab-item.active .tab-svg {
+    stroke: var(--accent-color, #007AFF);
+    stroke-width: 2.2px;
+  }
+
   .mobile-tab-item.active .tab-icon {
-    transform: translateY(-2px) scale(1.12);
+    transform: translateY(-2px) scale(1.08);
+  }
+
+  .mobile-tab-item:active .tab-icon {
+    transform: scale(0.85);
   }
 
   /* Hide bottom nav bar when reading or editing */
@@ -2899,11 +2945,13 @@ body.dark-reader-body .btn-icon-text .btn-label {
   color: #c9d1d9 !important;
 }
 body.dark-reader-body .btn-icon-text {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 body.dark-reader-body .btn-icon-text:active {
-  background: rgba(255, 255, 255, 0.14) !important;
+  background: transparent !important;
+  opacity: 0.55 !important;
 }
 body.dark-reader-body .sync-status[data-tone="ok"] {
   background: #4ade80;
@@ -3942,12 +3990,18 @@ body.eyecare-reader-body .prompt-editor-card {
 
 @media (max-width: 768px) {
   .super-navbar, .super-navbar.scrolled {
-    border-bottom: 0.5px solid rgba(60, 60, 67, 0.15) !important;
+    border: none !important;
+    border-top: none !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
   }
   .nav-right button {
-    min-height: 44px;
+    min-height: 38px;
     display: inline-flex;
     align-items: center;
+    background: transparent !important;
+    box-shadow: none !important;
+    border: none !important;
   }
 }
 
@@ -4151,6 +4205,17 @@ body.dark-reader-body .feed-input-card {
 
 body.dark-reader-body .feed-textarea {
   color: #f2f2f7 !important;
+}
+
+body.dark-reader-body .btn-icon-text {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+body.dark-reader-body .btn-icon-text:active {
+  background: transparent !important;
+  opacity: 0.55 !important;
 }
 
 body.dark-reader-body .btn-chip {
