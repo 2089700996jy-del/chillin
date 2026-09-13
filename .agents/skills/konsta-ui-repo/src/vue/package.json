@@ -1,0 +1,6 @@
+{
+  "name": "konsta/vue",
+  "private": true,
+  "jsnext:main": "./konsta-vue.js",
+  "module": "./konsta-vue.js"
+}

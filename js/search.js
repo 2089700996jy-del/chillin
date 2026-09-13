@@ -129,13 +129,35 @@ function renderGlobalSearchResults(query) {
         }
     });
 
+    // 6. 提示词库 (Konsta iOS HIG 全局直达)
+    (state.promptsDatabase || []).forEach(p => {
+        if (
+            (p.title || '').toLowerCase().includes(q) ||
+            (p.content || '').toLowerCase().includes(q) ||
+            (p.description || '').toLowerCase().includes(q) ||
+            (p.tags || '').toLowerCase().includes(q) ||
+            (p.project || '').toLowerCase().includes(q) ||
+            (p.scene || '').toLowerCase().includes(q)
+        ) {
+            results.push({
+                type: '🤖 提示词',
+                view: 'bookmarks',
+                subtab: 'prompts',
+                id: p.id,
+                title: (p.project ? `[${p.project}] ` : '') + (p.title || '无标题提示词'),
+                snippet: p.description || (p.content || '').slice(0, 90),
+                targetElSelector: `[data-prompt-id="${CSS.escape(String(p.id))}"]`
+            });
+        }
+    });
+
     if (results.length === 0) {
         globalSearchResults.innerHTML = `<div class="global-search-empty">未匹配到与 "${escapeHtml(query)}" 相关的切片</div>`;
         return;
     }
 
-    globalSearchResults.innerHTML = results.slice(0, 15).map(item => `
-        <div class="global-search-item" data-view="${item.view}" data-selector="${escapeHtml(item.targetElSelector || '')}">
+    globalSearchResults.innerHTML = results.slice(0, 16).map(item => `
+        <div class="global-search-item" data-view="${item.view}" data-subtab="${escapeHtml(item.subtab || '')}" data-selector="${escapeHtml(item.targetElSelector || '')}">
             <div class="global-search-item-header">
                 <span class="global-search-title">${escapeHtml(item.title)}</span>
                 <span class="global-search-tag">${escapeHtml(item.type)}</span>
@@ -147,15 +169,19 @@ function renderGlobalSearchResults(query) {
     globalSearchResults.querySelectorAll('.global-search-item').forEach(el => {
         el.addEventListener('click', () => {
             const targetView = el.getAttribute('data-view');
+            const subtab = el.getAttribute('data-subtab');
             const selector = el.getAttribute('data-selector');
             closeGlobalSearch();
-            jumpToElement(targetView, selector);
+            jumpToElement(targetView, selector, subtab);
         });
     });
 }
 
-function jumpToElement(targetView, selector) {
+function jumpToElement(targetView, selector, subtab = null) {
     if (targetView) actions.switchView(targetView);
+    if (subtab && actions.switchBookmarksSubtab) {
+        actions.switchBookmarksSubtab(subtab);
+    }
     if (!selector) return;
     setTimeout(() => {
         const el = document.querySelector(selector);
