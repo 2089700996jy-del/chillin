@@ -250,6 +250,9 @@ const restoreWeeklyDraft = () => {
         document.getElementById('edit-work-title').value = draft.workTitle || '';
         document.getElementById('edit-work-desc').value = draft.workDesc || '';
         
+        // 刷新 iOS Inset Grouped UI 状态 (分类高亮、封面缩略图、微件折叠展开与计数)
+        refreshEditorUI(true);
+
         // 隐藏横幅
         document.getElementById('weekly-draft-tip').style.display = 'none';
     } catch (e) {
@@ -299,6 +302,75 @@ const handleExitWeeklyEditor = (onConfirm) => {
     }
 };
 
+// --- iOS Inset Grouped Editor Helpers ---
+const syncCategorySegmented = (catVal) => {
+    const segmentedTabs = document.querySelectorAll('#weekly-category-segmented .ios-segmented-tab');
+    segmentedTabs.forEach(tab => {
+        const isMatch = tab.dataset.category === catVal;
+        tab.classList.toggle('active', isMatch);
+        tab.setAttribute('aria-selected', isMatch ? 'true' : 'false');
+    });
+};
+
+const updateCoverPreview = () => {
+    const coverVal = (document.getElementById('edit-cover')?.value || '').trim();
+    const previewWrap = document.getElementById('edit-cover-preview');
+    const previewImg = document.getElementById('edit-cover-preview-img');
+    if (!previewWrap || !previewImg) return;
+    if (coverVal) {
+        previewImg.src = resolveAssetUrl(coverVal);
+        previewWrap.style.display = 'block';
+    } else {
+        previewImg.src = '';
+        previewWrap.style.display = 'none';
+    }
+};
+
+const countFilledWidgets = () => {
+    let count = 0;
+    const hasMusic = (document.getElementById('edit-music-title')?.value || '').trim() !== '' ||
+                     (document.getElementById('edit-music-artist')?.value || '').trim() !== '';
+    const hasMedia = (document.getElementById('edit-media-title')?.value || '').trim() !== '';
+    const hasLife = (document.getElementById('edit-life-image')?.value || '').trim() !== '';
+    const hasPodcast = (document.getElementById('edit-podcast')?.value || '').trim() !== '';
+    const hasWork = (document.getElementById('edit-work-title')?.value || '').trim() !== '' ||
+                    (document.getElementById('edit-work-desc')?.value || '').trim() !== '';
+    if (hasMusic) count++;
+    if (hasMedia) count++;
+    if (hasLife) count++;
+    if (hasPodcast) count++;
+    if (hasWork) count++;
+    return count;
+};
+
+const updateWidgetBadgeAndState = (shouldAutoOpen = false) => {
+    const badge = document.getElementById('weekly-widgets-badge');
+    const accordion = document.getElementById('weekly-widgets-accordion');
+    const count = countFilledWidgets();
+    if (badge) {
+        if (count > 0) {
+            badge.textContent = `已填 ${count} 项`;
+            badge.classList.add('has-filled');
+            if (shouldAutoOpen && accordion) {
+                accordion.open = true;
+            }
+        } else {
+            badge.textContent = '选填 ▾';
+            badge.classList.remove('has-filled');
+            if (shouldAutoOpen && accordion) {
+                accordion.open = false;
+            }
+        }
+    }
+};
+
+const refreshEditorUI = (shouldAutoOpenWidgets = false) => {
+    const catVal = document.getElementById('edit-category')?.value || '🌸';
+    syncCategorySegmented(catVal);
+    updateCoverPreview();
+    updateWidgetBadgeAndState(shouldAutoOpenWidgets);
+};
+
 const openWeeklyEditor = (editId = null, opts = {}) => {
     editorForm.reset();
     if (editId) {
@@ -323,6 +395,7 @@ const openWeeklyEditor = (editId = null, opts = {}) => {
         editorPageTitle.innerText = "新增记忆";
         document.getElementById('edit-id').value = '';
     }
+    refreshEditorUI(Boolean(editId));
     checkAndShowWeeklyDraftTip(editId);
     actions.switchView('editor', opts);
 };
@@ -368,6 +441,7 @@ document.getElementById('btn-restore-weekly-draft').addEventListener('click', re
 document.getElementById('btn-discard-weekly-draft').addEventListener('click', discardWeeklyDraft);
 
 editorForm.addEventListener('input', () => {
+    updateWidgetBadgeAndState(false);
     if (hasUnsavedChanges()) {
         saveWeeklyDraft();
     } else {
@@ -375,10 +449,38 @@ editorForm.addEventListener('input', () => {
     }
 });
 editorForm.addEventListener('change', () => {
+    updateWidgetBadgeAndState(false);
     if (hasUnsavedChanges()) {
         saveWeeklyDraft();
     } else {
         discardWeeklyDraft();
+    }
+});
+
+// iOS 分类分段选择器交互绑定
+document.querySelectorAll('#weekly-category-segmented .ios-segmented-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+        const cat = tab.dataset.category;
+        const editCategory = document.getElementById('edit-category');
+        if (editCategory) {
+            editCategory.value = cat;
+            syncCategorySegmented(cat);
+            editCategory.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
+});
+
+// 封面图实时预览与清空交互
+const editCoverEl = document.getElementById('edit-cover');
+if (editCoverEl) {
+    editCoverEl.addEventListener('input', updateCoverPreview);
+    editCoverEl.addEventListener('change', updateCoverPreview);
+}
+document.getElementById('btn-clear-cover')?.addEventListener('click', () => {
+    if (editCoverEl) {
+        editCoverEl.value = '';
+        updateCoverPreview();
+        editCoverEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
 });
 
