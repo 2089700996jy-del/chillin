@@ -23,7 +23,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.19">
+    <link rel="stylesheet" href="style.css?v=2.5.20">
 </head>
 <body>
 
@@ -116,7 +116,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.20</button>
         </section>
 
         <!-- ========================================== -->
@@ -258,7 +258,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.20</button>
         </section>
 
         <!-- ========================================== -->
@@ -365,7 +365,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.20</button>
         </section>
 
         <!-- ========================================== -->
@@ -515,7 +515,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.20</button>
         </section>
 
         <!-- ========================================== -->
@@ -583,14 +583,15 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.19</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.20</button>
         </section>
 
     </main>
 
     <!-- AI 记忆回响对话 Modal -->
-    <div class="modal-overlay" id="ai-chat-modal">
+    <div class="modal-overlay" id="ai-chat-modal" onclick="if(event.target===this)this.classList.remove('show')">
         <div class="ai-chat-card" onclick="event.stopPropagation()">
+            <div class="sheet-pull-handle"></div>
             <div class="ai-chat-header">
                 <div class="ai-chat-title">
                     <span style="font-size:18px;">🤖</span> AI 记忆回响助手
@@ -652,8 +653,9 @@
     </div>
 
     <!-- 全局搜索弹窗 (Cmd/Ctrl + K) -->
-    <div class="modal-overlay global-search-overlay" id="global-search-modal">
+    <div class="modal-overlay global-search-overlay" id="global-search-modal" onclick="if(event.target===this)this.classList.remove('show')">
         <div class="global-search-card" onclick="event.stopPropagation()">
+            <div class="sheet-pull-handle"></div>
             <div class="global-search-header">
                 <span class="global-search-icon">🔍</span>
                 <input type="text" id="global-search-input" placeholder="一个框找全站（随手记、笔记、周记、收藏、批注）..." autocomplete="off">
@@ -701,6 +703,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
-    <script type="module" src="app.js?v=2.5.19"></script>
+    <script type="module" src="app.js?v=2.5.20"></script>
 </body>
 </html>

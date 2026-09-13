@@ -3891,3 +3891,322 @@ body.eyecare-reader-body .prompt-editor-card {
   background: #f1f8e9;
   border-color: rgba(76, 175, 80, 0.2);
 }
+
+/* ========================================================================== */
+/* Konsta iOS HIG Design System Overhaul (All 10 Views & Global Components)    */
+/* ========================================================================== */
+
+/* 1. Global Micro-Interactions & Apple Spring Touch Feedback */
+.btn-primary, .btn-secondary, .btn-text, .fab-btn, .btn-chip, .prompt-chip, .quick-var-btn {
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.btn-primary:active,
+.btn-secondary:active,
+.fab-btn:active,
+.btn-feed-send:active {
+  transform: scale(0.96) !important;
+  opacity: 0.88;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease !important;
+}
+
+.btn-text:active {
+  opacity: 0.65;
+  transform: scale(0.96);
+  transition: all 0.12s ease;
+}
+
+/* 2. Mobile Tabbar & Top Navbar iOS HIG Alignment */
+.mobile-bottom-nav {
+  border-top: 0.5px solid rgba(60, 60, 67, 0.18) !important;
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
+}
+
+.mobile-tab-item {
+  transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-tab-item:active .tab-icon {
+  transform: scale(0.82) !important;
+  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+.mobile-tab-item.active {
+  color: #007AFF !important;
+}
+
+.mobile-tab-item.active .tab-icon {
+  transform: translateY(-2px) scale(1.12);
+}
+
+@media (max-width: 768px) {
+  .super-navbar, .super-navbar.scrolled {
+    border-bottom: 0.5px solid rgba(60, 60, 67, 0.15) !important;
+  }
+  .nav-right button {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+  }
+}
+
+/* 3. Inset Grouped Cards Across All 10 Views */
+/* Weeklies (Home) */
+.notion-collection-card {
+  border-radius: 18px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03) !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease !important;
+}
+
+.notion-collection-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06) !important;
+}
+
+.notion-collection-card:active {
+  transform: scale(0.985) !important;
+}
+
+/* Feeds */
+.feed-item-card {
+  border-radius: 18px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.02) !important;
+  padding: 18px 20px !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease !important;
+}
+
+.feed-item-card:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05) !important;
+}
+
+.feed-item-card:active {
+  transform: scale(0.988) !important;
+}
+
+.feed-input-card {
+  border-radius: 18px !important;
+  border: 1px solid rgba(0, 122, 255, 0.14) !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03) !important;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease !important;
+}
+
+.feed-input-card:focus-within {
+  border-color: #007AFF !important;
+  box-shadow: 0 0 0 3.5px rgba(0, 122, 255, 0.16) !important;
+}
+
+.rich-link-card {
+  border-radius: 14px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease !important;
+}
+
+.rich-link-card:active {
+  transform: scale(0.985);
+}
+
+/* Notes (Upgraded to Inset Grouped Cell Cards) */
+.note-item {
+  border-radius: 16px !important;
+  background: var(--card-bg) !important;
+  border: 1px solid rgba(0, 0, 0, 0.05) !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02) !important;
+  margin-bottom: 10px !important;
+  padding: 16px 18px !important;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05) !important;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, box-shadow 0.18s ease !important;
+}
+
+.note-item:hover {
+  background: var(--card-bg) !important;
+  transform: translateY(-1.5px) !important;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04) !important;
+  padding-left: 18px !important;
+}
+
+.note-item:active {
+  transform: scale(0.985) !important;
+}
+
+/* Bookshelf / Reader Cards */
+.book-card {
+  border-radius: 18px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03) !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease !important;
+}
+
+.book-card:hover {
+  transform: translateY(-4px) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06) !important;
+}
+
+.book-card:active {
+  transform: scale(0.985) !important;
+}
+
+.book-card-progress {
+  height: 4px !important;
+  border-radius: 999px !important;
+  overflow: hidden;
+}
+
+.book-card-progress-bar {
+  border-radius: 999px !important;
+}
+
+/* Bookmarks & Resources Cards */
+.bookmark-card {
+  border-radius: 18px !important;
+  border: 1px solid rgba(0, 0, 0, 0.06) !important;
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03) !important;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease !important;
+}
+
+.bookmark-card:hover {
+  transform: translateY(-3px) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06) !important;
+}
+
+.bookmark-card:active {
+  transform: scale(0.985) !important;
+}
+
+/* 4. Global Modals as Konsta iOS Bottom Sheets on Mobile */
+@media screen and (max-width: 768px) {
+  /* AI Chat Modal Sheet */
+  .modal-overlay#ai-chat-modal {
+    align-items: flex-end !important;
+    padding: 0 !important;
+  }
+  .modal-overlay#ai-chat-modal .ai-chat-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 86vh !important;
+    max-height: 86vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    transform: translateY(100%) !important;
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1) !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+  .modal-overlay#ai-chat-modal.show .ai-chat-card {
+    transform: translateY(0) !important;
+  }
+
+  /* Global Search Modal Sheet */
+  .modal-overlay.global-search-overlay {
+    align-items: flex-end !important;
+    padding: 0 !important;
+    padding-top: 0 !important;
+  }
+  .modal-overlay.global-search-overlay .global-search-card {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 86vh !important;
+    border-radius: 24px 24px 0 0 !important;
+    transform: translateY(100%) !important;
+    transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1) !important;
+    border-bottom: none !important;
+    border-left: none !important;
+    border-right: none !important;
+  }
+  .modal-overlay.global-search-overlay.show .global-search-card {
+    transform: translateY(0) !important;
+  }
+}
+
+/* 5. Dark Theme (OLED & Grouped Dark #1C1C1E) System Parity */
+body.dark-reader-body .mobile-bottom-nav {
+  background: #000000 !important;
+  border-top-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark-reader-body .mobile-tab-item {
+  color: #8e8e93;
+}
+
+body.dark-reader-body .mobile-tab-item.active {
+  color: #0A84FF !important;
+}
+
+body.dark-reader-body .notion-collection-card,
+body.dark-reader-body .feed-item-card,
+body.dark-reader-body .note-item,
+body.dark-reader-body .book-card,
+body.dark-reader-body .bookmark-card {
+  background: #1c1c1e !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark-reader-body .feed-input-card {
+  background: #1c1c1e !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark-reader-body .feed-textarea {
+  color: #f2f2f7 !important;
+}
+
+body.dark-reader-body .btn-chip {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #8e8e93 !important;
+}
+
+body.dark-reader-body .btn-chip:hover,
+body.dark-reader-body .btn-chip.active {
+  background: #0A84FF !important;
+  border-color: #0A84FF !important;
+  color: #ffffff !important;
+}
+
+body.dark-reader-body .global-search-card,
+body.dark-reader-body .ai-chat-card {
+  background: #1c1c1e !important;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+body.dark-reader-body .global-search-header,
+body.dark-reader-body .ai-chat-header {
+  background: #161618 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark-reader-body .global-search-item {
+  background: #242426 !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+body.dark-reader-body .global-search-item:hover {
+  background: #2c2c2e !important;
+}
+
+/* 6. Eye-care Theme Parity */
+body.eyecare-reader-body .mobile-bottom-nav {
+  background: #dcedc8 !important;
+  border-top-color: rgba(76, 175, 80, 0.2) !important;
+}
+
+body.eyecare-reader-body .mobile-tab-item.active {
+  color: #2e7d32 !important;
+}
+
+body.eyecare-reader-body .notion-collection-card,
+body.eyecare-reader-body .feed-item-card,
+body.eyecare-reader-body .note-item,
+body.eyecare-reader-body .book-card,
+body.eyecare-reader-body .bookmark-card {
+  background: #e8f5e9 !important;
+  border-color: rgba(76, 175, 80, 0.2) !important;
+}
+
+body.eyecare-reader-body .feed-input-card {
+  background: #e8f5e9 !important;
+  border-color: rgba(76, 175, 80, 0.25) !important;
+}
