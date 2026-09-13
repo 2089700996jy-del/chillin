@@ -23,7 +23,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.23">
+    <link rel="stylesheet" href="style.css?v=2.5.24">
 </head>
 <body>
 
@@ -65,8 +65,11 @@
                 <a href="#" class="nav-item" data-view="reader">阅读</a>
             </div>
             <!-- 阅读模式/编辑模式下的返回按钮 (默认隐藏) -->
-            <button id="btn-back" class="nav-btn-back" style="display: none;">
-                ← 返回
+            <button id="btn-back" class="nav-btn-back" style="display: none;" aria-label="返回">
+                <svg class="nav-back-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="15 18 9 12 15 6"></polyline>
+                </svg>
+                <span>返回</span>
             </button>
             <div class="nav-right" style="margin-left: auto; display: flex; align-items: center; gap: 12px;">
                 <div id="sync-status" class="sync-status" role="status" aria-live="polite" hidden></div>
@@ -134,7 +137,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.23</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.24</button>
         </section>
 
         <!-- ========================================== -->
@@ -173,95 +176,165 @@
         <!-- ========================================== -->
         <section id="view-editor" class="view-section">
             <div class="editor-container">
-                <h1 class="page-title" id="editor-page-title">新增记忆</h1>
+                <div class="editor-header-row">
+                    <h1 class="page-title" id="editor-page-title">新增记忆</h1>
+                </div>
                 
                 <!-- 草稿提示横幅 -->
                 <div id="weekly-draft-tip" class="draft-tip-banner" style="display: none;">
-                    <span class="draft-tip-icon">📝</span>
-                    <span class="draft-tip-text">检测到您有未保存的草稿（保存于：<span id="weekly-draft-time"></span>），是否恢复？</span>
+                    <div class="draft-tip-left">
+                        <span class="draft-tip-icon">📝</span>
+                        <span class="draft-tip-text">检测到未保存草稿 (<span id="weekly-draft-time"></span>)</span>
+                    </div>
                     <div class="draft-tip-actions">
-                        <button type="button" id="btn-restore-weekly-draft" class="btn-text text-primary">恢复草稿</button>
+                        <button type="button" id="btn-restore-weekly-draft" class="btn-text text-primary">恢复</button>
                         <button type="button" id="btn-discard-weekly-draft" class="btn-text text-danger">忽略</button>
                     </div>
                 </div>
                 
-                <form id="editor-form" class="editor-form">
+                <form id="editor-form" class="editor-form ios-editor-flow">
                     <input type="hidden" id="edit-id">
 
-                    <h3 class="editor-section-title">基础信息</h3>
-                    <div class="form-group">
-                        <label>分类标签</label>
-                        <select id="edit-category" required>
-                            <option value="🌸">🌸 人间烟火 (生活/播客/书单)</option>
-                            <option value="⚪️">⚪️ 极客生活 (代码/工作/运维)</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>标题</label>
-                        <input type="text" id="edit-title" placeholder="例：2023-W42：秋天的第一杯咖啡" required>
-                    </div>
-                    <div class="form-group">
-                        <label>一句话摘要 (用于主页卡片展示)</label>
-                        <input type="text" id="edit-summary" placeholder="用一句话总结这一周..." required>
-                    </div>
-                    <div class="form-group">
-                        <label>封面图链接 (选填)</label>
-                        <div style="display: flex; gap: 8px;">
-                            <input type="text" id="edit-cover" placeholder="https://images.unsplash.com/..." style="flex-grow: 1;">
-                            <button type="button" class="btn-secondary btn-upload-image" data-target="edit-cover" style="padding: 10px 14px; white-space: nowrap;">📷 上传</button>
+                    <!-- Group 1: 核心信息 (Inset Grouped Card) -->
+                    <div class="ios-group-card">
+                        <!-- 分类选择 Segmented Control -->
+                        <div class="ios-card-row ios-category-segmented-row">
+                            <div class="ios-segmented-control" id="weekly-category-segmented" role="tablist">
+                                <button type="button" class="ios-segmented-tab active" data-category="🌸" role="tab" aria-selected="true">
+                                    <span>🌸 人间烟火</span>
+                                </button>
+                                <button type="button" class="ios-segmented-tab" data-category="⚪️" role="tab" aria-selected="false">
+                                    <span>⚪️ 极客生活</span>
+                                </button>
+                            </div>
+                            <!-- 隐藏原生 select 保持数据绑定和 form 校验完全兼容 -->
+                            <select id="edit-category" required style="display: none;">
+                                <option value="🌸">🌸 人间烟火</option>
+                                <option value="⚪️">⚪️ 极客生活</option>
+                            </select>
+                        </div>
+
+                        <!-- 标题输入框 -->
+                        <div class="ios-card-row">
+                            <input type="text" id="edit-title" class="ios-editor-title-input" placeholder="输入本周标题..." required autocomplete="off">
+                        </div>
+
+                        <!-- 一句话摘要 -->
+                        <div class="ios-card-row">
+                            <input type="text" id="edit-summary" class="ios-editor-summary-input" placeholder="一句话概述这周的生活或感悟..." required autocomplete="off">
+                        </div>
+
+                        <!-- 封面图设置 -->
+                        <div class="ios-card-row ios-cover-row">
+                            <div class="ios-cover-input-wrap">
+                                <span class="ios-input-icon">🖼️</span>
+                                <input type="text" id="edit-cover" class="ios-editor-cover-input" placeholder="封面图链接 (选填，粘贴或上传)">
+                                <button type="button" class="ios-btn-upload btn-upload-image" data-target="edit-cover" title="上传封面图">
+                                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                        <circle cx="12" cy="13" r="4"></circle>
+                                    </svg>
+                                    <span>上传</span>
+                                </button>
+                            </div>
+                            <!-- 封面实时预览缩略图 -->
+                            <div id="edit-cover-preview" class="ios-cover-preview" style="display: none;">
+                                <img src="" alt="封面预览" id="edit-cover-preview-img">
+                                <button type="button" class="ios-cover-preview-clear" id="btn-clear-cover" title="移除封面">×</button>
+                            </div>
                         </div>
                     </div>
 
-                    <hr class="editor-divider">
-
-                    <h3 class="editor-section-title">周记精美微件 (选填)</h3>
-                    <p class="editor-section-desc">如果某项没有内容，直接留空即可，系统会自动隐藏该模块。</p>
-
-                    <div class="widget-form-group">
-                        <label>🎵 本周循环单曲</label>
-                        <input type="text" id="edit-music-title" placeholder="歌曲名">
-                        <input type="text" id="edit-music-artist" placeholder="歌手">
-                        <input type="text" id="edit-music-lyric" placeholder="最喜欢的一句歌词">
-                    </div>
-
-                    <div class="widget-form-group">
-                        <label>🎬 影音与书单</label>
-                        <input type="text" id="edit-media-icon" placeholder="图标 (如：🎬, 📖)" value="🎬">
-                        <input type="text" id="edit-media-title" placeholder="作品名称">
-                        <input type="text" id="edit-media-desc" placeholder="观后感/读后感...">
-                    </div>
-
-                    <div class="widget-form-group">
-                        <label>🍳 烟火日常 (晚餐/实拍图)</label>
-                        <div style="display: flex; gap: 8px; margin-bottom: 10px;">
-                            <input type="text" id="edit-life-image" placeholder="图片链接" style="flex-grow: 1; margin-bottom: 0;">
-                            <button type="button" class="btn-secondary btn-upload-image" data-target="edit-life-image" style="padding: 10px 14px; white-space: nowrap;">📷 上传</button>
+                    <!-- Group 2: 自由正文 -->
+                    <div class="ios-group-header">自由书写</div>
+                    <div class="ios-group-card">
+                        <div class="ios-card-row ios-content-row">
+                            <textarea id="edit-content" class="ios-editor-content-textarea" rows="7" placeholder="在此自由记录本周的日常、随想与反思 (支持 Markdown / HTML)..."></textarea>
                         </div>
-                        <input type="text" id="edit-life-caption" placeholder="给图片加一句手写感说明...">
                     </div>
 
-                    <div class="widget-form-group">
-                        <label>💡 播客新知 (高亮标注)</label>
-                        <textarea id="edit-podcast" rows="3" placeholder="我学到了..."></textarea>
+                    <!-- Group 3: 周记精美微件 (Collapsible Accordion Card) -->
+                    <div class="ios-group-header">
+                        <span>周记微件</span>
+                        <span class="ios-group-header-sub">选填 · 留空自动隐藏</span>
                     </div>
 
-                    <div class="widget-form-group">
-                        <label>💻 工作切片</label>
-                        <input type="text" id="edit-work-title" placeholder="项目名称 / 任务">
-                        <textarea id="edit-work-desc" rows="3" placeholder="完成了什么，解决了什么..."></textarea>
-                    </div>
+                    <details class="ios-widget-accordion" id="weekly-widgets-accordion">
+                        <summary class="ios-widget-summary">
+                            <div class="ios-widget-summary-left">
+                                <span class="ios-widget-summary-icon">✨</span>
+                                <div class="ios-widget-summary-info">
+                                    <div class="ios-widget-summary-title">单曲 · 影音 · 烟火 · 播客 · 工作</div>
+                                    <div class="ios-widget-summary-desc">点击展开配置本周特色灵感卡片</div>
+                                </div>
+                            </div>
+                            <span class="ios-widget-badge" id="weekly-widgets-badge">选填 ▾</span>
+                        </summary>
 
-                    <hr class="editor-divider">
+                        <div class="ios-widget-content-body">
+                            <!-- 1. 🎵 循环单曲 -->
+                            <div class="ios-inner-widget-card">
+                                <div class="ios-inner-widget-title">🎵 本周单曲</div>
+                                <div class="ios-inner-input-stack">
+                                    <input type="text" id="edit-music-title" placeholder="歌曲名 (例: First Love)">
+                                    <input type="text" id="edit-music-artist" placeholder="歌手 (例: 宇多田光)">
+                                    <input type="text" id="edit-music-lyric" placeholder="最打动你的一句歌词...">
+                                </div>
+                            </div>
 
-                    <h3 class="editor-section-title">自由书写 (选填)</h3>
-                    <div class="form-group">
-                        <label>正文内容 (支持 HTML 标签)</label>
-                        <textarea id="edit-content" rows="6" placeholder="<p>在这里自由地写点什么吧...</p>"></textarea>
-                    </div>
+                            <!-- 2. 🎬 影音与书单 -->
+                            <div class="ios-inner-widget-card">
+                                <div class="ios-inner-widget-title">🎬 影音与书单</div>
+                                <div class="ios-inner-input-stack">
+                                    <div class="ios-input-inline-pair">
+                                        <input type="text" id="edit-media-icon" class="ios-input-mini" placeholder="图标" value="🎬" style="max-width: 68px; text-align: center;">
+                                        <input type="text" id="edit-media-title" placeholder="作品名称 (书影音/游戏)">
+                                    </div>
+                                    <input type="text" id="edit-media-desc" placeholder="简要短评或观后心境...">
+                                </div>
+                            </div>
 
-                    <div class="editor-actions">
-                        <button type="button" class="btn-secondary" id="btn-cancel-edit">取消</button>
-                        <button type="submit" class="btn-primary" id="btn-save-edit">保存记忆</button>
+                            <!-- 3. 🍳 烟火日常 -->
+                            <div class="ios-inner-widget-card">
+                                <div class="ios-inner-widget-title">🍳 烟火日常</div>
+                                <div class="ios-inner-input-stack">
+                                    <div class="ios-cover-input-wrap">
+                                        <input type="text" id="edit-life-image" placeholder="生活实拍图链接 (晚餐/街景/角落)">
+                                        <button type="button" class="ios-btn-upload btn-upload-image" data-target="edit-life-image" title="上传实拍图">
+                                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                                <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                                                <circle cx="12" cy="13" r="4"></circle>
+                                            </svg>
+                                            <span>上传</span>
+                                        </button>
+                                    </div>
+                                    <input type="text" id="edit-life-caption" placeholder="照片说明手写注脚...">
+                                </div>
+                            </div>
+
+                            <!-- 4. 💡 播客新知 -->
+                            <div class="ios-inner-widget-card">
+                                <div class="ios-inner-widget-title">💡 播客新知</div>
+                                <div class="ios-inner-input-stack">
+                                    <textarea id="edit-podcast" rows="3" placeholder="记录本周从播客或阅读中听到的新观点、认知升级..."></textarea>
+                                </div>
+                            </div>
+
+                            <!-- 5. 💻 工作切片 -->
+                            <div class="ios-inner-widget-card">
+                                <div class="ios-inner-widget-title">💻 工作切片</div>
+                                <div class="ios-inner-input-stack">
+                                    <input type="text" id="edit-work-title" placeholder="项目或课题名称">
+                                    <textarea id="edit-work-desc" rows="3" placeholder="完成了什么，攻克了哪些难点..."></textarea>
+                                </div>
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- Bottom Action Bar (Docked / Sticky) -->
+                    <div class="editor-actions-dock">
+                        <button type="button" class="ios-btn-cancel" id="btn-cancel-edit">取消</button>
+                        <button type="submit" class="ios-btn-save" id="btn-save-edit">保存记忆</button>
                     </div>
                 </form>
             </div>
@@ -276,7 +349,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.23</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.24</button>
         </section>
 
         <!-- ========================================== -->
@@ -383,7 +456,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.23</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.24</button>
         </section>
 
         <!-- ========================================== -->
@@ -533,7 +606,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.23</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.24</button>
         </section>
 
         <!-- ========================================== -->
@@ -601,7 +674,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.23</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.24</button>
         </section>
 
     </main>
@@ -744,6 +817,6 @@
     </script>
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
     <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
-    <script type="module" src="app.js?v=2.5.23"></script>
+    <script type="module" src="app.js?v=2.5.24"></script>
 </body>
 </html>
