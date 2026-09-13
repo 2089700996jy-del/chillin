@@ -203,11 +203,19 @@ navItems.forEach(item => {
         e.preventDefault();
         const targetEl = e.currentTarget || e.target.closest('[data-view]');
         const view = targetEl ? targetEl.dataset.view : null;
-        if (view) switchView(view);
+        if (view) {
+            if ('vibrate' in navigator) {
+                try { navigator.vibrate(25); } catch (_) {}
+            }
+            switchView(view);
+        }
     });
 });
 
 btnBack.addEventListener('click', () => {
+    if ('vibrate' in navigator) {
+        try { navigator.vibrate(20); } catch (_) {}
+    }
     const activeView = document.querySelector('.view-section.active');
     if (activeView && activeView.id === 'view-reader-book') {
         window.closeReaderBook?.();

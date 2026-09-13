@@ -148,8 +148,9 @@ function renderFeeds() {
             <div class="feed-item-card" data-feed-id="${feed.id}">
                 <div class="feed-header">
                     <div class="feed-tags">${tagHtml}</div>
-                    <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="feed-actions" style="display:flex;align-items:center;gap:10px;">
                         <span class="feed-date">${escapeHtml(feed.created_at || '')}</span>
+                        <button class="btn-text feed-copy-btn" data-feed-id="${escapeHtml(String(feed.id))}" style="font-size:12px;" type="button" title="复制内容">复制</button>
                         <button class="btn-text text-danger feed-delete-btn" data-feed-id="${escapeHtml(String(feed.id))}" style="font-size:12px;" type="button">删除</button>
                     </div>
                 </div>
@@ -372,6 +373,22 @@ if (feedInputText) {
 const feedsStreamContainer = document.getElementById('feeds-stream-container');
 if (feedsStreamContainer) {
     feedsStreamContainer.addEventListener('click', (e) => {
+        const copyBtn = e.target.closest('.feed-copy-btn');
+        if (copyBtn && copyBtn.dataset.feedId) {
+            e.preventDefault();
+            e.stopPropagation();
+            const feed = state.feedsDatabase.find(f => String(f.id) === String(copyBtn.dataset.feedId));
+            if (feed) {
+                if ('vibrate' in navigator) { try { navigator.vibrate(25); } catch (_) {} }
+                navigator.clipboard.writeText(feed.content || '').then(() => {
+                    const originalText = copyBtn.innerText;
+                    copyBtn.innerText = '已复制';
+                    setTimeout(() => { copyBtn.innerText = originalText; }, 1500);
+                });
+            }
+            return;
+        }
+
         const deleteBtn = e.target.closest('.feed-delete-btn');
         if (deleteBtn && deleteBtn.dataset.feedId) {
             e.preventDefault();
@@ -383,6 +400,7 @@ if (feedsStreamContainer) {
 
 window.deleteFeed = function(id) {
     if (!confirm('确定要删除这条随手记吗？')) return;
+    if ('vibrate' in navigator) { try { navigator.vibrate(25); } catch (_) {} }
     addDeletedId(id);
     state.feedsDatabase = state.feedsDatabase.filter(f => String(f.id) !== String(id));
     saveFeedsDatabase();
