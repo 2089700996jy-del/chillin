@@ -91,10 +91,7 @@ const renderNotes = () => {
         const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
         
         el.innerHTML = `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${escapeHtml(note.date)}</div>`;
-        el.addEventListener('click', () => {
-            if ('vibrate' in navigator) { try { navigator.vibrate(20); } catch (_) {} }
-            openNoteEditor(note.id);
-        });
+        el.addEventListener('click', () => openNoteEditor(note.id));
         notesListContainer.appendChild(el);
     });
 };
@@ -194,7 +191,6 @@ const openNoteEditor = (noteId = null, opts = {}) => {
 btnSaveNote.addEventListener('click', () => {
     const idStr = editNoteId.value; const isEdit = !!idStr; const titleVal = editNoteTitle.value.trim(); const contentVal = editNoteContent.value.trim();
     if (!titleVal && !contentVal) { discardNoteDraft(); actions.switchView('notes'); return; }
-    if ('vibrate' in navigator) { try { navigator.vibrate(25); } catch (_) {} }
     const newNote = { 
         id: isEdit ? parseInt(idStr) : Date.now(), 
         title: titleVal || '无标题笔记', 
@@ -219,7 +215,6 @@ document.getElementById('btn-discard-note-draft')?.addEventListener('click', dis
 
 btnDeleteNote.addEventListener('click', () => {
     if(confirm("确定删除这条笔记吗？")) { 
-        if ('vibrate' in navigator) { try { navigator.vibrate(25); } catch (_) {} }
         const deletedId = ui.currentNoteId; 
         addDeletedId(deletedId);
         state.notesDatabase = state.notesDatabase.filter(n => n.id !== ui.currentNoteId); 

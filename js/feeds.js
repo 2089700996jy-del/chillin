@@ -379,7 +379,6 @@ if (feedsStreamContainer) {
             e.stopPropagation();
             const feed = state.feedsDatabase.find(f => String(f.id) === String(copyBtn.dataset.feedId));
             if (feed) {
-                if ('vibrate' in navigator) { try { navigator.vibrate(25); } catch (_) {} }
                 navigator.clipboard.writeText(feed.content || '').then(() => {
                     const originalText = copyBtn.innerText;
                     copyBtn.innerText = '已复制';
@@ -400,7 +399,6 @@ if (feedsStreamContainer) {
 
 window.deleteFeed = function(id) {
     if (!confirm('确定要删除这条随手记吗？')) return;
-    if ('vibrate' in navigator) { try { navigator.vibrate(25); } catch (_) {} }
     addDeletedId(id);
     state.feedsDatabase = state.feedsDatabase.filter(f => String(f.id) !== String(id));
     saveFeedsDatabase();

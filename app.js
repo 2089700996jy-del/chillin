@@ -28,6 +28,11 @@ import { initEchoAi } from './js/echo-ai.js';
 import { initSearch } from './js/search.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 
+// Disable device vibration across the entire app as requested
+if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
+    try { navigator.vibrate = () => false; } catch (_) {}
+}
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // Auth / sync: ./js/api.js + ./js/state.js
