@@ -56,7 +56,7 @@
     <!-- 导航栏 -->
     <nav class="super-navbar" id="navbar">
         <div class="super-navbar__content">
-            <div class="nav-brand-mobile" style="display: none;">Chillin</div>
+            <div class="nav-brand-mobile">Chillin</div>
             <div class="super-navbar__menu" id="nav-menu">
                 <a href="#" class="nav-item active" data-view="home">首页</a>
                 <a href="#" class="nav-item" data-view="feeds">随手记</a>
@@ -124,8 +124,8 @@
                 <div class="heatmap-widget">
                     <div class="heatmap-header">
                         <span class="heatmap-title">🔥 思考与记忆轨迹 (近 12 个月)</span>
-                        <button class="btn-text text-primary" id="btn-trigger-echo-card" style="font-size:12px;">✨ 生成 AI 回响卡片</button>
-                        <button class="btn-text text-primary" id="btn-weekly-review" style="font-size:12px;">📅 本周回顾</button>
+                        <button class="btn-ai-pill" id="btn-trigger-echo-card">✨ 生成 AI 回响卡片</button>
+                        <button class="btn-ai-pill btn-ai-pill-secondary" id="btn-weekly-review">📅 本周回顾</button>
                     </div>
                     <div class="heatmap-grid" id="heatmap-grid"></div>
                 </div>
@@ -629,7 +629,7 @@
 
             <!-- 无感速记输入框卡片 -->
             <div class="feed-input-card">
-                <textarea id="feed-input-text" class="feed-textarea" placeholder="在此倾倒你的零碎想法、网页链接或灵感片段... (支持直接粘贴网址，Ctrl + Enter 发送)" rows="3"></textarea>
+                <textarea id="feed-input-text" class="feed-textarea" placeholder="在此倾倒你的零碎想法、网页链接或灵感片段..." rows="3"></textarea>
                 <div class="feed-input-toolbar">
                     <div class="feed-tools">
                         <button class="btn-chip" data-tag="#技术">#技术</button>
