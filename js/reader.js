@@ -358,34 +358,41 @@ function buildChapterTree() {
 // ── Chapter Loading ──
 async function loadChapterContent(idx) {
     if (idx < 0 || idx >= chapterMetas.length) return;
-    currentChapterIdx = idx;
-    const ch = chapterMetas[idx];
-    const fullCh = await rdbGet('chapters', ch.id);
-    const content = fullCh ? fullCh.content : '（加载失败）';
+    document.body.classList.add('is-loading');
+    try {
+        currentChapterIdx = idx;
+        const ch = chapterMetas[idx];
+        const fullCh = await rdbGet('chapters', ch.id);
+        const content = fullCh ? fullCh.content : '（加载失败）';
 
-    document.getElementById('chapter-title-display').textContent = ch.title;
-    document.getElementById('chapter-body').textContent = content;
-    document.getElementById('chapter-indicator').textContent = (idx + 1) + ' / ' + chapterMetas.length;
-    document.getElementById('btn-prev-chapter').disabled = (idx <= 0);
-    document.getElementById('btn-next-chapter').disabled = (idx >= chapterMetas.length - 1);
+        document.getElementById('chapter-title-display').textContent = ch.title;
+        document.getElementById('chapter-body').textContent = content;
+        document.getElementById('chapter-indicator').textContent = (idx + 1) + ' / ' + chapterMetas.length;
+        document.getElementById('btn-prev-chapter').disabled = (idx <= 0);
+        document.getElementById('btn-next-chapter').disabled = (idx >= chapterMetas.length - 1);
 
-    // Update sidebar highlight
-    const allItems = document.querySelectorAll('.chapter-item');
-    allItems.forEach(el => el.classList.remove('active'));
-    if (allItems[idx]) {
-        allItems[idx].classList.add('active');
-        // Expand parent group if collapsed
-        const groupItems = allItems[idx].closest('.chapter-group-items');
-        if (groupItems && groupItems.classList.contains('collapsed')) {
-            groupItems.classList.remove('collapsed');
-            const groupHeader = groupItems.previousElementSibling;
-            if (groupHeader) groupHeader.classList.remove('collapsed');
+        // Update sidebar highlight
+        const allItems = document.querySelectorAll('.chapter-item');
+        allItems.forEach(el => el.classList.remove('active'));
+        if (allItems[idx]) {
+            allItems[idx].classList.add('active');
+            // Expand parent group if collapsed
+            const groupItems = allItems[idx].closest('.chapter-group-items');
+            if (groupItems && groupItems.classList.contains('collapsed')) {
+                groupItems.classList.remove('collapsed');
+                const groupHeader = groupItems.previousElementSibling;
+                if (groupHeader) groupHeader.classList.remove('collapsed');
+            }
+            allItems[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
-        allItems[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
 
-    document.getElementById('reader-content-area').scrollTop = 0;
-    saveReaderProgress(currentBookId, { chapterIdx: idx, scrollPct: 0, timestamp: Date.now() });
+        document.getElementById('reader-content-area').scrollTop = 0;
+        saveReaderProgress(currentBookId, { chapterIdx: idx, scrollPct: 0, timestamp: Date.now() });
+    } finally {
+        setTimeout(() => {
+            document.body.classList.remove('is-loading');
+        }, 150);
+    }
 }
 
 window.jumpToChapter = async function(idx) {
