@@ -130,6 +130,88 @@ body {
   display: flex; 
   justify-content: space-between; 
   align-items: center;
+  position: relative;
+}
+
+/* Reader Mode Single Bar Integration (Immersive Single-Row Navbar) */
+.nav-reader-title {
+  display: none;
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 52%;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-color, #1d1d1f);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+  pointer-events: none;
+  letter-spacing: -0.2px;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.nav-reader-actions {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  z-index: 2;
+}
+
+.nav-reader-btn {
+  background: transparent !important;
+  border: none !important;
+  border-radius: 8px;
+  color: var(--text-color, #1d1d1f);
+  opacity: 0.42;
+  cursor: pointer;
+  padding: 6px;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), background 0.15s ease;
+  box-shadow: none !important;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.nav-reader-btn svg {
+  display: block;
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.nav-reader-btn:hover {
+  opacity: 0.85;
+  background: rgba(120, 120, 128, 0.08) !important;
+}
+
+.nav-reader-btn:active {
+  opacity: 1;
+  transform: scale(0.92);
+  background: rgba(120, 120, 128, 0.14) !important;
+}
+
+body.in-reader-book .nav-reader-title {
+  display: block;
+}
+
+body.in-reader-book .nav-reader-actions {
+  display: inline-flex;
+}
+
+body.in-reader-book .nav-brand-mobile,
+body.in-reader-book .super-navbar__menu,
+body.in-reader-book .nav-right {
+  display: none !important;
 }
 
 .super-navbar__menu { 
@@ -2190,7 +2272,6 @@ body.in-reader-book .reader-main {
   margin-left: 12px;
 }
 
-body.in-reader-book .reader-toolbar,
 body.in-reader-book .reader-nav-bottom {
   touch-action: none;
   user-select: none;
@@ -2257,33 +2338,10 @@ body.in-reader-book .reader-nav-bottom {
 
 .reader-main { flex: 1; display: flex; flex-direction: column; margin-left: 12px; min-width: 0; }
 .reader-toolbar {
-  display: flex; align-items: center; gap: 8px; padding: 4px 6px;
-  background: transparent !important; border: none !important; border-radius: 0;
-  margin-bottom: 6px; flex-wrap: nowrap; flex-shrink: 0;
-  box-shadow: none !important;
-}
-.reader-toolbar .btn-icon {
-  background: transparent !important; border: none !important;
-  border-radius: 8px; color: var(--text-color); opacity: 0.8;
-  cursor: pointer; padding: 6px; width: 36px; height: 36px;
-  min-width: 36px; min-height: 36px;
-  display: inline-flex; align-items: center; justify-content: center;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: none !important;
-}
-.reader-toolbar .btn-icon svg {
-  display: block; width: 20px; height: 20px; pointer-events: none;
-}
-.reader-toolbar .btn-icon:hover {
-  background: rgba(120, 120, 128, 0.1) !important; color: var(--text-color); opacity: 1; border: none !important;
-}
-.reader-toolbar .btn-icon:active {
-  transform: scale(0.92); opacity: 0.6;
+  display: none !important;
 }
 .book-title-inline {
-  flex: 1; font-size: 0.88rem; font-weight: 600; color: var(--text-color);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 60px;
-  text-align: center;
+  display: none !important;
 }
 .reader-content-area {
   flex: 1; min-height: 0; background: var(--card-bg); border: 1px solid rgba(0,0,0,0.06);
@@ -2341,26 +2399,23 @@ body.dark-reader-body .reader-nav-bottom {
   border-color: rgba(255,255,255,0.06);
 }
 body.dark-reader-body .reader-toolbar {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
+  display: none !important;
 }
-body.dark-reader-body .sidebar-header,
-body.dark-reader-body .chapter-group-header {
-  background: #161b22;
+body.dark-reader-body .nav-reader-title {
+  color: #e6e8ec !important;
 }
-body.dark-reader-body .chapter-group-header:hover {
-  background: rgba(0, 122, 255,0.1);
+body.dark-reader-body .nav-reader-btn {
+  color: #c9d1d9 !important;
+  opacity: 0.45;
 }
-body.dark-reader-body .reader-toolbar .btn-icon {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  color: #c9d1d9;
-}
-body.dark-reader-body .reader-toolbar .btn-icon:hover {
+body.dark-reader-body .nav-reader-btn:hover {
+  opacity: 0.9;
   background: rgba(255, 255, 255, 0.08) !important;
-  color: #ffffff;
+  color: #ffffff !important;
+}
+body.dark-reader-body .nav-reader-btn:active {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.14) !important;
 }
 body.dark-reader-body .reader-nav-bottom .btn-nav {
   background: rgba(255, 255, 255, 0.08);
@@ -2390,8 +2445,12 @@ body.dark-reader-body .chapter-item.active {
   background: rgba(0, 122, 255,0.18);
   color: #c4b9ff;
 }
-body.dark-reader-body .book-title-inline {
-  color: #c9d1d9;
+body.dark-reader-body .sidebar-header,
+body.dark-reader-body .chapter-group-header {
+  background: #161b22;
+}
+body.dark-reader-body .chapter-group-header:hover {
+  background: rgba(0, 122, 255,0.1);
 }
 body.dark-reader-body .sidebar-header {
   color: #8b949e;
@@ -2414,9 +2473,23 @@ body.eyecare-reader-body .reader-nav-bottom {
   border-color: rgba(76,175,80,0.15);
 }
 body.eyecare-reader-body .reader-toolbar {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
+  display: none !important;
+}
+body.eyecare-reader-body .nav-reader-title {
+  color: #1b3a1b !important;
+}
+body.eyecare-reader-body .nav-reader-btn {
+  color: #2e5b2e !important;
+  opacity: 0.45;
+}
+body.eyecare-reader-body .nav-reader-btn:hover {
+  opacity: 0.9;
+  background: rgba(76, 175, 80, 0.12) !important;
+  color: #1b4a1b !important;
+}
+body.eyecare-reader-body .nav-reader-btn:active {
+  opacity: 1;
+  background: rgba(76, 175, 80, 0.2) !important;
 }
 body.eyecare-reader-body .sidebar-header,
 body.eyecare-reader-body .chapter-group-header {
@@ -2429,16 +2502,6 @@ body.eyecare-reader-body .chapter-group-header {
 }
 body.eyecare-reader-body .chapter-group-header:hover {
   background: rgba(76,175,80,0.1);
-}
-body.eyecare-reader-body .reader-toolbar .btn-icon {
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  color: #2e5b2e;
-}
-body.eyecare-reader-body .reader-toolbar .btn-icon:hover {
-  background: rgba(76, 175, 80, 0.12) !important;
-  color: #1b4a1b;
 }
 body.eyecare-reader-body .chapter-body {
   color: #2e3b2e;
@@ -2459,9 +2522,6 @@ body.eyecare-reader-body .chapter-item.active {
   color: #2e7d32;
   border-left-color: #4caf50;
 }
-body.eyecare-reader-body .book-title-inline {
-  color: #2e3b2e;
-}
 body.eyecare-reader-body .sidebar-header {
   color: #4a7c59;
 }
@@ -2475,15 +2535,20 @@ body.eyecare-reader-body .sidebar-header {
   background: #1a1d2e; border-color: rgba(255,255,255,0.06);
 }
 .dark-reader .reader-toolbar {
-  background: transparent !important; border: none !important; box-shadow: none !important;
+  display: none !important;
 }
-.dark-reader .reader-toolbar .btn-icon {
-  background: transparent !important; border: none !important; box-shadow: none !important; color: #8b949e;
+.dark-reader .nav-reader-title {
+  color: #e6e8ec !important;
 }
-.dark-reader .reader-toolbar .btn-icon:hover {
-  background: rgba(255, 255, 255, 0.08) !important; color: #ffffff;
+.dark-reader .nav-reader-btn {
+  color: #c9d1d9 !important;
+  opacity: 0.45;
 }
-.dark-reader .book-title-inline { color: #c9d1d9; }
+.dark-reader .nav-reader-btn:hover {
+  opacity: 0.9;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
 .dark-reader .chapter-group-header { background: rgba(0, 122, 255,0.06); }
 .dark-reader .chapter-group-header:hover { background: rgba(0, 122, 255,0.1); }
 .dark-reader .sidebar-header { background: #1a1d2e; color: #8b949e; }
@@ -2501,11 +2566,21 @@ body.eyecare-reader-body .sidebar-header {
   .reader-sidebar.hidden { margin-left: -290px; }
   .reader-main { margin-left: 0; }
   .reader-toolbar {
-    padding: 2px 2px;
-    margin-bottom: 4px;
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
+    display: none !important;
+  }
+  .nav-reader-title {
+    max-width: 48%;
+    font-size: 14.5px;
+  }
+  .nav-reader-actions {
+    gap: 2px;
+  }
+  .nav-reader-btn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+    padding: 5px;
   }
   .reader-content-area {
     padding: 20px 18px 24px;
