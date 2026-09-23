@@ -442,15 +442,15 @@ function applyReaderSettings() {
         document.body.classList.add('dark-reader-body');
         if (layout) layout.classList.add('dark-reader');
         if (btn) btn.innerHTML = THEME_ICONS.sun;
-        if (themeMeta) themeMeta.setAttribute('content', '#0d1117');
+        if (themeMeta) themeMeta.setAttribute('content', '#0f1115');
     } else if (theme === 'eyecare') {
         document.body.classList.add('eyecare-reader-body');
         if (layout) layout.classList.add('eyecare-reader');
         if (btn) btn.innerHTML = THEME_ICONS.leaf;
-        if (themeMeta) themeMeta.setAttribute('content', '#dcedc8');
+        if (themeMeta) themeMeta.setAttribute('content', '#e8f0e0');
     } else {
         if (btn) btn.innerHTML = THEME_ICONS.moon;
-        if (themeMeta) themeMeta.setAttribute('content', '#ffffff');
+        if (themeMeta) themeMeta.setAttribute('content', '#f8f8fa');
     }
 }
 window.toggleReaderTheme = function() {
