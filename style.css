@@ -2257,21 +2257,33 @@ body.in-reader-book .reader-nav-bottom {
 
 .reader-main { flex: 1; display: flex; flex-direction: column; margin-left: 12px; min-width: 0; }
 .reader-toolbar {
-  display: flex; align-items: center; gap: 10px; padding: 8px 16px;
-  background: var(--card-bg); border: 1px solid rgba(0,0,0,0.05); border-radius: 14px;
-  margin-bottom: 8px; flex-wrap: wrap; flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  display: flex; align-items: center; gap: 8px; padding: 4px 6px;
+  background: transparent !important; border: none !important; border-radius: 0;
+  margin-bottom: 6px; flex-wrap: nowrap; flex-shrink: 0;
+  box-shadow: none !important;
 }
 .reader-toolbar .btn-icon {
-  background: var(--widget-bg); border: 1px solid rgba(0,0,0,0.06);
-  border-radius: 8px; color: var(--text-color-light);
-  font-size: 0.82rem; cursor: pointer; padding: 6px 12px;
-  transition: all 0.15s; font-family: var(--font-family); white-space: nowrap;
+  background: transparent !important; border: none !important;
+  border-radius: 8px; color: var(--text-color); opacity: 0.8;
+  cursor: pointer; padding: 6px; width: 36px; height: 36px;
+  min-width: 36px; min-height: 36px;
+  display: inline-flex; align-items: center; justify-content: center;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: none !important;
 }
-.reader-toolbar .btn-icon:hover { border-color: var(--accent-color); color: var(--text-color); }
+.reader-toolbar .btn-icon svg {
+  display: block; width: 20px; height: 20px; pointer-events: none;
+}
+.reader-toolbar .btn-icon:hover {
+  background: rgba(120, 120, 128, 0.1) !important; color: var(--text-color); opacity: 1; border: none !important;
+}
+.reader-toolbar .btn-icon:active {
+  transform: scale(0.92); opacity: 0.6;
+}
 .book-title-inline {
-  flex: 1; font-size: 0.82rem; font-weight: 600; color: var(--text-color);
+  flex: 1; font-size: 0.88rem; font-weight: 600; color: var(--text-color);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 60px;
+  text-align: center;
 }
 .reader-content-area {
   flex: 1; min-height: 0; background: var(--card-bg); border: 1px solid rgba(0,0,0,0.06);
@@ -2323,11 +2335,15 @@ body.dark-reader-body .super-navbar {
 }
 body.dark-reader-body .reader-layout,
 body.dark-reader-body .reader-sidebar,
-body.dark-reader-body .reader-toolbar,
 body.dark-reader-body .reader-content-area,
 body.dark-reader-body .reader-nav-bottom {
   background: #161b22;
   border-color: rgba(255,255,255,0.06);
+}
+body.dark-reader-body .reader-toolbar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 body.dark-reader-body .sidebar-header,
 body.dark-reader-body .chapter-group-header {
@@ -2337,9 +2353,14 @@ body.dark-reader-body .chapter-group-header:hover {
   background: rgba(0, 122, 255,0.1);
 }
 body.dark-reader-body .reader-toolbar .btn-icon {
-  background: rgba(255,255,255,0.05);
-  border-color: rgba(255,255,255,0.08);
-  color: #8b949e;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #c9d1d9;
+}
+body.dark-reader-body .reader-toolbar .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff;
 }
 body.dark-reader-body .reader-nav-bottom .btn-nav {
   background: rgba(255, 255, 255, 0.08);
@@ -2387,11 +2408,15 @@ body.eyecare-reader-body .super-navbar {
 }
 body.eyecare-reader-body .reader-layout,
 body.eyecare-reader-body .reader-sidebar,
-body.eyecare-reader-body .reader-toolbar,
 body.eyecare-reader-body .reader-content-area,
 body.eyecare-reader-body .reader-nav-bottom {
   background: #e8f5e9;
   border-color: rgba(76,175,80,0.15);
+}
+body.eyecare-reader-body .reader-toolbar {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
 }
 body.eyecare-reader-body .sidebar-header,
 body.eyecare-reader-body .chapter-group-header {
@@ -2406,9 +2431,14 @@ body.eyecare-reader-body .chapter-group-header:hover {
   background: rgba(76,175,80,0.1);
 }
 body.eyecare-reader-body .reader-toolbar .btn-icon {
-  background: rgba(76,175,80,0.08);
-  border-color: rgba(76,175,80,0.15);
-  color: #4a7c59;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: #2e5b2e;
+}
+body.eyecare-reader-body .reader-toolbar .btn-icon:hover {
+  background: rgba(76, 175, 80, 0.12) !important;
+  color: #1b4a1b;
 }
 body.eyecare-reader-body .chapter-body {
   color: #2e3b2e;
@@ -2438,19 +2468,21 @@ body.eyecare-reader-body .sidebar-header {
 
 /* ???????dark?? */
 .dark-reader .reader-sidebar,
-.dark-reader .reader-toolbar,
 .dark-reader .reader-content-area,
 .dark-reader .reader-nav-bottom,
 .dark-reader .sidebar-header,
 .dark-reader .chapter-group-header {
   background: #1a1d2e; border-color: rgba(255,255,255,0.06);
 }
-.dark-reader .chapter-body { color: #c9d1d9; }
-.dark-reader .chapter-title-display { color: #e6e8ec; border-bottom-color: rgba(255,255,255,0.08); }
-.dark-reader .chapter-item { color: #8b949e; }
-.dark-reader .chapter-item:hover { background: rgba(0, 122, 255,0.1); color: #c9d1d9; }
-.dark-reader .chapter-item.active { background: rgba(0, 122, 255,0.18); color: #c4b9ff; }
-.dark-reader .reader-toolbar .btn-icon { background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.08); color: #8b949e; }
+.dark-reader .reader-toolbar {
+  background: transparent !important; border: none !important; box-shadow: none !important;
+}
+.dark-reader .reader-toolbar .btn-icon {
+  background: transparent !important; border: none !important; box-shadow: none !important; color: #8b949e;
+}
+.dark-reader .reader-toolbar .btn-icon:hover {
+  background: rgba(255, 255, 255, 0.08) !important; color: #ffffff;
+}
 .dark-reader .book-title-inline { color: #c9d1d9; }
 .dark-reader .chapter-group-header { background: rgba(0, 122, 255,0.06); }
 .dark-reader .chapter-group-header:hover { background: rgba(0, 122, 255,0.1); }
@@ -2469,9 +2501,11 @@ body.eyecare-reader-body .sidebar-header {
   .reader-sidebar.hidden { margin-left: -290px; }
   .reader-main { margin-left: 0; }
   .reader-toolbar {
-    padding: 6px 12px;
-    margin-bottom: 6px;
-    border-radius: 12px;
+    padding: 2px 2px;
+    margin-bottom: 4px;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
   }
   .reader-content-area {
     padding: 20px 18px 24px;

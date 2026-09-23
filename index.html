@@ -602,9 +602,18 @@
                 </div>
                 <div class="reader-main">
                     <div class="reader-toolbar">
-                        <button class="btn-icon" onclick="toggleSidebar()" title="目录">📑</button>
+                        <button class="btn-icon" onclick="toggleSidebar()" title="章节目录" id="btn-reader-sidebar-toggle">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                                <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                            </svg>
+                        </button>
                         <span class="book-title-inline" id="reader-book-title">—</span>
-                        <button class="btn-icon" onclick="toggleReaderTheme()" title="切换日间/夜间/护眼" id="btn-theme-toggle">🌙</button>
+                        <button class="btn-icon" onclick="toggleReaderTheme()" title="切换日间/夜间/护眼" id="btn-theme-toggle">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+                            </svg>
+                        </button>
                     </div>
                     <div class="reader-content-area" id="reader-content-area">
                         <div class="chapter-title-display" id="chapter-title-display">—</div>
