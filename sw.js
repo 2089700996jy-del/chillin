@@ -4,7 +4,9 @@ const APP_V = '2.5.26';
 const ASSETS = [
     '/',
     '/index.html',
+    '/app.js',
     `/app.js?v=${APP_V}`,
+    '/style.css',
     `/style.css?v=${APP_V}`,
     '/manifest.json',
     '/icons/icon-192.png',
@@ -61,7 +63,7 @@ self.addEventListener('fetch', (e) => {
     if (e.request.method !== 'GET') return;
     const url = new URL(e.request.url);
     if (url.origin !== self.location.origin) return;      // 只处理同源
-    if (url.pathname.startsWith('/api/')) return;          // API 不缓存，交给网络
+    if (url.pathname.startsWith('/api/') || url.pathname === '/version.json') return; // API 与版本探活直接穿透网络，绝不缓存
 
     // 1. ES modules / app shell JS:
     // 离线时决不能降级到 /index.html（会触发 Uncaught SyntaxError: Unexpected token '<' 导致整站崩溃）
@@ -76,7 +78,7 @@ self.addEventListener('fetch', (e) => {
                     }
                     return res;
                 })
-                .catch(() => caches.match(e.request))
+                .catch(() => caches.match(e.request, { ignoreSearch: true }))
         );
         return;
     }
@@ -107,7 +109,7 @@ self.addEventListener('fetch', (e) => {
                 }
                 return res;
             })
-            .catch(() => caches.match(e.request))
+            .catch(() => caches.match(e.request, { ignoreSearch: true }))
     );
 });
 

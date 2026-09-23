@@ -28,3 +28,18 @@
 /manifest.json
   Content-Type: application/json
   Cache-Control: no-cache
+
+/style.css
+  Content-Type: text/css; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/app.js
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/js/*
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
