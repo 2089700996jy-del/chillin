@@ -26,6 +26,7 @@ import { initReader } from './js/reader.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
 import { initSearch } from './js/search.js';
+import { showToast } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 
 // Disable device vibration across the entire app as requested
@@ -139,6 +140,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // PWA：注册 SW，并在打开/切回前台时主动检查更新
     safeInit('pwaUpdates', initPwaUpdates);
+
+    // 📶 离线感知与网络恢复自动同步
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        document.body.classList.add('is-offline');
+    }
+
+    window.addEventListener('offline', () => {
+        document.body.classList.add('is-offline');
+        showToast('📶 当前处于离线状态，新内容将保存在本地', 'warn');
+    });
+
+    window.addEventListener('online', () => {
+        document.body.classList.remove('is-offline');
+        showToast('🌐 网络已恢复连接，正在自动同步...', 'success');
+        if (state.authToken) {
+            syncFromApi().catch((err) => console.warn('[online] auto sync failed', err));
+        }
+    });
 });
 
 

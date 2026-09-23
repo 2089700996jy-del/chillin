@@ -111,7 +111,7 @@ function renderFeeds() {
                             <div class="rich-link-title">${escapeHtml(title)}</div>
                             ${description ? `<div class="rich-link-desc">${escapeHtml(description)}</div>` : ''}
                         </div>
-                        ${coverUrl ? `<img src="${escapeHtml(resolveAssetUrl(coverUrl))}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" onerror="this.onerror=null; this.style.display='none'">` : ''}
+                        ${coverUrl ? `<img src="${escapeHtml(resolveAssetUrl(coverUrl))}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" loading="lazy" decoding="async" onerror="this.onerror=null; this.style.display='none'">` : ''}
                     </div>
                     <div class="rich-link-footer">
                         <span class="rich-platform-pill">
@@ -129,7 +129,7 @@ function renderFeeds() {
         // Image preview
         let mediaHtml = '';
         if (feed.media_url && !linkHtml) {
-            mediaHtml = `<img src="${escapeHtml(resolveAssetUrl(feed.media_url))}" class="feed-media-preview" alt="" onclick="previewImage(this.src)">`;
+            mediaHtml = `<img src="${escapeHtml(resolveAssetUrl(feed.media_url))}" class="feed-media-preview" alt="" loading="lazy" decoding="async" onerror="this.onerror=null; this.classList.add('img-load-failed');" onclick="previewImage(this.src)">`;
         }
 
         // Remove raw URL text if a rich link card is displayed

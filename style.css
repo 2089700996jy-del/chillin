@@ -4735,3 +4735,59 @@ body.eyecare-reader-body .feed-input-card {
   background: #e8f5e9 !important;
   border-color: rgba(76, 175, 80, 0.25) !important;
 }
+
+/* ========================================================================== */
+/* Command Palette (Cmd+K) & Search Enhancement                               */
+/* ========================================================================== */
+.global-search-section-header {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--text-color-light);
+  letter-spacing: 0.5px;
+  padding: 8px 12px 4px;
+}
+
+.global-search-item {
+  position: relative;
+  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  border-left: 3px solid transparent !important;
+}
+
+.global-search-item.active-selection {
+  background: rgba(0, 122, 255, 0.08) !important;
+  border-left-color: var(--accent-color, #007AFF) !important;
+  transform: translateX(3px) !important;
+}
+
+.command-action-item .global-search-title {
+  color: var(--accent-color, #007AFF);
+  font-weight: 600;
+}
+
+.command-action-item .global-search-tag {
+  background: rgba(0, 122, 255, 0.12);
+  color: #007AFF;
+  border-radius: 6px;
+  font-size: 11px;
+}
+
+.search-highlight {
+  background: rgba(255, 204, 0, 0.35) !important;
+  color: inherit !important;
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* ========================================================================== */
+/* Network Offline/Online Status Pill & Image Fallback                        */
+/* ========================================================================== */
+body.is-offline .sync-status {
+  background: #FF9500 !important;
+  box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.35) !important;
+}
+
+.img-load-failed {
+  display: none !important;
+}
+

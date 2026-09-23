@@ -82,7 +82,7 @@ const renderCards = (filter = 'all') => {
         const card = document.createElement('div');
         card.className = "notion-collection-card";
         card.dataset.id = item.id;
-        let coverHtml = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" class="notion-collection-card__cover">` : '';
+        let coverHtml = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" class="notion-collection-card__cover" loading="lazy" decoding="async" onerror="this.onerror=null; this.classList.add('img-load-failed');">` : '';
         
         const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
         
@@ -107,7 +107,7 @@ const generateWeeklyWidgetsHtml = (data) => {
     let html = '';
     if (data.music && data.music.title) html += `<h2>🎵 本周循环</h2><div class="widget-music"><div class="widget-music-disk"></div><div class="widget-music-info"><div class="widget-music-title">${escapeHtml(data.music.title)}</div><div class="widget-music-artist">${escapeHtml(data.music.artist)}</div>${data.music.lyric ? `<div class="widget-music-lyric">"${escapeHtml(data.music.lyric)}"</div>` : ''}</div></div>`;
     if (data.media && data.media.length > 0 && data.media[0].title) html += `<h2>🎬 影音书影</h2><div class="widget-media">${data.media.map(m => `<div class="widget-media-item"><div class="widget-media-icon">${escapeHtml(m.icon || '🎬')}</div><div class="widget-media-content"><div class="widget-media-title">${escapeHtml(m.title)}</div><div class="widget-media-desc">${escapeHtml(m.desc)}</div></div></div>`).join('')}</div>`;
-    if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${escapeHtml(resolveAssetUrl(data.life.image))}" alt="Life Snapshot"><div class="widget-polaroid-caption">${escapeHtml(data.life.caption)}</div></div>`;
+    if (data.life && data.life.image) html += `<h2>🍳 烟火日常</h2><div class="widget-polaroid"><img src="${escapeHtml(resolveAssetUrl(data.life.image))}" alt="Life Snapshot" loading="lazy" decoding="async" onerror="this.onerror=null; this.classList.add('img-load-failed');"><div class="widget-polaroid-caption">${escapeHtml(data.life.caption)}</div></div>`;
     if (data.podcast) html += `<h2>🎙️ 播客新知</h2><div class="widget-callout"><div class="widget-callout-icon">💡</div><div class="widget-callout-text">${escapeHtml(data.podcast)}</div></div>`;
     if (data.work && data.work.title) html += `<h2>💻 工作切片</h2><div class="widget-work"><div class="widget-work-title">${escapeHtml(data.work.title)}</div><div class="widget-work-desc">${escapeHtml(data.work.desc)}</div></div>`;
     return html;
@@ -121,7 +121,7 @@ const openArticle = (item, opts = {}) => {
     let finalHtml = item.content || '';
     if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
     articleBody.innerHTML = sanitizeHtml(finalHtml);
-    articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover">` : '';
+    articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" loading="lazy" decoding="async" onerror="this.onerror=null; this.classList.add('img-load-failed');">` : '';
     
     // 加载记忆片段的追加批注
     document.getElementById('new-weekly-annotation-content').value = '';
