@@ -125,7 +125,7 @@ export function addDeletedId(id) {
     }
 }
 
-function toUpdatedTs(value) {
+export function toUpdatedTs(value) {
     if (value == null || value === '') return 0;
     if (typeof value === 'number' && Number.isFinite(value)) return value;
     const raw = String(value).trim();
@@ -144,14 +144,14 @@ export function stampLocalUpdate(item) {
     return item;
 }
 
-function stripClientSyncFlags(item) {
+export function stripClientSyncFlags(item) {
     if (!item || typeof item !== 'object') return item;
     const copy = { ...item };
     delete copy._dirty;
     return copy;
 }
 
-function mergeDataLists(localList, apiList) {
+export function mergeDataLists(localList, apiList) {
     if (!Array.isArray(localList)) localList = [];
     if (!Array.isArray(apiList)) apiList = [];
 
@@ -361,12 +361,25 @@ export async function syncFromApi() {
     ];
 
     try {
-        for (const spec of pullSpecs) {
-            try {
-                const lastSync = getSyncCursor(spec.resource);
-                const url = lastSync ? `${spec.path}?since=${encodeURIComponent(lastSync)}` : spec.path;
-                const apiData = await apiRequest(url);
+        // 1. 尝试聚合增量拉取（单次 RTT 打包获取 5 大资源，极大降低移动端延迟）
+        let aggregatedData = null;
+        try {
+            const pullParams = new URLSearchParams();
+            pullSpecs.forEach(spec => {
+                const cursor = getSyncCursor(spec.resource);
+                if (cursor) pullParams.set(`since_${spec.resource}`, cursor);
+            });
+            const pullQuery = pullParams.toString();
+            aggregatedData = await apiRequest(`/api/sync/pull${pullQuery ? '?' + pullQuery : ''}`);
+        } catch (_) {
+            aggregatedData = null; // 降级走独立并行拉取
+        }
+
+        if (aggregatedData && typeof aggregatedData === 'object' && !aggregatedData.error) {
+            for (const spec of pullSpecs) {
+                const apiData = aggregatedData[spec.resource];
                 if (!Array.isArray(apiData)) continue;
+                const lastSync = getSyncCursor(spec.resource);
                 const { merged, needsUpload } = processApiSyncResult(spec.getList(), apiData, !!lastSync);
                 if (needsUpload) needsBatchUpload = true;
                 if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
@@ -378,33 +391,66 @@ export async function syncFromApi() {
                     const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
                     if (maxTs) setSyncCursor(spec.resource, maxTs);
                 }
-            } catch (e) {
-                hadError = true;
             }
+        } else {
+            // 降级：并发拉取各资源（Promise.all 代替原先的串行 for-await 循环）
+            await Promise.all(pullSpecs.map(async (spec) => {
+                try {
+                    const lastSync = getSyncCursor(spec.resource);
+                    const url = lastSync ? `${spec.path}?since=${encodeURIComponent(lastSync)}` : spec.path;
+                    const apiData = await apiRequest(url);
+                    if (!Array.isArray(apiData)) return;
+                    const { merged, needsUpload } = processApiSyncResult(spec.getList(), apiData, !!lastSync);
+                    if (needsUpload) needsBatchUpload = true;
+                    if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
+                        spec.setList(merged);
+                        spec.save();
+                        if (spec.shouldRefresh()) spec.refresh();
+                    }
+                    if (apiData.length > 0) {
+                        const maxTs = apiData.map(a => a.updated_at).filter(Boolean).sort().pop();
+                        if (maxTs) setSyncCursor(spec.resource, maxTs);
+                    }
+                } catch (e) {
+                    hadError = true;
+                }
+            }));
         }
 
+        // 2. 增量脏数据推送（Delta Push：仅上传本地改动 _dirty=true 项，不刷全表时间戳）
         if (needsBatchUpload) {
             try {
                 const deleted = new Set(getDeletedIds().map(String));
-                const alive = (list) => (list || [])
-                    .filter(item => item && item.id != null && !deleted.has(String(item.id)))
+                const dirtyOnly = (list) => (list || [])
+                    .filter(item => item && item.id != null && item._dirty && !deleted.has(String(item.id)))
                     .map(stripClientSyncFlags);
-                await apiRequest('/api/sync/batch', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        weeklies: alive(state.database),
-                        notes: alive(state.notesDatabase),
-                        bookmarks: alive(state.bookmarksDatabase),
-                        feeds: alive(state.feedsDatabase),
-                        prompts: alive(state.promptsDatabase)
-                    })
-                });
-                state.database.forEach(i => { if (i) i._dirty = false; });
-                state.notesDatabase.forEach(i => { if (i) i._dirty = false; });
-                state.bookmarksDatabase.forEach(i => { if (i) i._dirty = false; });
-                state.feedsDatabase.forEach(i => { if (i) i._dirty = false; });
-                state.promptsDatabase.forEach(i => { if (i) i._dirty = false; });
-                saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase(); savePromptsDatabase();
+
+                const dirtyWeeklies = dirtyOnly(state.database);
+                const dirtyNotes = dirtyOnly(state.notesDatabase);
+                const dirtyBookmarks = dirtyOnly(state.bookmarksDatabase);
+                const dirtyFeeds = dirtyOnly(state.feedsDatabase);
+                const dirtyPrompts = dirtyOnly(state.promptsDatabase);
+
+                const totalDirty = dirtyWeeklies.length + dirtyNotes.length + dirtyBookmarks.length + dirtyFeeds.length + dirtyPrompts.length;
+
+                if (totalDirty > 0) {
+                    await apiRequest('/api/sync/batch', {
+                        method: 'POST',
+                        body: JSON.stringify({
+                            weeklies: dirtyWeeklies,
+                            notes: dirtyNotes,
+                            bookmarks: dirtyBookmarks,
+                            feeds: dirtyFeeds,
+                            prompts: dirtyPrompts
+                        })
+                    });
+                    state.database.forEach(i => { if (i && i._dirty) i._dirty = false; });
+                    state.notesDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
+                    state.bookmarksDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
+                    state.feedsDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
+                    state.promptsDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
+                    saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase(); savePromptsDatabase();
+                }
                 setSyncStatus('已同步', 'ok', 2000);
             } catch (e) {
                 hadError = true;
@@ -412,6 +458,7 @@ export async function syncFromApi() {
             }
         }
 
+        // 3. 回响卡片拉取
         try {
             const apiData = await apiRequest('/api/echo/cards');
             if (Array.isArray(apiData)) {

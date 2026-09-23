@@ -1,5 +1,5 @@
-// Chillin Service Worker — 网络优先，离线回退缓存
-const CACHE_NAME = 'chillin-v71';
+// Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
+const CACHE_NAME = 'chillin-v72';
 const APP_V = '2.5.25';
 const ASSETS = [
     '/',
@@ -8,12 +8,38 @@ const ASSETS = [
     `/style.css?v=${APP_V}`,
     '/manifest.json',
     '/icons/icon-192.png',
-    '/icons/icon-512.png'
+    '/icons/icon-512.png',
+    '/js/actions.js',
+    '/js/api.js',
+    '/js/auth.js',
+    '/js/bookmarks.js',
+    '/js/config.js',
+    '/js/echo-ai.js',
+    '/js/feeds.js',
+    '/js/notes.js',
+    '/js/prompts.js',
+    '/js/pwa-update.js',
+    '/js/reader.js',
+    '/js/router.js',
+    '/js/search.js',
+    '/js/state.js',
+    '/js/sync.js',
+    '/js/ui.js',
+    '/js/upload.js',
+    '/js/utils.js',
+    '/js/version.js',
+    '/js/weeklies.js'
 ];
 
 self.addEventListener('install', (e) => {
     e.waitUntil(
-        caches.open(CACHE_NAME).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting())
+        caches.open(CACHE_NAME).then(async (c) => {
+            await Promise.allSettled(
+                ASSETS.map((asset) => c.add(asset).catch((err) => {
+                    console.warn('[SW] Cache asset skipped:', asset, err?.message || err);
+                }))
+            );
+        }).then(() => self.skipWaiting())
     );
 });
 
@@ -37,23 +63,51 @@ self.addEventListener('fetch', (e) => {
     if (url.origin !== self.location.origin) return;      // 只处理同源
     if (url.pathname.startsWith('/api/')) return;          // API 不缓存，交给网络
 
-    // ES modules / app shell JS: network-only so PWA doesn't stick on stale modules
+    // 1. ES modules / app shell JS:
+    // 离线时决不能降级到 /index.html（会触发 Uncaught SyntaxError: Unexpected token '<' 导致整站崩溃）
     const isModuleJs = url.pathname.startsWith('/js/') || url.pathname.endsWith('/app.js') || url.pathname === '/app.js';
     if (isModuleJs) {
         e.respondWith(
-            fetch(e.request).catch(() => caches.match(e.request).then((m) => m || caches.match('/index.html')))
+            fetch(e.request)
+                .then((res) => {
+                    if (res && res.status === 200) {
+                        const clone = res.clone();
+                        caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+                    }
+                    return res;
+                })
+                .catch(() => caches.match(e.request))
         );
         return;
     }
 
+    // 2. 页面导航请求（离线时回退到 /index.html 单页容器）
+    if (e.request.mode === 'navigate') {
+        e.respondWith(
+            fetch(e.request)
+                .then((res) => {
+                    if (res && res.status === 200) {
+                        const clone = res.clone();
+                        caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+                    }
+                    return res;
+                })
+                .catch(() => caches.match('/index.html'))
+        );
+        return;
+    }
+
+    // 3. 静态资源（CSS, 图片, 图标等）
     e.respondWith(
         fetch(e.request)
             .then((res) => {
-                const clone = res.clone();
-                caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+                if (res && res.status === 200) {
+                    const clone = res.clone();
+                    caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
+                }
                 return res;
             })
-            .catch(() => caches.match(e.request).then((m) => m || caches.match('/index.html')))
+            .catch(() => caches.match(e.request))
     );
 });
 

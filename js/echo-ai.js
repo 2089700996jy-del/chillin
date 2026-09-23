@@ -227,22 +227,93 @@ async function sendAiChatMessage() {
             let isFirstChunk = true;
             let sourcesMounted = false;
 
-            const mountSources = (sources) => {
-                if (sourcesMounted || !Array.isArray(sources) || sources.length === 0) return;
-                sourcesMounted = true;
+            function jumpToGardenSource(s) {
+                if (!s || s.id == null) return;
+                if (window.closeAiChatModal) window.closeAiChatModal();
+                const type = s.type;
+                const id = s.id;
+
+                setTimeout(() => {
+                    if (type === '周记') {
+                        const item = (state.database || []).find(w => String(w.id) === String(id));
+                        if (item && actions.openArticle) {
+                            actions.openArticle(item);
+                        } else {
+                            location.hash = `#/article/${id}`;
+                        }
+                    } else if (type === '笔记') {
+                        if (actions.openNoteEditor) {
+                            actions.openNoteEditor(Number(id) || id);
+                        } else {
+                            location.hash = `#/note-editor/${id}`;
+                        }
+                    } else if (type === '随手记') {
+                        if (actions.switchView) actions.switchView('view-feeds');
+                        location.hash = '#/feeds';
+                        setTimeout(() => {
+                            const card = document.querySelector(`.feed-item-card[data-feed-id="${id}"]`);
+                            if (card) {
+                                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                card.style.transition = 'box-shadow 0.3s ease';
+                                card.style.boxShadow = '0 0 0 2px var(--ios-blue, #007AFF)';
+                                setTimeout(() => { card.style.boxShadow = ''; }, 2000);
+                            }
+                        }, 120);
+                    } else if (type === '提示词') {
+                        if (actions.switchView) actions.switchView('view-bookmarks');
+                        location.hash = '#/bookmarks';
+                        const subtabBtn = document.querySelector('[data-subtab="prompts"]');
+                        if (subtabBtn) subtabBtn.click();
+                        setTimeout(() => {
+                            if (actions.openPromptEditor) {
+                                actions.openPromptEditor(Number(id) || id);
+                            }
+                        }, 120);
+                    } else if (type === '收藏') {
+                        if (actions.switchView) actions.switchView('view-bookmarks');
+                        location.hash = '#/bookmarks';
+                        const subtabBtn = document.querySelector('[data-subtab="resources"]');
+                        if (subtabBtn) subtabBtn.click();
+                    }
+                }, 150);
+            }
+
+            function renderSourcesBoxElement(sources) {
                 const box = document.createElement('div');
                 box.className = 'ai-rag-sources';
                 box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(120,120,128,0.12);font-size:12px;color:rgba(60,60,67,0.75);line-height:1.45;';
                 const title = document.createElement('div');
-                title.style.cssText = 'font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85)';
-                title.textContent = `已检索 ${sources.length} 条相关记忆`;
+                title.style.cssText = 'font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85);display:flex;align-items:center;justify-content:space-between;';
+                title.innerHTML = `<span>已检索 ${sources.length} 条相关记忆</span><span style="font-weight:400;font-size:11px;color:rgba(60,60,67,0.5);">点击条目跳转</span>`;
                 box.appendChild(title);
                 sources.slice(0, 6).forEach((s) => {
                     const row = document.createElement('div');
+                    row.style.cssText = 'cursor:pointer;padding:4px 6px;margin:2px 0;border-radius:6px;transition:background 0.15s;display:flex;align-items:center;justify-content:space-between;gap:8px;';
+                    row.title = '点击跳转至该内容';
+                    row.addEventListener('mouseenter', () => { row.style.background = 'rgba(0,122,255,0.08)'; });
+                    row.addEventListener('mouseleave', () => { row.style.background = 'transparent'; });
+                    
                     const label = [s.type, s.date, s.title].filter(Boolean).join(' · ');
-                    row.textContent = `· ${label}${s.snippet ? ' — ' + s.snippet : ''}`;
+                    const textSpan = document.createElement('span');
+                    textSpan.style.cssText = 'overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;';
+                    textSpan.textContent = `· ${label}${s.snippet ? ' — ' + s.snippet : ''}`;
+                    
+                    const arrowSpan = document.createElement('span');
+                    arrowSpan.style.cssText = 'font-size:11px;color:var(--ios-blue, #007AFF);flex-shrink:0;';
+                    arrowSpan.textContent = '查看 ↗';
+
+                    row.appendChild(textSpan);
+                    row.appendChild(arrowSpan);
+                    row.addEventListener('click', () => jumpToGardenSource(s));
                     box.appendChild(row);
                 });
+                return box;
+            }
+
+            const mountSources = (sources) => {
+                if (sourcesMounted || !Array.isArray(sources) || sources.length === 0) return;
+                sourcesMounted = true;
+                const box = renderSourcesBoxElement(sources);
                 botMsgDiv.insertBefore(box, bubbleEl);
             };
 
@@ -292,14 +363,7 @@ async function sendAiChatMessage() {
             const res = await response.json();
             if (res && res.reply) {
                 if (Array.isArray(res.sources) && res.sources.length) {
-                    const box = document.createElement('div');
-                    box.className = 'ai-rag-sources';
-                    box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(120,120,128,0.12);font-size:12px;color:rgba(60,60,67,0.75);line-height:1.45;';
-                    box.innerHTML = `<div style="font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85)">已检索 ${res.sources.length} 条相关记忆</div>` +
-                        res.sources.slice(0, 6).map(s => {
-                            const label = [s.type, s.date, s.title].filter(Boolean).join(' · ');
-                            return `<div>· ${escapeHtml(label)}${s.snippet ? ' — ' + escapeHtml(s.snippet) : ''}</div>`;
-                        }).join('');
+                    const box = renderSourcesBoxElement(res.sources);
                     botMsgDiv.insertBefore(box, bubbleEl);
                 }
                 bubbleEl.innerHTML = markdownToHtml(res.reply);
