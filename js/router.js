@@ -110,7 +110,7 @@ const switchView = (targetViewId, opts = {}) => {
         const readerLayout = document.querySelector('.reader-layout');
         if (readerLayout) readerLayout.classList.remove('dark-reader', 'eyecare-reader');
         const themeMeta = document.querySelector('meta[name="theme-color"]');
-        if (themeMeta && (themeMeta.getAttribute('content') === '#0d1117' || themeMeta.getAttribute('content') === '#dcedc8' || themeMeta.getAttribute('content') === '#ffffff')) {
+        if (themeMeta && themeMeta.getAttribute('content') !== '#F2F2F7') {
             themeMeta.setAttribute('content', '#F2F2F7');
         }
         if (targetViewId === 'reader') {
