@@ -161,12 +161,15 @@ export function initPwaUpdates() {
 
     const probeRemoteVersion = async (reg) => {
         const urls = [
-            `${CLOUD_WORKER_BASE}/api/app-version?t=${Date.now()}`,
-            `/version.json?t=${Date.now()}`
+            `/version.json?t=${Date.now()}`,
+            `${CLOUD_WORKER_BASE}/api/app-version?t=${Date.now()}`
         ];
         for (const url of urls) {
             try {
-                const res = await fetch(url, { cache: 'no-store', credentials: 'omit' });
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 2500);
+                const res = await fetch(url, { cache: 'no-store', credentials: 'omit', signal: controller.signal });
+                clearTimeout(timeoutId);
                 if (!res.ok) continue;
                 const data = await res.json();
                 const remote = String(data.version || '').trim();
