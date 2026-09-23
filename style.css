@@ -214,6 +214,50 @@ body.in-reader-book .nav-right {
   display: none !important;
 }
 
+body.in-reader-book .super-navbar,
+body.in-reader-book .super-navbar.scrolled {
+  border: none !important;
+  border-top: none !important;
+  border-bottom: none !important;
+  box-shadow: none !important;
+}
+
+/* Subtle top loading line attached to navbar (invisible when idle/not loading) */
+.nav-loading-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: transparent;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 101;
+  overflow: hidden;
+  border-radius: 0 0 99px 99px;
+}
+
+body.is-syncing .nav-loading-bar,
+body.is-loading .nav-loading-bar,
+.super-navbar.is-loading .nav-loading-bar {
+  opacity: 1;
+  background: linear-gradient(90deg, transparent 0%, var(--accent-color, #007AFF) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: navLoadingShimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes navLoadingShimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@media (max-width: 768px) {
+  .nav-loading-bar {
+    border-radius: 0;
+  }
+}
+
 .super-navbar__menu { 
   display: flex; 
   gap: 24px; 
@@ -1746,7 +1790,8 @@ body.not-authenticated #btn-back {
     background: rgba(242, 242, 247, 0.88) !important;
     backdrop-filter: blur(20px) saturate(180%) !important;
     -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
-    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08) !important;
+    border-bottom: none !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02) !important;
   }
 
   .super-navbar__content {
@@ -4694,11 +4739,12 @@ body.eyecare-reader-body .prompt-editor-card {
 }
 
 @media (max-width: 768px) {
+  .super-navbar,
+  .super-navbar.scrolled,
   .super-navbar:not(.scrolled) {
     border: none !important;
     border-top: none !important;
     border-bottom: none !important;
-    box-shadow: none !important;
   }
   .nav-right button {
     min-height: 38px;

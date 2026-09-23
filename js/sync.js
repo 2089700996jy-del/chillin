@@ -234,8 +234,11 @@ let syncStatusTimer = null;
 /** 同步指示灯：ok=绿 / warn|info=黄 / error=红；无可见文字 */
 export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
     const el = document.getElementById('sync-status');
+    const isBusy = (tone === 'info' || tone === 'warn') && !!message && !message.includes('已同步');
+    document.body.classList.toggle('is-syncing', !!isBusy);
     if (!el) return;
     if (!message) {
+        document.body.classList.remove('is-syncing');
         el.hidden = true;
         el.removeAttribute('data-tone');
         el.removeAttribute('aria-label');
@@ -251,6 +254,7 @@ export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
     if (autoHideMs > 0) {
         syncStatusTimer = setTimeout(() => {
             if (el.getAttribute('aria-label') === message) {
+                document.body.classList.remove('is-syncing');
                 el.hidden = true;
                 el.removeAttribute('data-tone');
                 el.removeAttribute('aria-label');
