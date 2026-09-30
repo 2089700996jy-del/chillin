@@ -216,6 +216,7 @@ body.in-reader-book .nav-reader-actions {
   display: inline-flex;
 }
 
+body.in-reader-book .nav-brand-desktop,
 body.in-reader-book .nav-brand-mobile,
 body.in-reader-book .super-navbar__menu,
 body.in-reader-book .nav-right {
@@ -287,30 +288,62 @@ body.is-loading .nav-loading-bar,
 }
 
 .nav-btn-back {
-  background: none; 
-  border: none; 
+  background: transparent !important; 
+  border: none !important; 
+  outline: none !important;
+  box-shadow: none !important;
   cursor: pointer; 
   font-size: 15px; 
   font-weight: 500;
-  color: var(--accent-color, #007AFF); 
-  transition: opacity 0.15s ease; 
+  color: var(--accent-color, #0066CC); 
+  transition: opacity 0.15s ease, transform 0.15s ease; 
   font-family: var(--font-family);
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  padding: 6px 4px 6px 0;
+  padding: 6px 8px 6px 0;
   -webkit-tap-highlight-color: transparent !important;
+  user-select: none;
+  border-radius: 8px;
 }
-.nav-btn-back:hover,
+
+.nav-btn-back:focus,
+.nav-btn-back:focus-visible,
+.nav-btn-back:active {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+.nav-btn-back:hover { 
+  opacity: 0.8;
+}
+
 .nav-btn-back:active { 
-  opacity: 0.7;
-  color: var(--accent-color, #007AFF);
+  opacity: 0.55;
+  transform: scale(0.96);
 }
+
 .nav-back-icon {
-  width: 18px;
-  height: 18px;
-  stroke: var(--accent-color, #007AFF);
+  width: 19px;
+  height: 19px;
+  stroke: currentColor;
   flex-shrink: 0;
+}
+
+/* Reader Mode Back Button Theme Harmonization */
+body.in-reader-book .nav-btn-back {
+  color: var(--text-color, #1A1A1A) !important;
+}
+
+body.in-reader-book.dark-reader-body .nav-btn-back,
+body.dark-reader-body .nav-btn-back {
+  color: #e5e5ea !important;
+}
+
+body.in-reader-book.eyecare-reader-body .nav-btn-back,
+body.eyecare-reader-body .nav-btn-back {
+  color: #2e7d32 !important;
 }
 
 /* ========================================== */
@@ -1796,6 +1829,14 @@ body.not-authenticated #btn-back {
 }
 .nav-brand-mobile {
   display: none;
+}
+.nav-brand-desktop {
+  display: none !important;
+}
+
+body.hide-bottom-nav .nav-brand-desktop,
+body.hide-bottom-nav .nav-brand-mobile {
+  display: none !important;
 }
 
 /* ========================================== */
