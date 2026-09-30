@@ -1,17 +1,17 @@
 /* Chillin - iOS HIG style digital garden */
 
 :root {
-  /* Apple HIG */
-  --ios-blue: #007AFF;
+  /* Apple HIG & Warm Paper Design Tokens */
+  --ios-blue: #0066CC;
   --ios-green: #34C759;
   --ios-red: #FF3B30;
-  --ios-bg: #F2F2F7;
+  --ios-bg: #F8F9FA;
   --ios-card-bg: #FFFFFF;
-  --ios-label: #000000;
-  --ios-secondary-label: rgba(60, 60, 67, 0.6);
+  --ios-label: #1A1A1A;
+  --ios-secondary-label: rgba(60, 60, 67, 0.65);
 
   --bg-color: var(--ios-bg);
-  --text-color: #1c1c1e;
+  --text-color: #1A1A1A;
   --text-color-light: var(--ios-secondary-label);
   --accent-color: var(--ios-blue);
   --accent-gradient: var(--ios-blue);
@@ -19,11 +19,18 @@
     "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
 
   --card-bg: var(--ios-card-bg);
-  --card-shadow: none;
-  --card-hover-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
-  --widget-bg: rgba(120, 120, 128, 0.12);
-  --callout-bg: rgba(0, 122, 255, 0.08);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+  --card-hover-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  --widget-bg: rgba(120, 120, 128, 0.08);
+  --callout-bg: rgba(0, 102, 204, 0.06);
   --danger-color: var(--ios-red);
+}
+
+.ui-icon-inline {
+  display: inline-block;
+  vertical-align: -0.15em;
+  margin-right: 4px;
+  flex-shrink: 0;
 }
 
 * { 
@@ -1134,6 +1141,29 @@ body.is-loading .nav-loading-bar,
 .ios-btn-upload:active {
   background: rgba(0, 122, 255, 0.18);
 }
+.ios-btn-insert-img {
+  background: rgba(0, 122, 255, 0.08);
+  color: var(--accent-color, #007AFF);
+  border: none;
+  padding: 3px 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.ios-btn-insert-img:hover {
+  background: rgba(0, 122, 255, 0.14);
+}
+.ios-btn-insert-img:active {
+  background: rgba(0, 122, 255, 0.22);
+}
 .ios-cover-preview {
   position: relative;
   width: 100%;
@@ -1668,9 +1698,15 @@ body.is-loading .nav-loading-bar,
   transition: opacity 0.3s ease, visibility 0.3s ease;
 }
 .auth-overlay.hidden {
+  display: none !important;
   opacity: 0; 
   visibility: hidden; 
   pointer-events: none;
+}
+
+/* 隐藏账号文本以去低级感，保留纯净极简工具栏 */
+.nav-username {
+  display: none !important;
 }
 
 /* ???????????????????Tab ?????? */
@@ -3245,29 +3281,82 @@ body.keyboard-open .fab-btn {
   opacity: 0.7;
 }
 
-/* 4. Echo Cards (AI ??????) */
+/* 4. Echo Cards Wrapper & Collapsible Container */
+.echo-cards-wrapper {
+  margin-bottom: 20px;
+  background: var(--card-bg, #ffffff);
+  border: 0.5px solid rgba(0, 0, 0, 0.08);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.echo-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: rgba(0, 102, 204, 0.03);
+  transition: background 0.15s ease;
+}
+
+.echo-cards-header:hover {
+  background: rgba(0, 102, 204, 0.06);
+}
+
+.echo-cards-header-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent-color, #0066CC);
+}
+
+.echo-cards-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-color-light);
+}
+
+.echo-cards-toggle-btn .toggle-icon {
+  transition: transform 0.25s ease;
+}
+
+.echo-cards-wrapper:not(.expanded) .echo-cards-container {
+  display: none !important;
+}
+
+.echo-cards-wrapper.expanded .echo-cards-toggle-btn .toggle-icon {
+  transform: rotate(180deg);
+}
+
 .echo-cards-container {
-  margin-bottom: 24px;
+  padding: 14px 14px 16px;
   display: flex;
   flex-direction: row;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
-  gap: 14px;
-  padding-bottom: 8px; /* For scrollbar breathing room */
+  gap: 12px;
   -webkit-overflow-scrolling: touch;
-  scrollbar-width: none; /* Firefox */
+  scrollbar-width: none;
 }
 .echo-cards-container::-webkit-scrollbar {
-  display: none; /* Chrome/Safari */
+  display: none;
 }
 
 .echo-card {
-  flex: 0 0 92%;
+  flex: 0 0 94%;
   scroll-snap-align: center;
   background: var(--card-bg, #ffffff);
-  border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 16px;
-  padding: 20px;
+  border: 0.5px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
+  padding: 16px;
   position: relative;
   overflow: hidden;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
@@ -5304,4 +5393,15 @@ body.is-offline .sync-status {
 .img-load-failed {
   display: none !important;
 }
+
+/* ========================================================================== */
+/* UI/UX Phase 1 Overhaul: Desktop FAB Suppression & Pure Typography         */
+/* ========================================================================== */
+@media (min-width: 769px) {
+  .fab-btn,
+  #btn-create-new {
+    display: none !important;
+  }
+}
+
 

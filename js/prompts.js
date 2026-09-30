@@ -70,8 +70,8 @@ export function initPrompts() {
         const promptsCount = (state.promptsDatabase || []).length;
         const resBtn = tabSwitcher.querySelector('.segment-btn[data-subtab="resources"]');
         const prBtn = tabSwitcher.querySelector('.segment-btn[data-subtab="prompts"]');
-        if (resBtn) resBtn.innerHTML = `🔖 网址 <span class="tab-count-badge">${bookmarksCount}</span>`;
-        if (prBtn) prBtn.innerHTML = `🤖 提示词 <span class="tab-count-badge">${promptsCount}</span>`;
+        if (resBtn) resBtn.innerHTML = `<svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> 网址 <span class="tab-count-badge">${bookmarksCount}</span>`;
+        if (prBtn) prBtn.innerHTML = `<svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> 提示词 <span class="tab-count-badge">${promptsCount}</span>`;
     }
 
     // ── Render Project Chips ──
@@ -110,19 +110,19 @@ export function initPrompts() {
         }
     }
 
-    // ── Scene Emoji Map ──
+    // ── Scene Map ──
     const SCENE_ICONS = {
-        '开发': '💻',
-        '写作': '✍️',
-        '润色': '🎨',
-        '推演': '🧠',
-        '翻译': '🌐',
-        '角色': '🎭',
-        '通用': '⚡',
+        '开发': '',
+        '写作': '',
+        '润色': '',
+        '推演': '',
+        '翻译': '',
+        '角色': '',
+        '通用': '',
     };
 
     function getSceneIcon(scene) {
-        return SCENE_ICONS[scene] || '✨';
+        return '';
     }
 
     // ── Variable Highlight in Prompt Content ──
@@ -244,13 +244,13 @@ export function initPrompts() {
             card.innerHTML = `
                 <div class="prompt-card-header">
                     <div class="prompt-card-title-group">
-                        ${prompt.is_pinned ? '<span class="prompt-card-pin" title="已置顶">📌</span>' : ''}
+                        ${prompt.is_pinned ? '<span class="prompt-card-pin" title="已置顶"><svg class="ui-icon-inline" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 2v2l-2 3v5l3 3v2h-6v5l-1 2-1-2v-5H3v-2l3-3V7L4 4V2z"/></svg></span>' : ''}
                         <span class="prompt-card-title">${escapeHtml(prompt.title)}</span>
                     </div>
                     <div class="prompt-card-badges">
-                        ${hasVariables ? `<span class="prompt-badge prompt-badge-vars" title="包含 ${vars.length} 个可填参数">🧩 ${vars.length}参数</span>` : ''}
-                        <span class="prompt-badge prompt-badge-project" title="所属项目">📁 ${escapeHtml(prompt.project || '通用')}</span>
-                        <span class="prompt-badge prompt-badge-scene" title="使用场景">${sceneIcon} ${escapeHtml(prompt.scene || '通用')}</span>
+                        ${hasVariables ? `<span class="prompt-badge prompt-badge-vars" title="包含 ${vars.length} 个可填参数"><svg class="ui-icon-inline" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>${vars.length} 参数</span>` : ''}
+                        <span class="prompt-badge prompt-badge-project" title="所属项目"><svg class="ui-icon-inline" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>${escapeHtml(prompt.project || '通用')}</span>
+                        <span class="prompt-badge prompt-badge-scene" title="使用场景"><svg class="ui-icon-inline" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>${escapeHtml(prompt.scene || '通用')}</span>
                     </div>
                 </div>
 
@@ -266,11 +266,15 @@ export function initPrompts() {
                 <div class="prompt-card-actions">
                     <div class="prompt-action-left">
                         <button type="button" class="btn-prompt-action btn-prompt-copy" data-id="${prompt.id}" title="复制提示词">
-                            <span class="action-icon">📋</span>
+                            <span class="action-icon">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            </span>
                             <span class="action-label">${hasVariables ? '填参 / 复制' : '复制'}</span>
                         </button>
                         <button type="button" class="btn-prompt-action btn-prompt-ai" data-id="${prompt.id}" title="发送至 AI 对话助手">
-                            <span class="action-icon">✨</span>
+                            <span class="action-icon">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
+                            </span>
                             <span class="action-label">直发 AI</span>
                         </button>
                     </div>

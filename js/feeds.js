@@ -217,12 +217,7 @@ const btnFeedRemoveMedia = document.getElementById('btn-feed-remove-media');
 
 if (btnFeedAddMedia && feedMediaInputWrapper) {
     btnFeedAddMedia.addEventListener('click', () => {
-        const uploader = document.getElementById('global-image-uploader');
-        if (uploader) {
-            // Manually trigger upload flow
-            currentUploadTargetInput = feedMediaUrlInput;
-            uploader.click();
-        }
+        feedMediaInputWrapper.style.display = 'block';
     });
 }
 

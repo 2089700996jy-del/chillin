@@ -18,17 +18,23 @@ export function initEchoAi() {
 // 4. Render Echo Cards & Generator
 function renderEchoCards() {
     const container = document.getElementById('echo-cards-container');
+    const wrapper = document.getElementById('echo-cards-wrapper');
     if (!container) return;
 
     if (!state.echoCardsDatabase || state.echoCardsDatabase.length === 0) {
         container.innerHTML = '';
+        if (wrapper) wrapper.style.display = 'none';
         return;
     }
+    if (wrapper) wrapper.style.display = '';
 
     container.innerHTML = state.echoCardsDatabase.map(card => `
             <div class="echo-card" id="echo-card-${card.id}">
                 <button class="echo-card-delete" data-card-id="${escapeHtml(String(card.id))}" title="删除卡片" type="button">×</button>
-                <div class="echo-card-badge">✨ AI 记忆回响 · ${escapeHtml(card.topic || '周记串联')}</div>
+                <div class="echo-card-badge">
+                    <svg class="ui-icon-inline" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
+                    记忆回响 · ${escapeHtml(card.topic || '周记串联')}
+                </div>
                 <div class="echo-card-title">${escapeHtml(card.title)}</div>
                 <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
             </div>
@@ -127,7 +133,10 @@ if (btnTriggerEchoCard) {
             }
         } finally {
             btnTriggerEchoCard.disabled = false;
-            btnTriggerEchoCard.innerText = '✨ 生成 AI 回响卡片';
+            btnTriggerEchoCard.innerHTML = `
+                <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
+                <span>生成 AI 回响</span>
+            `;
         }
     });
 }
