@@ -129,7 +129,7 @@ const switchView = (targetViewId, opts = {}) => {
 
     if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'prompt-editor' || targetViewId === 'reader-book') {
         navMenu.style.display = 'none';
-        btnBack.style.display = 'block';
+        btnBack.style.display = 'inline-flex';
         fabBtn.classList.add('hidden');
         fabBtn.style.display = 'none';
         if (mobileBottomNav) {
