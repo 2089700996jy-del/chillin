@@ -287,21 +287,28 @@ body.is-loading .nav-loading-bar,
   background: rgba(0, 0, 0, 0.04);
 }
 
-.nav-btn-back {
+.nav-btn-back,
+#btn-back {
   background: transparent !important; 
   border: none !important; 
   outline: none !important;
+  outline-color: transparent !important;
+  outline-style: none !important;
+  outline-width: 0 !important;
+  outline-offset: 0 !important;
   box-shadow: none !important;
   cursor: pointer; 
   font-size: 15px; 
   font-weight: 500;
+  line-height: 1;
   color: var(--accent-color, #0066CC); 
   transition: opacity 0.15s ease, transform 0.15s ease; 
   font-family: var(--font-family);
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 6px 8px 6px 0;
+  vertical-align: middle;
+  gap: 1px;
+  padding: 6px 10px 6px 0;
   -webkit-tap-highlight-color: transparent !important;
   user-select: none;
   border-radius: 8px;
@@ -309,8 +316,15 @@ body.is-loading .nav-loading-bar,
 
 .nav-btn-back:focus,
 .nav-btn-back:focus-visible,
-.nav-btn-back:active {
+.nav-btn-back:active,
+#btn-back:focus,
+#btn-back:focus-visible,
+#btn-back:active {
   outline: none !important;
+  outline-color: transparent !important;
+  outline-style: none !important;
+  outline-width: 0 !important;
+  outline-offset: 0 !important;
   box-shadow: none !important;
   border: none !important;
 }
@@ -325,10 +339,19 @@ body.is-loading .nav-loading-bar,
 }
 
 .nav-back-icon {
-  width: 19px;
-  height: 19px;
+  width: 22px;
+  height: 22px;
   stroke: currentColor;
   flex-shrink: 0;
+  display: block;
+}
+
+.nav-back-text {
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1;
+  display: inline-block;
+  transform: translateY(-0.5px);
 }
 
 /* Reader Mode Back Button Theme Harmonization */
