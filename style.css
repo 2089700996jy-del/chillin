@@ -1939,7 +1939,8 @@ body.not-authenticated #btn-back {
   }
 
   .mobile-tab-item {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
