@@ -5680,5 +5680,172 @@ body.dark-reader-body .sheet-pull-handle {
   }
 }
 
+/* ========================================================================== */
+/* UI/UX Direction 2: Desktop Widescreen Workspace & Orderliness               */
+/* ========================================================================== */
+
+@media (min-width: 769px) {
+  /* 1. Full-width edge-to-edge transparent frosted topbar */
+  .super-navbar {
+    top: 0 !important;
+    left: 0 !important;
+    transform: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 54px !important;
+    border-radius: 0 !important;
+    border: none !important;
+    border-bottom: 0.5px solid rgba(0, 0, 0, 0.08) !important;
+    background: rgba(248, 249, 250, 0.82) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02) !important;
+  }
+
+  .super-navbar.scrolled {
+    transform: none !important;
+    background: rgba(255, 255, 255, 0.94) !important;
+    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.04) !important;
+    border-bottom-color: rgba(0, 0, 0, 0.09) !important;
+  }
+
+  .super-navbar__content {
+    max-width: 1140px;
+    margin: 0 auto;
+    padding: 0 24px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .nav-brand-desktop {
+    display: flex !important;
+    align-items: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--text-color, #1A1A1A);
+    letter-spacing: -0.4px;
+    margin-right: 28px;
+    user-select: none;
+  }
+
+  .super-navbar__menu {
+    gap: 18px;
+  }
+
+  .nav-item {
+    font-size: 13.5px;
+    padding: 6px 10px;
+    border-radius: 8px;
+  }
+
+  .nav-item.active {
+    background: rgba(0, 102, 204, 0.08);
+    color: var(--accent-color, #0066CC);
+    font-weight: 600;
+  }
+
+  /* 2. Expanded Container for Widescreen Workspace */
+  .notion-app {
+    max-width: 1140px !important;
+    padding: 82px 24px 60px !important;
+  }
+
+  /* 3. Widescreen 3-column Prompts Grid */
+  .prompts-grid {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  .bookmark-grid {
+    grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)) !important;
+    gap: 16px !important;
+  }
+
+  /* 4. Compact Prompts Filter Bar on Desktop */
+  .prompts-filter-section {
+    gap: 4px;
+    margin-top: 8px;
+  }
+
+  .prompt-chip {
+    height: 25px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+
+/* Desktop Dark Theme Header Parity */
+@media (min-width: 769px) {
+  body.dark-reader-body .super-navbar {
+    background: rgba(15, 17, 21, 0.85) !important;
+    border-bottom: 0.5px solid rgba(255, 255, 255, 0.08) !important;
+  }
+  body.dark-reader-body .nav-brand-desktop {
+    color: #f2f2f7 !important;
+  }
+  body.dark-reader-body .nav-item.active {
+    background: rgba(10, 132, 255, 0.15) !important;
+    color: #0A84FF !important;
+  }
+
+  body.eyecare-reader-body .super-navbar {
+    background: rgba(232, 240, 224, 0.90) !important;
+    border-bottom: 0.5px solid rgba(76, 175, 80, 0.18) !important;
+  }
+  body.eyecare-reader-body .nav-brand-desktop {
+    color: #2e7d32 !important;
+  }
+}
+
+/* 5. Prompt Card Badges & Button De-AI Toning */
+.prompt-badge-vars {
+  background: rgba(0, 102, 204, 0.08) !important;
+  color: var(--accent-color, #0066CC) !important;
+}
+
+.prompt-badge-project {
+  background: var(--widget-bg) !important;
+  color: var(--text-color-light) !important;
+}
+
+.prompt-badge-scene {
+  background: var(--widget-bg) !important;
+  color: var(--text-color-light) !important;
+}
+
+.btn-prompt-copy {
+  background: var(--widget-bg) !important;
+  color: var(--text-color) !important;
+  border: 1px solid rgba(0, 0, 0, 0.04) !important;
+}
+
+.btn-prompt-copy:hover {
+  background: rgba(120, 120, 128, 0.16) !important;
+}
+
+.btn-prompt-send {
+  background: rgba(0, 102, 204, 0.08) !important;
+  color: var(--accent-color, #0066CC) !important;
+  border: 1px solid rgba(0, 102, 204, 0.18) !important;
+}
+
+.btn-prompt-send:hover {
+  background: rgba(0, 102, 204, 0.15) !important;
+}
+
+body.dark-reader-body .btn-prompt-copy {
+  background: #242426 !important;
+  color: #f2f2f7 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+}
+
+body.dark-reader-body .btn-prompt-send {
+  background: rgba(10, 132, 255, 0.12) !important;
+  color: #0A84FF !important;
+  border-color: rgba(10, 132, 255, 0.25) !important;
+}
+
+
 
 
