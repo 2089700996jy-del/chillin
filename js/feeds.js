@@ -412,6 +412,15 @@ window.previewImage = function(src) {
     }
 };
 
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        const modal = document.getElementById('image-preview-modal');
+        if (modal && modal.classList.contains('show')) {
+            modal.classList.remove('show');
+        }
+    }
+});
+
 // 3. Render Heatmap (思考与记忆轨迹热力图)
 function renderHeatmap() {
     const grid = document.getElementById('heatmap-grid');
@@ -448,6 +457,38 @@ function renderHeatmap() {
     (state.notesDatabase || []).forEach(n => addCount(n.created_at || n.date));
     (state.bookmarksDatabase || []).forEach(b => addCount(b.created_at));
     (state.feedsDatabase || []).forEach(f => addCount(f.created_at));
+
+    // Calculate streak badge
+    const streakBadge = document.getElementById('heatmap-streak-badge');
+    if (streakBadge) {
+        let currentStreak = 0;
+        let checkDate = new Date();
+        const todayKey = toLocalIsoDate(checkDate);
+        if (!dateMap[todayKey]) {
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+        while (true) {
+            const k = toLocalIsoDate(checkDate);
+            if ((dateMap[k] || 0) > 0) {
+                currentStreak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
+                break;
+            }
+        }
+        if (currentStreak > 1) {
+            streakBadge.textContent = `${currentStreak}天连续`;
+            streakBadge.style.display = 'inline-flex';
+        } else {
+            const activeDays = Object.keys(dateMap).length;
+            if (activeDays > 0) {
+                streakBadge.textContent = `累计${activeDays}天`;
+                streakBadge.style.display = 'inline-flex';
+            } else {
+                streakBadge.style.display = 'none';
+            }
+        }
+    }
 
     // Generate columns (52 weeks x 7 days)
     const today = new Date();
