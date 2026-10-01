@@ -168,13 +168,25 @@ export async function handleUpload(request, db, userId) {
     const uploadLimit = checkRateLimit(`upload:${userId}`, 60, 10 * 60 * 1000);
     if (!uploadLimit.ok) return rateLimitedResponse(uploadLimit.retryAfter);
 
+    const MAX_SIZE = 5 * 1024 * 1024;
+    // 快速拒绝：先看声明的 Content-Length（multipart 额外留 64KB 边界开销），
+    // 避免把超大请求整体读入内存后再判长度。
+    const declaredLength = Number(request.headers.get('Content-Length') || 0);
+    if (declaredLength && declaredLength > MAX_SIZE + 64 * 1024) {
+        return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
+    }
+
     try {
         const formData = await request.formData();
         const file = formData.get('file');
         if (!file) return jsonResponse({ error: 'No file uploaded' }, 400);
 
+        // File.size 在读取内容前即可用：超限文件不再复制进内存
+        if (typeof file.size === 'number' && file.size > MAX_SIZE) {
+            return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
+        }
+
         const arrayBuffer = await file.arrayBuffer();
-        const MAX_SIZE = 5 * 1024 * 1024;
         if (arrayBuffer.byteLength > MAX_SIZE) {
             return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
         }
