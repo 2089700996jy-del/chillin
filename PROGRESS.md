@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-01。供后续会话快速接续。当前前端/Worker：**v2.5.39**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-10-01。供后续会话快速接续。当前前端/Worker：**v2.5.40**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -56,6 +56,11 @@
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
 
 ## 近期已完成（摘要）
+
+### 遗留安全债清零（v2.5.40）
+1. **会话令牌哈希落库**：登录/注册只写入 `SHA-256` 摘要，`resolveSession()` 命中旧明文行时就地升级为哈希行（零停机）；登出同时清理哈希行与遗留明文行；migration 0015 补 `sessions(user_id)` 索引。
+2. **CSP 去除 `'unsafe-inline'`**：`index.html` 的 18 个内联 `onclick` 与 `js/` 模板生成的 9 个内联处理器全部改为事件委托（弹层遮罩/关闭按钮/图灯箱/章节树/回响折叠），图片失败兜底改在捕获阶段代理；两段内联引导脚本改用 sha256 白名单。新增单测会重算哈希、断言全仓无内联处理器且 `script-src` 无 `unsafe-inline`，以后误加内联处理器会在 `npm test` 阶段失败。
+3. **限流跨实例共享**：新增 `checkRateLimitShared()`（内存桶快速路径 + D1 原子计数，D1 异常自动降级），登录/注册/外链/上传/AI/回响/回顾全部接入；migration 0016 建表 + 索引，Cron 清理过期窗口；`getClientIp` 改为取信 `CF-Connecting-IP`，回退取 XFF 最后一段（首段可伪造）。
 
 ### 安全加固、会话升级与工程一致性（v2.5.38 → v2.5.39）
 1. **版本号联动修复**：`index.html` 长期滞留在 2.5.36 而 `js/version.js`/SW 已是 2.5.37 —— 根因是 bump 脚本按"当前版本字面量"替换，一旦漂移就永远替换不到。脚本改为正则重写全部 `?v=` 与徽标、联动 `package.json`、为 `version.json` 增加发布时间戳、`PROGRESS.md` 只改头部行；版本徽标改由 `APP_BUILD_LABEL` 渲染。

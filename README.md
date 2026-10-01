@@ -23,7 +23,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：Cloudflare D1（SQLite），14 个迁移，全部查询参数化绑定
+* **数据**：Cloudflare D1（SQLite），16 个迁移（0001–0016），全部查询参数化绑定
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **离线与安全**：Service Worker 全模块预缓存 + `_headers` 静态响应头 + Worker 动态响应头
 
@@ -37,7 +37,7 @@ sw.js               Service Worker（预缓存 20 个模块，绝不把 JS 降�
 js/                 20 个 ES 模块（auth / sync / feeds / weeklies / notes / reader / prompts / echo-ai / search / upload …）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
 workers/src/        security / auth / garden / rag / llm / audit
-migrations/         D1 迁移 0001–0014
+migrations/         D1 迁移 0001–0016（含会话令牌哈希索引与共享限流表）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
@@ -101,9 +101,10 @@ npm run bump:minor
 ## 安全要点
 
 * **密码**：PBKDF2-SHA256，10 万次迭代 + 每用户 16 字节随机盐
-* **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；支持「全部退出」
+* **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
+* **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 外链解析 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
 * **输入与出站**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探、外链解析 SSRF 防护（含 IPv6 映射 / NAT64 / 6to4）
-* **响应头**：CSP、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 见 [`_headers`](_headers) 与 `workers/src/security.js`
+* **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本改用 sha256 白名单）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 见 [`_headers`](_headers) 与 `workers/src/security.js`
 
 ## 开发规约
 
