@@ -82,6 +82,8 @@ export const DEFAULT_PROMPTS = [
 export const state = {
     authToken: localStorage.getItem('chillin_token') || '',
     authUser: JSON.parse(localStorage.getItem('chillin_user') || 'null'),
+    // true 表示会话由服务端 HttpOnly Cookie 维持（localStorage 中不再保存令牌）
+    cookieSession: false,
     database: [],
     notesDatabase: [],
     bookmarksDatabase: [],

@@ -73,6 +73,8 @@ export async function fetchWithFallback(path, options = {}) {
     const primaryUrl = `${API_BASE}${path}`;
     const workerUrl = `${CLOUD_WORKER_BASE}${path}`;
     const isAuth = path.startsWith('/api/auth/');
+    // 会话可能是旧版 Bearer，也可能是 HttpOnly Cookie：跨域回退时同样要带凭据
+    const opts = { credentials: 'include', ...options };
 
     const looksBad = (res) => {
         if (!res) return true;
@@ -84,7 +86,7 @@ export async function fetchWithFallback(path, options = {}) {
     let primaryRes = null;
     let primaryErr = null;
     try {
-        primaryRes = await fetch(primaryUrl, options);
+        primaryRes = await fetch(primaryUrl, opts);
     } catch (err) {
         primaryErr = err;
     }
@@ -93,7 +95,7 @@ export async function fetchWithFallback(path, options = {}) {
 
     if (isAuth || primaryErr || looksBad(primaryRes)) {
         try {
-            return await fetch(workerUrl, options);
+            return await fetch(workerUrl, opts);
         } catch (workerErr) {
             if (primaryRes) return primaryRes;
             throw primaryErr || workerErr;
@@ -133,7 +135,7 @@ function clearSyncCursorsForUser(userId) {
 export function checkAuth() {
     const authOverlay = document.getElementById('auth-overlay');
     const navUsername = document.getElementById('nav-username');
-    if (!state.authToken) {
+    if (!state.authToken && !state.cookieSession) {
         authOverlay?.classList.remove('hidden');
         document.body.classList.add('not-authenticated');
         return false;
@@ -146,10 +148,11 @@ export function checkAuth() {
 
 export function logout(opts = {}) {
     const uid = state.authUser?.id;
-    if (state.authToken) {
+    if (state.authToken || state.cookieSession) {
         apiRequest('/api/auth/logout', { method: 'POST' }).catch(() => {});
     }
     state.authToken = '';
+    state.cookieSession = false;
     state.authUser = null;
     localStorage.removeItem('chillin_token');
     localStorage.removeItem('chillin_user');
@@ -210,7 +213,14 @@ async function doLogin() {
 
         state.authToken = data.token;
         state.authUser = { id: data.userId, username: data.username };
-        localStorage.setItem('chillin_token', state.authToken);
+        // 新后端用 HttpOnly Cookie 维持会话：不再把令牌写进 localStorage（XSS 无法窃取）。
+        // 若后端仍是旧版（响应无 session 标记），保留 Bearer 持久化，保证零停机共存。
+        state.cookieSession = data.session === 'cookie';
+        if (state.cookieSession) {
+            localStorage.removeItem('chillin_token');
+        } else {
+            localStorage.setItem('chillin_token', state.authToken);
+        }
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
 
         checkAuth();
@@ -248,6 +258,7 @@ export function initAuthUI() {
     const authErrorMsg = document.getElementById('auth-error-msg');
 
     btnLogout?.addEventListener('click', logout);
+    document.getElementById('btn-logout-all')?.addEventListener('click', logoutAllDevices);
 
     btnAuthSwitch?.addEventListener('click', () => {
         state.isRegisterMode = !state.isRegisterMode;
@@ -317,6 +328,39 @@ export async function apiRequest(path, options = {}) {
     } finally {
         clearTimeout(timeout);
     }
+}
+
+/**
+ * 用服务端 HttpOnly Cookie 恢复会话（刷新后 localStorage 里已没有令牌的情况）。
+ * 旧后端不认 Cookie 时会静默失败，不影响原有 Bearer 流程。
+ */
+export async function restoreCookieSession() {
+    if (state.authToken || state.cookieSession) return false;
+    try {
+        const res = await fetchWithFallback('/api/auth/me', {
+            method: 'GET',
+            headers: { Accept: 'application/json' }
+        });
+        if (!res.ok) return false;
+        const user = await res.json();
+        if (!user || !user.id) return false;
+        state.cookieSession = true;
+        state.authUser = { id: user.id, username: user.username };
+        localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** 退出所有设备：吊销该账号在服务端的全部会话 */
+export async function logoutAllDevices() {
+    if (!window.confirm('将退出所有设备上的登录状态，是否继续？')) return;
+    try {
+        await apiRequest('/api/auth/logout-all', { method: 'POST' });
+    } catch (_) {}
+    logout({ silent: true });
+    showToast('已退出所有设备', 'info');
 }
 
 export async function registerPushNotification() {

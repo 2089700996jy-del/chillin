@@ -15,6 +15,7 @@ import {
     checkAndMergeGuestData,
     startAutoSyncEngine,
     bindApiHooks,
+    restoreCookieSession,
 } from './js/api.js';
 import { initRouter } from './js/router.js';
 import { initWeeklies } from './js/weeklies.js';
@@ -116,13 +117,21 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('search', initSearch);
     safeInit('router', initRouter);
 
-    if (state.authToken) {
-        setTimeout(registerPushNotification, 2000);
-    }
     loadLocalData();
-    if (state.authToken) {
-        syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
-    }
+
+    // 会话恢复：优先本地 Bearer（旧版），其次服务端 HttpOnly Cookie（新版）
+    restoreCookieSession()
+        .catch(() => false)
+        .then((restored) => {
+            if (restored) {
+                checkAuth();
+                if (state.authUser) showToast(`欢迎回来，${state.authUser.username}`, 'success');
+            }
+            if (state.authToken || state.cookieSession) {
+                syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
+                setTimeout(registerPushNotification, 2000);
+            }
+        });
 
     safeInit('mergeGuest', checkAndMergeGuestData);
     safeInit('autoSync', startAutoSyncEngine);
@@ -154,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.addEventListener('online', () => {
         document.body.classList.remove('is-offline');
         showToast('🌐 网络已恢复连接，正在自动同步...', 'success');
-        if (state.authToken) {
+        if (state.authToken || state.cookieSession) {
             syncFromApi().catch((err) => console.warn('[online] auto sync failed', err));
         }
     });

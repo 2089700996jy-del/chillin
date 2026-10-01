@@ -51,9 +51,13 @@ export function applySecurityHeaders(headers) {
 export function withCors(response, request) {
     const origin = request.headers.get('Origin');
     const headers = new Headers(response.headers);
-    if (!origin || isAllowedOrigin(origin)) {
-        headers.set('Access-Control-Allow-Origin', origin || '*');
+    if (origin && isAllowedOrigin(origin)) {
+        // 允许携带 HttpOnly 会话 Cookie 的跨域请求（精确回显来源，绝不能与 * 同用）
+        headers.set('Access-Control-Allow-Origin', origin);
+        headers.set('Access-Control-Allow-Credentials', 'true');
         headers.set('Vary', 'Origin');
+    } else if (!origin) {
+        headers.set('Access-Control-Allow-Origin', '*');
     }
     return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
@@ -62,6 +66,7 @@ export function corsResponse(body, status) {
     const headers = applySecurityHeaders(new Headers({
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true',
         'Content-Type': 'application/json'
     }));
     if (!body) return new Response(null, { status, headers });

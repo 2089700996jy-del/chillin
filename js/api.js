@@ -12,6 +12,8 @@ export {
     initAuthUI,
     apiRequest,
     registerPushNotification,
+    restoreCookieSession,
+    logoutAllDevices,
 } from './auth.js';
 
 export {

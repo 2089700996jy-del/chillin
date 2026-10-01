@@ -11,12 +11,54 @@ import {
     verifyPassword
 } from './security.js';
 
-export async function authenticate(request, db) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return null;
+export const SESSION_COOKIE = 'chillin_session';
+const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** 从 Authorization: Bearer 或 HttpOnly 会话 Cookie 中提取令牌 */
+export function extractSessionToken(request) {
+    const authHeader = request.headers.get('Authorization') || '';
+    if (authHeader.startsWith('Bearer ')) {
+        const bearer = authHeader.slice(7).trim();
+        if (bearer) return bearer;
     }
-    const token = authHeader.split(' ')[1];
+    const cookieHeader = request.headers.get('Cookie') || '';
+    for (const part of cookieHeader.split(';')) {
+        const idx = part.indexOf('=');
+        if (idx === -1) continue;
+        if (part.slice(0, idx).trim() !== SESSION_COOKIE) continue;
+        const raw = part.slice(idx + 1).trim();
+        try {
+            return decodeURIComponent(raw);
+        } catch {
+            return raw;
+        }
+    }
+    return '';
+}
+
+function isSecureRequest(request) {
+    try {
+        return new URL(request.url).protocol === 'https:';
+    } catch {
+        return true;
+    }
+}
+
+/** 会话 Cookie：HttpOnly + SameSite=Lax（HTTPS 下追加 Secure），前端 JS 无法读取 */
+export function sessionCookieHeader(token, request, maxAgeSeconds = SESSION_TTL_MS / 1000) {
+    const attrs = [
+        `${SESSION_COOKIE}=${token}`,
+        'Path=/',
+        'HttpOnly',
+        'SameSite=Lax',
+        `Max-Age=${Math.floor(maxAgeSeconds)}`
+    ];
+    if (isSecureRequest(request)) attrs.push('Secure');
+    return attrs.join('; ');
+}
+
+export async function authenticate(request, db) {
+    const token = extractSessionToken(request);
     if (!token) return null;
 
     let session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
@@ -58,11 +100,16 @@ export async function handleRegister(request, env, db) {
 
     const userId = insertResult.id;
     const token = crypto.randomUUID();
-    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    const expiresAt = Date.now() + SESSION_TTL_MS;
     await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
         .bind(token, userId, expiresAt).run();
 
-    return jsonResponse({ token, username, userId }, 201);
+    // 同时下发 HttpOnly Cookie；响应体仍带 token，保证旧前端零停机共存
+    return jsonResponse(
+        { token, username, userId, session: 'cookie' },
+        201,
+        { 'Set-Cookie': sessionCookieHeader(token, request) }
+    );
 }
 
 export async function handleLogin(request, env, db) {
@@ -95,20 +142,34 @@ export async function handleLogin(request, env, db) {
     }
 
     const token = crypto.randomUUID();
-    const expiresAt = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    const expiresAt = Date.now() + SESSION_TTL_MS;
     await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
         .bind(token, user.id, expiresAt).run();
 
-    return jsonResponse({ token, username, userId: user.id }, 200);
+    // 同时下发 HttpOnly Cookie；响应体仍带 token，保证旧前端零停机共存
+    return jsonResponse(
+        { token, username, userId: user.id, session: 'cookie' },
+        200,
+        { 'Set-Cookie': sessionCookieHeader(token, request) }
+    );
 }
 
 export async function handleLogout(request, db) {
-    const authHeader = request.headers.get('Authorization') || '';
-    const token = authHeader.split(' ')[1];
+    const token = extractSessionToken(request);
     if (token) {
         await db.prepare('DELETE FROM sessions WHERE token = ?1').bind(token).run();
     }
-    return jsonResponse({ success: true });
+    return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookieHeader('', request, 0) });
+}
+
+/** 退出所有设备：吊销该用户全部会话（丢失设备时可一键止损） */
+export async function handleLogoutAll(request, db, userId) {
+    const res = await db.prepare('DELETE FROM sessions WHERE user_id = ?1').bind(userId).run();
+    return jsonResponse(
+        { success: true, revoked: res.meta?.changes || 0 },
+        200,
+        { 'Set-Cookie': sessionCookieHeader('', request, 0) }
+    );
 }
 
 export async function handleMe(db, userId) {
@@ -118,9 +179,8 @@ export async function handleMe(db, userId) {
 }
 
 export async function handlePushSubscribe(request, db) {
-    const authHeader = request.headers.get('Authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) return jsonResponse({ error: '未提供登录凭证' }, 401);
-    const token = authHeader.substring(7);
+    const token = extractSessionToken(request);
+    if (!token) return jsonResponse({ error: '未提供登录凭证' }, 401);
     const session = await db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?1').bind(token).first();
     if (!session || new Date(session.expires_at) < new Date()) {
         return jsonResponse({ error: '无效或过期的会话' }, 401);

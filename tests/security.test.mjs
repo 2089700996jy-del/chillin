@@ -105,3 +105,35 @@ test('Security - isValidRecordId validates positive safe integers', () => {
     assert.equal(isValidRecordId('abc'), false);
     assert.equal(isValidRecordId('1; DROP TABLE users'), false);
 });
+
+test('Security - session token extraction and cookie hardening', async () => {
+    const { extractSessionToken, sessionCookieHeader, SESSION_COOKIE } = await import('../workers/src/auth.js');
+
+    const bearerReq = new Request('https://example.com/api/auth/me', { headers: { Authorization: 'Bearer abc123' } });
+    assert.equal(extractSessionToken(bearerReq), 'abc123');
+
+    const cookieReq = new Request('https://example.com/api/auth/me', {
+        headers: { Cookie: `other=1; ${SESSION_COOKIE}=tok-xyz; more=2` }
+    });
+    assert.equal(extractSessionToken(cookieReq), 'tok-xyz');
+    assert.equal(extractSessionToken(new Request('https://example.com/')), '');
+
+    // Bearer 优先于 Cookie（旧客户端与新客户端可共存）
+    const bothReq = new Request('https://example.com/api/auth/me', {
+        headers: { Authorization: 'Bearer win', Cookie: `${SESSION_COOKIE}=lose` }
+    });
+    assert.equal(extractSessionToken(bothReq), 'win');
+
+    const httpsCookie = sessionCookieHeader('tok-xyz', new Request('https://example.com/'));
+    assert.match(httpsCookie, /HttpOnly/);
+    assert.match(httpsCookie, /SameSite=Lax/);
+    assert.match(httpsCookie, /Secure/);
+    assert.match(httpsCookie, /Max-Age=604800/);
+
+    // 本地 http 调试不下发 Secure，否则浏览器会直接丢弃 Cookie
+    const localCookie = sessionCookieHeader('tok-xyz', new Request('http://localhost:8080/'));
+    assert.ok(!localCookie.includes('Secure'));
+
+    const cleared = sessionCookieHeader('', new Request('https://example.com/'), 0);
+    assert.match(cleared, /Max-Age=0/);
+});

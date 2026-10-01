@@ -14,6 +14,7 @@ import {
     handleRegister,
     handleLogin,
     handleLogout,
+    handleLogoutAll,
     handleMe,
     handlePushSubscribe,
     cleanExpiredSessions
@@ -116,6 +117,7 @@ async function router(path, method, request, env, ctx) {
     // ── 账号与文件 ──
     if (path === '/api/upload' && method === 'POST') return handleUpload(request, db, userId);
     if (path === '/api/auth/logout' && method === 'POST') return handleLogout(request, db);
+    if (path === '/api/auth/logout-all' && method === 'POST') return handleLogoutAll(request, db, userId);
     if (path === '/api/auth/me' && method === 'GET') return handleMe(db, userId);
 
     // ── 周记 (Weeklies) ──
@@ -267,7 +269,8 @@ export default {
             const origin = request.headers.get('Origin');
             const headers = applySecurityHeaders(new Headers({
                 'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-                'Access-Control-Allow-Headers': 'Content-Type, Authorization'
+                'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+                'Access-Control-Allow-Credentials': 'true'
             }));
             if (isAllowedOrigin(origin)) {
                 headers.set('Access-Control-Allow-Origin', origin);
