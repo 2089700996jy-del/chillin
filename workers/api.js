@@ -5,7 +5,8 @@ import {
     withCors,
     jsonResponse,
     sseResponse,
-    checkRateLimit,
+    checkRateLimitShared,
+    cleanupRateLimits,
     rateLimitedResponse
 } from './src/security.js';
 
@@ -162,7 +163,7 @@ async function router(path, method, request, env, ctx) {
 
     // ── AI 记忆回响问答 (Chat & RAG) ──
     if (path === '/api/ai/chat' && method === 'POST') {
-        const aiLimit = checkRateLimit(`ai:${userId}`, 30, 10 * 60 * 1000);
+        const aiLimit = await checkRateLimitShared(db, `ai:${userId}`, 30, 10 * 60 * 1000);
         if (!aiLimit.ok) return rateLimitedResponse(aiLimit.retryAfter);
 
         const { question, stream, history } = await request.json();
@@ -300,6 +301,12 @@ export default {
             console.log(`[session] scheduled cleanup: removed=${cleaned}`);
         } catch (err) {
             console.error('[session] scheduled cleanup failed:', err);
+        }
+        try {
+            const pruned = await cleanupRateLimits(env.DB);
+            console.log(`[rate-limit] scheduled cleanup: removed=${pruned}`);
+        } catch (err) {
+            console.error('[rate-limit] scheduled cleanup failed:', err);
         }
     }
 };

@@ -3,7 +3,7 @@
  */
 import {
     jsonResponse,
-    checkRateLimit,
+    checkRateLimitShared,
     rateLimitedResponse,
     getClientIp,
     validatePassword,
@@ -100,7 +100,7 @@ export async function authenticate(request, db) {
 }
 
 export async function handleRegister(request, env, db) {
-    const regLimit = checkRateLimit(`register:${getClientIp(request)}`, 5, 60 * 60 * 1000);
+    const regLimit = await checkRateLimitShared(db, `register:${getClientIp(request)}`, 5, 60 * 60 * 1000);
     if (!regLimit.ok) return rateLimitedResponse(regLimit.retryAfter);
 
     if (env.ALLOW_REGISTRATION !== 'true') {
@@ -139,7 +139,7 @@ export async function handleRegister(request, env, db) {
 }
 
 export async function handleLogin(request, env, db) {
-    const loginLimit = checkRateLimit(`login:${getClientIp(request)}`, 40, 15 * 60 * 1000);
+    const loginLimit = await checkRateLimitShared(db, `login:${getClientIp(request)}`, 40, 15 * 60 * 1000);
     if (!loginLimit.ok) {
         return rateLimitedResponse(loginLimit.retryAfter, '登录过于频繁，请稍后再试');
     }

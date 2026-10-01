@@ -5,7 +5,7 @@
 import webPush from 'web-push';
 import {
     jsonResponse,
-    checkRateLimit,
+    checkRateLimitShared,
     rateLimitedResponse,
     applySecurityHeaders,
     timingSafeEqualStr,
@@ -165,7 +165,7 @@ export async function ensureSoftDeleteSchema(db) {
 
 // ── File Upload & View ──
 export async function handleUpload(request, db, userId) {
-    const uploadLimit = checkRateLimit(`upload:${userId}`, 60, 10 * 60 * 1000);
+    const uploadLimit = await checkRateLimitShared(db, `upload:${userId}`, 60, 10 * 60 * 1000);
     if (!uploadLimit.ok) return rateLimitedResponse(uploadLimit.retryAfter);
 
     const MAX_SIZE = 5 * 1024 * 1024;
@@ -276,7 +276,7 @@ async function fetchMicrolinkPreview(targetUrl) {
 }
 
 export async function handleLinkParse(request, db, userId) {
-    const linkLimit = checkRateLimit(`link:${userId}`, 40, 10 * 60 * 1000);
+    const linkLimit = await checkRateLimitShared(db, `link:${userId}`, 40, 10 * 60 * 1000);
     if (!linkLimit.ok) return rateLimitedResponse(linkLimit.retryAfter);
 
     let body;
@@ -842,7 +842,7 @@ export async function handleHeatmap(db, userId) {
 
 // ── Echo Generation & AI Review ──
 export async function handleEchoGenerate(request, env, ctx, db, userId) {
-    const echoLimit = checkRateLimit(`echo:${userId}`, 20, 10 * 60 * 1000);
+    const echoLimit = await checkRateLimitShared(db, `echo:${userId}`, 20, 10 * 60 * 1000);
     if (!echoLimit.ok) return rateLimitedResponse(echoLimit.retryAfter);
 
     const feeds = await db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 12').bind(userId).all();
@@ -949,7 +949,7 @@ export async function handleDeleteEchoCard(id, db, userId) {
 }
 
 export async function handleAiReview(env, db, userId) {
-    const reviewLimit = checkRateLimit(`review:${userId}`, 20, 10 * 60 * 1000);
+    const reviewLimit = await checkRateLimitShared(db, `review:${userId}`, 20, 10 * 60 * 1000);
     if (!reviewLimit.ok) return rateLimitedResponse(reviewLimit.retryAfter);
 
     const [feeds, notes, weeklies] = await Promise.all([

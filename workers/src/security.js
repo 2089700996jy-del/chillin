@@ -99,13 +99,53 @@ export function sseResponse(stream, request) {
     return new Response(stream, { headers });
 }
 
-// ==================== 简易内存限流（按隔离实例生效，防爆破/刷费用） ====================
+// ==================== 限流：内存快速桶 + D1 跨实例共享计数 ====================
 export const rateLimitBuckets = new Map();
 
 export function getClientIp(request) {
-    return request.headers.get('CF-Connecting-IP')
-        || (request.headers.get('X-Forwarded-For') || '').split(',')[0].trim()
-        || 'unknown';
+    const cfIp = request.headers.get('CF-Connecting-IP');
+    if (cfIp && cfIp.trim()) return cfIp.trim();
+    // 回退：取 X-Forwarded-For 的最后一段（由最近的边缘节点追加，最接近真实客户端；
+    // 首段是客户端可伪造的，不能作为限流依据）
+    const chain = (request.headers.get('X-Forwarded-For') || '')
+        .split(',').map((part) => part.trim()).filter(Boolean);
+    return chain.length ? chain[chain.length - 1] : 'unknown';
+}
+
+
+/**
+ * 跨实例限流：内存桶负责同 isolate 的快速拒绝，D1 计数负责跨边缘节点的一致性。
+ * D1 异常时降级为内存桶结果（可用性优先，与旧行为一致）。
+ */
+export async function checkRateLimitShared(db, key, limit, windowMs) {
+    const local = checkRateLimit(key, limit, windowMs);
+    if (!local.ok) return local;
+    if (!db) return local;
+
+    const now = Date.now();
+    const windowStart = Math.floor(now / windowMs) * windowMs;
+    try {
+        const row = await db.prepare(
+            `INSERT INTO rate_limits (bucket_key, window_start, count) VALUES (?1, ?2, 1)
+             ON CONFLICT(bucket_key, window_start) DO UPDATE SET count = count + 1
+             RETURNING count`
+        ).bind(key, windowStart).first();
+        const count = row && row.count != null ? Number(row.count) : 1;
+        if (count > limit) {
+            return { ok: false, retryAfter: Math.max(1, Math.ceil((windowStart + windowMs - now) / 1000)) };
+        }
+        return { ok: true };
+    } catch (err) {
+        console.warn('[rate-limit] shared counter unavailable, using isolate bucket', err);
+        return local;
+    }
+}
+
+/** 定时清理过期限流行（保留 1 天窗口足够所有限流策略回看） */
+export async function cleanupRateLimits(db, keepMs = 24 * 60 * 60 * 1000) {
+    const res = await db.prepare('DELETE FROM rate_limits WHERE window_start < ?1')
+        .bind(Date.now() - keepMs).run();
+    return res.meta?.changes || 0;
 }
 
 export function checkRateLimit(key, limit, windowMs) {

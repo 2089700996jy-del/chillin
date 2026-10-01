@@ -183,3 +183,45 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
         assert.ok(!/\son(click|error|load|change|input|submit)\s*=/i.test(text), `${rel} still contains an inline event handler attribute`);
     }
 });
+
+test('Security - shared rate limiter enforces limits and degrades safely', async () => {
+    const { checkRateLimitShared, cleanupRateLimits, getClientIp } = await import('../workers/src/security.js');
+
+    // 模拟 D1 的原子 upsert 语义
+    const rows = new Map();
+    const fakeDb = {
+        prepare() {
+            return {
+                bind(key, windowStart) {
+                    return {
+                        async first() {
+                            const k = `${key}|${windowStart}`;
+                            const next = (rows.get(k) || 0) + 1;
+                            rows.set(k, next);
+                            return { count: next };
+                        },
+                        async run() { return { meta: { changes: 1 } }; },
+                    };
+                },
+            };
+        },
+    };
+
+    const key = `test:${Date.now()}:${Math.random()}`;
+    for (let i = 0; i < 3; i += 1) {
+        assert.equal((await checkRateLimitShared(fakeDb, key, 3, 60000)).ok, true);
+    }
+    const blocked = await checkRateLimitShared(fakeDb, key, 3, 60000);
+    assert.equal(blocked.ok, false);
+    assert.ok(blocked.retryAfter >= 1);
+
+    // D1 不可用时应降级到内存桶而不是抛错（可用性优先）
+    const broken = { prepare() { throw new Error('d1 down'); } };
+    assert.equal((await checkRateLimitShared(broken, `fallback:${Date.now()}`, 5, 60000)).ok, true);
+    assert.equal(await cleanupRateLimits(fakeDb), 1);
+
+    // 取信 CF-Connecting-IP；回退时取 XFF 最后一段（首段可被客户端伪造）
+    assert.equal(getClientIp(new Request('https://x/', { headers: { 'CF-Connecting-IP': '1.2.3.4', 'X-Forwarded-For': '9.9.9.9' } })), '1.2.3.4');
+    assert.equal(getClientIp(new Request('https://x/', { headers: { 'X-Forwarded-For': '6.6.6.6, 5.5.5.5' } })), '5.5.5.5');
+    assert.equal(getClientIp(new Request('https://x/')), 'unknown');
+});
