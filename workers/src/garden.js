@@ -238,6 +238,31 @@ export async function handleFileView(fileId, request, db, authenticate) {
 }
 
 // ── Link Parse (OpenGraph) ──
+/**
+ * 服务端外链兜底增强（Microlink）。
+ * 此前该兜底写在前端 feeds.js 中，会被 Pages 的 CSP connect-src 直接拦截而失效；
+ * 收敛到 Worker 后既恢复了兜底能力，也无需放宽浏览器 CSP 白名单。
+ */
+async function fetchMicrolinkPreview(targetUrl) {
+    try {
+        const res = await fetchWithTimeout(
+            `https://api.microlink.io/?url=${encodeURIComponent(targetUrl)}`,
+            { headers: { 'Accept': 'application/json' }, timeout: 4000 }
+        );
+        if (!res || !res.ok) return null;
+        const payload = await res.json();
+        if (!payload || payload.status !== 'success' || !payload.data) return null;
+        const data = payload.data;
+        return {
+            title: typeof data.title === 'string' ? data.title : '',
+            description: typeof data.description === 'string' ? data.description : '',
+            cover: (data.image && typeof data.image.url === 'string') ? data.image.url : ''
+        };
+    } catch {
+        return null;
+    }
+}
+
 export async function handleLinkParse(request, db, userId) {
     const linkLimit = checkRateLimit(`link:${userId}`, 40, 10 * 60 * 1000);
     if (!linkLimit.ok) return rateLimitedResponse(linkLimit.retryAfter);
@@ -344,6 +369,16 @@ export async function handleLinkParse(request, db, userId) {
         const decodeEntities = (str) => str ? str.replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#x27;/g, "'").trim() : '';
         title = decodeEntities(title);
         description = decodeEntities(description);
+
+        // 5. 服务端外链兜底：页面自身未给出标题/封面时，交由后端调用 Microlink
+        if ((!title || title === hostname) && !cover) {
+            const enriched = await fetchMicrolinkPreview(rawUrl);
+            if (enriched) {
+                title = enriched.title || title;
+                description = enriched.description || description;
+                cover = enriched.cover || cover;
+            }
+        }
 
         if (!title || /^(403|404|500|502|503|Forbidden|Access Denied|Error|Just a moment|Cloudflare)/i.test(title)) {
             title = hostname;

@@ -174,22 +174,9 @@ function renderFeeds() {
             apiRequest('/api/link/parse', {
                 method: 'POST',
                 body: JSON.stringify({ url })
-            }).then(async parseRes => {
+            }).then(parseRes => {
                 if (parseRes) {
-                    if ((!parseRes.title || parseRes.title === 'www.xiaoyuzhoufm.com' || parseRes.title === parseRes.url) && !parseRes.cover) {
-                        try {
-                            const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(url)}`);
-                            const microData = await microRes.json();
-                            if (microData.status === 'success' && microData.data) {
-                                parseRes.title = microData.data.title || parseRes.title;
-                                parseRes.description = microData.data.description || parseRes.description;
-                                parseRes.cover = microData.data.image?.url || parseRes.cover;
-                            }
-                        } catch (e) {
-                            console.error('Client Microlink fallback failed for enrich:', e);
-                        }
-                    }
-                    
+                    // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
                     // Only update if we ACTUALLY got a useful title or cover
                     if (parseRes.cover || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
                         feed.summary = JSON.stringify(parseRes);
@@ -284,19 +271,7 @@ async function sendFeed() {
                 body: JSON.stringify({ url: extracted.normalized })
             });
             if (parseRes) {
-                if ((!parseRes.title || parseRes.title === 'www.xiaoyuzhoufm.com' || parseRes.title === parseRes.url) && !parseRes.cover) {
-                    try {
-                        const microRes = await fetch(`https://api.microlink.io/?url=${encodeURIComponent(extracted.normalized)}`);
-                        const microData = await microRes.json();
-                        if (microData.status === 'success' && microData.data) {
-                            parseRes.title = microData.data.title || parseRes.title;
-                            parseRes.description = microData.data.description || parseRes.description;
-                            parseRes.cover = microData.data.image?.url || parseRes.cover;
-                        }
-                    } catch (e) {
-                        console.error('Client Microlink fallback failed:', e);
-                    }
-                }
+                // 兜底解析由 Worker /api/link/parse 内部完成（CSP 不允许浏览器直连第三方）
                 summary = JSON.stringify(parseRes);
                 if (parseRes.cover) parsedCover = parseRes.cover;
             }
