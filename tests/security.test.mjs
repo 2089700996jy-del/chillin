@@ -55,9 +55,25 @@ test('Security - SSRF protection blocks private and cloud metadata IPs', () => {
     assert.equal(isLoopbackOrPrivateHost('example.com'), false);
     assert.equal(isLoopbackOrPrivateHost('github.com'), false);
 
+    // 归一化绕过：FQDN 尾部点与 IPv6 内嵌 IPv4（::ffff:a.b.c.d 的十六进制写法）
+    assert.equal(isLoopbackOrPrivateHost('localhost.'), true);
+    assert.equal(isLoopbackOrPrivateHost('127.0.0.1.'), true);
+    assert.equal(isLoopbackOrPrivateHost('metadata.google.internal.'), true);
+    assert.equal(isLoopbackOrPrivateHost('::1'), true);
+    assert.equal(isLoopbackOrPrivateHost('[::1]'), true);
+    assert.equal(isLoopbackOrPrivateHost('::ffff:7f00:1'), true);
+    assert.equal(isLoopbackOrPrivateHost('::ffff:a9fe:a9fe'), true);
+    assert.equal(isLoopbackOrPrivateHost('64:ff9b::a9fe:a9fe'), true);
+    assert.equal(isLoopbackOrPrivateHost('2002:7f00:0001::'), true);
+    assert.equal(isLoopbackOrPrivateHost('fe80::1'), true);
+    assert.equal(isLoopbackOrPrivateHost('fd00::1'), true);
+    assert.equal(isLoopbackOrPrivateHost('2606:4700::1111'), false);
+
     // Full URL validation
     assert.equal(isSafeFetchUrl('http://169.254.169.254/latest/meta-data/'), false);
     assert.equal(isSafeFetchUrl('http://127.0.0.1:8080/admin'), false);
+    assert.equal(isSafeFetchUrl('http://[::ffff:169.254.169.254]/latest/meta-data/'), false);
+    assert.equal(isSafeFetchUrl('http://localhost./admin'), false);
     assert.equal(isSafeFetchUrl('ftp://example.com/file'), false);
     assert.equal(isSafeFetchUrl('https://chillin-bfc.pages.dev/'), true);
     assert.equal(isSafeFetchUrl('https://api.github.com/repos'), true);

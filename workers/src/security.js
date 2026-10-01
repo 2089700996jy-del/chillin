@@ -172,7 +172,12 @@ export function sniffImageMime(bytes) {
 // ==================== SSRF 防护 ====================
 export function isPrivateIPv4(parts) {
     if (!parts || parts.length !== 4) return true;
-    const ip = ((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0;
+    if (parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
+    return isPrivateIPv4Int(((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0);
+}
+
+/** 32 位无符号整数形式的 IPv4 私网/保留段判定（供 IPv6 内嵌 IPv4 复用） */
+export function isPrivateIPv4Int(ip) {
     const inCidr = (base, bits) => {
         const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
         return (ip & mask) === ((base >>> 0) & mask);
@@ -195,33 +200,93 @@ export function isPrivateIPv4(parts) {
     );
 }
 
-export function isPrivateIPv6(ip) {
-    if (!ip) return true;
-    const lower = ip.toLowerCase();
-    if (lower === '::' || lower === '::1') return true;
-    if (lower.startsWith('::ffff:')) {
-        const v4 = lower.slice(7);
-        if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v4)) {
-            return isPrivateIPv4(v4.split('.').map(Number));
-        }
+/**
+ * 把 IPv6 文本解析为 16 字节数组（支持 `::` 压缩与末尾内嵌 IPv4，如 `::ffff:7f00:1`）。
+ * 解析失败返回 null。
+ */
+export function parseIPv6ToBytes(ip) {
+    if (typeof ip !== 'string') return null;
+    let text = ip.trim().toLowerCase().split('%')[0];
+    if (!text.includes(':')) return null;
+    if (text.includes('.')) {
+        const colon = text.lastIndexOf(':');
+        const v4 = text.slice(colon + 1);
+        if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(v4)) return null;
+        const p = v4.split('.').map(Number);
+        if (p.some((n) => n > 255)) return null;
+        text = text.slice(0, colon + 1) + (((p[0] << 8) | p[1]) >>> 0).toString(16) + ':' + (((p[2] << 8) | p[3]) >>> 0).toString(16);
     }
-    // fc00::/7 (unique local), fe80::/10 (link-local)
-    if (/^f[cd]/.test(lower) || /^fe[89ab]/.test(lower)) return true;
+    const halves = text.split('::');
+    if (halves.length > 2) return null;
+    const parseGroups = (s) => (s === '' ? [] : s.split(':').map((g) => (/^[0-9a-f]{1,4}$/.test(g) ? parseInt(g, 16) : NaN)));
+    const head = parseGroups(halves[0]);
+    const tail = halves.length === 2 ? parseGroups(halves[1]) : [];
+    if (head.some(Number.isNaN) || tail.some(Number.isNaN)) return null;
+    let groups;
+    if (halves.length === 1) {
+        if (head.length !== 8) return null;
+        groups = head;
+    } else {
+        const missing = 8 - head.length - tail.length;
+        if (missing < 1) return null;
+        groups = [...head, ...new Array(missing).fill(0), ...tail];
+    }
+    const bytes = new Array(16);
+    for (let i = 0; i < 8; i++) {
+        bytes[i * 2] = (groups[i] >> 8) & 0xff;
+        bytes[i * 2 + 1] = groups[i] & 0xff;
+    }
+    return bytes;
+}
+
+/** 16 字节数组形式的 IPv6 私网/保留/内嵌私网判定 */
+export function isPrivateIPv6Bytes(b) {
+    if (!b || b.length !== 16) return true;
+    const allZero = (from, to) => b.slice(from, to).every((x) => x === 0);
+    const embeddedV4 = (offset) =>
+        ((b[offset] << 24) | (b[offset + 1] << 16) | (b[offset + 2] << 8) | b[offset + 3]) >>> 0;
+    if (allZero(0, 16)) return true;                                  // ::
+    if (allZero(0, 15) && b[15] === 1) return true;                   // ::1
+    if (allZero(0, 10) && b[10] === 0xff && b[11] === 0xff) return isPrivateIPv4Int(embeddedV4(12)); // ::ffff:a.b.c.d
+    if (allZero(0, 12)) return isPrivateIPv4Int(embeddedV4(12));      // ::a.b.c.d（IPv4-compatible）
+    if (b[0] === 0x00 && b[1] === 0x64 && b[2] === 0xff && b[3] === 0x9b) {
+        if (allZero(4, 12)) return isPrivateIPv4Int(embeddedV4(12));  // NAT64 64:ff9b::/96
+        return true;                                                  // 同前缀的本地用途段
+    }
+    if (b[0] === 0x20 && b[1] === 0x02) return isPrivateIPv4Int(embeddedV4(2)); // 6to4 2002::/16
+    if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x00 && b[3] === 0x00) return true; // Teredo 2001:0000::/32
+    if ((b[0] & 0xfe) === 0xfc) return true;                          // ULA fc00::/7
+    if (b[0] === 0xfe && (b[1] & 0xc0) === 0x80) return true;         // link-local fe80::/10
+    if (b[0] === 0xff) return true;                                   // multicast ff00::/8
+    if (b[0] === 0x20 && b[1] === 0x01 && b[2] === 0x0d && b[3] === 0xb8) return true; // 2001:db8::/32
+    if (b[0] === 0x01 && b[1] === 0x00 && allZero(2, 8)) return true; // 100::/64
     return false;
 }
 
+/** 文本形式的 IPv6 判定；无法解析时按危险处理（fail-closed） */
+export function isPrivateIPv6(ip) {
+    if (!ip) return true;
+    const bytes = parseIPv6ToBytes(String(ip).replace(/^\[|\]$/g, ''));
+    if (!bytes) return true;
+    return isPrivateIPv6Bytes(bytes);
+}
+
 export function isLoopbackOrPrivateHost(hostname) {
-    const h = (hostname || '').toLowerCase().trim();
+    const raw = (hostname || '').toLowerCase().trim();
+    if (!raw) return true;
+    // 归一化：去掉 FQDN 尾部点（`localhost.` / `127.0.0.1.`）与 IPv6 方括号
+    const h = raw.replace(/\.+$/, '').replace(/^\[|\]$/g, '');
     if (!h) return true;
+    if (h.includes(':')) {
+        return isPrivateIPv6(h);
+    }
+    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
+        const parts = h.split('.').map(Number);
+        return parts.some((n) => n > 255) ? true : isPrivateIPv4(parts);
+    }
     if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local') ||
         h.endsWith('.internal') || h === 'metadata.google.internal') {
         return true;
-    }
-    if (h.includes(':')) {
-        return isPrivateIPv6(h.replace(/^\[|\]$/g, '').split('%')[0]);
-    }
-    if (/^\d{1,3}(\.\d{1,3}){3}$/.test(h)) {
-        return isPrivateIPv4(h.split('.').map(Number));
     }
     return false;
 }
