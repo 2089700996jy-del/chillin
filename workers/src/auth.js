@@ -154,6 +154,13 @@ export async function handleLogin(request, env, db) {
     const password = body && typeof body.password === 'string' ? body.password : '';
     if (!username || !password) return jsonResponse({ error: '请输入账号和密码' }, 400);
 
+    // 账号维度锁定：经 Pages 反代时 CF-Connecting-IP 会变成边缘地址，
+    // 单靠 IP 桶会退化成「全局一个桶」，因此再按账号独立计数（15 分钟 10 次）。
+    const accountLimit = await checkRateLimitShared(db, `login-user:${username.toLowerCase()}`, 10, 15 * 60 * 1000);
+    if (!accountLimit.ok) {
+        return rateLimitedResponse(accountLimit.retryAfter, '该账号尝试过于频繁，请稍后再试');
+    }
+
     const user = await db.prepare('SELECT id, password_hash FROM users WHERE username = ?1').bind(username).first();
     if (!user) return jsonResponse({ error: '账号或密码错误' }, 401);
 
