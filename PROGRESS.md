@@ -12,7 +12,7 @@
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
 - 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `js/version.js`、`version.json`、Worker、`sw.js`、`index.html`
-- 测试：`npm test` 原生零依赖单测套件（`node --test tests/`）
+- 测试：`npm test` 原生零依赖单测套件（`node --test`）
 - 形态：Web / PWA（Pages）；已移除 Capacitor Android 工程
 
 ## 模块地图

@@ -8,7 +8,7 @@
 
 1. **测试引擎选型**：
    * 本项目测试体系保持**零第三方外部依赖**；
-   * 采用 Node.js 20+ 原生内置测试运行器：`node --test tests/` 与严格断言库 `node:assert/strict`；
+   * 采用 Node.js 20+ 原生内置测试运行器：`node --test` 与严格断言库 `node:assert/strict`；
    * 严禁引入 Jest、Vitest、Mocha 等重型测试框架与成百上千个衍生依赖包。
 2. **零容忍质量红线**：
    * 每次代码提交或发布前，必须在终端执行 `npm test`，所有用例必须 **100% 全部通过 (0 Fail, 0 Skip)**；
