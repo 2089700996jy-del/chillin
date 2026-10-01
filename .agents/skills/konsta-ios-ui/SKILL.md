@@ -7,6 +7,8 @@ description: Pixel-perfect Apple iOS HIG mobile UI design guidelines, styles, an
 
 This skill provides comprehensive specifications, CSS design tokens, component patterns, and micro-interaction guidelines derived from **Konsta UI** (pixel-perfect iOS mobile UI system) and Apple's **Human Interface Guidelines (HIG)**.
 
+> **Reference snapshot**: the vendored *Konsta UI v5.4.0* source used to derive these rules lives at `.agents/skills/konsta-ui-repo/` (MIT, <https://github.com/konstaui/konsta>). It is deliberately **untracked by git** to keep the repository light — re-clone it there when you need the original React/Svelte/Vue components.
+
 ---
 
 ## 1. Core iOS HIG Design Principles (Konsta UI Standard)
