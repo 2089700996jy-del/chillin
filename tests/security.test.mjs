@@ -137,3 +137,13 @@ test('Security - session token extraction and cookie hardening', async () => {
     const cleared = sessionCookieHeader('', new Request('https://example.com/'), 0);
     assert.match(cleared, /Max-Age=0/);
 });
+
+test('Security - session tokens are hashed at rest', async () => {
+    const { tokenHash } = await import('../workers/src/auth.js');
+    const hashed = await tokenHash('raw-token-123');
+    assert.match(hashed, /^[0-9a-f]{64}$/);
+    assert.equal(hashed, await tokenHash('raw-token-123'));
+    assert.notEqual(hashed, await tokenHash('raw-token-124'));
+    assert.ok(!hashed.includes('raw-token'));
+    assert.equal(await tokenHash(''), 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
+});

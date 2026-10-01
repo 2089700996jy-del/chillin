@@ -57,20 +57,45 @@ export function sessionCookieHeader(token, request, maxAgeSeconds = SESSION_TTL_
     return attrs.join('; ');
 }
 
+/** 会话令牌摘要：数据库中只保存 SHA-256 哈希，库泄露也无法直接重放会话 */
+export async function tokenHash(token) {
+    const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(token || '')));
+    return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 解析会话：先按哈希查询；命中旧版明文行时就地升级为哈希存储（零停机迁移）。
+ * 返回 { token, user_id, expires_at } 或 null。
+ */
+async function resolveSession(db, token, { upgrade = true } = {}) {
+    const hashed = await tokenHash(token);
+    const selectSql = 'SELECT token, user_id, expires_at FROM sessions WHERE token = ?1 AND expires_at > ?2';
+
+    let row = await db.prepare(selectSql).bind(hashed, Date.now()).first();
+    if (!row) {
+        // 防范 D1 主从节点边缘同步延迟：极快连续请求如果初次未查到，微秒级重试一次
+        await new Promise(r => setTimeout(r, 60));
+        row = await db.prepare(selectSql).bind(hashed, Date.now()).first();
+    }
+    if (row) return row;
+
+    // 兼容旧版明文会话（升级失败也不影响本次鉴权）
+    const legacy = await db.prepare(selectSql).bind(token, Date.now()).first();
+    if (!legacy) return null;
+    if (upgrade) {
+        try {
+            await db.prepare('DELETE FROM sessions WHERE token = ?1').bind(token).run();
+            await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
+                .bind(hashed, legacy.user_id, legacy.expires_at).run();
+        } catch (_) { /* 忽略：下次请求会再试 */ }
+    }
+    return legacy;
+}
+
 export async function authenticate(request, db) {
     const token = extractSessionToken(request);
     if (!token) return null;
-
-    let session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
-        .bind(token, Date.now()).first();
-
-    // 防范 D1 主从节点边缘同步延迟：极快连续请求如果初次未查到，微秒级重试一次
-    if (!session) {
-        await new Promise(r => setTimeout(r, 60));
-        session = await db.prepare('SELECT user_id FROM sessions WHERE token = ?1 AND expires_at > ?2')
-            .bind(token, Date.now()).first();
-    }
-
+    const session = await resolveSession(db, token);
     return session ? session.user_id : null;
 }
 
@@ -101,8 +126,9 @@ export async function handleRegister(request, env, db) {
     const userId = insertResult.id;
     const token = crypto.randomUUID();
     const expiresAt = Date.now() + SESSION_TTL_MS;
+    // 数据库只存哈希；明文仅通过 Set-Cookie 交给浏览器
     await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
-        .bind(token, userId, expiresAt).run();
+        .bind(await tokenHash(token), userId, expiresAt).run();
 
     // 同时下发 HttpOnly Cookie；响应体仍带 token，保证旧前端零停机共存
     return jsonResponse(
@@ -143,8 +169,9 @@ export async function handleLogin(request, env, db) {
 
     const token = crypto.randomUUID();
     const expiresAt = Date.now() + SESSION_TTL_MS;
+    // 数据库只存哈希；明文仅通过 Set-Cookie 交给浏览器
     await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
-        .bind(token, user.id, expiresAt).run();
+        .bind(await tokenHash(token), user.id, expiresAt).run();
 
     // 同时下发 HttpOnly Cookie；响应体仍带 token，保证旧前端零停机共存
     return jsonResponse(
@@ -157,7 +184,9 @@ export async function handleLogin(request, env, db) {
 export async function handleLogout(request, db) {
     const token = extractSessionToken(request);
     if (token) {
-        await db.prepare('DELETE FROM sessions WHERE token = ?1').bind(token).run();
+        // 同时清理哈希行与可能遗留的明文行
+        await db.prepare('DELETE FROM sessions WHERE token IN (?1, ?2)')
+            .bind(await tokenHash(token), token).run();
     }
     return jsonResponse({ success: true }, 200, { 'Set-Cookie': sessionCookieHeader('', request, 0) });
 }
@@ -181,8 +210,8 @@ export async function handleMe(db, userId) {
 export async function handlePushSubscribe(request, db) {
     const token = extractSessionToken(request);
     if (!token) return jsonResponse({ error: '未提供登录凭证' }, 401);
-    const session = await db.prepare('SELECT user_id, expires_at FROM sessions WHERE token = ?1').bind(token).first();
-    if (!session || new Date(session.expires_at) < new Date()) {
+    const session = await resolveSession(db, token);
+    if (!session || !session.user_id) {
         return jsonResponse({ error: '无效或过期的会话' }, 401);
     }
 
