@@ -39,15 +39,14 @@
                 
                 <div class="auth-error" id="auth-error-msg" style="display: none;">账号或密码错误</div>
                 
-                <button type="button" class="auth-btn btn-primary" id="btn-auth-submit" onclick="window._chillinLogin && window._chillinLogin()">登录</button>
+                <button type="button" class="auth-btn btn-primary" id="btn-auth-submit">登录</button>
             </div>
             
             <div class="auth-switch">
                 <span id="auth-switch-text">还没有账号？</span>
                 <button id="btn-auth-switch" class="btn-text" type="button">立即注册</button>
             </div>
-            <button type="button" class="auth-force-refresh"
-                onclick="window._chillinForceRefresh && window._chillinForceRefresh()">
+            <button type="button" class="auth-force-refresh">
                 登录异常？强制刷新到最新版
             </button>
         </div>
@@ -76,13 +75,13 @@
             <div class="nav-reader-title" id="reader-book-title">—</div>
             <!-- 阅读模式：顶部右侧专属操作组（低透明度柔和图标） -->
             <div class="nav-reader-actions" id="nav-reader-actions">
-                <button class="nav-reader-btn" onclick="toggleSidebar()" title="章节目录" id="btn-reader-sidebar-toggle" aria-label="章节目录">
+                <button class="nav-reader-btn" title="章节目录" id="btn-reader-sidebar-toggle" aria-label="章节目录">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
                         <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                     </svg>
                 </button>
-                <button class="nav-reader-btn" onclick="toggleReaderTheme()" title="切换日间/夜间/护眼" id="btn-theme-toggle" aria-label="切换主题">
+                <button class="nav-reader-btn" title="切换日间/夜间/护眼" id="btn-theme-toggle" aria-label="切换主题">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
                     </svg>
@@ -663,7 +662,7 @@
                 <div class="reader-sidebar" id="reader-sidebar">
                     <div class="sidebar-header">
                         <span>📑 目录</span>
-                        <button class="btn-icon" onclick="toggleSidebar()" title="收起">✕</button>
+                        <button class="btn-icon" id="btn-reader-sidebar-close" title="收起">✕</button>
                     </div>
                     <div class="sidebar-chapter-list" id="sidebar-chapter-list"></div>
                 </div>
@@ -673,9 +672,9 @@
                         <div class="chapter-body" id="chapter-body"></div>
                     </div>
                     <div class="reader-nav-bottom">
-                        <button class="btn-nav" id="btn-prev-chapter" onclick="prevChapter()" disabled>◀ 上一章</button>
+                        <button class="btn-nav" id="btn-prev-chapter" disabled>◀ 上一章</button>
                         <span class="chapter-indicator" id="chapter-indicator">—</span>
-                        <button class="btn-nav" id="btn-next-chapter" onclick="nextChapter()" disabled>下一章 ▶</button>
+                        <button class="btn-nav" id="btn-next-chapter" disabled>下一章 ▶</button>
                     </div>
                 </div>
             </div>
@@ -718,7 +717,7 @@
 
             <!-- AI 智能回响卡片折叠区 (对标 flomo：轻量伴生，把主视野 100% 留给用户随手记) -->
             <div class="echo-cards-wrapper" id="echo-cards-wrapper">
-                <div class="echo-cards-header" id="echo-cards-header" onclick="document.getElementById('echo-cards-wrapper').classList.toggle('expanded')">
+                <div class="echo-cards-header" id="echo-cards-header">
                     <span class="echo-cards-header-title">
                         <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
                         AI 记忆回响
@@ -739,8 +738,8 @@
     </main>
 
     <!-- AI 记忆回响对话 Modal -->
-    <div class="modal-overlay" id="ai-chat-modal" onclick="if(event.target===this)this.classList.remove('show')">
-        <div class="ai-chat-card" onclick="event.stopPropagation()">
+    <div class="modal-overlay" id="ai-chat-modal">
+        <div class="ai-chat-card">
             <div class="sheet-pull-handle"></div>
             <div class="ai-chat-header">
                 <div class="ai-chat-title">
@@ -768,15 +767,15 @@
     </div>
 
     <!-- 提示词参数填充弹窗 (Prompt Variable Filler) -->
-    <div class="modal-overlay" id="prompt-variable-modal" onclick="if(event.target===this)this.classList.remove('show')">
-        <div class="prompt-variable-card" onclick="event.stopPropagation()">
+    <div class="modal-overlay" id="prompt-variable-modal">
+        <div class="prompt-variable-card">
             <div class="sheet-pull-handle"></div>
             <div class="prompt-variable-header">
                 <div class="prompt-variable-title-wrap">
                     <span class="prompt-var-icon">🧩</span>
                     <h3 id="prompt-variable-modal-title" class="prompt-variable-title">填入参数</h3>
                 </div>
-                <button type="button" class="btn-icon" onclick="document.getElementById('prompt-variable-modal').classList.remove('show')" title="关闭">✕</button>
+                <button type="button" class="btn-icon" data-close-modal="prompt-variable-modal" title="关闭">✕</button>
             </div>
             <div class="prompt-variable-body">
                 <div class="prompt-variable-section-label">📌 变量填写</div>
@@ -798,21 +797,21 @@
     </div>
 
     <!-- 图片预览大图画廊 Lightbox -->
-    <div class="modal-overlay image-preview-modal" id="image-preview-modal" onclick="this.classList.remove('show')">
-        <button class="image-preview-close" type="button" aria-label="关闭预览" onclick="document.getElementById('image-preview-modal').classList.remove('show')">
+    <div class="modal-overlay image-preview-modal" id="image-preview-modal">
+        <button class="image-preview-close" type="button" aria-label="关闭预览" data-close-modal="image-preview-modal">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="18" y1="6" x2="6" y2="18"></line>
                 <line x1="6" y1="6" x2="18" y2="18"></line>
             </svg>
         </button>
-        <div class="image-preview-container" onclick="event.stopPropagation()">
+        <div class="image-preview-container">
             <img id="image-preview-img" src="" alt="大图预览" class="image-preview-img">
         </div>
     </div>
 
     <!-- 全局搜索弹窗 (Cmd/Ctrl + K) -->
-    <div class="modal-overlay global-search-overlay" id="global-search-modal" onclick="if(event.target===this)this.classList.remove('show')">
-        <div class="global-search-card" onclick="event.stopPropagation()">
+    <div class="modal-overlay global-search-overlay" id="global-search-modal">
+        <div class="global-search-card">
             <div class="sheet-pull-handle"></div>
             <div class="global-search-header">
                 <span class="global-search-icon">🔍</span>

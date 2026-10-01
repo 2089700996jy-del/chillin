@@ -147,3 +147,39 @@ test('Security - session tokens are hashed at rest', async () => {
     assert.ok(!hashed.includes('raw-token'));
     assert.equal(await tokenHash(''), 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855');
 });
+
+test('Security - CSP hashes cover every inline script and forbid unsafe-inline', async () => {
+    const fsMod = await import('node:fs/promises');
+    const pathMod = await import('node:path');
+    const urlMod = await import('node:url');
+    const cryptoMod = await import('node:crypto');
+    const root = pathMod.resolve(pathMod.dirname(urlMod.fileURLToPath(import.meta.url)), '..');
+
+    const html = await fsMod.readFile(pathMod.join(root, 'index.html'), 'utf8');
+    const headers = await fsMod.readFile(pathMod.join(root, '_headers'), 'utf8');
+
+    const inlineScripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
+    assert.ok(inlineScripts.length > 0, 'expected index.html to contain inline scripts');
+
+    for (const match of inlineScripts) {
+        const digest = cryptoMod.createHash('sha256').update(match[1], 'utf8').digest('base64');
+        assert.ok(
+            headers.includes(`'sha256-${digest}'`),
+            `_headers CSP is missing the hash for an inline script: 'sha256-${digest}'`
+        );
+    }
+
+    const cspLine = headers.split('\n').find((line) => line.includes('Content-Security-Policy'));
+    assert.ok(cspLine, 'expected a Content-Security-Policy in _headers');
+    const scriptSrc = cspLine.split(';').map((part) => part.trim()).find((part) => part.startsWith('script-src'));
+    assert.ok(scriptSrc, 'expected script-src in the CSP');
+    assert.ok(!scriptSrc.includes("'unsafe-inline'"), 'script-src must not allow unsafe-inline');
+    assert.match(scriptSrc, /'sha256-/);
+
+    // 内联事件处理器在收紧后的 CSP 下会被拦截：源码中不得再出现
+    const sources = ['index.html', ...(await fsMod.readdir(pathMod.join(root, 'js'))).filter((f) => f.endsWith('.js')).map((f) => pathMod.join('js', f)), 'app.js'];
+    for (const rel of sources) {
+        const text = await fsMod.readFile(pathMod.join(root, rel), 'utf8');
+        assert.ok(!/\son(click|error|load|change|input|submit)\s*=/i.test(text), `${rel} still contains an inline event handler attribute`);
+    }
+});

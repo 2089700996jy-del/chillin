@@ -44,6 +44,43 @@ document.addEventListener('DOMContentLoaded', () => {
     versionEls.forEach((el) => { el.textContent = APP_BUILD_LABEL; });
     document.title = `Chillin · ${APP_BUILD_LABEL}`;
 
+    // 全局事件委托：取代原有的内联 onclick / onerror（CSP 收紧后内联处理器会被拦截）
+    document.addEventListener('click', (e) => {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+
+        const closer = target.closest('[data-close-modal]');
+        if (closer) {
+            const modalId = closer.getAttribute('data-close-modal');
+            if (modalId) document.getElementById(modalId)?.classList.remove('show');
+            return;
+        }
+
+        // 点击遮罩空白处关闭弹层
+        if (target.classList.contains('modal-overlay')) {
+            target.classList.remove('show');
+            return;
+        }
+
+        // 图片灯箱：由 data-preview-image 标记接管
+        const previewImg = target.closest('img[data-preview-image]');
+        if (previewImg && typeof window.previewImage === 'function') {
+            window.previewImage(previewImg.getAttribute('src'));
+        }
+    });
+
+    // 图片加载失败兜底（error 事件不冒泡，必须在捕获阶段代理）
+    window.addEventListener('error', (e) => {
+        const el = e.target;
+        if (!el || el.tagName !== 'IMG' || el.dataset.imgFallback) return;
+        el.dataset.imgFallback = '1';
+        el.classList.add('img-load-failed');
+        if (el.parentElement) el.parentElement.classList.add('is-fallback');
+        const mode = el.getAttribute('data-img-hide-on-error');
+        if (mode === 'remove') el.remove();
+        else if (mode === 'hide') el.style.display = 'none';
+    }, true);
+
     // Navbar scroll affordance
     const navbar = document.getElementById('navbar');
     window.addEventListener('scroll', () => {

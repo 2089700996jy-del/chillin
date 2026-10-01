@@ -62,6 +62,9 @@ if (typeof window !== 'undefined') {
 }
 
 function bindForceRefreshControls() {
+    // 登录页「强制刷新」入口：替代内联 onclick（CSP 收紧后内联处理器会被拦截）
+    document.querySelector('.auth-force-refresh')?.addEventListener('click', () => forceRefreshToLatest());
+
     document.querySelectorAll('[data-app-version]').forEach((el) => {
         if (el.dataset.forceBound === '1') return;
         el.dataset.forceBound = '1';

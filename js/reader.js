@@ -353,14 +353,14 @@ function buildChapterTree() {
         const isCurrentGroup = chs.some(ch => ch.idx === currentChapterIdx);
         const collapsedClass = isCurrentGroup ? '' : ' collapsed';
         const arrowClass = isCurrentGroup ? '' : ' collapsed';
-        return '<div class="chapter-group-header' + arrowClass + '" onclick="this.classList.toggle(\'collapsed\');document.getElementById(\'' + gid + '\').classList.toggle(\'collapsed\')">' +
+        return '<div class="chapter-group-header' + arrowClass + '" data-chapter-toggle="' + gid + '">' +
             '<span class="group-arrow">▼</span>' +
             '第 ' + (chs[0].idx + 1) + ' - ' + (chs[chs.length - 1].idx + 1) + ' 章' +
             '<span style="margin-left:auto;font-size:0.65rem;opacity:0.5;font-weight:400;">' + chs.length + '章</span>' +
             '</div>' +
             '<div class="chapter-group-items' + collapsedClass + '" id="' + gid + '">' +
             chs.map(ch => '<div class="chapter-item' + (ch.idx === currentChapterIdx ? ' active' : '') +
-                '" onclick="jumpToChapter(' + ch.idx + ')" title="' + escapeHtml(ch.title) + '">' +
+                '" data-chapter-jump="' + ch.idx + '" title="' + escapeHtml(ch.title) + '">' +
                 escapeHtml(ch.title) + '</div>').join('') +
             '</div>';
     }).join('');
@@ -424,6 +424,30 @@ window.nextChapter = async function() {
 window.toggleSidebar = function() {
     document.getElementById('reader-sidebar').classList.toggle('hidden');
 };
+
+// 事件绑定：等价于此前的内联 onclick（CSP 收紧后内联处理器会被浏览器拦截）
+document.getElementById('btn-reader-sidebar-toggle')?.addEventListener('click', () => window.toggleSidebar());
+document.getElementById('btn-reader-sidebar-close')?.addEventListener('click', () => window.toggleSidebar());
+document.getElementById('btn-theme-toggle')?.addEventListener('click', () => window.toggleReaderTheme());
+document.getElementById('btn-prev-chapter')?.addEventListener('click', () => window.prevChapter());
+document.getElementById('btn-next-chapter')?.addEventListener('click', () => window.nextChapter());
+
+document.getElementById('sidebar-chapter-list')?.addEventListener('click', (e) => {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    const toggle = target.closest('[data-chapter-toggle]');
+    if (toggle) {
+        toggle.classList.toggle('collapsed');
+        const gid = toggle.getAttribute('data-chapter-toggle');
+        if (gid) document.getElementById(gid)?.classList.toggle('collapsed');
+        return;
+    }
+    const jump = target.closest('[data-chapter-jump]');
+    if (jump) {
+        const idx = Number(jump.getAttribute('data-chapter-jump'));
+        if (Number.isInteger(idx) && typeof window.jumpToChapter === 'function') window.jumpToChapter(idx);
+    }
+});
 window.deleteReaderBook = async function(bookId) {
     if (!confirm('确定删除这本书吗？')) return;
     const chapters = await rdbGetAll('chapters');

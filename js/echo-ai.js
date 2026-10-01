@@ -149,6 +149,11 @@ const btnSendAiChat = document.getElementById('btn-send-ai-chat');
 const aiChatInput = document.getElementById('ai-chat-input');
 const aiChatBody = document.getElementById('ai-chat-body');
 
+// 回响卡片折叠区：等价于原内联 onclick（CSP 收紧后内联处理器会被拦截）
+document.getElementById('echo-cards-header')?.addEventListener('click', () => {
+    document.getElementById('echo-cards-wrapper')?.classList.toggle('expanded');
+});
+
 if (btnOpenAiChat && aiChatModal) {
     btnOpenAiChat.addEventListener('click', () => {
         aiChatModal.classList.add('show');

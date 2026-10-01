@@ -75,7 +75,7 @@ const renderBookmarks = () => {
             <div class="bookmark-card-inner">
                 <div class="bookmark-card-media">
                     ${hasImage
-                        ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" onerror="this.parentElement.classList.add(\'is-fallback\');this.remove();">'
+                        ? '<img class="bookmark-card-image" src="' + escapeHtml(resolveAssetUrl(bm.image)) + '" alt="" loading="lazy" data-img-hide-on-error="remove">'
                         : ''}
                     <span class="bookmark-card-emoji" aria-hidden="true">${escapeHtml(emoji)}</span>
                 </div>
