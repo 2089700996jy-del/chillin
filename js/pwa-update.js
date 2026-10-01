@@ -3,7 +3,7 @@
  * and forceRefreshToLatest (clear SW/Cache; keep login in localStorage).
  */
 import { showToast } from './utils.js';
-import { APP_VERSION } from './version.js';
+import { APP_VERSION, APP_BUILD_LABEL } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
 
 let forceRefreshing = false;
@@ -65,6 +65,8 @@ function bindForceRefreshControls() {
     document.querySelectorAll('[data-app-version]').forEach((el) => {
         if (el.dataset.forceBound === '1') return;
         el.dataset.forceBound = '1';
+        // 单一事实来源：Badge 文案始终由 js/version.js 渲染，杜绝 HTML 硬编码漂移
+        el.textContent = APP_BUILD_LABEL;
         el.setAttribute('role', 'button');
         el.setAttribute('tabindex', '0');
         el.title = '点击强制刷新到最新版';

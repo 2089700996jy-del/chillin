@@ -80,8 +80,11 @@ write(
         `export const APP_BUILD_LABEL = \`v\${APP_VERSION}\`;\n`
 );
 
-// version.json
-write('version.json', JSON.stringify({ version: next, build: `v${next}` }, null, 0) + '\n');
+// version.json — version + build label + publish timestamp
+write(
+    'version.json',
+    JSON.stringify({ version: next, build: `v${next}`, time: new Date().toISOString() }, null, 0) + '\n'
+);
 
 // workers/api.js — first APP_VERSION const near top
 {
@@ -102,26 +105,41 @@ write('version.json', JSON.stringify({ version: next, build: `v${next}` }, null,
     write('sw.js', s);
 }
 
-// index.html — ?v= and badge text vX.Y.Z
+// index.html — cache-busting ?v= query and the badge text vX.Y.Z.
+// Pattern-based replacement (not literal `current`): if index.html ever drifted
+// behind, a literal replace silently no-ops and the drift becomes permanent.
 {
     let html = read('index.html');
-    html = replaceAll(html, `?v=${current}`, `?v=${next}`);
-    html = replaceAll(html, `>v${current}<`, `>v${next}<`);
-    // also catch title/placeholder if only badge uses v prefix with current
-    if (html.includes(`?v=${current}`) || html.includes(`>v${current}<`)) {
-        throw new Error('index.html still contains old version after replace');
+    const anchors = (html.match(/\?v=[\d.]+/g) || []).length + (html.match(/>v[\d.]+</g) || []).length;
+    html = html.replace(/\?v=[\d.]+/g, `?v=${next}`);
+    html = html.replace(/>v[\d.]+</g, `>v${next}<`);
+    const stale = [
+        ...[...html.matchAll(/\?v=([\d.]+)/g)].map((m) => m[1]),
+        ...[...html.matchAll(/>v([\d.]+)</g)].map((m) => m[1]),
+    ].filter((v) => v !== next);
+    if (stale.length) {
+        throw new Error(`index.html still references stale version(s): ${[...new Set(stale)].join(', ')}`);
     }
+    if (!anchors) console.log('warning: index.html had no version anchors to update');
     write('index.html', html);
 }
 
-// PROGRESS.md header version line (best-effort)
+// package.json — declared project version (anchor #1 of the rule)
+{
+    const pkg = JSON.parse(read('package.json'));
+    pkg.version = next;
+    write('package.json', JSON.stringify(pkg, null, 2) + '\n');
+}
+
+// PROGRESS.md header version + update date (best-effort; header line only so
+// historical changelog entries keep their original version numbers)
 {
     const progressPath = 'PROGRESS.md';
     if (fs.existsSync(path.join(root, progressPath))) {
         let p = read(progressPath);
         const nextP = p
-            .replace(/\*\*v[\d.]+\*\*/g, `**v${next}**`)
-            .replace(/当前前端\/Worker：\*\*v[\d.]+\*\*/, `当前前端/Worker：**v${next}**`);
+            .replace(/(当前前端\/Worker：\*\*v)[\d.]+(\*\*)/, `$1${next}$2`)
+            .replace(/(> 更新时间：)\d{4}-\d{2}-\d{2}/, `$1${new Date().toISOString().slice(0, 10)}`);
         if (nextP !== p) write(progressPath, nextP);
         else console.log('skip PROGRESS.md (no version header match)');
     }
