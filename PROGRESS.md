@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-01。供后续会话快速接续。当前前端/Worker：**v2.5.38**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-10-01。供后续会话快速接续。当前前端/Worker：**v2.5.39**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -56,6 +56,16 @@
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
 
 ## 近期已完成（摘要）
+
+### 安全加固、会话升级与工程一致性（v2.5.38 → v2.5.39）
+1. **版本号联动修复**：`index.html` 长期滞留在 2.5.36 而 `js/version.js`/SW 已是 2.5.37 —— 根因是 bump 脚本按"当前版本字面量"替换，一旦漂移就永远替换不到。脚本改为正则重写全部 `?v=` 与徽标、联动 `package.json`、为 `version.json` 增加发布时间戳、`PROGRESS.md` 只改头部行；版本徽标改由 `APP_BUILD_LABEL` 渲染。
+2. **外链兜底回归**：前端 `fetch('https://api.microlink.io')` 一直被 Pages 的 CSP `connect-src` 拦截（死代码），兜底下沉到 Worker `handleLinkParse`，浏览器 CSP 无需放宽。
+3. **SSRF 加固**：新增 16 字节 IPv6 解析与内嵌 IPv4 判定，封堵 `[::ffff:a9fe:a9fe]`（云元数据）、NAT64 `64:ff9b::/96`、6to4、Teredo，以及 `localhost.` / `127.0.0.1.` 尾点绕过；无法解析时 fail-closed，配套单测已补齐。
+4. **响应头**：Pages 与 Worker 均补齐 `Strict-Transport-Security`，API/文件响应追加 `default-src 'none'` 的 CSP 兜底。
+5. **上传防内存放大**：先校验 `Content-Length` 与 `Blob.size` 再读入内存（此前先 `arrayBuffer()` 后判 5MB）。
+6. **会话安全**：登录/注册下发 `HttpOnly + SameSite=Lax`（HTTPS 带 `Secure`）Cookie，`authenticate()` 同时接受 Bearer 与 Cookie（响应保留 token 与 `session:'cookie'` 标记，前后端可任意顺序升级）；前端在 Cookie 模式下不再把令牌写入 localStorage，刷新后用 Cookie 恢复会话；新增 `POST /api/auth/logout-all` 与「全部退出」按钮；CORS 支持凭据回显。
+7. **体验补丁**：首屏同步期间列表展示骨架屏（不再误显示"暂无内容"）、随手记/收藏改为每页 100 条「加载更多」、支持 `prefers-reduced-motion`、首次使用跟随系统深浅色。
+8. **仓库瘦身**：移出 `.agents/skills/konsta-ui-repo` 的 707 个第三方文件（本地保留、写入 .gitignore），补写正式 `README.md`。
 
 ### 离线PWA健壮性、Cmd+K命令面板与媒体体验优化
 1. **Service Worker 离线白屏致命缺陷修复**：
