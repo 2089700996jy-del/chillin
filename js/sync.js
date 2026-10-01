@@ -2,7 +2,7 @@
  * Local persistence & cloud sync: merge, incremental pull, apiSync*, auto-sync.
  * Depends on auth.js for HTTP (apiRequest / getLocalKey / refresh).
  */
-import { showToast, getEast8Time } from './utils.js';
+import { showToast, getEast8Time, skeletonListHtml } from './utils.js';
 import {
     state,
     DEFAULT_WEEKLY,
@@ -302,12 +302,22 @@ export function loadLocalData() {
     refresh('all');
 }
 
+/** 首屏同步时把仍停留在空态的列表换成骨架屏，避免"暂无内容"的误导 */
+function showSkeletonsForEmptyLists() {
+    const targets = ['gallery-container', 'notes-list-container', 'bookmark-list-container', 'feeds-stream-container'];
+    for (const id of targets) {
+        const el = document.getElementById(id);
+        if (el && el.querySelector('.list-empty')) el.innerHTML = skeletonListHtml(3);
+    }
+}
+
 export async function syncFromApi() {
-    if (!state.authToken || isSyncingInBg) return;
+    if ((!state.authToken && !state.cookieSession) || isSyncingInBg) return;
     isSyncingInBg = true;
     let needsBatchUpload = false;
     let hadError = false;
     setSyncStatus('同步中', 'info');
+    showSkeletonsForEmptyLists();
 
     const pullSpecs = [
         {
@@ -643,7 +653,7 @@ let autoSyncInterval = null;
 let lastAutoSyncAt = 0;
 
 function requestAutoSync(minGapMs = 2500) {
-    if (!state.authToken) return;
+    if (!state.authToken && !state.cookieSession) return;
     const now = Date.now();
     if (now - lastAutoSyncAt < minGapMs) return;
     lastAutoSyncAt = now;

@@ -4,6 +4,8 @@ import {
     sanitizeHtml,
     getChineseDate,
     getChineseDateTime,
+    skeletonListHtml,
+    isSyncingNow,
 } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -92,6 +94,10 @@ const renderCards = (filter = 'all') => {
         rendered += 1;
     });
     if (rendered === 0) {
+        if (isSyncingNow()) {
+            galleryContainer.innerHTML = skeletonListHtml(3);
+            return;
+        }
         galleryContainer.innerHTML = `
             <div class="list-empty">
                 <div class="list-empty-icon">🌱</div>

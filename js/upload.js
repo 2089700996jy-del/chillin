@@ -89,7 +89,8 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
         const res = await fetch(`${API_BASE}/api/upload`, {
             method: 'POST',
             headers: headers,
-            body: formData
+            body: formData,
+            credentials: 'include'
         });
 
         if (res.status === 401) {

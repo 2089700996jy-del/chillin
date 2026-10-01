@@ -3,6 +3,8 @@ import {
     generateUniqueId,
     escapeHtml,
     showToast,
+    skeletonListHtml,
+    isSyncingNow,
 } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
@@ -33,13 +35,20 @@ export function initBookmarks() {
         });
     });
 
+// 分页渲染：首屏 100 条，点击「加载更多」再追加（不再硬截断）
+const BOOKMARKS_PAGE_SIZE = 100;
+let bookmarksVisibleCount = BOOKMARKS_PAGE_SIZE;
+
 const renderBookmarks = () => {
     bookmarkListContainer.innerHTML = '';
-    // Limit to latest 100 bookmarks for performance
     const totalBookmarks = state.bookmarksDatabase.length;
-    const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id).slice(0, 100);
+    const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id).slice(0, bookmarksVisibleCount);
 
     if (sortedBookmarks.length === 0) {
+        if (isSyncingNow()) {
+            bookmarkListContainer.innerHTML = skeletonListHtml(3);
+            return;
+        }
         bookmarkListContainer.innerHTML = `
             <div class="list-empty">
                 <div class="list-empty-icon">🔖</div>
@@ -110,12 +119,16 @@ const renderBookmarks = () => {
         bookmarkListContainer.appendChild(card);
     });
 
-    if (totalBookmarks > 100) {
-        const hint = document.createElement('div');
-        hint.className = 'list-truncate-hint';
-        hint.style.cssText = 'text-align:center;padding:12px 8px;color:rgba(60,60,67,0.55);font-size:12px;';
-        hint.textContent = `仅显示最近 100 条，共 ${totalBookmarks} 条`;
-        bookmarkListContainer.appendChild(hint);
+    if (totalBookmarks > sortedBookmarks.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'list-load-more';
+        more.textContent = `加载更多（还有 ${totalBookmarks - sortedBookmarks.length} 条）`;
+        more.addEventListener('click', () => {
+            bookmarksVisibleCount += BOOKMARKS_PAGE_SIZE;
+            renderBookmarks();
+        });
+        bookmarkListContainer.appendChild(more);
     }
 };
 

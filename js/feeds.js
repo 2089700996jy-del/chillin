@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -25,15 +25,22 @@ function extractUrlFromText(text) {
     return { raw, normalized };
 }
 
+// 分页渲染：首屏 100 条，点击「加载更多」再追加 100 条（不再硬截断）
+const FEEDS_PAGE_SIZE = 100;
+let feedsVisibleCount = FEEDS_PAGE_SIZE;
+
 function renderFeeds() {
     const container = document.getElementById('feeds-stream-container');
     if (!container) return;
 
-    // Limit to latest 100 feeds for performance (infinite scroll can be added later)
     const totalFeeds = state.feedsDatabase.length;
-    const displayFeeds = state.feedsDatabase.slice(0, 100);
+    const displayFeeds = state.feedsDatabase.slice(0, feedsVisibleCount);
 
     if (!displayFeeds || displayFeeds.length === 0) {
+        if (isSyncingNow()) {
+            container.innerHTML = skeletonListHtml(3);
+            return;
+        }
         container.innerHTML = `
             <div class="list-empty">
                 <div class="list-empty-icon">⚡️</div>
@@ -161,10 +168,16 @@ function renderFeeds() {
         `;
     }).join('');
 
-    if (totalFeeds > 100) {
-        container.insertAdjacentHTML('beforeend',
-            `<div class="list-truncate-hint" style="text-align:center;padding:12px 8px;color:rgba(60,60,67,0.55);font-size:12px;">仅显示最近 100 条，共 ${totalFeeds} 条</div>`
-        );
+    if (totalFeeds > displayFeeds.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'list-load-more';
+        more.textContent = `加载更多（还有 ${totalFeeds - displayFeeds.length} 条）`;
+        more.addEventListener('click', () => {
+            feedsVisibleCount += FEEDS_PAGE_SIZE;
+            renderFeeds();
+        });
+        container.appendChild(more);
     }
 
     // Async auto enrichment for historical unparsed links

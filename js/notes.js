@@ -4,6 +4,8 @@ import {
     autoResizeTextarea,
     getChineseDate,
     getChineseDateTime,
+    skeletonListHtml,
+    isSyncingNow,
 } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -72,6 +74,10 @@ const renderNotes = () => {
     notesListContainer.innerHTML = '';
     const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
     if (sortedNotes.length === 0) {
+        if (isSyncingNow()) {
+            notesListContainer.innerHTML = skeletonListHtml(3);
+            return;
+        }
         notesListContainer.innerHTML = `
             <div class="list-empty">
                 <div class="list-empty-icon">📝</div>

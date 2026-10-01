@@ -119,3 +119,22 @@ export function getEast8Time() {
     const pad = n => String(n).padStart(2, '0');
     return `${east8.getFullYear()}-${pad(east8.getMonth()+1)}-${pad(east8.getDate())} ${pad(east8.getHours())}:${pad(east8.getMinutes())}:${pad(east8.getSeconds())}`;
 }
+/**
+ * 首屏同步中的骨架屏占位 HTML。
+ * 弱网首同步时替代"暂无内容"空态，避免用户误判为空白 / 无数据。
+ */
+export function skeletonListHtml(count = 3) {
+    return new Array(count).fill(0).map(() => `
+        <div class="skeleton-card" aria-hidden="true">
+            <div class="skeleton-line skeleton-line--title"></div>
+            <div class="skeleton-line"></div>
+            <div class="skeleton-line skeleton-line--short"></div>
+        </div>
+    `).join('');
+}
+
+/** 是否正处于同步中（同步指示灯点亮时展示骨架屏） */
+export function isSyncingNow() {
+    return typeof document !== 'undefined' && document.body.classList.contains('is-syncing');
+}
+

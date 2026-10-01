@@ -5920,6 +5920,79 @@ body.dark-reader-body .btn-prompt-send {
   border-color: rgba(10, 132, 255, 0.25) !important;
 }
 
+/* ==================== 骨架屏 / 分页 / 无障碍 (v2.5.38) ==================== */
+.skeleton-card {
+  padding: 18px;
+  margin-bottom: 12px;
+  border-radius: 18px;
+  background: var(--widget-bg, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.skeleton-line {
+  height: 12px;
+  border-radius: 6px;
+  margin-bottom: 10px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.06) 25%, rgba(0, 0, 0, 0.12) 37%, rgba(0, 0, 0, 0.06) 63%);
+  background-size: 400% 100%;
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+.skeleton-line--title { height: 16px; width: 55%; }
+.skeleton-line--short { width: 35%; margin-bottom: 0; }
+
+@keyframes skeletonShimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+body.dark-reader-body .skeleton-card {
+  background: #1c1f24;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-reader-body .skeleton-line {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.06) 25%, rgba(255, 255, 255, 0.14) 37%, rgba(255, 255, 255, 0.06) 63%);
+  background-size: 400% 100%;
+}
+
+.list-load-more {
+  display: block;
+  width: 100%;
+  margin: 16px 0 8px;
+  padding: 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(0, 102, 204, 0.18);
+  background: var(--widget-bg, #ffffff);
+  color: var(--ios-blue, #0066CC);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), background 0.18s ease;
+}
+
+.list-load-more:active { transform: scale(0.985); }
+.list-load-more:hover { background: rgba(0, 102, 204, 0.08); }
+
+body.dark-reader-body .list-load-more {
+  background: #1c1f24;
+  border-color: rgba(10, 132, 255, 0.25);
+  color: #0A84FF;
+}
+
+/* ♿ 尊重系统「减弱动态效果」偏好：关闭装饰性动画与过渡 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+
 
 
 

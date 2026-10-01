@@ -81,8 +81,24 @@ function deleteReaderProgress(bookId) {
     delete p[bookId];
     localStorage.setItem('reader_progress', JSON.stringify(p));
 }
+function systemPreferredTheme() {
+    try {
+        return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    } catch (_) {
+        return 'light';
+    }
+}
 function loadReaderSettings() {
-    try { return JSON.parse(localStorage.getItem('reader_settings') || '{}'); } catch(e) { return {}; }
+    try {
+        const raw = localStorage.getItem('reader_settings');
+        if (raw) {
+            const parsed = JSON.parse(raw) || {};
+            // 未手动选择过主题时跟随系统深浅色
+            if (!parsed.theme) parsed.theme = systemPreferredTheme();
+            return parsed;
+        }
+    } catch (e) { /* 解析失败按默认处理 */ }
+    return { theme: systemPreferredTheme() };
 }
 function saveReaderSettings(s) {
     localStorage.setItem('reader_settings', JSON.stringify(s));
