@@ -161,8 +161,11 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     const inlineScripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
     assert.ok(inlineScripts.length > 0, 'expected index.html to contain inline scripts');
 
+    // GitHub 中的 index.html 以 LF 存储（见 .gitattributes），Cloudflare Pages 部署的也是 LF 字节；
+    // 本地检出可能是 CRLF，因此必须先归一化再算哈希，否则会得出线上永远不匹配的哈希。
     for (const match of inlineScripts) {
-        const digest = cryptoMod.createHash('sha256').update(match[1], 'utf8').digest('base64');
+        const scriptText = match[1].replace(/\r\n/g, '\n');
+        const digest = cryptoMod.createHash('sha256').update(scriptText, 'utf8').digest('base64');
         assert.ok(
             headers.includes(`'sha256-${digest}'`),
             `_headers CSP is missing the hash for an inline script: 'sha256-${digest}'`

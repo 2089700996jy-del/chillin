@@ -1,0 +1,13 @@
+# 统一换行：仓库与检出都用 LF。
+# 原因：CSP 的内联脚本 sha256 白名单是对「实际字节」计算哈希的，
+# 若检出为 CRLF 而部署产物为 LF，本地算出的哈希会与线上文件不匹配，
+# 导致内联脚本被浏览器拦截（2026-10-01 曾因此发生过一次线上事故）。
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.apk binary
