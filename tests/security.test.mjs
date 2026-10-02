@@ -377,3 +377,32 @@ test('Security - Trusted Types is enforced and allowlists our policy names', asy
     assert.ok(allowlist.includes('chillin#html'), 'our policy name must be allowlisted');
     assert.ok(allowlist.includes('dompurify'), 'DOMPurify creates its own policy and must be allowlisted');
 });
+
+test('Security - setHtml uses the Trusted Types policy, and degrades without it', async () => {
+    // 1) 浏览器支持 Trusted Types：必须经 createPolicy('chillin#html') 产出 TrustedHTML
+    const created = [];
+    globalThis.trustedTypes = {
+        createPolicy(name, rules) {
+            created.push(name);
+            return { createHTML: (value) => ({ trusted: true, html: rules.createHTML(value) }) };
+        }
+    };
+    const enforced = await import('../js/trusted-types.js?with-tt=1');
+    const el = { innerHTML: null };
+    enforced.setHtml(el, '<b>hi</b>');
+    assert.deepEqual(created, ['chillin#html']);
+    assert.equal(el.innerHTML.trusted, true);
+    assert.equal(el.innerHTML.html, '<b>hi</b>');
+    delete globalThis.trustedTypes;
+
+    // 2) 不支持 Trusted Types 的浏览器（如部分旧版）：退回普通字符串赋值
+    const legacy = await import('../js/trusted-types.js?no-tt=1');
+    const el2 = { innerHTML: null };
+    legacy.setHtml(el2, '<i>x</i>');
+    assert.equal(el2.innerHTML, '<i>x</i>');
+
+    // 3) 空目标不应抛错（很多渲染函数会先查元素是否存在）
+    assert.doesNotThrow(() => legacy.setHtml(null, 'x'));
+    assert.doesNotThrow(() => legacy.setHtml(el2, undefined));
+    assert.equal(el2.innerHTML, '');
+});
