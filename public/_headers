@@ -1,0 +1,52 @@
+# 说明：script-src 采用 sha256 白名单而非 'unsafe-inline'。
+# Trusted Types 已【强制启用】：所有 HTML 注入必须经过 js/trusted-types.js 的 setHtml()，
+# 任何绕过（例如将来有人直接写 el.innerHTML = 字符串）都会被浏览器抛 TypeError 拒绝。
+# 策略白名单同时放行本项目的 chillin#html 与 DOMPurify 自建策略。
+# 回退方式：删除本行末尾的 require-trusted-types-for 与 trusted-types 两个指令即可。
+# 哈希按「仓库中 LF 换行」的内容计算（部署产物即如此）；tests/security.test.mjs 会在 npm test 中校验。
+/*
+  X-Content-Type-Options: nosniff
+  X-Frame-Options: DENY
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=()
+  Cross-Origin-Opener-Policy: same-origin
+  Strict-Transport-Security: max-age=31536000; includeSubDomains
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; object-src 'none'; frame-src 'none'; script-src 'self' 'sha256-Mq81jcs71LPrFhsUMRnnXA3wRXBUjd2vzOxLfy+PRSc=' 'sha256-5+zDwXlOqyZqQHUII7XJ2cRjzyTxPEveaQDQC9oRLZ4='; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; connect-src 'self' https://chillin-api.2089700996jy.workers.dev https://chillin-bfc.pages.dev; worker-src 'self'; manifest-src 'self'; upgrade-insecure-requests; require-trusted-types-for 'script'; trusted-types chillin#html dompurify
+
+/sw.js
+  Content-Type: text/javascript
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/index.html
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/version.json
+  Content-Type: application/json
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/js/version.js
+  Content-Type: text/javascript
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/manifest.json
+  Content-Type: application/json
+  Cache-Control: no-cache
+
+/style.css
+  Content-Type: text/css; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/app.js
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
+
+/js/*
+  Content-Type: text/javascript; charset=utf-8
+  Cache-Control: no-cache, no-store, must-revalidate
+  CDN-Cache-Control: no-store
