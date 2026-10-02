@@ -286,3 +286,17 @@ test('Auth - device descriptions summarise user agents for the session list', as
     assert.equal(describeUserAgent(''), '未知设备');
     assert.equal(describeUserAgent(undefined), '未知设备');
 });
+
+test('Security - readTextCapped truncates oversized responses', async () => {
+    const { readTextCapped } = await import('../workers/src/security.js');
+
+    const huge = await readTextCapped(new Response('a'.repeat(50_000)), 1000);
+    assert.ok(huge.length <= 1100, 'oversized body must be truncated close to the cap');
+
+    assert.equal(await readTextCapped(new Response('hello'), 1000), 'hello');
+    assert.equal(await readTextCapped(null, 1000), '');
+
+    // 多字节字符被截断时不应抛错（fatal: false）
+    const cjk = await readTextCapped(new Response('中文'.repeat(5000)), 64);
+    assert.ok(typeof cjk === 'string');
+});

@@ -231,6 +231,47 @@ export function isPrivateIPv4(parts) {
     return isPrivateIPv4Int(((parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]) >>> 0);
 }
 
+/**
+ * 限长读取响应体文本。
+ * 外链解析会把目标页面的 HTML 读进来做正则解析，恶意站点可以返回超大响应体，
+ * 若不设上限会直接撑爆 Worker 内存（128MB）。超过上限即截断并取消后续读取。
+ */
+export async function readTextCapped(response, maxBytes = 512 * 1024) {
+    if (!response) return '';
+    if (!response.body || typeof response.body.getReader !== 'function') {
+        return await response.text();
+    }
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    try {
+        while (received < maxBytes) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const remain = maxBytes - received;
+            if (value.byteLength >= remain) {
+                // 单块就可能超过上限：按字节切片，绝不整块收下
+                chunks.push(value.subarray(0, remain));
+                received = maxBytes;
+                try { await reader.cancel(); } catch (_) { /* 忽略取消失败 */ }
+                break;
+            }
+            chunks.push(value);
+            received += value.byteLength;
+        }
+    } catch (_) {
+        // 读取中断时返回已收到的部分
+    }
+    const merged = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) {
+        merged.set(chunk, offset);
+        offset += chunk.byteLength;
+    }
+    // 一次性解码，避免多字节字符被流式切断（fatal:false 保证不抛错）
+    return new TextDecoder('utf-8', { fatal: false }).decode(merged);
+}
+
 /** 32 位无符号整数形式的 IPv4 私网/保留段判定（供 IPv6 内嵌 IPv4 复用） */
 export function isPrivateIPv4Int(ip) {
     const inCidr = (base, bits) => {

@@ -15,6 +15,9 @@ ALLOW_REGISTRATION = "false"
 VAPID_PUBLIC_KEY = "BBj8FZZ57_GfEm-HGPo9pXRA5jsd4FAzu-3bQJC7KjAoGp3TWlDGFt5D22JadZ6t5bw9u6NDNsy4Vgny9v3r2e0"
 
 # 🤖 DeepSeek 大语言模型配置（可选：在 Cloudflare 后台添加密钥变量 LLM_API_KEY）
+# 外链兜底解析：true 时允许把页面自身没有标题/封面的链接送往 Microlink（第三方）
+# 隐私优先可设为 "false"，此时完全不会向第三方发送用户链接
+LINK_ENRICH_MICROLINK = "true"
 LLM_API_BASE = "https://api.deepseek.com/v1"
 LLM_MODEL = "deepseek-chat"
 

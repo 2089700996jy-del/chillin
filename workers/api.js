@@ -98,7 +98,7 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/link/parse' && method === 'POST') {
         const linkUserId = await authenticate(request, db);
         if (!linkUserId) return jsonResponse({ error: '未登录或登录已过期' }, 401);
-        return handleLinkParse(request, db, linkUserId);
+        return handleLinkParse(request, env, db, linkUserId);
     }
 
     // ==================== 鉴权闸门（以下路由全量要求登录） ====================

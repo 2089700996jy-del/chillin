@@ -12,6 +12,7 @@ import {
     sniffImageMime,
     isSafeFetchUrl,
     fetchWithTimeout,
+    readTextCapped,
     isBlockedLinkUrl,
     isValidRecordId
 } from './security.js';
@@ -262,7 +263,8 @@ async function fetchMicrolinkPreview(targetUrl) {
             { headers: { 'Accept': 'application/json' }, timeout: 4000 }
         );
         if (!res || !res.ok) return null;
-        const payload = await res.json();
+        const raw = await readTextCapped(res, 128 * 1024);
+        const payload = JSON.parse(raw);
         if (!payload || payload.status !== 'success' || !payload.data) return null;
         const data = payload.data;
         return {
@@ -275,7 +277,7 @@ async function fetchMicrolinkPreview(targetUrl) {
     }
 }
 
-export async function handleLinkParse(request, db, userId) {
+export async function handleLinkParse(request, env, db, userId) {
     const linkLimit = await checkRateLimitShared(db, `link:${userId}`, 40, 10 * 60 * 1000);
     if (!linkLimit.ok) return rateLimitedResponse(linkLimit.retryAfter);
 
@@ -335,7 +337,8 @@ export async function handleLinkParse(request, db, userId) {
             break;
         }
 
-        const html = finalResponse && finalResponse.ok ? await finalResponse.text() : '';
+        // 限长读取：防止恶意站点用超大响应体撑爆 Worker 内存
+        const html = finalResponse && finalResponse.ok ? await readTextCapped(finalResponse, 512 * 1024) : '';
 
         // 1. Xiaoyuzhou special parsing
         if (hostname.includes('xiaoyuzhoufm.com') && html) {
@@ -383,7 +386,9 @@ export async function handleLinkParse(request, db, userId) {
         description = decodeEntities(description);
 
         // 5. 服务端外链兜底：页面自身未给出标题/封面时，交由后端调用 Microlink
-        if ((!title || title === hostname) && !cover) {
+        // 隐私开关：LINK_ENRICH_MICROLINK=false 时完全不把用户链接送往第三方
+        const microlinkEnabled = !env || env.LINK_ENRICH_MICROLINK !== 'false';
+        if (microlinkEnabled && (!title || title === hostname) && !cover) {
             const enriched = await fetchMicrolinkPreview(rawUrl);
             if (enriched) {
                 title = enriched.title || title;
