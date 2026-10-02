@@ -23,7 +23,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：Cloudflare D1（SQLite），16 个迁移（0001–0016），全部查询参数化绑定
+* **数据**：Cloudflare D1（SQLite），18 个迁移（0001–0018），全部查询参数化绑定
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -37,7 +37,7 @@ sw.js               Service Worker（预缓存 20 个模块，绝不把 JS 降�
 js/                 20 个 ES 模块（auth / sync / feeds / weeklies / notes / reader / prompts / echo-ai / search / upload …）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
 workers/src/        security / auth / garden / rag / llm / audit
-migrations/         D1 迁移 0001–0016（含会话令牌哈希索引与共享限流表）
+migrations/         D1 迁移 0001–0018（含会话令牌哈希与元数据、共享限流、审计保留索引）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理
 vendor/             自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
@@ -108,8 +108,9 @@ npm run backup -- --keep 30   # 自定义保留份数
 提交前必须全部通过（详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md)）：
 
 ```bash
-npm test                        # Node 原生单测，必须 0 失败
+npm test                        # Node 原生单测（当前 28 个用例），必须 0 失败
 npx wrangler deploy --dry-run   # 边缘预打包演练，必须 Exit Code 0
+npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 版本联动 → 校验提交信息 → 提交推送
 ```
 
 发布时用脚本联动 6 处版本号（`package.json`、`version.json`、`js/version.js`、`sw.js`、`index.html`、`workers/api.js`），**不要手改单个文件**：

@@ -23,6 +23,8 @@
 | **数据同步/冲突合并** | [`tests/sync.test.mjs`](file:///d:/7/chillin/tests/sync.test.mjs) | 时间戳多格式解析 (`toUpdatedTs`)、双向数据合并、Last-Write-Wins 规则生效验证。 |
 | **AI 记忆回响 (RAG)** | [`tests/rag.test.mjs`](file:///d:/7/chillin/tests/rag.test.mjs) | 停用词准确过滤、自然语言时间范围解析、全表多特征检索加权打分准确率。 |
 | **搜索与命令面板** | [`tests/search.test.mjs`](file:///d:/7/chillin/tests/search.test.mjs) | 关键词命中高亮 (`<mark>`)、大小写不敏感匹配、特殊符号转义与 XSS 防御测试。 |
+| **PWA 离线缓存 / Service Worker** | [`tests/sw.test.mjs`](file:///d:/7/chillin/tests/sw.test.mjs) | 预缓存清单与 `js/*.js` 一一对应、清单资源与 manifest 图标必须存在、模块请求绝不回退 `index.html`。 |
+| **架构红线 / 网关瘦身** | [`tests/architecture.test.mjs`](file:///d:/7/chillin/tests/architecture.test.mjs) | `workers/api.js` 300 行红线、各子域模块被路由引用、网关内不得出现 SQL 与 LLM 供应商细节、`/api/health` 必须为公开路由。 |
 
 ---
 
@@ -69,3 +71,5 @@ npx wrangler deploy --dry-run
 * `docs(...)`: 文档、报告或开发规约变更（例如 `docs: update rules`）
 * `test(...)`: 增加或更新自动化测试用例（例如 `test(search): add highlight xss tests`）
 * `style(...)`: 不影响代码逻辑的样式或格式变动
+
+> 推荐直接用 [`npm run ship`](../../scripts/ship.mjs) 代替手工流程：它会先跑单测与预打包演练，再做版本联动，并强制校验提交信息格式（`--push` 可一并推送）。

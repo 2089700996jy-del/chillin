@@ -46,6 +46,9 @@ try {
         run(`版本联动（${bump}）`, `npm run bump:${bump}`);
     }
 
+    // CHANGELOG 由 git 历史生成，必须与提交一起更新，否则必然漂移
+    run('重新生成 CHANGELOG', 'npm run changelog');
+
     if (!message || !CONVENTIONAL.test(message)) {
         console.error('\n✖ 必须提供符合 Conventional Commits 的 --message，例如：');
         console.error('   npm run ship -- --message "fix(sync): 修复游标回退" --push');

@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-02T02:59:10.549Z · 提交数：240
+> 生成时间：2026-10-02T03:10:15.401Z · 提交数：243
 
 ## 2026-10-02
 
@@ -16,6 +16,7 @@
 
 ### 🐛 缺陷修复
 
+- **audit**: give audit_log and ugc_quarantine a 180-day retention policy
 - **worker**: cap outbound link-parse bodies and add a Microlink privacy switch
 - **csp**: add object-src/frame-src none, upgrade-insecure-requests and drop dead font allowances
 - **sync**: never drop or duplicate records that lack a client id
@@ -40,6 +41,7 @@
 
 ### 📝 文档
 
+- **ops**: evaluate repository history slimming and generate a CHANGELOG
 - sync the architecture report and progress log to v2.5.43
 
 ### 🎨 样式
@@ -48,6 +50,7 @@
 
 ### 🔧 杂务
 
+- **release**: bump to v2.5.44 and log the engineering/UX batch
 - **deps**: update wrangler to 4.145 and move the compatibility date to 2026-10-01
 - **repo**: add .dev.vars example and an explicit all-rights-reserved LICENSE
 
