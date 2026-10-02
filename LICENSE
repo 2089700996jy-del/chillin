@@ -1,0 +1,12 @@
+版权所有 (c) 2026 Chillin 项目作者。保留所有权利 (All rights reserved)。
+
+本仓库当前**未授予任何开源许可**：
+
+* 未经作者书面许可，不得复制、修改、分发本项目的全部或部分代码；
+* 仓库公开可见不代表授予使用许可；
+* 如需允许他人使用、修改与再分发，请将本文件替换为 MIT / Apache-2.0 等许可证全文，
+  并同步更新 README 的「许可」章节。
+
+第三方组件许可：
+* DOMPurify（vendor/dompurify.min.js）— Apache-2.0 或 MPL-2.0，见文件头注释；
+* Konsta UI 参考快照（.agents/skills/konsta-ui-repo，未入库）— MIT。

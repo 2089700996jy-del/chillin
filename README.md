@@ -128,4 +128,4 @@ npm run bump:minor
 
 ## 许可
 
-仓库暂未声明开源许可证，如需公开分发请先补充 `LICENSE`。
+当前为**保留所有权利（All rights reserved）**，详见 [LICENSE](LICENSE)；如需开放使用请把该文件替换为 MIT / Apache-2.0 等许可证全文。

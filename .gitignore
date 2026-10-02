@@ -6,6 +6,11 @@ node_modules/
 *.apk
 preview-ios.html
 
+# 本地密钥文件（示例 .dev.vars.example 需要入库）
+.dev.vars
+.dev.vars.local
+!.dev.vars.example
+
 # D1 备份快照（含全部数据，绝不入库）
 backups/
 
