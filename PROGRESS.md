@@ -50,7 +50,11 @@
 | `workers/api.js` | 调度入口：网关路由、CORS 预检、鉴权闸门、定时任务调度 |
 | `workers/src/security.js` | 安全核心：PBKDF2、魔数嗅探、SSRF 14组 CIDR 校验、限流、时序比较 |
 | `workers/src/auth.js` | 认证会话：注册、登录、登出、用户信息、Web Push 订阅 |
-| `workers/src/garden.js` | 领域业务：全资产 CRUD、聚合拉取 `/api/sync/pull`、批量推送、导出 |
+| `workers/src/garden-shared.js` | 行格式化、归属校验、软删墓碑查询与惰性 schema 守卫 |
+| `workers/src/garden-media.js` | 图片上传、鉴权文件读取、外链解析（含 Microlink 兜底与限长） |
+| `workers/src/garden-resources.js` | 周记/笔记/收藏/提示词/随手记 的 CRUD 与软删 |
+| `workers/src/garden-sync.js` | 聚合拉取 `/api/sync/pull`、脏数据批量推送、热力图 |
+| `workers/src/garden-echo.js` | AI 回响卡片、周期回顾、Web Push 通知、UGC 审计入口 |
 | `workers/src/rag.js` | 记忆检索：全表（含 prompts）索引、分词、多轮主题继承、打分 |
 | `workers/src/llm.js` | 模型集成：DeepSeek/Workers AI 调用、流式 SSE、内容合规审查 |
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |

@@ -30,11 +30,15 @@ import {
     handleAiChat
 } from './src/ai.js';
 
+import { ensureSoftDeleteSchema } from './src/garden-shared.js';
+
 import {
-    ensureSoftDeleteSchema,
     handleUpload,
     handleFileView,
-    handleLinkParse,
+    handleLinkParse
+} from './src/garden-media.js';
+
+import {
     handleGetWeeklies,
     handlePostWeekly,
     handlePutWeekly,
@@ -52,16 +56,22 @@ import {
     handleGetFeeds,
     handlePostFeed,
     handlePutFeed,
-    handleDeleteFeed,
+    handleDeleteFeed
+} from './src/garden-resources.js';
+
+import {
     handleSyncPull,
     handleSyncBatch,
-    handleHeatmap,
+    handleHeatmap
+} from './src/garden-sync.js';
+
+import {
     handleEchoGenerate,
     handleGetEchoCards,
     handleDeleteEchoCard,
     handleAiReview,
     handleAuditScan
-} from './src/garden.js';
+} from './src/garden-echo.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
 const APP_VERSION = '2.5.45';

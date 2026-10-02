@@ -214,7 +214,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 单体 `api.js` 完全解耦为 6 大专业职责子域：
 * `security.js`：动态盐 PBKDF2 强散列（10 万次迭代）、时序安全比较、文件二进制魔数嗅探、16 字节 IPv6 解析与内嵌 IPv4 判定（封堵 `::ffff:` 映射、NAT64 `64:ff9b::/96`、6to4、Teredo 及 `localhost.` 尾点绕过）、14 组私网/云元数据 CIDR 拦截与共享限流计数。
 * `auth.js`：高安全 Session 鉴权、Cookie 状态维护、Web Push 订阅管理。
-* `garden.js`：全资产增量同步、聚合拉取、热力图统计。
+* `garden-shared.js` / `garden-media.js` / `garden-resources.js` / `garden-sync.js` / `garden-echo.js`：按资源与职责拆分的领域模块（原先合并在一个 999 行的 `garden.js` 中）——共享辅助、媒体与外链、五类资源 CRUD、聚合同步与热力图、回响卡片与审计。
 * `rag.js`：自然语言分词、停用词表、多轮上下文继承、时序过滤与打分算法。
 * `llm.js`：DeepSeek / Cloudflare Workers AI 流式 SSE 对接与合规检测。
 * `audit.js`：定时 Cron 自动化内容违规扫描、敏感词过滤与隔离区备份。

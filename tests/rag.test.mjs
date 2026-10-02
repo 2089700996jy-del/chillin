@@ -5,7 +5,7 @@ import {
     parseTimeRangeFromQuestion,
     scoreMemoryChunk
 } from '../workers/src/rag.js';
-import { formatPrompt } from '../workers/src/garden.js';
+import { formatPrompt } from '../workers/src/garden-shared.js';
 
 test('RAG - tokenizeQuery extracts keywords and filters stopwords', () => {
     const tokens = tokenizeQuery('请问关于代码重构和深色模式有哪些想法呢？');
