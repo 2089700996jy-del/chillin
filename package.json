@@ -9,7 +9,8 @@
     "bump": "node scripts/bump-version.mjs",
     "bump:patch": "node scripts/bump-version.mjs patch",
     "bump:minor": "node scripts/bump-version.mjs minor",
-    "backup": "node scripts/backup-d1.mjs"
+    "backup": "node scripts/backup-d1.mjs",
+    "ship": "node scripts/ship.mjs"
   },
   "dependencies": {
     "web-push": "^3.6.7"
