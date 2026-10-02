@@ -49,7 +49,7 @@ jobs:
         # Cloudflare Pages 只发布 public/（build_config.destination_dir = "public"），
         # 少一个文件线上就是空白/404，因此在 CI 里卡住。
         run: |
-          for f in index.html sw.js _headers manifest.json version.json app.js style.css; do
+          for f in index.html sw.js _headers manifest.json version.json app.js style.css favicon.ico; do
             test -f "public/$f" || { echo "missing public/$f"; exit 1; }
           done
           test -d public/js && test -d public/icons && test -d public/vendor
