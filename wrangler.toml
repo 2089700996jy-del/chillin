@@ -1,6 +1,7 @@
 name = "chillin-api"
 main = "workers/api.js"
-compatibility_date = "2025-05-08"
+# 兼容性日期：升级会影响 Worker 的运行时默认行为，改动后需回归验证
+compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
 # D1 数据库 — 部署后需要把 database_id 替换为实际值
