@@ -19,6 +19,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 历史里有约 95 MB 与代码无关的媒体文件（见 docs/仓库体积与历史瘦身评估.md），
+          # 浅克隆让 CI 只拉当前提交，省下绝大部分下载时间。
+          fetch-depth: 1
 
       - uses: actions/setup-node@v4
         with:
