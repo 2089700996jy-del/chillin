@@ -57,15 +57,15 @@ function replaceAll(str, from, to) {
 }
 
 // --- read current ---
-const versionJs = read('js/version.js');
+const versionJs = read('public/js/version.js');
 const curMatch = versionJs.match(/APP_VERSION\s*=\s*['"]([\d.]+)['"]/);
-if (!curMatch) throw new Error('Cannot find APP_VERSION in js/version.js');
+if (!curMatch) throw new Error('Cannot find APP_VERSION in public/js/version.js');
 const current = curMatch[1];
 const next = bumpKind(current, targetArg);
 
-const sw = read('sw.js');
+const sw = read('public/sw.js');
 const cacheMatch = sw.match(/CACHE_NAME\s*=\s*['"]chillin-v(\d+)['"]/);
-if (!cacheMatch) throw new Error('Cannot find CACHE_NAME in sw.js');
+if (!cacheMatch) throw new Error('Cannot find CACHE_NAME in public/sw.js');
 const nextCache = `chillin-v${Number(cacheMatch[1]) + 1}`;
 
 console.log(`bump ${current} -> ${next}`);
@@ -74,7 +74,7 @@ if (dryRun) console.log('(dry-run: no files written)');
 
 // js/version.js
 write(
-    'js/version.js',
+    'public/js/version.js',
     `/** Single source of truth for the visible app version (bump with cache ?v=). */\n` +
         `export const APP_VERSION = '${next}';\n` +
         `export const APP_BUILD_LABEL = \`v\${APP_VERSION}\`;\n`
@@ -82,7 +82,7 @@ write(
 
 // version.json — version + build label + publish timestamp
 write(
-    'version.json',
+    'public/version.json',
     JSON.stringify({ version: next, build: `v${next}`, time: new Date().toISOString() }, null, 0) + '\n'
 );
 
@@ -99,17 +99,17 @@ write(
 
 // sw.js
 {
-    let s = read('sw.js');
+    let s = read('public/sw.js');
     s = s.replace(/const CACHE_NAME = ['"]chillin-v\d+['"]/, `const CACHE_NAME = '${nextCache}'`);
     s = s.replace(/const APP_V = ['"][\d.]+['"]/, `const APP_V = '${next}'`);
-    write('sw.js', s);
+    write('public/sw.js', s);
 }
 
 // index.html — cache-busting ?v= query and the badge text vX.Y.Z.
 // Pattern-based replacement (not literal `current`): if index.html ever drifted
 // behind, a literal replace silently no-ops and the drift becomes permanent.
 {
-    let html = read('index.html');
+    let html = read('public/index.html');
     const anchors = (html.match(/\?v=[\d.]+/g) || []).length + (html.match(/>v[\d.]+</g) || []).length;
     html = html.replace(/\?v=[\d.]+/g, `?v=${next}`);
     html = html.replace(/>v[\d.]+</g, `>v${next}<`);
@@ -118,10 +118,10 @@ write(
         ...[...html.matchAll(/>v([\d.]+)</g)].map((m) => m[1]),
     ].filter((v) => v !== next);
     if (stale.length) {
-        throw new Error(`index.html still references stale version(s): ${[...new Set(stale)].join(', ')}`);
+        throw new Error(`public/index.html still references stale version(s): ${[...new Set(stale)].join(', ')}`);
     }
-    if (!anchors) console.log('warning: index.html had no version anchors to update');
-    write('index.html', html);
+    if (!anchors) console.log('warning: public/index.html had no version anchors to update');
+    write('public/index.html', html);
 }
 
 // package.json — declared project version (anchor #1 of the rule)

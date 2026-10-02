@@ -5,6 +5,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+/** Cloudflare Pages 的静态输出目录（见 build_config.destination_dir） */
+const SITE = 'public';
 
 /** 解析 sw.js 中的 ASSETS 字面量路径（忽略 `/js/x.js?v=${APP_V}` 这类模板项） */
 function parseAssets(swSource) {
@@ -16,33 +18,33 @@ function parseAssets(swSource) {
 }
 
 test('PWA - every shipped module is precached, every precached asset exists', async () => {
-    const sw = await fs.readFile(path.join(root, 'sw.js'), 'utf8');
+    const sw = await fs.readFile(path.join(root, SITE, 'sw.js'), 'utf8');
     const assets = parseAssets(sw);
     assert.ok(assets.length >= 20, `ASSETS looks too small (${assets.length})`);
 
     // 1) 清单里的每个静态资源都必须真实存在（避免 404 让 install 反复重试）
     for (const asset of assets) {
         if (asset === '/') continue;
-        const filePath = path.join(root, asset.replace(/^\//, ''));
+        const filePath = path.join(root, SITE, asset.replace(/^\//, ''));
         await assert.doesNotReject(fs.access(filePath), `precached asset missing on disk: ${asset}`);
     }
 
     // 2) js/ 下每个模块都必须在预缓存清单里（新增模块忘记登记会静默离线失效）
-    const modules = (await fs.readdir(path.join(root, 'js'))).filter((f) => f.endsWith('.js'));
+    const modules = (await fs.readdir(path.join(root, SITE, 'js'))).filter((f) => f.endsWith('.js'));
     for (const file of modules) {
         assert.ok(assets.includes(`/js/${file}`), `js/${file} is not listed in sw.js ASSETS (offline would break)`);
     }
 
     // 3) manifest 引用的图标也要存在
-    const manifest = JSON.parse(await fs.readFile(path.join(root, 'manifest.json'), 'utf8'));
+    const manifest = JSON.parse(await fs.readFile(path.join(root, SITE, 'manifest.json'), 'utf8'));
     for (const icon of manifest.icons || []) {
-        const filePath = path.join(root, String(icon.src).replace(/^\//, ''));
+        const filePath = path.join(root, SITE, String(icon.src).replace(/^\//, ''));
         await assert.doesNotReject(fs.access(filePath), `manifest icon missing on disk: ${icon.src}`);
     }
 });
 
 test('PWA - module requests never fall back to index.html (offline white-screen guard)', async () => {
-    const sw = await fs.readFile(path.join(root, 'sw.js'), 'utf8');
+    const sw = await fs.readFile(path.join(root, SITE, 'sw.js'), 'utf8');
 
     // 模块分支：从 isModuleJs 判断开始，到导航分支注释为止
     const start = sw.indexOf('const isModuleJs');

@@ -155,7 +155,7 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     const cryptoMod = await import('node:crypto');
     const root = pathMod.resolve(pathMod.dirname(urlMod.fileURLToPath(import.meta.url)), '..');
 
-    const html = await fsMod.readFile(pathMod.join(root, 'index.html'), 'utf8');
+    const html = await fsMod.readFile(pathMod.join(root, 'public', 'index.html'), 'utf8');
     const headers = await fsMod.readFile(pathMod.join(root, '_headers'), 'utf8');
 
     const inlineScripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
@@ -186,7 +186,7 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     assert.ok(!/<script[^>]+src="https?:/i.test(html), 'index.html must not load scripts from a third-party origin');
 
     // 自托管产物必须与官方发布字节一致（供应链校验，防止被替换）
-    const vendorBytes = await fsMod.readFile(pathMod.join(root, 'vendor', 'dompurify.min.js'));
+    const vendorBytes = await fsMod.readFile(pathMod.join(root, 'public', 'vendor', 'dompurify.min.js'));
     const vendorDigest = cryptoMod.createHash('sha384').update(vendorBytes).digest('base64');
     assert.equal(
         vendorDigest,
@@ -204,7 +204,7 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     assert.ok(!/font-src[^;]*https?:\/\//.test(cspLine), 'font-src must not allow third-party hosts');
 
     // 内联事件处理器在收紧后的 CSP 下会被拦截：源码中不得再出现
-    const sources = ['index.html', ...(await fsMod.readdir(pathMod.join(root, 'js'))).filter((f) => f.endsWith('.js')).map((f) => pathMod.join('js', f)), 'app.js'];
+    const sources = ['public/index.html', ...(await fsMod.readdir(pathMod.join(root, 'public', 'js'))).filter((f) => f.endsWith('.js')).map((f) => pathMod.join('public', 'js', f)), 'public/app.js'];
     for (const rel of sources) {
         const text = await fsMod.readFile(pathMod.join(root, rel), 'utf8');
         assert.ok(!/\son(click|error|load|change|input|submit)\s*=/i.test(text), `${rel} still contains an inline event handler attribute`);
@@ -338,7 +338,7 @@ test('Security - every HTML sink goes through the Trusted Types choke point', as
     const path = await import('node:path');
     const url = await import('node:url');
     const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
-    const jsDir = path.join(root, 'js');
+    const jsDir = path.join(root, 'public', 'js');
 
     const offenders = [];
     for (const file of (await fsMod.readdir(jsDir)).filter((f) => f.endsWith('.js'))) {
@@ -362,7 +362,7 @@ test('Security - Trusted Types is enforced and allowlists our policy names', asy
     const path = await import('node:path');
     const url = await import('node:url');
     const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
-    const headers = await fsMod.readFile(path.join(root, '_headers'), 'utf8');
+    const headers = await fsMod.readFile(path.join(root, 'public', '_headers'), 'utf8');
 
     // 已从 Report-Only 提升为强制指令
     assert.ok(
