@@ -78,6 +78,22 @@ async function router(path, method, request, env, ctx) {
         );
     }
 
+    // 健康检查：供 uptime 监控 / 手动排查使用（只暴露版本与数据库可达性）
+    if (path === '/api/health' && method === 'GET') {
+        let dbOk = true;
+        try {
+            await db.prepare('SELECT 1 AS ok').first();
+        } catch (err) {
+            dbOk = false;
+            console.error('[health] database probe failed:', err);
+        }
+        return jsonResponse(
+            { ok: dbOk, version: APP_VERSION, time: new Date().toISOString() },
+            dbOk ? 200 : 503,
+            { 'Cache-Control': 'no-store, no-cache, must-revalidate', 'CDN-Cache-Control': 'no-store' }
+        );
+    }
+
     if (path === '/api/push/subscribe' && method === 'POST') {
         return handlePushSubscribe(request, db);
     }

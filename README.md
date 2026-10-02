@@ -97,6 +97,12 @@ npm run backup -- --keep 30   # 自定义保留份数
   `schtasks /create /tn "Chillin D1 Backup" /tr "cmd /c cd /d E:\Chillin && npm run backup" /sc daily /st 03:30`
 * 恢复：`npx wrangler d1 execute DB --remote --file backups/chillin-d1-<时间戳>.sql`（文件含建表语句，执行前请确认目标库）。
 
+## 可观测性
+
+* `GET /api/health` —— 返回 `{ ok, version, time }`；数据库探测失败时返回 503，可直接接 Uptime 监控；
+* `npx wrangler tail` —— 实时查看线上 Worker 日志；
+* 关键日志前缀：`[audit]`（违规扫描）、`[session]`（过期清理）、`[rate-limit]`（共享计数降级）、`[health]`（DB 探测失败）、`[upload]`。
+
 ## 质量门禁
 
 提交前必须全部通过（详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md)）：

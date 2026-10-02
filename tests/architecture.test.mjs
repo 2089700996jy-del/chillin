@@ -30,3 +30,13 @@ test('Architecture - domain modules stay out of the gateway entry file', async (
     assert.ok(!/\bINSERT INTO\b|\bDELETE FROM\b|\bUPDATE\s+\w+\s+SET\b|\bSELECT\b[\s\S]{0,80}?\bFROM\b/.test(source), 'gateway must not contain SQL statements');
     assert.ok(!/deepseek|api\.deepseek/i.test(source), 'gateway must not talk to the LLM provider directly');
 });
+
+test('Architecture - the gateway exposes a public health probe', async () => {
+    const source = await fs.readFile(path.join(root, 'workers', 'api.js'), 'utf8');
+    assert.match(source, /\/api\/health/, 'expected a /api/health route');
+    // 健康检查必须留在鉴权闸门之前，且不泄露业务数据
+    const healthIndex = source.indexOf("'/api/health'");
+    const gateIndex = source.indexOf('鉴权闸门');
+    assert.ok(healthIndex !== -1 && gateIndex !== -1 && healthIndex < gateIndex, 'health must be a public route');
+    assert.ok(!/health[\s\S]{0,400}?FROM (weeklies|notes|quick_feeds|users)/.test(source), 'health must not query business tables');
+});
