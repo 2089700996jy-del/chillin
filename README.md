@@ -82,6 +82,20 @@ git push origin main
 
 > ⚠️ **升级顺序**：涉及后端接口或会话机制的改动，务必先 `npx wrangler deploy` 再推送前端，避免前端调用旧版 Worker。
 
+## 数据备份与恢复
+
+D1 是唯一的数据源，建议每天导出一次快照（脚本见 [scripts/backup-d1.mjs](scripts/backup-d1.mjs)）：
+
+```bash
+npm run backup                # 导出远端库 → backups/chillin-d1-<UTC>.sql.gz（默认保留最近 14 份）
+npm run backup -- --keep 30   # 自定义保留份数
+```
+
+* `backups/` 已写入 `.gitignore`，**绝不会被提交**（快照内含密码哈希与全部内容）。
+* 计划任务示例（Windows）：
+  `schtasks /create /tn "Chillin D1 Backup" /tr "cmd /c cd /d E:\Chillin && npm run backup" /sc daily /st 03:30`
+* 恢复：`npx wrangler d1 execute DB --remote --file backups/chillin-d1-<时间戳>.sql`（文件含建表语句，执行前请确认目标库）。
+
 ## 质量门禁
 
 提交前必须全部通过（详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md)）：
