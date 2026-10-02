@@ -1,17 +1,18 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-02。供后续会话快速接续。当前前端/Worker：**v2.5.47**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-10-02。供后续会话快速接续。当前前端/Worker：**v2.5.47**（推送后以 `public/js/version.js` 为准）。
 
 ## 项目是什么
 
 个人「数字花园」Web 应用（周记 / 笔记 / 收藏 / 随手记 / 提示词库 / TXT 阅读 / AI 记忆回响）。
 
-- 前端：`index.html` + `style.css` + `app.js`（原生 HTML/JS，无框架）
+- 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
+- **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0014`，远端已对齐）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
-- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `js/version.js`、`version.json`、Worker、`sw.js`、`index.html`
+- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `public/js/version.js`、`public/version.json`、Worker、`public/sw.js`、`public/index.html`
 - 测试：`npm test` 原生零依赖单测套件（`node --test`）
 - 形态：Web / PWA（Pages）；已移除 Capacitor Android 工程
 

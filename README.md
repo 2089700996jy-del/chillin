@@ -25,22 +25,25 @@
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
 * **数据**：Cloudflare D1（SQLite），18 个迁移（0001–0018），全部查询参数化绑定
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
-* **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `vendor/`），构建期仅 `wrangler` 与 `web-push`
+* **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
 ## 目录结构
 
 ```
-index.html          单页容器（11 个视图 + 4 个弹层）
-app.js              启动装配：模块初始化、会话恢复、在线/离线
-style.css           全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏）
-sw.js               Service Worker（预缓存 20 个模块，绝不把 JS 降级为 HTML）
-js/                 20 个 ES 模块（auth / sync / feeds / weeklies / notes / reader / prompts / echo-ai / search / upload …）
+public/             Cloudflare Pages 的**发布目录**（build output directory，仓库其余内容不会被发布）
+  index.html        单页容器（11 个视图 + 4 个弹层）
+  app.js            启动装配：模块初始化、会话恢复、在线/离线
+  style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏）
+  sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
+  manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
+  js/               21 个 ES 模块（auth / sync / feeds / … / trusted-types）
+  icons/            PWA 图标（180 / 192 / 512）
+  vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
 workers/src/        security / auth / garden / rag / llm / audit
 migrations/         D1 迁移 0001–0018（含会话令牌哈希与元数据、共享限流、审计保留索引）
 tests/              Node 原生单测（node:test，零第三方测试框架）
-functions/          Pages Functions 反向代理
-vendor/             自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
+functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
 ```
 
@@ -49,7 +52,7 @@ vendor/             自托管第三方运行时（DOMPurify 3.1.7，字节与官
 前端是纯静态资源，任意静态服务器即可预览：
 
 ```bash
-npx serve .            # 或 python -m http.server 8080
+npx serve public                                       # 或 python -m http.server 8080 -d public
 ```
 
 后端本地调试（需要 Wrangler 与本地 D1）：
@@ -60,7 +63,7 @@ npx wrangler d1 migrations apply DB --local
 npx wrangler dev
 ```
 
-> API 地址由 `js/config.js` 的 `resolveApiBase()` 决定：优先同源 `/api`，不可用时回退到 Worker 域名。
+> API 地址由 `public/js/config.js` 的 `resolveApiBase()` 决定：优先同源 `/api`，不可用时回退到 Worker 域名。
 
 ## 部署
 
@@ -128,7 +131,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 版本联
 
 > 后两个文件用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
 
-发布时用脚本联动 6 处版本号（`package.json`、`version.json`、`js/version.js`、`sw.js`、`index.html`、`workers/api.js`），**不要手改单个文件**：
+发布时用脚本联动 6 处版本号（`package.json`、`public/version.json`、`public/js/version.js`、`public/sw.js`、`public/index.html`、`workers/api.js`），**不要手改单个文件**：
 
 ```bash
 npm run bump          # patch +1，同时递增 Service Worker 缓存版本
@@ -143,7 +146,7 @@ npm run bump:minor
 * **输入与出站**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探、外链解析 SSRF 防护（含 IPv6 映射 / NAT64 / 6to4）
 * **出站限长与隐私**：外链解析响应体按 512KB 截断（Microlink 兜底 128KB），并可用 `LINK_ENRICH_MICROLINK=false` 彻底关闭第三方兜底
 * **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`_headers`](_headers) 与 `workers/src/security.js`
-* **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`js/trusted-types.js`](js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；CSP **已强制启用** `require-trusted-types-for 'script'`，绕过 `setHtml()` 的赋值会被浏览器直接拒绝
+* **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`public/js/trusted-types.js`](public/js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；CSP **已强制启用** `require-trusted-types-for 'script'`，绕过 `setHtml()` 的赋值会被浏览器直接拒绝
 
 ## 开发规约
 

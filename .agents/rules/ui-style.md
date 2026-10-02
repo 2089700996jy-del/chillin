@@ -53,13 +53,13 @@
    * 弹层必须通过 `.modal-overlay.show` 触发，`app.js` 会自动补 `role="dialog"` / `aria-modal`、圈定 Tab 焦点、Esc 关闭并归还焦点；
    * 禁止使用原生 `confirm()` / `alert()`，一律改用 `utils.confirmDialog()` 与 `showToast()`；
    * 键盘焦点必须有可见样式（`:focus-visible` 已在样式末尾统一兜底，不要再新增 `outline: none`）；
-   * **禁止直接写 `el.innerHTML`**：一律使用 [`js/trusted-types.js`](../../js/trusted-types.js) 的 `setHtml(el, html)`，测试会拦截任何绕过（Trusted Types 策略为 `chillin#html`）。
+   * **禁止直接写 `el.innerHTML`**：一律使用 [`public/js/trusted-types.js`](../../public/js/trusted-types.js) 的 `setHtml(el, html)`，测试会拦截任何绕过（Trusted Types 策略为 `chillin#html`）。
 
 ---
 
 ## 4. 设计令牌 (Design Tokens)
 
-`style.css` 的 `:root` 是唯一令牌来源，**新代码必须使用变量**，旧的散落字面量按模块逐步迁移：
+`public/style.css` 的 `:root` 是唯一令牌来源，**新代码必须使用变量**，旧的散落字面量按模块逐步迁移：
 
 | 类别 | 令牌 |
 | :--- | :--- |
@@ -68,4 +68,4 @@
 | 动效 | `--dur-fast` 0.18s / `--dur-base` 0.28s / `--ease-spring` `cubic-bezier(0.16, 1, 0.3, 1)` |
 | 颜色 | `--ios-blue` / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 
-> 现状债务：`style.css` 约 6000 行、仍有 545 处 `!important`（多为 v2.5.30 之后叠加的覆写层）。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 6000 行、仍有 545 处 `!important`（多为 v2.5.30 之后叠加的覆写层）。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。

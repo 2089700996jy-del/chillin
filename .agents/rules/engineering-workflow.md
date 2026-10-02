@@ -24,7 +24,7 @@
 | **数据同步/冲突合并** | [`tests/sync.test.mjs`](file:///d:/7/chillin/tests/sync.test.mjs) | 时间戳多格式解析 (`toUpdatedTs`)、双向数据合并、Last-Write-Wins 规则生效验证。 |
 | **AI 记忆回响 (RAG)** | [`tests/rag.test.mjs`](file:///d:/7/chillin/tests/rag.test.mjs) | 停用词准确过滤、自然语言时间范围解析、全表多特征检索加权打分准确率。 |
 | **搜索与命令面板** | [`tests/search.test.mjs`](file:///d:/7/chillin/tests/search.test.mjs) | 关键词命中高亮 (`<mark>`)、大小写不敏感匹配、特殊符号转义与 XSS 防御测试。 |
-| **PWA 离线缓存 / Service Worker** | [`tests/sw.test.mjs`](file:///d:/7/chillin/tests/sw.test.mjs) | 预缓存清单与 `js/*.js` 一一对应、清单资源与 manifest 图标必须存在、模块请求绝不回退 `index.html`。 |
+| **PWA 离线缓存 / Service Worker** | [`tests/sw.test.mjs`](file:///d:/7/chillin/tests/sw.test.mjs) | 预缓存清单与 `public/js/*.js` 一一对应、清单资源与 manifest 图标必须存在、模块请求绝不回退 `index.html`。 |
 | **领域 CRUD / 同步 / 审计** | [`tests/garden.test.mjs`](file:///d:/7/chillin/tests/garden.test.mjs) | 资源 CRUD、跨用户归属隔离、软删墓碑不可复活、批量增量推送、热力图按用户聚合（基于 `node:sqlite` 真实执行 migrations）。 |
 | **会话与鉴权** | [`tests/auth.test.mjs`](file:///d:/7/chillin/tests/auth.test.mjs) | 会话令牌只存哈希、刷新时轮换、设备列表标记当前会话、单设备吊销与全端退出只影响本账号。 |
 | **架构红线 / 网关瘦身** | [`tests/architecture.test.mjs`](file:///d:/7/chillin/tests/architecture.test.mjs) | `workers/api.js` 300 行红线、各子域模块被路由引用、网关内不得出现 SQL 与 LLM 供应商细节、`/api/health` 必须为公开路由。 |
@@ -55,10 +55,10 @@ npx wrangler deploy --dry-run
 
 **脚本将自动同步联动更新以下 6 处锚点**：
 1. `package.json` 中的 `version`
-2. `version.json` 中的版本号与发布时间戳
-3. `js/version.js` 中的 `APP_VERSION`
-4. `sw.js` 中的 `APP_V` 与 `CACHE_NAME`（触发 Service Worker 激活更新）
-5. `index.html` 中的资源静态引入 hash 及右下角版本展示 Badge
+2. `public/version.json` 中的版本号与发布时间戳
+3. `public/js/version.js` 中的 `APP_VERSION`
+4. `public/sw.js` 中的 `APP_V` 与 `CACHE_NAME`（触发 Service Worker 激活更新）
+5. `public/index.html` 中的资源静态引入 hash 及右下角版本展示 Badge
 6. `workers/api.js` 中的 `APP_VERSION` 探测常量
 
 ---

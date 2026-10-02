@@ -24,6 +24,6 @@
 
 1. **零构建黑盒底线**：严禁私自为前端引入任何编译打包黑盒（Vite, Webpack, Tailwind 等）或全家桶框架（React, Vue 等），保持原生 ES Modules 毫秒级极速直开。
 2. **Worker 防膨胀底线**：[`workers/api.js`](file:///d:/7/chillin/workers/api.js) 必须保持在 300 行以内纯净路由网关，任何业务逻辑必须严格归入 `workers/src/` 子领域。
-3. **离线白屏零容忍底线**：修改 `sw.js` 严禁将 JS 脚本请求错误降级回退至 `/index.html`，维护好 20 个核心模块的离线缓存。
+3. **离线白屏零容忍底线**：修改 `public/sw.js` 严禁将 JS 脚本请求错误降级回退至 `/index.html`（URL），维护好 20 个核心模块的离线缓存。
 4. **脏数据精准推送底线**：批量同步必须基于 `_dirty: true` 进行精准差异推送，禁止无脑推送全量数据污染数据库全局修改时间戳。
 5. **双 100% 验证卡点底线**：代码提交前必须在终端通过 `npm test`（零失败通过）与 `npx wrangler deploy --dry-run`（Exit Code 0 构建成功）。
