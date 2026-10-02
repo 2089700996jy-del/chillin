@@ -2,7 +2,7 @@
  * Auth & HTTP client: login/logout, apiRequest, push subscribe.
  * Sync side effects after login are loaded via dynamic import('./sync.js') to avoid cycles.
  */
-import { showToast, urlBase64ToUint8Array } from './utils.js';
+import { showToast, urlBase64ToUint8Array, escapeHtml } from './utils.js';
 import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
 
@@ -260,6 +260,19 @@ export function initAuthUI() {
     btnLogout?.addEventListener('click', logout);
     document.getElementById('btn-logout-all')?.addEventListener('click', logoutAllDevices);
 
+    // 账号与安全入口（用户名）与弹层内交互
+    const navUsername = document.getElementById('nav-username');
+    navUsername?.addEventListener('click', openSecurityModal);
+    navUsername?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openSecurityModal(); }
+    });
+    document.getElementById('session-list')?.addEventListener('click', (e) => {
+        const btn = e.target instanceof Element ? e.target.closest('.session-revoke') : null;
+        if (btn && btn.dataset.sessionId) revokeSession(btn.dataset.sessionId);
+    });
+    document.getElementById('btn-security-logout-all')?.addEventListener('click', logoutAllDevices);
+    document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
+
     btnAuthSwitch?.addEventListener('click', () => {
         state.isRegisterMode = !state.isRegisterMode;
         if (state.isRegisterMode) {
@@ -361,6 +374,74 @@ export async function logoutAllDevices() {
     } catch (_) {}
     logout({ silent: true });
     showToast('已退出所有设备', 'info');
+}
+
+
+/** 滑动续期：启动时静默换新令牌（Cookie 模式），避免固定 7 天到期被强制登出 */
+export async function refreshSession() {
+    if (!state.authToken && !state.cookieSession) return false;
+    try {
+        const res = await apiRequest('/api/auth/refresh', { method: 'POST' });
+        return !!(res && res.success);
+    } catch (_) {
+        return false;
+    }
+}
+
+function formatSessionTime(ms) {
+    if (!ms) return '未知';
+    const d = new Date(Number(ms));
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function renderSessions(list) {
+    const container = document.getElementById('session-list');
+    if (!container) return;
+    if (!Array.isArray(list) || list.length === 0) {
+        container.innerHTML = '<div class="session-empty">暂无可用的登录设备</div>';
+        return;
+    }
+    container.innerHTML = list.map((s) => `
+        <div class="session-row${s.current ? ' is-current' : ''}">
+            <div class="session-main">
+                <div class="session-device">${escapeHtml(s.device)}${s.current ? ' <span class="session-badge">当前设备</span>' : ''}</div>
+                <div class="session-meta">最近活跃 ${formatSessionTime(s.lastSeenAt)}${s.ip ? ' · ' + escapeHtml(s.ip) : ''}</div>
+            </div>
+            ${s.current ? '' : `<button type="button" class="btn-text text-danger session-revoke" data-session-id="${escapeHtml(s.id)}">退出</button>`}
+        </div>
+    `).join('');
+}
+
+/** 打开「账号与安全」：登录设备、通知开关、全端退出 */
+export async function openSecurityModal() {
+    const modal = document.getElementById('account-security-modal');
+    if (!modal) return;
+    modal.classList.add('show');
+    const container = document.getElementById('session-list');
+    if (container) container.innerHTML = '<div class="session-empty">正在读取登录设备…</div>';
+    try {
+        renderSessions(await apiRequest('/api/auth/sessions'));
+    } catch (_) {
+        if (container) container.innerHTML = '<div class="session-empty">读取失败，请稍后重试</div>';
+    }
+}
+
+async function revokeSession(sessionId) {
+    if (!sessionId) return;
+    if (!window.confirm('退出该设备上的登录？')) return;
+    try {
+        const res = await apiRequest(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' });
+        if (res && res.current) {
+            logout({ silent: true });
+            showToast('已退出当前设备', 'info');
+            return;
+        }
+        showToast('已退出该设备', 'info');
+        openSecurityModal();
+    } catch (err) {
+        showToast((err && err.message) || '退出失败，请稍后重试', 'error');
+    }
 }
 
 export async function registerPushNotification() {

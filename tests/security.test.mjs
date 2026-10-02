@@ -272,3 +272,17 @@ test('Security - client IP is trusted only when the proxy secret matches', async
     assert.equal(getClientIp(viaProxy, {}), '172.71.0.1');
     assert.equal(getClientIp(viaProxy, undefined), '172.71.0.1');
 });
+
+test('Auth - device descriptions summarise user agents for the session list', async () => {
+    const { describeUserAgent } = await import('../workers/src/auth.js');
+
+    const ios = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
+    const edge = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36 Edg/122.0.0.0';
+    const android = 'Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36';
+
+    assert.equal(describeUserAgent(ios), 'iOS · Safari');
+    assert.equal(describeUserAgent(edge), 'Windows · Edge');
+    assert.equal(describeUserAgent(android), 'Android · Chrome');
+    assert.equal(describeUserAgent(''), '未知设备');
+    assert.equal(describeUserAgent(undefined), '未知设备');
+});

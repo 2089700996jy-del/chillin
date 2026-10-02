@@ -69,7 +69,7 @@ export async function tokenHash(token) {
  */
 async function resolveSession(db, token, { upgrade = true } = {}) {
     const hashed = await tokenHash(token);
-    const selectSql = 'SELECT token, user_id, expires_at FROM sessions WHERE token = ?1 AND expires_at > ?2';
+    const selectSql = 'SELECT token, user_id, expires_at, COALESCE(last_seen_at, 0) AS last_seen_at FROM sessions WHERE token = ?1 AND expires_at > ?2';
 
     let row = await db.prepare(selectSql).bind(hashed, Date.now()).first();
     if (!row) {
@@ -77,7 +77,16 @@ async function resolveSession(db, token, { upgrade = true } = {}) {
         await new Promise(r => setTimeout(r, 60));
         row = await db.prepare(selectSql).bind(hashed, Date.now()).first();
     }
-    if (row) return row;
+    if (row) {
+        // 设备列表需要「最近活跃」；每 5 分钟最多写一次，避免每次请求都写库
+        try {
+            if (Date.now() - Number(row.last_seen_at || 0) > 5 * 60 * 1000) {
+                await db.prepare('UPDATE sessions SET last_seen_at = ?1 WHERE token = ?2')
+                    .bind(Date.now(), row.token).run();
+            }
+        } catch (_) { /* 活跃时间写入失败不影响鉴权 */ }
+        return row;
+    }
 
     // 兼容旧版明文会话（升级失败也不影响本次鉴权）
     const legacy = await db.prepare(selectSql).bind(token, Date.now()).first();
@@ -127,8 +136,8 @@ export async function handleRegister(request, env, db) {
     const token = crypto.randomUUID();
     const expiresAt = Date.now() + SESSION_TTL_MS;
     // 数据库只存哈希；明文仅通过 Set-Cookie 交给浏览器
-    await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
-        .bind(await tokenHash(token), userId, expiresAt).run();
+    await db.prepare('INSERT INTO sessions (token, user_id, expires_at, created_at, last_seen_at, user_agent, ip) VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6)')
+        .bind(await tokenHash(token), userId, expiresAt, Date.now(), request.headers.get('User-Agent') || '', getClientIp(request, env)).run();
 
     // 同时下发 HttpOnly Cookie；响应体仍带 token，保证旧前端零停机共存
     return jsonResponse(
@@ -177,8 +186,8 @@ export async function handleLogin(request, env, db) {
     const token = crypto.randomUUID();
     const expiresAt = Date.now() + SESSION_TTL_MS;
     // 数据库只存哈希；明文仅通过 Set-Cookie 交给浏览器
-    await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
-        .bind(await tokenHash(token), user.id, expiresAt).run();
+    await db.prepare('INSERT INTO sessions (token, user_id, expires_at, created_at, last_seen_at, user_agent, ip) VALUES (?1, ?2, ?3, ?4, ?4, ?5, ?6)')
+        .bind(await tokenHash(token), user.id, expiresAt, Date.now(), request.headers.get('User-Agent') || '', getClientIp(request, env)).run();
 
     // 同时下发 HttpOnly Cookie；响应体仍带 token，保证旧前端零停机共存
     return jsonResponse(
@@ -205,6 +214,98 @@ export async function handleLogoutAll(request, db, userId) {
         { success: true, revoked: res.meta?.changes || 0 },
         200,
         { 'Set-Cookie': sessionCookieHeader('', request, 0) }
+    );
+}
+
+/** 人类可读的设备描述（纯函数，便于单测） */
+export function describeUserAgent(ua) {
+    const s = String(ua || '');
+    if (!s) return '未知设备';
+    const os = /iPhone|iPad|iPod/i.test(s) ? 'iOS'
+        : /Android/i.test(s) ? 'Android'
+        : /Macintosh|Mac OS X/i.test(s) ? 'macOS'
+        : /Windows/i.test(s) ? 'Windows'
+        : /Linux/i.test(s) ? 'Linux'
+        : '未知系统';
+    const browser = /Edg\//i.test(s) ? 'Edge'
+        : /OPR\/|Opera/i.test(s) ? 'Opera'
+        : /Chrome\/|CriOS/i.test(s) ? 'Chrome'
+        : /Firefox\/|FxiOS/i.test(s) ? 'Firefox'
+        : /Safari\//i.test(s) ? 'Safari'
+        : '未知浏览器';
+    return `${os} · ${browser}`;
+}
+
+/**
+ * 滑动续期 + 会话轮换。
+ * * Cookie 客户端：签发新令牌并吊销旧行（防会话固定），旧 Cookie 立即失效；
+ * * 旧版 Bearer 客户端收不到新 Cookie，只延长有效期、不轮换，避免把旧客户端踢下线。
+ */
+export async function handleRefreshSession(request, env, db, userId) {
+    const raw = extractSessionToken(request);
+    if (!raw) return jsonResponse({ error: '未提供登录凭证' }, 401);
+
+    const viaCookie = !(request.headers.get('Authorization') || '').startsWith('Bearer ');
+    const hashed = await tokenHash(raw);
+    const row = await db.prepare('SELECT token, created_at, user_agent, ip FROM sessions WHERE token = ?1 AND user_id = ?2')
+        .bind(hashed, userId).first();
+    if (!row) return jsonResponse({ error: '无效或过期的会话' }, 401);
+
+    const now = Date.now();
+    const expiresAt = now + SESSION_TTL_MS;
+
+    if (!viaCookie) {
+        await db.prepare('UPDATE sessions SET expires_at = ?1, last_seen_at = ?2 WHERE token = ?3')
+            .bind(expiresAt, now, hashed).run();
+        return jsonResponse({ success: true, rotated: false, expiresAt }, 200);
+    }
+
+    const newToken = crypto.randomUUID();
+    const newHash = await tokenHash(newToken);
+    await db.batch([
+        db.prepare('DELETE FROM sessions WHERE token = ?1').bind(hashed),
+        db.prepare('INSERT INTO sessions (token, user_id, expires_at, created_at, last_seen_at, user_agent, ip) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)')
+            .bind(newHash, userId, expiresAt, row.created_at || now, now, row.user_agent || '', row.ip || '')
+    ]);
+    return jsonResponse(
+        { success: true, rotated: true, expiresAt },
+        200,
+        { 'Set-Cookie': sessionCookieHeader(newToken, request) }
+    );
+}
+
+/** 当前账号的登录设备列表（含当前会话标记） */
+export async function handleListSessions(request, db, userId) {
+    const raw = extractSessionToken(request);
+    const currentHash = raw ? await tokenHash(raw) : '';
+    const rows = await db.prepare(
+        'SELECT token, created_at, last_seen_at, expires_at, user_agent, ip FROM sessions WHERE user_id = ?1 AND expires_at > ?2 ORDER BY COALESCE(last_seen_at, created_at, 0) DESC'
+    ).bind(userId, Date.now()).all();
+
+    return jsonResponse((rows.results || []).map((r) => ({
+        id: r.token,
+        current: r.token === currentHash,
+        device: describeUserAgent(r.user_agent),
+        ip: r.ip || '',
+        createdAt: r.created_at || null,
+        lastSeenAt: r.last_seen_at || r.created_at || null,
+        expiresAt: r.expires_at
+    })), 200);
+}
+
+/** 吊销指定会话（「退出该设备」）；吊销当前会话时同时清 Cookie */
+export async function handleRevokeSession(request, db, userId, sessionId) {
+    if (!sessionId || !/^[0-9a-f]{64}$/.test(sessionId)) {
+        return jsonResponse({ error: '无效的会话标识' }, 400);
+    }
+    const res = await db.prepare('DELETE FROM sessions WHERE token = ?1 AND user_id = ?2')
+        .bind(sessionId, userId).run();
+    const raw = extractSessionToken(request);
+    const isCurrent = !!raw && (await tokenHash(raw)) === sessionId;
+    return jsonResponse(
+        { success: true, revoked: res.meta?.changes || 0, current: isCurrent },
+        200,
+        isCurrent ? { 'Set-Cookie': sessionCookieHeader('', request, 0) } : null
     );
 }
 

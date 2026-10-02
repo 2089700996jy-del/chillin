@@ -5980,6 +5980,67 @@ body.dark-reader-body .list-load-more {
   color: #0A84FF;
 }
 
+
+/* ==================== 账号与安全（登录设备） ==================== */
+.account-security-card {
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.security-section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(60, 60, 67, 0.6);
+  margin: 4px 0 10px;
+}
+
+.session-list { display: flex; flex-direction: column; gap: 8px; }
+
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--widget-bg, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.session-row.is-current { border-color: rgba(0, 102, 204, 0.28); }
+
+.session-device { font-size: 15px; font-weight: 600; color: #1c1c1e; }
+
+.session-badge {
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 102, 204, 0.12);
+  color: var(--ios-blue, #0066CC);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.session-meta { margin-top: 3px; font-size: 12px; color: rgba(60, 60, 67, 0.6); }
+.session-revoke { flex: 0 0 auto; font-size: 13px; }
+.session-empty { padding: 18px 4px; font-size: 13px; color: rgba(60, 60, 67, 0.6); text-align: center; }
+
+.security-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+body.dark-reader-body .session-row { background: #1c1f24; border-color: rgba(255, 255, 255, 0.08); }
+body.dark-reader-body .session-device { color: #f2f2f7; }
+body.dark-reader-body .security-actions { border-top-color: rgba(255, 255, 255, 0.08); }
+body.dark-reader-body .security-section-title,
+body.dark-reader-body .session-meta,
+body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
+
 /* ♿ 尊重系统「减弱动态效果」偏好：关闭装饰性动画与过渡 */
 @media (prefers-reduced-motion: reduce) {
   *,

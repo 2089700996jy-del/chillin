@@ -106,7 +106,7 @@
                     </span>
                     <span class="btn-label">AI 回响</span>
                 </button>
-                <span id="nav-username" class="nav-username" style="font-size: 13px; color: #a1a1aa; font-weight: 500;"></span>
+                <span id="nav-username" class="nav-username" role="button" tabindex="0" title="账号与安全" aria-label="账号与安全" style="font-size: 13px; color: #a1a1aa; font-weight: 500; cursor: pointer;"></span>
                 <button id="btn-logout" class="btn-text text-danger btn-icon-text" style="font-size: 13px;" title="退出登录">
                     <span class="btn-icon">
                         <svg class="nav-svg-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -820,6 +820,28 @@
             </div>
             <div class="global-search-results" id="global-search-results">
                 <div class="global-search-empty">输入关键词，搜索您的数字花园所有内存切片...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 账号与安全：登录设备、通知与全端退出 -->
+    <div class="modal-overlay" id="account-security-modal">
+        <div class="prompt-variable-card account-security-card">
+            <div class="sheet-pull-handle"></div>
+            <div class="prompt-variable-header">
+                <div class="prompt-variable-title-wrap">
+                    <span class="prompt-var-icon">🛡️</span>
+                    <h3 class="prompt-variable-title">账号与安全</h3>
+                </div>
+                <button type="button" class="btn-icon" data-close-modal="account-security-modal" title="关闭">✕</button>
+            </div>
+            <div class="prompt-variable-body">
+                <div class="security-section-title">登录设备</div>
+                <div id="session-list" class="session-list"></div>
+                <div class="security-actions">
+                    <button type="button" class="btn-text" id="btn-enable-push">开启通知</button>
+                    <button type="button" class="btn-text text-danger" id="btn-security-logout-all">退出所有设备</button>
+                </div>
             </div>
         </div>
     </div>

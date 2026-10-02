@@ -14,6 +14,8 @@ export {
     registerPushNotification,
     restoreCookieSession,
     logoutAllDevices,
+    refreshSession,
+    openSecurityModal,
 } from './auth.js';
 
 export {

@@ -13,6 +13,9 @@ import {
     handleLogin,
     handleLogout,
     handleLogoutAll,
+    handleRefreshSession,
+    handleListSessions,
+    handleRevokeSession,
     handleMe,
     handlePushSubscribe,
     cleanExpiredSessions
@@ -109,6 +112,10 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/upload' && method === 'POST') return handleUpload(request, db, userId);
     if (path === '/api/auth/logout' && method === 'POST') return handleLogout(request, db);
     if (path === '/api/auth/logout-all' && method === 'POST') return handleLogoutAll(request, db, userId);
+    if (path === '/api/auth/refresh' && method === 'POST') return handleRefreshSession(request, env, db, userId);
+    if (path === '/api/auth/sessions' && method === 'GET') return handleListSessions(request, db, userId);
+    const sessionMatch = path.match(/^\/api\/auth\/sessions\/([0-9a-f]{64})$/);
+    if (sessionMatch && method === 'DELETE') return handleRevokeSession(request, db, userId, sessionMatch[1]);
     if (path === '/api/auth/me' && method === 'GET') return handleMe(db, userId);
 
     // ── 周记 (Weeklies) ──
