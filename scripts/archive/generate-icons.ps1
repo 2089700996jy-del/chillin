@@ -1,5 +1,7 @@
 # 生成白底黑字 "chillin" 图标（PWA + Android 启动图标）
-# 用法：pwsh -File scripts\generate-icons.ps1
+# 归档说明：本脚本为一次性工具，产物（icons/icon-180|192|512.png）已提交且被 manifest / index.html / sw.js 引用；
+# 它不参与任何自动化流程，故归档到 scripts/archive/ 以便将来重新生成图标时参考。
+# 用法：pwsh -File scripts\archive\generate-icons.ps1
 Add-Type -AssemblyName System.Drawing
 
 function New-ChillinIcon {
