@@ -17,6 +17,12 @@ jobs:
   quality-gate:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        # Node 20 = 项目声明的运行基线；Node 22 = 跑得上 node:sqlite 的集成用例
+        # （tests/fake-d1.mjs 在旧版本上会自动跳过那些用例）。
+        node: ['20', '22']
     steps:
       - uses: actions/checkout@v4
         with:
@@ -26,13 +32,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: ${{ matrix.node }}
           cache: npm
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Unit tests (must be 0 failures)
+      - name: Unit + integration tests (must be 0 failures)
         run: npm test
 
       - name: Edge bundle dry-run (must exit 0)

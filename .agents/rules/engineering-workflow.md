@@ -9,6 +9,7 @@
 1. **测试引擎选型**：
    * 本项目测试体系保持**零第三方外部依赖**；
    * 采用 Node.js 20+ 原生内置测试运行器：`node --test` 与严格断言库 `node:assert/strict`；
+   * 涉及 SQL / 会话的集成用例使用 `node:sqlite`（Node ≥ 22.5）在内存库中执行真实 migrations，旧版本 Node 会自动跳过（CI 同时跑 20 与 22）；
    * 严禁引入 Jest、Vitest、Mocha 等重型测试框架与成百上千个衍生依赖包。
 2. **零容忍质量红线**：
    * 每次代码提交或发布前，必须在终端执行 `npm test`，所有用例必须 **100% 全部通过 (0 Fail, 0 Skip)**；
@@ -24,6 +25,8 @@
 | **AI 记忆回响 (RAG)** | [`tests/rag.test.mjs`](file:///d:/7/chillin/tests/rag.test.mjs) | 停用词准确过滤、自然语言时间范围解析、全表多特征检索加权打分准确率。 |
 | **搜索与命令面板** | [`tests/search.test.mjs`](file:///d:/7/chillin/tests/search.test.mjs) | 关键词命中高亮 (`<mark>`)、大小写不敏感匹配、特殊符号转义与 XSS 防御测试。 |
 | **PWA 离线缓存 / Service Worker** | [`tests/sw.test.mjs`](file:///d:/7/chillin/tests/sw.test.mjs) | 预缓存清单与 `js/*.js` 一一对应、清单资源与 manifest 图标必须存在、模块请求绝不回退 `index.html`。 |
+| **领域 CRUD / 同步 / 审计** | [`tests/garden.test.mjs`](file:///d:/7/chillin/tests/garden.test.mjs) | 资源 CRUD、跨用户归属隔离、软删墓碑不可复活、批量增量推送、热力图按用户聚合（基于 `node:sqlite` 真实执行 migrations）。 |
+| **会话与鉴权** | [`tests/auth.test.mjs`](file:///d:/7/chillin/tests/auth.test.mjs) | 会话令牌只存哈希、刷新时轮换、设备列表标记当前会话、单设备吊销与全端退出只影响本账号。 |
 | **架构红线 / 网关瘦身** | [`tests/architecture.test.mjs`](file:///d:/7/chillin/tests/architecture.test.mjs) | `workers/api.js` 300 行红线、各子域模块被路由引用、网关内不得出现 SQL 与 LLM 供应商细节、`/api/health` 必须为公开路由。 |
 
 ---

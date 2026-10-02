@@ -108,10 +108,25 @@ npm run backup -- --keep 30   # 自定义保留份数
 提交前必须全部通过（详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md)）：
 
 ```bash
-npm test                        # Node 原生单测（当前 28 个用例），必须 0 失败
+npm test                        # 单测 + 集成测试（当前 35 个用例），必须 0 失败
 npx wrangler deploy --dry-run   # 边缘预打包演练，必须 Exit Code 0
 npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 版本联动 → 校验提交信息 → 提交推送
 ```
+
+### 测试布局
+
+| 文件 | 覆盖范围 |
+| :--- | :--- |
+| [`tests/security.test.mjs`](tests/security.test.mjs) | 密码/令牌哈希、CSP 哈希与第三方域、共享限流与降级、SSRF（IPv4/IPv6/NAT64/6to4）、代理 IP 取信、响应限长 |
+| [`tests/sync.test.mjs`](tests/sync.test.mjs) | 时间格式解析、LWW 合并、脏数据选择与 id 补全 |
+| [`tests/rag.test.mjs`](tests/rag.test.mjs) | 分词、停用词、时间范围解析、打分 |
+| [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
+| [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、模块请求绝不回退 index.html |
+| [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开 |
+| [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、热力图（真实 SQLite） |
+| [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出（真实 SQLite） |
+
+> 后两个文件用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
 
 发布时用脚本联动 6 处版本号（`package.json`、`version.json`、`js/version.js`、`sw.js`、`index.html`、`workers/api.js`），**不要手改单个文件**：
 
