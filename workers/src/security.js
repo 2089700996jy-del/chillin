@@ -102,7 +102,15 @@ export function sseResponse(stream, request) {
 // ==================== 限流：内存快速桶 + D1 跨实例共享计数 ====================
 export const rateLimitBuckets = new Map();
 
-export function getClientIp(request) {
+export function getClientIp(request, env) {
+    // 反代（Pages Function）会把原 IP 放在自定义头里并附上共享密钥；
+    // 只有密钥匹配（恒定时间比较）才采信，直连 Worker 无法伪造头部绕过限流。
+    const proxiedIp = request.headers.get('X-Chillin-Client-IP');
+    if (proxiedIp) {
+        const token = request.headers.get('X-Chillin-Proxy-Token') || '';
+        const secret = env && env.PROXY_SHARED_SECRET;
+        if (secret && token && timingSafeEqualStr(token, secret)) return proxiedIp.trim();
+    }
     const cfIp = request.headers.get('CF-Connecting-IP');
     if (cfIp && cfIp.trim()) return cfIp.trim();
     // 回退：取 X-Forwarded-For 的最后一段（由最近的边缘节点追加，最接近真实客户端；

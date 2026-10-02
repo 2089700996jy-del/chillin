@@ -228,3 +228,24 @@ test('Security - shared rate limiter enforces limits and degrades safely', async
     assert.equal(getClientIp(new Request('https://x/', { headers: { 'X-Forwarded-For': '6.6.6.6, 5.5.5.5' } })), '5.5.5.5');
     assert.equal(getClientIp(new Request('https://x/')), 'unknown');
 });
+
+test('Security - client IP is trusted only when the proxy secret matches', async () => {
+    const { getClientIp } = await import('../workers/src/security.js');
+    const env = { PROXY_SHARED_SECRET: 'test-secret' };
+
+    // 反代带来的真实 IP + 正确密钥 → 采信
+    const viaProxy = new Request('https://x/', {
+        headers: { 'X-Chillin-Client-IP': '203.0.113.9', 'X-Chillin-Proxy-Token': 'test-secret', 'CF-Connecting-IP': '172.71.0.1' }
+    });
+    assert.equal(getClientIp(viaProxy, env), '203.0.113.9');
+
+    // 密钥不对 → 忽略伪造头，回退到 CF-Connecting-IP
+    const forged = new Request('https://x/', {
+        headers: { 'X-Chillin-Client-IP': '203.0.113.9', 'X-Chillin-Proxy-Token': 'wrong', 'CF-Connecting-IP': '172.71.0.1' }
+    });
+    assert.equal(getClientIp(forged, env), '172.71.0.1');
+
+    // 后端未配置密钥时，任何自定义头都不被采信
+    assert.equal(getClientIp(viaProxy, {}), '172.71.0.1');
+    assert.equal(getClientIp(viaProxy, undefined), '172.71.0.1');
+});

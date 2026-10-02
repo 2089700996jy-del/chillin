@@ -70,7 +70,7 @@ import {
 } from './src/garden.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.42';
+const APP_VERSION = '2.5.43';
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
