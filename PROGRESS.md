@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-02。供后续会话快速接续。当前前端/Worker：**v2.5.43**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-10-02。供后续会话快速接续。当前前端/Worker：**v2.5.44**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -56,6 +56,34 @@
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
 
 ## 近期已完成（摘要）
+
+### 工程化与体验收尾（v2.5.44）
+**A 工程基础设施**
+1. 新增 CI 门禁（`.github/workflows/ci.yml`，浅克隆）：每次 push/PR 跑 `npm test` + `wrangler deploy --dry-run`。
+2. `npm run backup`：D1 远端导出 → gzip → `backups/`（已忽略），保留最近 14 份，附恢复与计划任务说明。
+3. 新增 SW 预缓存守卫测试：断言 `js/*.js` 全部登记、清单资源与 manifest 图标存在、模块请求绝不回退 index.html。
+4. 修复「无 id 记录被静默丢弃/重复推送」：推送前补客户端 id（`ensureLocalId`/`selectDirtyItems`）。
+5. 拆分 `workers/api.js`（302 → 227 行）：AI 路由下沉 `workers/src/ai.js`，并新增 300 行红线守卫测试。
+
+**B 安全再加固**
+6. DOMPurify 自托管到 `vendor/`（字节与官方 3.1.7 一致并有校验测试），CSP 不再放行任何第三方脚本域。
+7. CSP 追加 `object-src 'none'` / `frame-src 'none'` / `upgrade-insecure-requests`，清理无用的字体域。
+8. 会话滑动续期 + 令牌轮换 + 登录设备列表（migration 0017，`/api/auth/refresh|sessions`，新增「账号与安全」面板）。
+9. 外链解析响应体限长（页面 512KB / Microlink 128KB）+ `LINK_ENRICH_MICROLINK` 隐私开关。
+
+**C 体验与无障碍**
+10. 全部原生 `confirm/alert` 替换为应用内弹窗与 toast；弹层补 `role=dialog`/`aria-modal`、焦点陷阱、Esc 关闭、焦点归还、跳转链接与 `:focus-visible` 兜底。
+11. 上传改为 XHR 实时进度 + 失败一键重试；推送权限改为用户主动点击。
+12. `style.css` 引入间距/圆角/动效令牌并在 `ui-style.md` 记录迁移策略（不做一次性大改）。
+13. 上传优先转 WebP（回退 JPEG，GIF 原样保留）。
+
+**D 维护与可观测**
+14. `npm run ship`（门禁 → 版本联动 → 校验提交信息 → 提交/推送），两个 .bat 改为调用它。
+15. 新增 `.dev.vars.example`、`.gitignore` 补 `.dev.vars`、新增 `LICENSE`（保留所有权利）。
+16. wrangler 4.86 → 4.145，`compatibility_date` → 2026-10-01。
+17. 新增公开 `GET /api/health`（DB 探测失败返回 503），README 记录日志前缀与 `wrangler tail`。
+18. `docs/仓库体积与历史瘦身评估.md`：实测 89.6 MiB 打包体积中约 95 MB 为历史媒体文件；先落地零风险方案（CI 浅克隆），历史重写待明确授权。
+19. `npm run changelog` 从 240 条提交生成 `CHANGELOG.md`。
 
 ### 真实 IP 透传与文档同步（v2.5.43）
 1. **反代真实 IP 透传**：`CF-Connecting-IP` 在跨 Worker 子请求时会被重写，导致限流退化为"全局一个桶"。Pages Function 现在显式带回原 IP（`X-Chillin-Client-IP`）与共享密钥（`X-Chillin-Proxy-Token`，取自 `PROXY_SHARED_SECRET`），Worker 用恒定时间比较校验后才采信；未配置密钥或密钥不符时一律忽略，直连 Worker 无法伪造。线上已验证限流桶键恢复为真实出口 IP（`2409:8a34:...`）。
