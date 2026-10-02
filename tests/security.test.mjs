@@ -172,7 +172,8 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
         );
     }
 
-    const cspLine = headers.split('\n').find((line) => line.includes('Content-Security-Policy'));
+    // 注意：_headers 里还有 Content-Security-Policy-Report-Only，必须精确匹配强制指令那一行
+    const cspLine = headers.split('\n').find((line) => line.trim().startsWith('Content-Security-Policy:'));
     assert.ok(cspLine, 'expected a Content-Security-Policy in _headers');
     const scriptSrc = cspLine.split(';').map((part) => part.trim()).find((part) => part.startsWith('script-src'));
     assert.ok(scriptSrc, 'expected script-src in the CSP');
@@ -330,4 +331,47 @@ test('Audit - retention cleanup only deletes rows older than the window', async 
     calls.length = 0;
     await cleanupAuditLogs(db, 0);
     assert.equal(calls[0].args[0], '-1 days');
+});
+
+test('Security - every HTML sink goes through the Trusted Types choke point', async () => {
+    const fsMod = await import('node:fs/promises');
+    const path = await import('node:path');
+    const url = await import('node:url');
+    const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+    const jsDir = path.join(root, 'js');
+
+    const offenders = [];
+    for (const file of (await fsMod.readdir(jsDir)).filter((f) => f.endsWith('.js'))) {
+        if (file === 'trusted-types.js') continue; // 唯一允许写 innerHTML 的地方
+        const text = await fsMod.readFile(path.join(jsDir, file), 'utf8');
+        const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+        if (/\.innerHTML\s*=\s*/.test(stripped)) offenders.push(file);
+        if (/setHtml\(/.test(stripped) && !text.includes("from './trusted-types.js'")) {
+            offenders.push(file + ' (uses setHtml without importing it)');
+        }
+    }
+    assert.deepEqual(offenders, [], `HTML sinks must go through setHtml(): ${offenders.join(', ')}`);
+
+    const tt = await fsMod.readFile(path.join(jsDir, 'trusted-types.js'), 'utf8');
+    assert.match(tt, /createPolicy\(POLICY_NAME, \{ createHTML/, 'expected a Trusted Types policy');
+    assert.match(tt, /chillin#html/, 'policy name must match the CSP allowlist');
+});
+
+test('Security - Trusted Types directive is staged and allowlists our policy names', async () => {
+    const fsMod = await import('node:fs/promises');
+    const path = await import('node:path');
+    const url = await import('node:url');
+    const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+    const headers = await fsMod.readFile(path.join(root, '_headers'), 'utf8');
+
+    assert.match(headers, /Content-Security-Policy-Report-Only:.*require-trusted-types-for 'script'/,
+        'expected a report-only require-trusted-types-for directive');
+    const policyLine = headers.split('\n').find((l) => l.includes('trusted-types '));
+    assert.ok(policyLine, 'expected a trusted-types allowlist');
+    const allowlist = policyLine.slice(policyLine.indexOf('trusted-types '));
+    assert.ok(allowlist.includes('chillin#html'), 'our policy name must be allowlisted');
+    assert.ok(allowlist.includes('dompurify'), 'DOMPurify creates its own policy and must be allowlisted');
+    // 强制指令里不得出现 trusted-types（当前只以 Report-Only 观察）
+    const enforced = headers.split('\n').find((l) => l.trim().startsWith('Content-Security-Policy:'));
+    assert.ok(enforced && !enforced.includes('trusted-types'), 'enforced CSP must not carry the staged directive yet');
 });

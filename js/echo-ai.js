@@ -13,6 +13,7 @@ import {
     setSyncStatus,
     logout,
 } from './api.js';
+import { setHtml } from './trusted-types.js';
 
 export function initEchoAi() {
 // 4. Render Echo Cards & Generator
@@ -22,13 +23,13 @@ function renderEchoCards() {
     if (!container) return;
 
     if (!state.echoCardsDatabase || state.echoCardsDatabase.length === 0) {
-        container.innerHTML = '';
+        setHtml(container, '');
         if (wrapper) wrapper.style.display = 'none';
         return;
     }
     if (wrapper) wrapper.style.display = '';
 
-    container.innerHTML = state.echoCardsDatabase.map(card => `
+    setHtml(container, state.echoCardsDatabase.map(card => `
             <div class="echo-card" id="echo-card-${card.id}">
                 <button class="echo-card-delete" data-card-id="${escapeHtml(String(card.id))}" title="删除卡片" type="button">×</button>
                 <div class="echo-card-badge">
@@ -38,7 +39,7 @@ function renderEchoCards() {
                 <div class="echo-card-title">${escapeHtml(card.title)}</div>
                 <div class="echo-card-summary">${escapeHtml(card.summary)}</div>
             </div>
-        `).join('');
+        `).join(''));
 }
 
 window.deleteEchoCard = async function(id) {
@@ -133,10 +134,10 @@ if (btnTriggerEchoCard) {
             }
         } finally {
             btnTriggerEchoCard.disabled = false;
-            btnTriggerEchoCard.innerHTML = `
+            setHtml(btnTriggerEchoCard, `
                 <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
                 <span>生成 AI 回响</span>
-            `;
+            `);
         }
     });
 }
@@ -206,7 +207,7 @@ async function sendAiChatMessage() {
     // Append User Message
     const userMsgDiv = document.createElement('div');
     userMsgDiv.className = 'ai-msg ai-msg-user';
-    userMsgDiv.innerHTML = `<div class="ai-msg-bubble">${escapeHtml(question)}</div>`;
+    setHtml(userMsgDiv, `<div class="ai-msg-bubble">${escapeHtml(question)}</div>`);
     aiChatBody.appendChild(userMsgDiv);
 
     aiChatInput.value = '';
@@ -215,7 +216,7 @@ async function sendAiChatMessage() {
     // Append Bot Typing Indicator
     const botMsgDiv = document.createElement('div');
     botMsgDiv.className = 'ai-msg ai-msg-bot';
-    botMsgDiv.innerHTML = `<div class="ai-msg-bubble">🤖 思考中...</div>`;
+    setHtml(botMsgDiv, `<div class="ai-msg-bubble">🤖 思考中...</div>`);
     aiChatBody.appendChild(botMsgDiv);
     aiChatBody.scrollTop = aiChatBody.scrollHeight;
 
@@ -229,7 +230,7 @@ async function sendAiChatMessage() {
         const response = await fetchAiChatStream({ question, stream: true, history: recentHistory });
         if (!response) {
             state.aiChatHistory.pop();
-            bubbleEl.innerHTML = '🤖 登录已过期，请重新登录后再试';
+            setHtml(bubbleEl, '🤖 登录已过期，请重新登录后再试');
             return;
         }
 
@@ -298,7 +299,7 @@ async function sendAiChatMessage() {
                 box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(120,120,128,0.12);font-size:12px;color:rgba(60,60,67,0.75);line-height:1.45;';
                 const title = document.createElement('div');
                 title.style.cssText = 'font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85);display:flex;align-items:center;justify-content:space-between;';
-                title.innerHTML = `<span>已检索 ${sources.length} 条相关记忆</span><span style="font-weight:400;font-size:11px;color:rgba(60,60,67,0.5);">点击条目跳转</span>`;
+                setHtml(title, `<span>已检索 ${sources.length} 条相关记忆</span><span style="font-weight:400;font-size:11px;color:rgba(60,60,67,0.5);">点击条目跳转</span>`);
                 box.appendChild(title);
                 sources.slice(0, 6).forEach((s) => {
                     const row = document.createElement('div');
@@ -346,13 +347,13 @@ async function sendAiChatMessage() {
                         try {
                             const payload = JSON.parse(trimmed.slice(6));
                             if (payload.error) {
-                                bubbleEl.innerHTML = '🤖 ' + escapeHtml(payload.error);
+                                setHtml(bubbleEl, '🤖 ' + escapeHtml(payload.error));
                                 break;
                             }
                             if (payload.type === 'rag' && payload.sources) {
                                 mountSources(payload.sources);
                                 if (!payload.sources.length) {
-                                    bubbleEl.innerHTML = '🤖 未检索到直接相关记忆，正在据此回答…';
+                                    setHtml(bubbleEl, '🤖 未检索到直接相关记忆，正在据此回答…');
                                 }
                                 continue;
                             }
@@ -362,7 +363,7 @@ async function sendAiChatMessage() {
                                     isFirstChunk = false;
                                 }
                                 fullText += payload.delta;
-                                bubbleEl.innerHTML = markdownToHtml(fullText);
+                                setHtml(bubbleEl, markdownToHtml(fullText));
                                 aiChatBody.scrollTop = aiChatBody.scrollHeight;
                             }
                         } catch (e) {}
@@ -380,7 +381,7 @@ async function sendAiChatMessage() {
                     const box = renderSourcesBoxElement(res.sources);
                     botMsgDiv.insertBefore(box, bubbleEl);
                 }
-                bubbleEl.innerHTML = markdownToHtml(res.reply);
+                setHtml(bubbleEl, markdownToHtml(res.reply));
                 state.aiChatHistory.push({ role: 'assistant', content: res.reply });
                 aiChatBody.scrollTop = aiChatBody.scrollHeight;
                 return;
@@ -392,7 +393,7 @@ async function sendAiChatMessage() {
 
     // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
     const localReply = getLocalAiReply(question);
-    bubbleEl.innerHTML = markdownToHtml(localReply);
+    setHtml(bubbleEl, markdownToHtml(localReply));
     state.aiChatHistory.push({ role: 'assistant', content: localReply });
     aiChatBody.scrollTop = aiChatBody.scrollHeight;
 }
@@ -405,16 +406,16 @@ if (btnWeeklyReview) {
         aiChatModal.classList.add('show');
         const botMsgDiv = document.createElement('div');
         botMsgDiv.className = 'ai-msg ai-msg-bot';
-        botMsgDiv.innerHTML = `<div class="ai-msg-bubble">🤖 正在为你生成本周回顾...</div>`;
+        setHtml(botMsgDiv, `<div class="ai-msg-bubble">🤖 正在为你生成本周回顾...</div>`);
         aiChatBody.appendChild(botMsgDiv);
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
         try {
             const res = await apiRequest('/api/ai/review', { method: 'POST', body: JSON.stringify({}) });
-            botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = (res && res.reply)
+            setHtml(botMsgDiv.querySelector('.ai-msg-bubble'), (res && res.reply)
                 ? markdownToHtml(res.reply)
-                : '本周回顾生成失败，请稍后再试。';
+                : '本周回顾生成失败，请稍后再试。');
         } catch (err) {
-            botMsgDiv.querySelector('.ai-msg-bubble').innerHTML = '本周回顾生成失败：' + escapeHtml(err.message);
+            setHtml(botMsgDiv.querySelector('.ai-msg-bubble'), '本周回顾生成失败：' + escapeHtml(err.message));
         }
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
     });

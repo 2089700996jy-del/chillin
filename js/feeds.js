@@ -10,6 +10,7 @@ import {
     addDeletedId,
     saveFeedsDatabase,
 } from './api.js';
+import { setHtml } from './trusted-types.js';
 
 export function initFeeds() {
 // 1. Render Feeds Stream (随手记流)
@@ -38,22 +39,22 @@ function renderFeeds() {
 
     if (!displayFeeds || displayFeeds.length === 0) {
         if (isSyncingNow()) {
-            container.innerHTML = skeletonListHtml(3);
+            setHtml(container, skeletonListHtml(3));
             return;
         }
-        container.innerHTML = `
+        setHtml(container, `
             <div class="list-empty">
                 <div class="list-empty-icon">⚡️</div>
                 <div class="list-empty-title">随手记流空空如也</div>
                 <div class="list-empty-sub">在上方输入框倾倒你的第一个思考吧</div>
             </div>
-        `;
+        `);
         return;
     }
 
     const pendingEnrichFeeds = [];
 
-    container.innerHTML = displayFeeds.map(feed => {
+    setHtml(container, displayFeeds.map(feed => {
         const tags = feed.tags || [];
         const tagHtml = tags.map(t => `<span class="feed-tag-pill">${escapeHtml(t)}</span>`).join('');
 
@@ -166,7 +167,7 @@ function renderFeeds() {
                 ${linkHtml}
             </div>
         `;
-    }).join('');
+    }).join(''));
 
     if (totalFeeds > displayFeeds.length) {
         const more = document.createElement('button');
@@ -502,7 +503,7 @@ function renderHeatmap() {
         colsHtml += `<div class="heatmap-col">${cellsHtml}</div>`;
     }
 
-    grid.innerHTML = colsHtml;
+    setHtml(grid, colsHtml);
     grid.scrollLeft = grid.scrollWidth;
 }
 

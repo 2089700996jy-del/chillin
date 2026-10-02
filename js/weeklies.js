@@ -18,6 +18,7 @@ import {
     stampLocalUpdate,
     addDeletedId,
 } from './api.js';
+import { setHtml } from './trusted-types.js';
 
 export function initWeeklies() {
     const galleryContainer = document.getElementById('gallery-container');
@@ -37,15 +38,15 @@ let currentWeeklyAnnotations = [];
 
 const renderWeeklyAnnotationsList = () => {
     const timeline = document.getElementById('weekly-annotations-timeline');
-    timeline.innerHTML = '';
+    setHtml(timeline, '');
     if (!currentWeeklyAnnotations || currentWeeklyAnnotations.length === 0) {
-        timeline.innerHTML = '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无追加说明，在下方写下第一条吧</div>';
+        setHtml(timeline, '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无追加说明，在下方写下第一条吧</div>');
         return;
     }
     currentWeeklyAnnotations.forEach(ann => {
         const item = document.createElement('div');
         item.className = 'annotation-item';
-        item.innerHTML = `
+        setHtml(item, `
             <div class="annotation-dot"></div>
             <div class="annotation-content-box">
                 <div class="annotation-meta">
@@ -54,7 +55,7 @@ const renderWeeklyAnnotationsList = () => {
                 </div>
                 <div class="annotation-text">${escapeHtml(ann.content)}</div>
             </div>
-        `;
+        `);
         
         item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
             if (await confirmDialog("确定要删除这条批追记吗？")) {
@@ -75,7 +76,7 @@ const renderWeeklyAnnotationsList = () => {
 };
 
 const renderCards = (filter = 'all') => {
-    galleryContainer.innerHTML = '';
+    setHtml(galleryContainer, '');
     const sortedDB = [...state.database].sort((a, b) => b.id - a.id);
     let rendered = 0;
     sortedDB.forEach(item => {
@@ -88,23 +89,23 @@ const renderCards = (filter = 'all') => {
         
         const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
         
-        card.innerHTML = `${coverHtml}<div class="notion-collection-card__content"><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`;
+        setHtml(card, `${coverHtml}<div class="notion-collection-card__content"><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`);
         card.addEventListener('click', () => openArticle(item));
         galleryContainer.appendChild(card);
         rendered += 1;
     });
     if (rendered === 0) {
         if (isSyncingNow()) {
-            galleryContainer.innerHTML = skeletonListHtml(3);
+            setHtml(galleryContainer, skeletonListHtml(3));
             return;
         }
-        galleryContainer.innerHTML = `
+        setHtml(galleryContainer, `
             <div class="list-empty">
                 <div class="list-empty-icon">🌱</div>
                 <div class="list-empty-title">还没有记忆切片</div>
                 <div class="list-empty-sub">点右下角「+」写下第一篇周记吧</div>
             </div>
-        `;
+        `);
     }
 };
 
@@ -126,8 +127,8 @@ const openArticle = (item, opts = {}) => {
     articleTitle.innerText = item.title;
     let finalHtml = item.content || '';
     if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
-    articleBody.innerHTML = sanitizeHtml(finalHtml);
-    articleCoverContainer.innerHTML = item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" loading="lazy" decoding="async">` : '';
+    setHtml(articleBody, sanitizeHtml(finalHtml));
+    setHtml(articleCoverContainer, item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" loading="lazy" decoding="async">` : '');
     
     // 加载记忆片段的追加批注
     document.getElementById('new-weekly-annotation-content').value = '';

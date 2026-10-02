@@ -52,7 +52,8 @@
 3. **无障碍 (Accessibility) 底线**：
    * 弹层必须通过 `.modal-overlay.show` 触发，`app.js` 会自动补 `role="dialog"` / `aria-modal`、圈定 Tab 焦点、Esc 关闭并归还焦点；
    * 禁止使用原生 `confirm()` / `alert()`，一律改用 `utils.confirmDialog()` 与 `showToast()`；
-   * 键盘焦点必须有可见样式（`:focus-visible` 已在样式末尾统一兜底，不要再新增 `outline: none`）。
+   * 键盘焦点必须有可见样式（`:focus-visible` 已在样式末尾统一兜底，不要再新增 `outline: none`）；
+   * **禁止直接写 `el.innerHTML`**：一律使用 [`js/trusted-types.js`](../../js/trusted-types.js) 的 `setHtml(el, html)`，测试会拦截任何绕过（Trusted Types 策略为 `chillin#html`）。
 
 ---
 

@@ -16,6 +16,7 @@ import {
     getLocalKey,
     refresh,
 } from './auth.js';
+import { setHtml } from './trusted-types.js';
 
 const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds', 'prompts'];
 
@@ -307,7 +308,7 @@ function showSkeletonsForEmptyLists() {
     const targets = ['gallery-container', 'notes-list-container', 'bookmark-list-container', 'feeds-stream-container'];
     for (const id of targets) {
         const el = document.getElementById(id);
-        if (el && el.querySelector('.list-empty')) el.innerHTML = skeletonListHtml(3);
+        if (el && el.querySelector('.list-empty')) setHtml(el, skeletonListHtml(3));
     }
 }
 

@@ -12,6 +12,7 @@ import {
     stampLocalUpdate,
     addDeletedId,
 } from './api.js';
+import { setHtml } from './trusted-types.js';
 
 export function initPrompts() {
     let currentProjectFilter = 'all';
@@ -70,15 +71,15 @@ export function initPrompts() {
         const promptsCount = (state.promptsDatabase || []).length;
         const resBtn = tabSwitcher.querySelector('.segment-btn[data-subtab="resources"]');
         const prBtn = tabSwitcher.querySelector('.segment-btn[data-subtab="prompts"]');
-        if (resBtn) resBtn.innerHTML = `<svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> 网址 <span class="tab-count-badge">${bookmarksCount}</span>`;
-        if (prBtn) prBtn.innerHTML = `<svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> 提示词 <span class="tab-count-badge">${promptsCount}</span>`;
+        if (resBtn) setHtml(resBtn, `<svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> 网址 <span class="tab-count-badge">${bookmarksCount}</span>`);
+        if (prBtn) setHtml(prBtn, `<svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg> 提示词 <span class="tab-count-badge">${promptsCount}</span>`);
     }
 
     // ── Render Project Chips ──
     function renderProjectChips() {
         if (!projectChipsContainer) return;
         const projects = getUniqueProjects();
-        projectChipsContainer.innerHTML = '';
+        setHtml(projectChipsContainer, '');
 
         const allBtn = document.createElement('button');
         allBtn.type = 'button';
@@ -106,7 +107,7 @@ export function initPrompts() {
 
         // Update datalist for editor
         if (projectDatalist) {
-            projectDatalist.innerHTML = ['通用', ...projects].map(pr => '<option value="' + escapeHtml(pr) + '"></option>').join('');
+            setHtml(projectDatalist, ['通用', ...projects].map(pr => '<option value="' + escapeHtml(pr) + '"></option>').join(''));
         }
     }
 
@@ -134,7 +135,7 @@ export function initPrompts() {
     // ── Render Prompts List ──
     function renderPrompts() {
         if (!promptsListContainer) return;
-        promptsListContainer.innerHTML = '';
+        setHtml(promptsListContainer, '');
 
         updateSubtabBadges();
         renderProjectChips();
@@ -172,7 +173,7 @@ export function initPrompts() {
         // Empty state
         if (list.length === 0) {
             if (!state.promptsDatabase || state.promptsDatabase.length === 0) {
-                promptsListContainer.innerHTML = `
+                setHtml(promptsListContainer, `
                     <div class="list-empty prompt-empty-state">
                         <div class="list-empty-icon">🤖</div>
                         <div class="list-empty-title">提示词库空空如也</div>
@@ -182,7 +183,7 @@ export function initPrompts() {
                             <button type="button" class="btn-secondary" id="btn-empty-create-prompt">+ 手动新建</button>
                         </div>
                     </div>
-                `;
+                `);
                 const btnStarter = document.getElementById('btn-import-starter-prompts');
                 if (btnStarter) {
                     btnStarter.addEventListener('click', () => {
@@ -198,14 +199,14 @@ export function initPrompts() {
                 return;
             }
 
-            promptsListContainer.innerHTML = `
+            setHtml(promptsListContainer, `
                 <div class="list-empty">
                     <div class="list-empty-icon">🔍</div>
                     <div class="list-empty-title">未找到匹配的提示词</div>
                     <div class="list-empty-sub">当前已按项目或场景过滤，可一键重置视图</div>
                     <button type="button" class="btn-secondary" id="btn-reset-filters" style="margin-top: 12px;">↺ 清空所有筛选与搜索</button>
                 </div>
-            `;
+            `);
             const btnReset = document.getElementById('btn-reset-filters');
             if (btnReset) {
                 btnReset.addEventListener('click', () => {
@@ -241,7 +242,7 @@ export function initPrompts() {
                 ? prompt.tags.split(/[,，\s]+/).filter(Boolean).map(t => '<span class="prompt-tag" role="button" title="点击筛选此标签">' + escapeHtml(t.startsWith('#') ? t : '#' + t) + '</span>').join('')
                 : '';
 
-            card.innerHTML = `
+            setHtml(card, `
                 <div class="prompt-card-header">
                     <div class="prompt-card-title-group">
                         ${prompt.is_pinned ? '<span class="prompt-card-pin" title="已置顶"><svg class="ui-icon-inline" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 2v2l-2 3v5l3 3v2h-6v5l-1 2-1-2v-5H3v-2l3-3V7L4 4V2z"/></svg></span>' : ''}
@@ -287,7 +288,7 @@ export function initPrompts() {
                         </button>
                     </div>
                 </div>
-            `;
+            `);
 
             // Expand / Collapse toggling
             const contentWrapper = card.querySelector('.prompt-card-content-wrapper');
@@ -432,7 +433,7 @@ export function initPrompts() {
 
         const vars = extractVariables(prompt.content);
         if (variableModalTitle) variableModalTitle.textContent = '填入参数：' + prompt.title;
-        variableInputsContainer.innerHTML = '';
+        setHtml(variableInputsContainer, '');
 
         const varValues = {};
 
@@ -440,10 +441,10 @@ export function initPrompts() {
             varValues[vName] = '';
             const row = document.createElement('div');
             row.className = 'variable-input-row';
-            row.innerHTML = `
+            setHtml(row, `
                 <label class="variable-label" for="var-input-${idx}">{{${escapeHtml(vName)}}}</label>
                 <textarea id="var-input-${idx}" class="variable-input" rows="2" placeholder="在此填入 ${escapeHtml(vName)} 的实际内容..."></textarea>
-            `;
+            `);
             const input = row.querySelector('textarea');
             input.addEventListener('input', () => {
                 varValues[vName] = input.value;

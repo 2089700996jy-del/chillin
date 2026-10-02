@@ -5,6 +5,7 @@
 import { showToast, urlBase64ToUint8Array, escapeHtml, confirmDialog } from './utils.js';
 import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
+import { setHtml } from './trusted-types.js';
 
 let hooks = {
     onRefresh: (_kind, _opts) => {},
@@ -399,10 +400,10 @@ function renderSessions(list) {
     const container = document.getElementById('session-list');
     if (!container) return;
     if (!Array.isArray(list) || list.length === 0) {
-        container.innerHTML = '<div class="session-empty">暂无可用的登录设备</div>';
+        setHtml(container, '<div class="session-empty">暂无可用的登录设备</div>');
         return;
     }
-    container.innerHTML = list.map((s) => `
+    setHtml(container, list.map((s) => `
         <div class="session-row${s.current ? ' is-current' : ''}">
             <div class="session-main">
                 <div class="session-device">${escapeHtml(s.device)}${s.current ? ' <span class="session-badge">当前设备</span>' : ''}</div>
@@ -410,7 +411,7 @@ function renderSessions(list) {
             </div>
             ${s.current ? '' : `<button type="button" class="btn-text text-danger session-revoke" data-session-id="${escapeHtml(s.id)}">退出</button>`}
         </div>
-    `).join('');
+    `).join(''));
 }
 
 /** 打开「账号与安全」：登录设备、通知开关、全端退出 */
@@ -419,11 +420,11 @@ export async function openSecurityModal() {
     if (!modal) return;
     modal.classList.add('show');
     const container = document.getElementById('session-list');
-    if (container) container.innerHTML = '<div class="session-empty">正在读取登录设备…</div>';
+    if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
         renderSessions(await apiRequest('/api/auth/sessions'));
     } catch (_) {
-        if (container) container.innerHTML = '<div class="session-empty">读取失败，请稍后重试</div>';
+        if (container) setHtml(container, '<div class="session-empty">读取失败，请稍后重试</div>');
     }
 }
 

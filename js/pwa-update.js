@@ -5,6 +5,7 @@
 import { showToast, confirmDialog } from './utils.js';
 import { APP_VERSION, APP_BUILD_LABEL } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
+import { setHtml } from './trusted-types.js';
 
 let forceRefreshing = false;
 
@@ -120,13 +121,13 @@ export function initPwaUpdates() {
                 'box-shadow:0 10px 30px rgba(0,0,0,0.22)', 'backdrop-filter:blur(12px)',
                 '-webkit-backdrop-filter:blur(12px)', 'transform:translateY(120%)', 'transition:transform .28s ease'
             ].join(';');
-            bar.innerHTML = `
+            setHtml(bar, `
                 <span id="pwa-update-msg" style="flex:1"></span>
                 <span style="display:flex;gap:8px;flex-shrink:0">
                   <button type="button" id="pwa-force-btn" style="border:0;border-radius:999px;padding:8px 10px;background:rgba(255,255,255,0.14);color:#fff;font:600 12px/1 inherit;cursor:pointer">强制更新</button>
                   <button type="button" id="pwa-update-btn" style="border:0;border-radius:999px;padding:8px 12px;background:#007AFF;color:#fff;font:600 12px/1 inherit;cursor:pointer">立即刷新</button>
                 </span>
-            `;
+            `);
             document.body.appendChild(bar);
             bar.querySelector('#pwa-update-btn')?.addEventListener('click', () => {
                 softReload(pendingReloadReason || '正在刷新到新版本…');

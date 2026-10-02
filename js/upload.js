@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { API_BASE, resolveAssetUrl } from './api.js';
 import { showToast } from './utils.js';
+import { setHtml } from './trusted-types.js';
 
 // 客户端图片压缩，避免手机相册原图过大（限制 5MB）
 export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) => {
@@ -100,14 +101,14 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     if (btn) {
         originalBtnHtml = btn.innerHTML;
         btn.disabled = true;
-        btn.innerHTML = '<span style="font-size:12px;opacity:0.9;">⏳ 正在上传...</span>';
+        setHtml(btn, '<span style="font-size:12px;opacity:0.9;">⏳ 正在上传...</span>');
     }
 
     let uploadFile = file;
     // GIF 可能是动图，重编码会丢掉动画，保持原样上传
     if (file.type && file.type.startsWith('image/') && file.type !== 'image/gif') {
         try {
-            if (btn) btn.innerHTML = '<span style="font-size:12px;opacity:0.9;">🔄 压缩中...</span>';
+            if (btn) setHtml(btn, '<span style="font-size:12px;opacity:0.9;">🔄 压缩中...</span>');
             const compressedBlob = await compressImage(file, 1600, 1600, 0.85);
             const baseName = file.name && file.name.includes('.') 
                 ? file.name.substring(0, file.name.lastIndexOf('.')) 
@@ -121,7 +122,7 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     }
 
     if (btn) {
-        btn.innerHTML = '<span style="font-size:12px;opacity:0.9;">🚀 上传中...</span>';
+        setHtml(btn, '<span style="font-size:12px;opacity:0.9;">🚀 上传中...</span>');
     }
 
     const formData = new FormData();
@@ -130,7 +131,7 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     const updateButton = (ratio) => {
         if (!btn) return;
         const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
-        btn.innerHTML = `<span style="font-size:12px;opacity:0.9;">🚀 上传中 ${pct}%</span>`;
+        setHtml(btn, `<span style="font-size:12px;opacity:0.9;">🚀 上传中 ${pct}%</span>`);
     };
 
     try {
@@ -209,10 +210,10 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     } finally {
         if (btn) {
             if (pendingRetry && pendingRetry.btn === btn) {
-                btn.innerHTML = '<span style="font-size:12px;opacity:0.9;">↻ 重试上传</span>';
+                setHtml(btn, '<span style="font-size:12px;opacity:0.9;">↻ 重试上传</span>');
                 btn.dataset.uploadRetry = '1';
             } else {
-                btn.innerHTML = originalBtnHtml;
+                setHtml(btn, originalBtnHtml);
                 delete btn.dataset.uploadRetry;
             }
             btn.disabled = false;

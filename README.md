@@ -143,6 +143,7 @@ npm run bump:minor
 * **输入与出站**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探、外链解析 SSRF 防护（含 IPv6 映射 / NAT64 / 6to4）
 * **出站限长与隐私**：外链解析响应体按 512KB 截断（Microlink 兜底 128KB），并可用 `LINK_ENRICH_MICROLINK=false` 彻底关闭第三方兜底
 * **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`_headers`](_headers) 与 `workers/src/security.js`
+* **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`js/trusted-types.js`](js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；目前以 `Content-Security-Policy-Report-Only` 观察，确认无违规后把该指令提升为强制即可
 
 ## 开发规约
 

@@ -18,6 +18,7 @@ import {
     stampLocalUpdate,
     addDeletedId,
 } from './api.js';
+import { setHtml } from './trusted-types.js';
 
 export function initNotes() {
     const notesListContainer = document.getElementById('notes-list-container');
@@ -34,15 +35,15 @@ let currentNoteAnnotations = [];
 
 const renderAnnotationsList = () => {
     const timeline = document.getElementById('annotations-timeline');
-    timeline.innerHTML = '';
+    setHtml(timeline, '');
     if (!currentNoteAnnotations || currentNoteAnnotations.length === 0) {
-        timeline.innerHTML = '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无批注，在下方写下第一条吧</div>';
+        setHtml(timeline, '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无批注，在下方写下第一条吧</div>');
         return;
     }
     currentNoteAnnotations.forEach(ann => {
         const item = document.createElement('div');
         item.className = 'annotation-item';
-        item.innerHTML = `
+        setHtml(item, `
             <div class="annotation-dot"></div>
             <div class="annotation-content-box">
                 <div class="annotation-meta">
@@ -51,7 +52,7 @@ const renderAnnotationsList = () => {
                 </div>
                 <div class="annotation-text">${escapeHtml(ann.content)}</div>
             </div>
-        `;
+        `);
         
         item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
             if (await confirmDialog("确定要删除这条批注吗？")) {
@@ -72,20 +73,20 @@ const renderAnnotationsList = () => {
 };
 
 const renderNotes = () => {
-    notesListContainer.innerHTML = '';
+    setHtml(notesListContainer, '');
     const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
     if (sortedNotes.length === 0) {
         if (isSyncingNow()) {
-            notesListContainer.innerHTML = skeletonListHtml(3);
+            setHtml(notesListContainer, skeletonListHtml(3));
             return;
         }
-        notesListContainer.innerHTML = `
+        setHtml(notesListContainer, `
             <div class="list-empty">
                 <div class="list-empty-icon">📝</div>
                 <div class="list-empty-title">还没有笔记</div>
                 <div class="list-empty-sub">点右下角「+」捕捉一闪而过的想法</div>
             </div>
-        `;
+        `);
         return;
     }
     sortedNotes.forEach(note => {
@@ -97,7 +98,7 @@ const renderNotes = () => {
         // 如果笔记有批注，显示批注数量气泡
         const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
         
-        el.innerHTML = `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${escapeHtml(note.date)}</div>`;
+        setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${escapeHtml(note.date)}</div>`);
         el.addEventListener('click', () => openNoteEditor(note.id));
         notesListContainer.appendChild(el);
     });

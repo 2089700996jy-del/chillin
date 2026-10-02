@@ -16,6 +16,7 @@ import {
     stampLocalUpdate,
     addDeletedId,
 } from './api.js';
+import { setHtml } from './trusted-types.js';
 
 export function initBookmarks() {
     const bookmarkListContainer = document.getElementById('bookmark-list-container');
@@ -41,22 +42,22 @@ const BOOKMARKS_PAGE_SIZE = 100;
 let bookmarksVisibleCount = BOOKMARKS_PAGE_SIZE;
 
 const renderBookmarks = () => {
-    bookmarkListContainer.innerHTML = '';
+    setHtml(bookmarkListContainer, '');
     const totalBookmarks = state.bookmarksDatabase.length;
     const sortedBookmarks = [...state.bookmarksDatabase].sort((a, b) => b.id - a.id).slice(0, bookmarksVisibleCount);
 
     if (sortedBookmarks.length === 0) {
         if (isSyncingNow()) {
-            bookmarkListContainer.innerHTML = skeletonListHtml(3);
+            setHtml(bookmarkListContainer, skeletonListHtml(3));
             return;
         }
-        bookmarkListContainer.innerHTML = `
+        setHtml(bookmarkListContainer, `
             <div class="list-empty">
                 <div class="list-empty-icon">🔖</div>
                 <div class="list-empty-title">还没有收藏</div>
                 <div class="list-empty-sub">点右下角「+」收下一站宝藏</div>
             </div>
-        `;
+        `);
         return;
     }
     
@@ -72,7 +73,7 @@ const renderBookmarks = () => {
         const descRaw = (bm.desc || bm.description || '').trim();
         const typeLabel = (bm.type || '🔖').trim();
         const emoji = typeLabel.split(' ')[0] || '🔖';
-        card.innerHTML = `
+        setHtml(card, `
             <div class="bookmark-card-inner">
                 <div class="bookmark-card-media">
                     ${hasImage
@@ -89,7 +90,7 @@ const renderBookmarks = () => {
                 </div>
                 <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏" type="button">×</button>
             </div>
-        `;
+        `);
 
         // If no URL but has image, click to view image in modal
         if (!hasUrl && hasImage) {

@@ -1,3 +1,4 @@
+import { setHtml } from './trusted-types.js';
 /** Shared pure helpers for Chillin (no app state). */
 
 export function generateUniqueId() {
@@ -45,7 +46,7 @@ export function showToast(msg, type = 'info') {
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
     const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warn' ? '⚠️' : 'ℹ️';
-    toast.innerHTML = `<span>${icon}</span> <span>${escapeHtml(msg)}</span>`;
+    setHtml(toast, `<span>${icon}</span> <span>${escapeHtml(msg)}</span>`);
     container.appendChild(toast);
     setTimeout(() => {
         toast.style.opacity = '0';

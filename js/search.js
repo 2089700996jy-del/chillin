@@ -6,6 +6,7 @@
 import { escapeHtml } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
+import { setHtml } from './trusted-types.js';
 
 export function highlightMatches(text, query) {
     if (!text) return '';
@@ -235,7 +236,7 @@ export function initSearch() {
                 `;
             }).join('');
 
-            globalSearchResults.innerHTML = html;
+            setHtml(globalSearchResults, html);
             bindItemEvents();
             return;
         }
@@ -347,7 +348,7 @@ export function initSearch() {
         }
 
         if (matchedActions.length === 0 && contentResults.length === 0) {
-            globalSearchResults.innerHTML = `<div class="global-search-empty">未匹配到与 "${escapeHtml(query)}" 相关的动作或切片记忆</div>`;
+            setHtml(globalSearchResults, `<div class="global-search-empty">未匹配到与 "${escapeHtml(query)}" 相关的动作或切片记忆</div>`);
             return;
         }
 
@@ -398,7 +399,7 @@ export function initSearch() {
             });
         }
 
-        globalSearchResults.innerHTML = html;
+        setHtml(globalSearchResults, html);
         bindItemEvents();
     }
 

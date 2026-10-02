@@ -1,6 +1,7 @@
 /** Local TXT reader (IndexedDB bookshelf, chapters, themes). */
 import { escapeHtml, showToast, confirmDialog } from './utils.js';
 import { actions } from './actions.js';
+import { setHtml } from './trusted-types.js';
 
 export function initReader() {
 // ── IndexedDB ──
@@ -246,13 +247,13 @@ async function renderBookshelf() {
     const progress = loadReaderProgress();
     let books = [];
     try { books = await rdbGetAll('books'); } catch(e) { books = []; }
-    if (!books.length) { grid.innerHTML = ''; empty.style.display = 'block'; return; }
+    if (!books.length) { setHtml(grid, ''); empty.style.display = 'block'; return; }
     empty.style.display = 'none';
     books.sort((a, b) => {
         const pa = progress[a.id], pb = progress[b.id];
         return (pb ? pb.timestamp : 0) - (pa ? pa.timestamp : 0) || b.createdAt - a.createdAt;
     });
-    grid.innerHTML = books.map(b => {
+    setHtml(grid, books.map(b => {
         const prog = progress[b.id];
         const pct = prog && b.totalChapters ? Math.round((prog.chapterIdx / b.totalChapters) * 100) : 0;
         const lastRead = prog ? '看到第' + (prog.chapterIdx + 1) + '章' : '未开始阅读';
@@ -263,7 +264,7 @@ async function renderBookshelf() {
             '<div class="book-card-author">' + escapeHtml(b.author) + '</div>' +
             '<div class="book-card-progress"><div class="book-card-progress-bar" style="width:' + pct + '%"></div></div>' +
             '<div class="book-card-meta"><span>' + lastRead + '</span><span>' + b.totalChapters + '章</span></div></div>';
-    }).join('');
+    }).join(''));
 
     // Attach event listeners
     grid.querySelectorAll('.book-card').forEach(card => {
@@ -347,7 +348,7 @@ function buildChapterTree() {
         groups[g].push({ title: ch.title, idx: idx, id: ch.id });
     });
     const keys = Object.keys(groups).sort((a, b) => Number(a) - Number(b));
-    container.innerHTML = keys.map(gk => {
+    setHtml(container, keys.map(gk => {
         const chs = groups[gk];
         const gid = 'rg-' + gk;
         const isCurrentGroup = chs.some(ch => ch.idx === currentChapterIdx);
@@ -363,7 +364,7 @@ function buildChapterTree() {
                 '" data-chapter-jump="' + ch.idx + '" title="' + escapeHtml(ch.title) + '">' +
                 escapeHtml(ch.title) + '</div>').join('') +
             '</div>';
-    }).join('');
+    }).join(''));
     // Scroll to active chapter
     setTimeout(() => {
         const active = container.querySelector('.chapter-item.active');
@@ -481,15 +482,15 @@ function applyReaderSettings() {
     if (theme === 'dark') {
         document.body.classList.add('dark-reader-body');
         if (layout) layout.classList.add('dark-reader');
-        if (btn) btn.innerHTML = THEME_ICONS.sun;
+        if (btn) setHtml(btn, THEME_ICONS.sun);
         if (themeMeta) themeMeta.setAttribute('content', '#0f1115');
     } else if (theme === 'eyecare') {
         document.body.classList.add('eyecare-reader-body');
         if (layout) layout.classList.add('eyecare-reader');
-        if (btn) btn.innerHTML = THEME_ICONS.leaf;
+        if (btn) setHtml(btn, THEME_ICONS.leaf);
         if (themeMeta) themeMeta.setAttribute('content', '#e8f0e0');
     } else {
-        if (btn) btn.innerHTML = THEME_ICONS.moon;
+        if (btn) setHtml(btn, THEME_ICONS.moon);
         if (themeMeta) themeMeta.setAttribute('content', '#f8f8fa');
     }
 }
