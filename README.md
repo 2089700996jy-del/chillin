@@ -84,6 +84,18 @@ git push origin main
 
 `wrangler.toml` 中 `ALLOW_REGISTRATION = "false"` 表示**注册默认关闭**（个人实例）；需要开放注册时改为 `"true"`。
 
+### Pages 项目设置（远端状态，不在本仓库里）
+
+| 设置 | 值 | 说明 |
+| :--- | :--- | :--- |
+| Build command | 空 | 无构建步骤，直接发布静态文件 |
+| **Build output directory** | **§public§** | 仓库其余内容（§workers/§、§migrations/§、§tests/§、§.agents/§、文档等）**不会被发布** |
+| Root directory | 空 | 仓库根；§functions/§ 必须留在根目录，不能放进 §public/§ |
+
+> ⚠️ 本仓库**故意不在 §wrangler.toml§ 里写 §pages_build_output_dir§**：该文件是 Worker 配置（含 §main§ 与 D1 绑定），同一个文件无法同时作为 Pages 配置，混写会让 §wrangler§ 报错。改这项设置请走 Dashboard → Settings → Builds & deployments，或 §PATCH /accounts/{account_id}/pages/projects/chillin§ 的 §build_config.destination_dir§。
+
+> 历史背景：迁移前发布目录为空 → Pages 发布整个仓库根，导致 §/workers/src/security.js§、§/migrations/*.sql§、§/tests/*§、§/AGENTS.md§ 等**可被公开下载**（无密钥泄露，因为 §.dev.vars§ / §backups/§ 从未入库）。现已改为只发布 §public/§。
+
 > ⚠️ **升级顺序**：涉及后端接口或会话机制的改动，务必先 `npx wrangler deploy` 再推送前端，避免前端调用旧版 Worker。
 
 ## 数据备份与恢复
