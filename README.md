@@ -25,7 +25,7 @@
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
 * **数据**：Cloudflare D1（SQLite），16 个迁移（0001–0016），全部查询参数化绑定
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
-* **离线与安全**：Service Worker 全模块预缓存 + `_headers` 静态响应头 + Worker 动态响应头
+* **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `vendor/`），构建期仅 `wrangler` 与 `web-push`
 
 ## 目录结构
 
@@ -40,6 +40,7 @@ workers/src/        security / auth / garden / rag / llm / audit
 migrations/         D1 迁移 0001–0016（含会话令牌哈希索引与共享限流表）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理
+vendor/             自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
 ```
 
@@ -118,7 +119,7 @@ npm run bump:minor
 * **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
 * **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 外链解析 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
 * **输入与出站**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探、外链解析 SSRF 防护（含 IPv6 映射 / NAT64 / 6to4）
-* **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本改用 sha256 白名单）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy` 见 [`_headers`](_headers) 与 `workers/src/security.js`
+* **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`_headers`](_headers) 与 `workers/src/security.js`
 
 ## 开发规约
 

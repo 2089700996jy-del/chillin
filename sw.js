@@ -9,6 +9,7 @@ const ASSETS = [
     '/style.css',
     `/style.css?v=${APP_V}`,
     '/manifest.json',
+    '/vendor/dompurify.min.js',
     '/icons/icon-192.png',
     '/icons/icon-512.png',
     '/js/actions.js',

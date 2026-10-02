@@ -881,8 +881,10 @@
     <script>
         const CHILLIN_API_URL = '';
     </script>
-    <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS -->
-    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.1.7/dist/purify.min.js" integrity="sha384-XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ" crossorigin="anonymous"></script>
+    <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
+         已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
+         既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
+    <script src="/vendor/dompurify.min.js?v=2.5.43"></script>
     <script type="module" src="app.js?v=2.5.43"></script>
 </body>
 </html>

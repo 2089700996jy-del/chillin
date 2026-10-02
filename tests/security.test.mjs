@@ -179,6 +179,20 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     assert.ok(!scriptSrc.includes("'unsafe-inline'"), 'script-src must not allow unsafe-inline');
     assert.match(scriptSrc, /'sha256-/);
 
+    // DOMPurify 已自托管：script-src 不应再放行任何第三方脚本域
+    const scriptHosts = scriptSrc.match(/https?:\/\/[^\s;]+/g) || [];
+    assert.deepEqual(scriptHosts, [], `script-src must not allow third-party hosts: ${scriptHosts.join(', ')}`);
+    assert.ok(!/<script[^>]+src="https?:/i.test(html), 'index.html must not load scripts from a third-party origin');
+
+    // 自托管产物必须与官方发布字节一致（供应链校验，防止被替换）
+    const vendorBytes = await fsMod.readFile(pathMod.join(root, 'vendor', 'dompurify.min.js'));
+    const vendorDigest = cryptoMod.createHash('sha384').update(vendorBytes).digest('base64');
+    assert.equal(
+        vendorDigest,
+        'XQqX/4yiUGu+oyr87jvWzRuqBUK/adrY0DunhL+tID9m/9dwSpV8h9Fk/Sg6ifVQ',
+        'vendor/dompurify.min.js no longer matches the official DOMPurify 3.1.7 release'
+    );
+
     // 内联事件处理器在收紧后的 CSP 下会被拦截：源码中不得再出现
     const sources = ['index.html', ...(await fsMod.readdir(pathMod.join(root, 'js'))).filter((f) => f.endsWith('.js')).map((f) => pathMod.join('js', f)), 'app.js'];
     for (const rel of sources) {
