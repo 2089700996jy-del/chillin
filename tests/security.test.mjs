@@ -357,21 +357,23 @@ test('Security - every HTML sink goes through the Trusted Types choke point', as
     assert.match(tt, /chillin#html/, 'policy name must match the CSP allowlist');
 });
 
-test('Security - Trusted Types directive is staged and allowlists our policy names', async () => {
+test('Security - Trusted Types is enforced and allowlists our policy names', async () => {
     const fsMod = await import('node:fs/promises');
     const path = await import('node:path');
     const url = await import('node:url');
     const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
     const headers = await fsMod.readFile(path.join(root, '_headers'), 'utf8');
 
-    assert.match(headers, /Content-Security-Policy-Report-Only:.*require-trusted-types-for 'script'/,
-        'expected a report-only require-trusted-types-for directive');
-    const policyLine = headers.split('\n').find((l) => l.includes('trusted-types '));
-    assert.ok(policyLine, 'expected a trusted-types allowlist');
-    const allowlist = policyLine.slice(policyLine.indexOf('trusted-types '));
+    // 已从 Report-Only 提升为强制指令
+    assert.ok(
+        !headers.includes('Content-Security-Policy-Report-Only'),
+        'the Trusted Types directive must not remain report-only'
+    );
+    const enforced = headers.split('\n').find((l) => l.trim().startsWith('Content-Security-Policy:'));
+    assert.ok(enforced, 'expected the enforced Content-Security-Policy');
+    assert.match(enforced, /require-trusted-types-for 'script'/, 'enforced CSP must require Trusted Types');
+
+    const allowlist = enforced.slice(enforced.indexOf('trusted-types '));
     assert.ok(allowlist.includes('chillin#html'), 'our policy name must be allowlisted');
     assert.ok(allowlist.includes('dompurify'), 'DOMPurify creates its own policy and must be allowlisted');
-    // 强制指令里不得出现 trusted-types（当前只以 Report-Only 观察）
-    const enforced = headers.split('\n').find((l) => l.trim().startsWith('Content-Security-Policy:'));
-    assert.ok(enforced && !enforced.includes('trusted-types'), 'enforced CSP must not carry the staged directive yet');
 });
