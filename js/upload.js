@@ -31,13 +31,20 @@ export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality =
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
+                // 优先 WebP（同画质体积通常比 JPEG 小 25%~35%），不支持时回退 JPEG
+                const mime = supportsWebpExport() ? 'image/webp' : 'image/jpeg';
                 canvas.toBlob((blob) => {
                     if (blob) {
                         resolve(blob);
+                    } else if (mime === 'image/webp') {
+                        // 探测通过但导出失败：再试一次 JPEG
+                        canvas.toBlob((jpegBlob) => {
+                            jpegBlob ? resolve(jpegBlob) : reject(new Error('Canvas to Blob conversion failed'));
+                        }, 'image/jpeg', quality);
                     } else {
                         reject(new Error('Canvas to Blob conversion failed'));
                     }
-                }, 'image/jpeg', quality);
+                }, mime, quality);
             };
             img.onerror = (err) => reject(err);
         };
@@ -47,6 +54,21 @@ export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality =
 
 /** 上一次失败的上传：供「重试上传」复用，避免用户重新选文件 */
 let pendingRetry = null;
+
+/** 浏览器 canvas 是否支持导出 WebP（Safari 14+ / Chrome / Firefox 全支持，仍需探测兜底） */
+let webpSupported = null;
+function supportsWebpExport() {
+    if (webpSupported !== null) return webpSupported;
+    try {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1;
+        canvas.height = 1;
+        webpSupported = canvas.toDataURL('image/webp').startsWith('data:image/webp');
+    } catch (_) {
+        webpSupported = false;
+    }
+    return webpSupported;
+}
 
 /** XHR 上传（fetch 无法上报进度）：返回 { status, text }，失败时 reject */
 function postUploadWithProgress(formData, onProgress) {
@@ -82,15 +104,17 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     }
 
     let uploadFile = file;
-    if (file.type && file.type.startsWith('image/')) {
+    // GIF 可能是动图，重编码会丢掉动画，保持原样上传
+    if (file.type && file.type.startsWith('image/') && file.type !== 'image/gif') {
         try {
             if (btn) btn.innerHTML = '<span style="font-size:12px;opacity:0.9;">🔄 压缩中...</span>';
             const compressedBlob = await compressImage(file, 1600, 1600, 0.85);
             const baseName = file.name && file.name.includes('.') 
                 ? file.name.substring(0, file.name.lastIndexOf('.')) 
                 : (file.name || 'image');
-            const newFileName = `${baseName}.jpg`;
-            uploadFile = new File([compressedBlob], newFileName, { type: 'image/jpeg' });
+            const isWebp = compressedBlob.type === 'image/webp';
+            const newFileName = `${baseName}.${isWebp ? 'webp' : 'jpg'}`;
+            uploadFile = new File([compressedBlob], newFileName, { type: compressedBlob.type || (isWebp ? 'image/webp' : 'image/jpeg') });
         } catch (compressErr) {
             console.warn('Image compression failed, using original file:', compressErr);
         }
