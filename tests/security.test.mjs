@@ -193,6 +193,15 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
         'vendor/dompurify.min.js no longer matches the official DOMPurify 3.1.7 release'
     );
 
+    // 收紧后的附加指令：插件/内嵌框一律禁止，且强制升级到 HTTPS
+    assert.match(cspLine, /object-src 'none'/, 'CSP should block plugins with object-src none');
+    assert.match(cspLine, /frame-src 'none'/, 'CSP should block nested frames with frame-src none');
+    assert.match(cspLine, /upgrade-insecure-requests/, 'CSP should upgrade insecure subresource requests');
+    // 已无任何第三方静态资源：样式/字体也不应再放行外部域
+    const styleSrc = cspLine.split(';').map((p) => p.trim()).find((p) => p.startsWith('style-src'));
+    assert.ok(!/https?:\/\//.test(styleSrc), `style-src must not allow third-party hosts: ${styleSrc}`);
+    assert.ok(!/font-src[^;]*https?:\/\//.test(cspLine), 'font-src must not allow third-party hosts');
+
     // 内联事件处理器在收紧后的 CSP 下会被拦截：源码中不得再出现
     const sources = ['index.html', ...(await fsMod.readdir(pathMod.join(root, 'js'))).filter((f) => f.endsWith('.js')).map((f) => pathMod.join('js', f)), 'app.js'];
     for (const rel of sources) {
