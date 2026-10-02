@@ -231,7 +231,7 @@ async function doLogin() {
             .then(() => sync.syncFromApi())
             .catch((e) => console.warn('[login] sync after login failed', e));
         try { sync.checkAndMergeGuestData(); } catch (_) {}
-        setTimeout(registerPushNotification, 2000);
+        // 推送权限改为用户在「账号与安全」里主动点击「开启通知」时申请，避免登录即弹窗被永久拒绝
     } catch (err) {
         const errorMsg = formatAuthError(err, err._authRes, err._authData);
         if (authErrorMsg) {

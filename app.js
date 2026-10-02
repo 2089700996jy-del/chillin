@@ -9,7 +9,6 @@ import { actions } from './js/actions.js';
 import {
     checkAuth,
     initAuthUI,
-    registerPushNotification,
     loadLocalData,
     syncFromApi,
     checkAndMergeGuestData,
@@ -223,7 +222,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 滑动续期：静默换新令牌，避免固定 7 天到期被强制登出
                 refreshSession().catch(() => {});
                 syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
-                setTimeout(registerPushNotification, 2000);
             }
         });
 

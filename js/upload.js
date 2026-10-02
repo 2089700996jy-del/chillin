@@ -45,6 +45,29 @@ export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality =
     });
 };
 
+/** 上一次失败的上传：供「重试上传」复用，避免用户重新选文件 */
+let pendingRetry = null;
+
+/** XHR 上传（fetch 无法上报进度）：返回 { status, text }，失败时 reject */
+function postUploadWithProgress(formData, onProgress) {
+    return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_BASE}/api/upload`);
+        xhr.withCredentials = true;
+        xhr.timeout = 60000;
+        if (state.authToken) xhr.setRequestHeader('Authorization', `Bearer ${state.authToken}`);
+        xhr.upload.onprogress = (event) => {
+            if (event.lengthComputable && typeof onProgress === 'function') {
+                onProgress(event.loaded / event.total);
+            }
+        };
+        xhr.onload = () => resolve({ status: xhr.status, text: xhr.responseText || '' });
+        xhr.onerror = () => reject(new Error('网络连接失败'));
+        xhr.ontimeout = () => reject(new Error('上传超时，请检查网络后重试'));
+        xhr.send(formData);
+    });
+}
+
 /**
  * 核心单图上传与回填流程
  */
@@ -80,18 +103,14 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     const formData = new FormData();
     formData.append('file', uploadFile);
 
-    const headers = {};
-    if (state.authToken) {
-        headers['Authorization'] = `Bearer ${state.authToken}`;
-    }
+    const updateButton = (ratio) => {
+        if (!btn) return;
+        const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)));
+        btn.innerHTML = `<span style="font-size:12px;opacity:0.9;">🚀 上传中 ${pct}%</span>`;
+    };
 
     try {
-        const res = await fetch(`${API_BASE}/api/upload`, {
-            method: 'POST',
-            headers: headers,
-            body: formData,
-            credentials: 'include'
-        });
+        const res = await postUploadWithProgress(formData, updateButton);
 
         if (res.status === 401) {
             showToast('上传失败：登录已过期或未登录，请先登录', 'error');
@@ -101,12 +120,16 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
             showToast('上传失败：图片文件过大，单张最大支持 5MB', 'error');
             return;
         }
-        if (!res.ok) {
-            const errData = await res.json().catch(() => null);
-            throw new Error(errData?.error || `接口返回状态 ${res.status}`);
+        if (res.status < 200 || res.status >= 300) {
+            let message = `接口返回状态 ${res.status}`;
+            try {
+                const parsed = JSON.parse(res.text);
+                if (parsed && parsed.error) message = parsed.error;
+            } catch (_) { /* 非 JSON 响应，保留默认文案 */ }
+            throw new Error(message);
         }
 
-        const data = await res.json();
+        const data = JSON.parse(res.text || 'null');
         if (data && data[0] && data[0].src) {
             const src = data[0].src;
 
@@ -156,10 +179,18 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
         }
     } catch (err) {
         console.error('[Upload] error:', err);
-        showToast('图片上传失败，请重试：' + (err.message || '未知错误'), 'error');
+        // 记住这次上传，让用户点一下就能重试，不必重新选文件
+        pendingRetry = { file: uploadFile, targetInput, mode, btn };
+        showToast('图片上传失败：' + (err.message || '未知错误') + '，可点击「重试上传」', 'error');
     } finally {
         if (btn) {
-            btn.innerHTML = originalBtnHtml;
+            if (pendingRetry && pendingRetry.btn === btn) {
+                btn.innerHTML = '<span style="font-size:12px;opacity:0.9;">↻ 重试上传</span>';
+                btn.dataset.uploadRetry = '1';
+            } else {
+                btn.innerHTML = originalBtnHtml;
+                delete btn.dataset.uploadRetry;
+            }
             btn.disabled = false;
         }
         const globalUploader = document.getElementById('global-image-uploader');
@@ -177,6 +208,15 @@ export function initUpload() {
     document.addEventListener('click', (e) => {
         const btn = e.target.closest('.btn-upload-image');
         if (!btn) return;
+
+        // 上次失败的上传：直接重试，不再弹文件选择器
+        if (btn.dataset.uploadRetry === '1' && pendingRetry) {
+            const retry = pendingRetry;
+            pendingRetry = null;
+            delete btn.dataset.uploadRetry;
+            uploadSingleImage(retry.file, { targetInput: retry.targetInput, mode: retry.mode, btn });
+            return;
+        }
 
         const targetId = btn.dataset.target;
         currentUploadTargetInput = document.getElementById(targetId);
