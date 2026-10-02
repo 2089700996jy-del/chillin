@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-02。供后续会话快速接续。当前前端/Worker：**v2.5.44**（推送后以 `js/version.js` 为准）。
+> 更新时间：2026-10-02。供后续会话快速接续。当前前端/Worker：**v2.5.45**（推送后以 `js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -57,7 +57,7 @@
 
 ## 近期已完成（摘要）
 
-### 工程化与体验收尾（v2.5.44）
+### 工程化与体验收尾（v2.5.44 → v2.5.45）
 **A 工程基础设施**
 1. 新增 CI 门禁（`.github/workflows/ci.yml`，浅克隆）：每次 push/PR 跑 `npm test` + `wrangler deploy --dry-run`。
 2. `npm run backup`：D1 远端导出 → gzip → `backups/`（已忽略），保留最近 14 份，附恢复与计划任务说明。
@@ -83,7 +83,8 @@
 16. wrangler 4.86 → 4.145，`compatibility_date` → 2026-10-01。
 17. 新增公开 `GET /api/health`（DB 探测失败返回 503），README 记录日志前缀与 `wrangler tail`。
 18. `docs/仓库体积与历史瘦身评估.md`：实测 89.6 MiB 打包体积中约 95 MB 为历史媒体文件；先落地零风险方案（CI 浅克隆），历史重写待明确授权。
-19. `npm run changelog` 从 240 条提交生成 `CHANGELOG.md`。
+19. `npm run changelog` 从 git 历史生成 `CHANGELOG.md`（已接入 `npm run ship`，随发布自动重生成）。
+20. **T1 收尾**：`audit_log` / `ugc_quarantine` 增加 180 天保留策略（migration 0018 补索引）；`package.json` 声明 `engines.node >= 20`；README / 架构报告 / engineering-workflow 的口径同步到 v2.5.45（迁移 0001–0018、28 个测试用例、6 个测试文件）。
 
 ### 真实 IP 透传与文档同步（v2.5.43）
 1. **反代真实 IP 透传**：`CF-Connecting-IP` 在跨 Worker 子请求时会被重写，导致限流退化为"全局一个桶"。Pages Function 现在显式带回原 IP（`X-Chillin-Client-IP`）与共享密钥（`X-Chillin-Proxy-Token`，取自 `PROXY_SHARED_SECRET`），Worker 用恒定时间比较校验后才采信；未配置密钥或密钥不符时一律忽略，直连 Worker 无法伪造。线上已验证限流桶键恢复为真实出口 IP（`2409:8a34:...`）。
