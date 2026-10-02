@@ -60,3 +60,31 @@ test('Sync - mergeDataLists applies Last-Write-Wins and merges unique items', ()
     assert.equal(item2.title, '云端较新笔记', 'Cloud item with newer timestamp should win');
     assert.equal(item3.title, '云端新增提示词');
 });
+
+const { ensureLocalId, selectDirtyItems } = await import('../js/utils.js');
+
+test('Sync - dirty selection stamps missing ids instead of silently dropping them', () => {
+    const list = [
+        { id: 1, _dirty: true },
+        { title: '无 id 的本地新记录', _dirty: true },
+        { id: 3, _dirty: false },
+        { id: 4, _dirty: true }
+    ];
+
+    const picked = selectDirtyItems(list, new Set(['4']));
+
+    assert.equal(picked.length, 2, 'only dirty, non-tombstoned items are pushed');
+    assert.ok(Number.isSafeInteger(picked[1].id) && picked[1].id > 0, 'missing id is stamped');
+    assert.equal(list[1].id, picked[1].id, 'the stamped id is written back to the original item');
+    assert.ok(!picked.some((i) => i.id === 4), 'tombstoned item is excluded');
+});
+
+test('Sync - ensureLocalId keeps existing ids stable and never reuses one', () => {
+    const kept = ensureLocalId({ id: 42 });
+    assert.equal(kept.id, 42);
+
+    const first = ensureLocalId({});
+    const second = ensureLocalId({});
+    assert.ok(Number.isSafeInteger(first.id) && first.id > 0);
+    assert.notEqual(first.id, second.id, 'two id-less items must not collide');
+});

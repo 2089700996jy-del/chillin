@@ -4,6 +4,28 @@ export function generateUniqueId() {
     return Date.now() * 1000 + Math.floor(Math.random() * 1000);
 }
 
+/**
+ * 确保记录带有客户端 id。
+ * 服务端以客户端 id 为准做 INSERT OR REPLACE；若缺 id，服务端会另赋一个，
+ * 客户端无从得知，下次同步便可能出现重复记录或永不复位的同步失败的脏标记。
+ */
+export function ensureLocalId(item) {
+    if (!item) return item;
+    if (item.id == null || item.id === '') item.id = generateUniqueId();
+    return item;
+}
+
+/**
+ * 挑选需要推送的脏数据：补全缺失 id、跳过已删除（墓碑）。
+ * 此前缺 id 的本地改动会被直接过滤掉，属于静默丢数据。
+ */
+export function selectDirtyItems(list, deletedIds) {
+    const deleted = deletedIds instanceof Set ? deletedIds : new Set((deletedIds || []).map(String));
+    return (list || [])
+        .filter((item) => item && item._dirty && !deleted.has(String(item.id)))
+        .map((item) => ensureLocalId(item));
+}
+
 export function escapeHtml(str) {
     if (!str) return '';
     return String(str)

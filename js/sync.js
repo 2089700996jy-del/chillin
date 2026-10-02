@@ -2,7 +2,7 @@
  * Local persistence & cloud sync: merge, incremental pull, apiSync*, auto-sync.
  * Depends on auth.js for HTTP (apiRequest / getLocalKey / refresh).
  */
-import { showToast, getEast8Time, skeletonListHtml } from './utils.js';
+import { showToast, getEast8Time, skeletonListHtml, ensureLocalId, selectDirtyItems } from './utils.js';
 import {
     state,
     DEFAULT_WEEKLY,
@@ -435,9 +435,8 @@ export async function syncFromApi() {
         if (needsBatchUpload) {
             try {
                 const deleted = new Set(getDeletedIds().map(String));
-                const dirtyOnly = (list) => (list || [])
-                    .filter(item => item && item.id != null && item._dirty && !deleted.has(String(item.id)))
-                    .map(stripClientSyncFlags);
+                // 缺 id 的本地改动会就地补 id 后照常推送（此前会被静默丢弃）
+                const dirtyOnly = (list) => selectDirtyItems(list, deleted).map(stripClientSyncFlags);
 
                 const dirtyWeeklies = dirtyOnly(state.database);
                 const dirtyNotes = dirtyOnly(state.notesDatabase);
@@ -541,6 +540,8 @@ function handleSyncFailure(err) {
 }
 
 function apiSyncResource(apiPath, item, method) {
+    // 单条推送同样要保证 id：服务端缺 id 时会自增另赋，客户端将永远对不上
+    if (method !== 'DELETE' && item) ensureLocalId(item);
     const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
     if (method !== 'DELETE' && item) {
         item.updated_at = payload.updated_at;
@@ -551,7 +552,11 @@ function apiSyncResource(apiPath, item, method) {
         : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
     const id = method === 'POST' ? '' : `/${item.id}`;
     return apiRequest(`${apiPath}${id}`, bm).then((res) => {
-        if (method !== 'DELETE') markSyncedItem(item);
+        if (method !== 'DELETE') {
+            // 兜底：服务端若回填了 id（历史无 id 数据），以服务端为准再标记同步
+            if (item && item.id == null && res && res.id != null) item.id = res.id;
+            markSyncedItem(item);
+        }
         setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
