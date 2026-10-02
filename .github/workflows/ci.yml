@@ -1,0 +1,36 @@
+name: CI
+
+# 把 AGENTS.md 的「双 100% 卡点」固化为不可绕过：单测 0 失败 + 边缘预打包 Exit 0。
+# 本地提交前仍建议自行跑一遍，CI 只是最后一道网。
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Unit tests (must be 0 failures)
+        run: npm test
+
+      - name: Edge bundle dry-run (must exit 0)
+        # --dry-run 只在本地打包，不上传、不需要 Cloudflare 凭据
+        run: npx wrangler deploy --dry-run

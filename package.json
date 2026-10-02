@@ -8,7 +8,8 @@
     "test": "node --test",
     "bump": "node scripts/bump-version.mjs",
     "bump:patch": "node scripts/bump-version.mjs patch",
-    "bump:minor": "node scripts/bump-version.mjs minor"
+    "bump:minor": "node scripts/bump-version.mjs minor",
+    "backup": "node scripts/backup-d1.mjs"
   },
   "dependencies": {
     "web-push": "^3.6.7"
