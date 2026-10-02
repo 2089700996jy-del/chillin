@@ -22,7 +22,8 @@ import {
 } from './src/auth.js';
 
 import {
-    scanAndAudit
+    scanAndAudit,
+    cleanupAuditLogs
 } from './src/audit.js';
 
 import {
@@ -238,6 +239,12 @@ export default {
             console.log(`[rate-limit] scheduled cleanup: removed=${pruned}`);
         } catch (err) {
             console.error('[rate-limit] scheduled cleanup failed:', err);
+        }
+        try {
+            const audits = await cleanupAuditLogs(env.DB);
+            console.log(`[audit] retention cleanup: logs=${audits.auditLogs} quarantine=${audits.quarantine}`);
+        } catch (err) {
+            console.error('[audit] retention cleanup failed:', err);
         }
     }
 };

@@ -17,6 +17,22 @@ export function ugcHasViolation(row, cols) {
     return false;
 }
 
+/**
+ * 审计日志 / 隔离区保留策略。
+ * 这两张表此前没有任何清理，会随 Cron 每小时扫描无限增长。
+ * 用 SQLite 的 datetime('now', ?) 与写入格式（datetime('now')）保持一致，
+ * 避免 ISO 串与 SQL 串比较时因 'T' / 空格差异失效。
+ */
+export async function cleanupAuditLogs(db, keepDays = 180) {
+    const window = `-${Math.max(1, Math.floor(keepDays))} days`;
+    const logs = await db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', ?1)").bind(window).run();
+    const quarantine = await db.prepare("DELETE FROM ugc_quarantine WHERE created_at < datetime('now', ?1)").bind(window).run();
+    return {
+        auditLogs: logs.meta?.changes || 0,
+        quarantine: quarantine.meta?.changes || 0
+    };
+}
+
 export async function scanAndAudit(db, userId = null) {
     const results = { scanned: 0, quarantined: 0, removed: 0, alerts: [] };
     const tables = [

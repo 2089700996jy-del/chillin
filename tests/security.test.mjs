@@ -300,3 +300,34 @@ test('Security - readTextCapped truncates oversized responses', async () => {
     const cjk = await readTextCapped(new Response('中文'.repeat(5000)), 64);
     assert.ok(typeof cjk === 'string');
 });
+
+test('Audit - retention cleanup only deletes rows older than the window', async () => {
+    const { cleanupAuditLogs } = await import('../workers/src/audit.js');
+
+    const calls = [];
+    const db = {
+        prepare(sql) {
+            return {
+                bind(...args) {
+                    calls.push({ sql, args });
+                    return { async run() { return { meta: { changes: 2 } }; } };
+                }
+            };
+        }
+    };
+
+    const result = await cleanupAuditLogs(db, 180);
+    assert.deepEqual(result, { auditLogs: 2, quarantine: 2 });
+    assert.equal(calls.length, 2);
+    for (const call of calls) {
+        assert.match(call.sql, /DELETE FROM (audit_log|ugc_quarantine)/);
+        // 必须使用与写入一致的 SQLite 时间格式，且窗口参数化
+        assert.match(call.sql, /datetime\('now', \?1\)/);
+        assert.equal(call.args[0], '-180 days');
+    }
+
+    // 非法窗口收敛到至少 1 天，避免一次清空全表
+    calls.length = 0;
+    await cleanupAuditLogs(db, 0);
+    assert.equal(calls[0].args[0], '-1 days');
+});
