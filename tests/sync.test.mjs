@@ -25,7 +25,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { mergeDataLists, toUpdatedTs } = await import('../js/sync.js');
+const { mergeDataLists, toUpdatedTs } = await import('../public/js/sync.js');
 
 test('Sync - toUpdatedTs converts various date formats accurately', () => {
     const tsIso = toUpdatedTs('2026-09-23T10:00:00+08:00');
@@ -61,7 +61,7 @@ test('Sync - mergeDataLists applies Last-Write-Wins and merges unique items', ()
     assert.equal(item3.title, '云端新增提示词');
 });
 
-const { ensureLocalId, selectDirtyItems } = await import('../js/utils.js');
+const { ensureLocalId, selectDirtyItems } = await import('../public/js/utils.js');
 
 test('Sync - dirty selection stamps missing ids instead of silently dropping them', () => {
     const list = [

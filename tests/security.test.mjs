@@ -156,7 +156,7 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     const root = pathMod.resolve(pathMod.dirname(urlMod.fileURLToPath(import.meta.url)), '..');
 
     const html = await fsMod.readFile(pathMod.join(root, 'public', 'index.html'), 'utf8');
-    const headers = await fsMod.readFile(pathMod.join(root, '_headers'), 'utf8');
+    const headers = await fsMod.readFile(pathMod.join(root, 'public', '_headers'), 'utf8');
 
     const inlineScripts = [...html.matchAll(/<script(?![^>]*\bsrc=)[^>]*>([\s\S]*?)<\/script>/gi)];
     assert.ok(inlineScripts.length > 0, 'expected index.html to contain inline scripts');
@@ -387,7 +387,7 @@ test('Security - setHtml uses the Trusted Types policy, and degrades without it'
             return { createHTML: (value) => ({ trusted: true, html: rules.createHTML(value) }) };
         }
     };
-    const enforced = await import('../js/trusted-types.js?with-tt=1');
+    const enforced = await import('../public/js/trusted-types.js?with-tt=1');
     const el = { innerHTML: null };
     enforced.setHtml(el, '<b>hi</b>');
     assert.deepEqual(created, ['chillin#html']);
@@ -396,7 +396,7 @@ test('Security - setHtml uses the Trusted Types policy, and degrades without it'
     delete globalThis.trustedTypes;
 
     // 2) 不支持 Trusted Types 的浏览器（如部分旧版）：退回普通字符串赋值
-    const legacy = await import('../js/trusted-types.js?no-tt=1');
+    const legacy = await import('../public/js/trusted-types.js?no-tt=1');
     const el2 = { innerHTML: null };
     legacy.setHtml(el2, '<i>x</i>');
     assert.equal(el2.innerHTML, '<i>x</i>');

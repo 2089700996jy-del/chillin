@@ -23,7 +23,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { highlightMatches } = await import('../js/search.js');
+const { highlightMatches } = await import('../public/js/search.js');
 
 test('Search - highlightMatches wraps matched keywords in mark tags', () => {
     const raw = '在数字花园中探索算法与深度学习的奥秘';
