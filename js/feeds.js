@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -380,8 +380,8 @@ if (feedsStreamContainer) {
     });
 }
 
-window.deleteFeed = function(id) {
-    if (!confirm('确定要删除这条随手记吗？')) return;
+window.deleteFeed = async function(id) {
+    if (!(await confirmDialog('确定要删除这条随手记吗？'))) return;
     addDeletedId(id);
     state.feedsDatabase = state.feedsDatabase.filter(f => String(f.id) !== String(id));
     saveFeedsDatabase();

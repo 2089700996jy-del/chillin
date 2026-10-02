@@ -2,7 +2,7 @@
  * Local persistence & cloud sync: merge, incremental pull, apiSync*, auto-sync.
  * Depends on auth.js for HTTP (apiRequest / getLocalKey / refresh).
  */
-import { showToast, getEast8Time, skeletonListHtml, ensureLocalId, selectDirtyItems } from './utils.js';
+import { showToast, getEast8Time, skeletonListHtml, ensureLocalId, selectDirtyItems, confirmDialog } from './utils.js';
 import {
     state,
     DEFAULT_WEEKLY,
@@ -596,7 +596,7 @@ export async function checkAndMergeGuestData() {
     const hasGuestFeeds = guestFeeds.length > 0 && !(guestFeeds.length === 1 && guestFeeds[0].id === 1);
 
     if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds) {
-        if (confirm('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记）。是否将这些数据导入并同步到您当前的账号中？')) {
+        if (await confirmDialog('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记）。是否将这些数据导入并同步到您当前的账号中？')) {
             try {
                 const userKey = getLocalKey('gardenData');
                 let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];

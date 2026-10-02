@@ -56,8 +56,8 @@ const renderWeeklyAnnotationsList = () => {
             </div>
         `;
         
-        item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
-            if (confirm("确定要删除这条批追记吗？")) {
+        item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
+            if (await confirmDialog("确定要删除这条批追记吗？")) {
                 currentWeeklyAnnotations = currentWeeklyAnnotations.filter(a => a.id !== ann.id);
                 const article = state.database.find(d => d.id === ui.currentArticleId);
                 if (article) {
@@ -291,9 +291,9 @@ const checkAndShowWeeklyDraftTip = (editId) => {
     }
 };
 
-const handleExitWeeklyEditor = (onConfirm) => {
+const handleExitWeeklyEditor = async (onConfirm) => {
     if (hasUnsavedChanges()) {
-        if (confirm('确定要退出编辑吗？当前未保存的内容将作为草稿保存在本地，下次进入时可以恢复。')) {
+        if (await confirmDialog('确定要退出编辑吗？当前未保存的内容将作为草稿保存在本地，下次进入时可以恢复。')) {
             saveWeeklyDraft();
             onConfirm();
         }
@@ -499,8 +499,8 @@ window.addEventListener('beforeunload', (e) => {
     }
 });
 
-btnDeleteArticle.addEventListener('click', () => {
-    if(confirm("确定要永久删除这篇记忆吗？")) { 
+btnDeleteArticle.addEventListener('click', async () => {
+    if(await confirmDialog("确定要永久删除这篇记忆吗？")) { 
         const deletedId = ui.currentArticleId; 
         addDeletedId(deletedId);
         state.database = state.database.filter(d => d.id !== ui.currentArticleId); 

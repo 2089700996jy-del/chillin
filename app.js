@@ -69,6 +69,61 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+
+    // 弹层无障碍：role/aria-modal、焦点陷阱、Esc 关闭、关闭后归还焦点
+    const modalState = new WeakMap();
+    const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    const focusables = (root) => Array.from(root.querySelectorAll(FOCUSABLE))
+        .filter((el) => !el.hasAttribute('hidden') && el.getAttribute('aria-hidden') !== 'true');
+
+    const modalObserver = new MutationObserver((records) => {
+        for (const record of records) {
+            const el = record.target;
+            if (!(el instanceof Element) || !el.classList.contains('modal-overlay')) continue;
+            const visible = el.classList.contains('show');
+            const wasVisible = modalState.has(el);
+            if (visible && !wasVisible) {
+                el.setAttribute('role', 'dialog');
+                el.setAttribute('aria-modal', 'true');
+                if (!el.hasAttribute('aria-label') && !el.hasAttribute('aria-labelledby')) {
+                    el.setAttribute('aria-label', '对话框');
+                }
+                modalState.set(el, document.activeElement instanceof HTMLElement ? document.activeElement : null);
+                setTimeout(() => { const list = focusables(el); (list[0] || el).focus?.(); }, 30);
+            } else if (!visible && wasVisible) {
+                const previous = modalState.get(el);
+                modalState.delete(el);
+                if (previous && document.contains(previous)) previous.focus?.();
+            }
+        }
+    });
+    document.querySelectorAll('.modal-overlay').forEach((el) => {
+        modalObserver.observe(el, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    // Esc 关闭 / Tab 焦点循环
+    document.addEventListener('keydown', (e) => {
+        const openModal = Array.from(document.querySelectorAll('.modal-overlay.show')).pop();
+        if (!openModal) return;
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            openModal.classList.remove('show');
+            return;
+        }
+        if (e.key !== 'Tab') return;
+        const items = focusables(openModal);
+        if (items.length === 0) return;
+        const first = items[0];
+        const last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+        }
+    });
+
     // 图片加载失败兜底（error 事件不冒泡，必须在捕获阶段代理）
     window.addEventListener('error', (e) => {
         const el = e.target;

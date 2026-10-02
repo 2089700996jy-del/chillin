@@ -131,7 +131,9 @@
     </button>
 
     <!-- 主容器 -->
-    <main class="notion-app">
+    <a href="#main-content" class="skip-link">跳到主要内容</a>
+
+    <main class="notion-app" id="main-content">
 
         <!-- ========================================== -->
         <!-- VIEW 1: HOME (Gallery View) -->
@@ -842,6 +844,17 @@
                     <button type="button" class="btn-text" id="btn-enable-push">开启通知</button>
                     <button type="button" class="btn-text text-danger" id="btn-security-logout-all">退出所有设备</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 应用内确认弹窗（替代原生 confirm，键盘与主题友好） -->
+    <div class="modal-overlay confirm-dialog-overlay" id="confirm-dialog-modal">
+        <div class="confirm-dialog-card">
+            <div class="confirm-dialog-message" id="confirm-dialog-message"></div>
+            <div class="confirm-dialog-actions">
+                <button type="button" class="btn-text" id="confirm-dialog-cancel">取消</button>
+                <button type="button" class="btn-text text-danger" id="confirm-dialog-ok">确定</button>
             </div>
         </div>
     </div>

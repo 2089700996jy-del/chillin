@@ -2,7 +2,7 @@
  * Auth & HTTP client: login/logout, apiRequest, push subscribe.
  * Sync side effects after login are loaded via dynamic import('./sync.js') to avoid cycles.
  */
-import { showToast, urlBase64ToUint8Array, escapeHtml } from './utils.js';
+import { showToast, urlBase64ToUint8Array, escapeHtml, confirmDialog } from './utils.js';
 import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
 
@@ -368,7 +368,7 @@ export async function restoreCookieSession() {
 
 /** 退出所有设备：吊销该账号在服务端的全部会话 */
 export async function logoutAllDevices() {
-    if (!window.confirm('将退出所有设备上的登录状态，是否继续？')) return;
+    if (!(await confirmDialog('将退出所有设备上的登录状态，是否继续？'))) return;
     try {
         await apiRequest('/api/auth/logout-all', { method: 'POST' });
     } catch (_) {}
@@ -429,7 +429,7 @@ export async function openSecurityModal() {
 
 async function revokeSession(sessionId) {
     if (!sessionId) return;
-    if (!window.confirm('退出该设备上的登录？')) return;
+    if (!(await confirmDialog('退出该设备上的登录？'))) return;
     try {
         const res = await apiRequest(`/api/auth/sessions/${sessionId}`, { method: 'DELETE' });
         if (res && res.current) {

@@ -557,8 +557,8 @@ export function initPrompts() {
         actions.switchView('prompt-editor');
     }
 
-    function deletePrompt(id, title) {
-        if (!confirm('确定要删除提示词「' + title + '」吗？')) return;
+    async function deletePrompt(id, title) {
+        if (!(await confirmDialog('确定要删除提示词「' + title + '」吗？'))) return;
         
         addDeletedId(id);
         state.promptsDatabase = (state.promptsDatabase || []).filter(p => String(p.id) !== String(id));

@@ -1,5 +1,5 @@
 /** Local TXT reader (IndexedDB bookshelf, chapters, themes). */
-import { escapeHtml } from './utils.js';
+import { escapeHtml, showToast, confirmDialog } from './utils.js';
 import { actions } from './actions.js';
 
 export function initReader() {
@@ -182,7 +182,7 @@ async function importBook(file) {
         const text = decodeBuffer(buf);
         progressText.textContent = '正在解析章节...';
         const chapters = parseChapters(text);
-        if (!chapters.length) { alert('未检测到章节！'); progressEl.style.display = 'none'; return; }
+        if (!chapters.length) { showToast('未检测到章节！', 'warn'); progressEl.style.display = 'none'; return; }
 
         let bookTitle = file.name.replace(/\.\w+$/, '');
         let bookAuthor = '未知作者';
@@ -231,11 +231,11 @@ async function importBook(file) {
 
         progressEl.style.display = 'none';
         renderBookshelf();
-        alert('✅ 导入完成！\n书名：' + bookTitle + '\n章节数：' + chapters.length);
+        showToast('✅ 导入完成！书名：' + bookTitle + '，共 ' + chapters.length + ' 章', 'success');
     } catch (err) {
         console.error('Import failed:', err);
         progressEl.style.display = 'none';
-        alert('导入失败：' + err.message);
+        showToast('导入失败：' + err.message, 'error');
     }
 }
 
@@ -289,7 +289,7 @@ window.openReaderBook = async function(bookId) {
     document.getElementById('reader-book-title').textContent = book.title;
     const allChapters = await rdbGetAll('chapters');
     chapterMetas = allChapters.filter(c => c.bookId === bookId).sort((a, b) => a.index - b.index);
-    if (!chapterMetas.length) { alert('数据异常！'); return; }
+    if (!chapterMetas.length) { showToast('数据异常！', 'error'); return; }
     const prog = loadReaderProgress();
     const saved = prog[bookId];
     currentChapterIdx = (saved && saved.chapterIdx < chapterMetas.length) ? saved.chapterIdx : 0;
@@ -449,7 +449,7 @@ document.getElementById('sidebar-chapter-list')?.addEventListener('click', (e) =
     }
 });
 window.deleteReaderBook = async function(bookId) {
-    if (!confirm('确定删除这本书吗？')) return;
+    if (!(await confirmDialog('确定删除这本书吗？'))) return;
     const chapters = await rdbGetAll('chapters');
     for (const ch of chapters) { if (ch.bookId === bookId) await rdbDelete('chapters', ch.id); }
     await rdbDelete('books', bookId);
@@ -514,7 +514,7 @@ document.addEventListener('keydown', function(e) {
 document.getElementById('book-file-input').addEventListener('change', function() {
     const file = this.files[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.txt')) { alert('请选择 TXT 文件！'); return; }
+    if (!file.name.toLowerCase().endsWith('.txt')) { showToast('请选择 TXT 文件！', 'warn'); return; }
     importBook(file);
     this.value = '';
 });

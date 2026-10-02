@@ -2,7 +2,7 @@
  * PWA Service Worker registration, remote version probe, soft update banner,
  * and forceRefreshToLatest (clear SW/Cache; keep login in localStorage).
  */
-import { showToast } from './utils.js';
+import { showToast, confirmDialog } from './utils.js';
 import { APP_VERSION, APP_BUILD_LABEL } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
 
@@ -16,9 +16,7 @@ async function forceRefreshToLatest(opts = {}) {
     if (forceRefreshing) return;
     const skipConfirm = !!opts.skipConfirm;
     if (!skipConfirm) {
-        const ok = window.confirm(
-            '将清除应用缓存并强制加载最新版（登录状态会保留）。是否继续？'
-        );
+        const ok = await confirmDialog('将清除应用缓存并强制加载最新版（登录状态会保留）。是否继续？');
         if (!ok) return;
     }
 

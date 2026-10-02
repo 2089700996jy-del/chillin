@@ -5,6 +5,7 @@ import {
     showToast,
     skeletonListHtml,
     isSyncingNow,
+    confirmDialog,
 } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
@@ -102,10 +103,10 @@ const renderBookmarks = () => {
 
         // 删除按钮
         const deleteBtn = card.querySelector('.bookmark-card-delete');
-        deleteBtn.addEventListener('click', (e) => {
+        deleteBtn.addEventListener('click', async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if(confirm(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
+            if(await confirmDialog(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
                 const deletedId = bm.id;
                 addDeletedId(deletedId);
                 state.bookmarksDatabase = state.bookmarksDatabase.filter(b => b.id !== bm.id);

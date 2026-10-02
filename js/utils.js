@@ -156,6 +156,51 @@ export function skeletonListHtml(count = 3) {
 }
 
 /** 是否正处于同步中（同步指示灯点亮时展示骨架屏） */
+
+/**
+ * 应用内确认弹窗（Promise<boolean>），替代原生 confirm：
+ * 原生弹窗会打断键盘/读屏流，也无法主题化。
+ */
+export function confirmDialog(message, opts = {}) {
+    return new Promise((resolve) => {
+        const modal = document.getElementById('confirm-dialog-modal');
+        const text = document.getElementById('confirm-dialog-message');
+        const okBtn = document.getElementById('confirm-dialog-ok');
+        const cancelBtn = document.getElementById('confirm-dialog-cancel');
+        if (!modal || !text || !okBtn || !cancelBtn) {
+            // 兜底：DOM 缺失时退回原生（保证功能不中断）
+            resolve(window.confirm(message));
+            return;
+        }
+        text.textContent = message;
+        okBtn.textContent = opts.confirmText || '确定';
+        cancelBtn.textContent = opts.cancelText || '取消';
+        okBtn.classList.toggle('text-danger', opts.danger !== false);
+
+        const finish = (value) => {
+            okBtn.removeEventListener('click', onOk);
+            cancelBtn.removeEventListener('click', onCancel);
+            modal.removeEventListener('click', onBackdrop);
+            document.removeEventListener('keydown', onKeydown, true);
+            modal.classList.remove('show');
+            resolve(value);
+        };
+        const onOk = () => finish(true);
+        const onCancel = () => finish(false);
+        const onBackdrop = (e) => { if (e.target === modal) finish(false); };
+        const onKeydown = (e) => {
+            if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+        };
+
+        okBtn.addEventListener('click', onOk);
+        cancelBtn.addEventListener('click', onCancel);
+        modal.addEventListener('click', onBackdrop);
+        document.addEventListener('keydown', onKeydown, true);
+        modal.classList.add('show');
+        setTimeout(() => okBtn.focus(), 30);
+    });
+}
+
 export function isSyncingNow() {
     return typeof document !== 'undefined' && document.body.classList.contains('is-syncing');
 }

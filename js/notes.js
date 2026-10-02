@@ -6,6 +6,7 @@ import {
     getChineseDateTime,
     skeletonListHtml,
     isSyncingNow,
+    confirmDialog,
 } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -52,8 +53,8 @@ const renderAnnotationsList = () => {
             </div>
         `;
         
-        item.querySelector('.btn-delete-annotation').addEventListener('click', () => {
-            if (confirm("确定要删除这条批注吗？")) {
+        item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
+            if (await confirmDialog("确定要删除这条批注吗？")) {
                 currentNoteAnnotations = currentNoteAnnotations.filter(a => a.id !== ann.id);
                 const note = state.notesDatabase.find(n => n.id === ui.currentNoteId);
                 if (note) {
@@ -219,8 +220,8 @@ editNoteContent.addEventListener('input', persistNoteDraftIfNeeded);
 document.getElementById('btn-restore-note-draft')?.addEventListener('click', restoreNoteDraft);
 document.getElementById('btn-discard-note-draft')?.addEventListener('click', discardNoteDraft);
 
-btnDeleteNote.addEventListener('click', () => {
-    if(confirm("确定删除这条笔记吗？")) { 
+btnDeleteNote.addEventListener('click', async () => {
+    if(await confirmDialog("确定删除这条笔记吗？")) { 
         const deletedId = ui.currentNoteId; 
         addDeletedId(deletedId);
         state.notesDatabase = state.notesDatabase.filter(n => n.id !== ui.currentNoteId); 

@@ -2,7 +2,7 @@
  * AI echo cards + chat modal (RAG-backed stream).
  * Depends on api.js for requests; wires renderEchoCards onto actions.
  */
-import { escapeHtml, markdownToHtml } from './utils.js';
+import { escapeHtml, markdownToHtml, showToast, confirmDialog } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
 import { actions } from './actions.js';
@@ -41,8 +41,8 @@ function renderEchoCards() {
         `).join('');
 }
 
-window.deleteEchoCard = function(id) {
-    if (!confirm('确定要删除这张 AI 回响卡片吗？')) return;
+window.deleteEchoCard = async function(id) {
+    if (!(await confirmDialog('确定要删除这张 AI 回响卡片吗？'))) return;
     state.echoCardsDatabase = state.echoCardsDatabase.filter(c => String(c.id) !== String(id));
     localStorage.setItem(getLocalKey('gardenEchoCards'), JSON.stringify(state.echoCardsDatabase));
     renderEchoCards();
@@ -127,9 +127,9 @@ if (btnTriggerEchoCard) {
         } catch (err) {
             const msg = (err && err.message) ? err.message : '生成失败';
             if (/暂无足够|随手记/.test(msg)) {
-                alert(msg);
+                showToast(msg, 'warn');
             } else {
-                alert('AI 回响生成失败：' + msg + '\n请确认已登录且 LLM 密钥可用后重试。');
+                showToast('AI 回响生成失败：' + msg, 'error');
             }
         } finally {
             btnTriggerEchoCard.disabled = false;
