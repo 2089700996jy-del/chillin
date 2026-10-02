@@ -24,6 +24,23 @@
   --widget-bg: rgba(120, 120, 128, 0.08);
   --callout-bg: rgba(0, 102, 204, 0.06);
   --danger-color: var(--ios-red);
+
+  /* ---- 尺寸 / 节奏令牌 ----
+     新代码一律使用变量；旧的散落字面量按模块逐步迁移（见 .agents/rules/ui-style.md）。 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --radius-sm: 10px;
+  --radius-md: 14px;
+  --radius-lg: 18px;
+  --radius-pill: 999px;
+  --dur-fast: 0.18s;
+  --dur-base: 0.28s;
+  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --focus-ring-color: var(--ios-blue);
 }
 
 .ui-icon-inline {
@@ -5923,8 +5940,8 @@ body.dark-reader-body .btn-prompt-send {
 /* ==================== 骨架屏 / 分页 / 无障碍 (v2.5.38) ==================== */
 .skeleton-card {
   padding: 18px;
-  margin-bottom: 12px;
-  border-radius: 18px;
+  margin-bottom: var(--space-3);
+  border-radius: var(--radius-lg);
   background: var(--widget-bg, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
@@ -5959,9 +5976,9 @@ body.dark-reader-body .skeleton-line {
 .list-load-more {
   display: block;
   width: 100%;
-  margin: 16px 0 8px;
-  padding: 12px;
-  border-radius: 14px;
+  margin: var(--space-4) 0 var(--space-2);
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
   border: 1px solid rgba(0, 102, 204, 0.18);
   background: var(--widget-bg, #ffffff);
   color: var(--ios-blue, #0066CC);
@@ -5986,10 +6003,10 @@ body.dark-reader-body .list-load-more {
 .skip-link {
   position: fixed;
   top: -60px;
-  left: 12px;
+  left: var(--space-3);
   z-index: 10000;
   padding: 10px 14px;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   background: var(--ios-blue, #0066CC);
   color: #fff;
   font-size: 14px;
@@ -6001,7 +6018,7 @@ body.dark-reader-body .list-load-more {
 
 /* 键盘用户必须有可见焦点：多数控制项显式设了 outline:none，这里统一兜底 */
 :focus-visible {
-  outline: 2px solid var(--ios-blue, #0066CC) !important;
+  outline: 2px solid var(--focus-ring-color, #0066CC) !important;
   outline-offset: 2px !important;
 }
 
@@ -6051,9 +6068,9 @@ body.dark-reader-body .confirm-dialog-message { color: #f2f2f7; }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  gap: var(--space-3);
+  padding: var(--space-3) 14px;
+  border-radius: var(--radius-md);
   background: var(--widget-bg, #ffffff);
   border: 1px solid rgba(0, 0, 0, 0.06);
 }
