@@ -359,7 +359,6 @@ window.openReaderBook = async function(bookId) {
     // 尝试拉取云端进度并自动对齐
     if (state.authToken || state.cookieSession) {
         apiRequest('/api/reader/progress')
-            .then(res => res.json())
             .then(list => {
                 if (!Array.isArray(list) || !currentBookId || currentBookId !== bookId) return;
                 const cloud = list.find(p => p.book_key === bookKey);
@@ -520,9 +519,23 @@ document.getElementById('btn-theme-toggle')?.addEventListener('click', () => win
 document.getElementById('btn-prev-chapter')?.addEventListener('click', () => window.prevChapter());
 document.getElementById('btn-next-chapter')?.addEventListener('click', () => window.nextChapter());
 
+const closeReaderTypographyModal = () => {
+    document.getElementById('reader-typography-modal')?.classList.remove('show');
+};
+
 document.getElementById('btn-reader-typography-toggle')?.addEventListener('click', () => {
     applyReaderSettings();
     document.getElementById('reader-typography-modal')?.classList.add('show');
+});
+
+document.querySelectorAll('[data-close-modal="reader-typography-modal"]').forEach(btn => {
+    btn.addEventListener('click', closeReaderTypographyModal);
+});
+
+document.getElementById('reader-typography-modal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'reader-typography-modal') {
+        closeReaderTypographyModal();
+    }
 });
 
 // 字号调节：步进器与滑块
@@ -689,6 +702,9 @@ window.toggleReaderTheme = function() {
 
 // ── Keyboard ──
 document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+        closeReaderTypographyModal();
+    }
     if (!currentBookId) return;
     if (e.key === 'ArrowLeft' || (e.key === 'ArrowUp' && e.ctrlKey)) { e.preventDefault(); prevChapter(); }
     else if (e.key === 'ArrowRight' || (e.key === 'ArrowDown' && e.ctrlKey)) { e.preventDefault(); nextChapter(); }

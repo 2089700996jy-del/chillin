@@ -267,6 +267,7 @@ document.querySelectorAll('.feed-tools .btn-chip[data-tag]').forEach(chip => {
 let speechRecognition = null;
 let isRecordingVoice = false;
 let baseTextBeforeVoice = '';
+let stopVoiceRecordingFn = null;
 
 function setupVoiceCapture() {
     const voiceBtn = document.getElementById('btn-feed-voice-record');
@@ -290,6 +291,7 @@ function setupVoiceCapture() {
         voiceBtn.classList.remove('is-recording');
         if (voiceLabel) voiceLabel.textContent = '语音';
     }
+    stopVoiceRecordingFn = stopVoiceRecording;
 
     voiceBtn.addEventListener('click', () => {
         if (isRecordingVoice) {
@@ -306,7 +308,6 @@ function setupVoiceCapture() {
             speechRecognition.maxAlternatives = 1;
 
             baseTextBeforeVoice = feedInputText ? feedInputText.value : '';
-            let finalAccumulated = '';
 
             speechRecognition.onstart = () => {
                 isRecordingVoice = true;
@@ -316,19 +317,21 @@ function setupVoiceCapture() {
             };
 
             speechRecognition.onresult = (event) => {
-                let interim = '';
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    const text = event.results[i][0].transcript;
+                let finalStr = '';
+                let interimStr = '';
+                for (let i = 0; i < event.results.length; ++i) {
+                    const text = event.results[i][0]?.transcript || '';
                     if (event.results[i].isFinal) {
-                        finalAccumulated += text;
+                        finalStr += text;
                     } else {
-                        interim += text;
+                        interimStr += text;
                     }
                 }
                 if (feedInputText) {
                     const sep = baseTextBeforeVoice && !baseTextBeforeVoice.endsWith(' ') && !baseTextBeforeVoice.endsWith('\n') ? ' ' : '';
-                    feedInputText.value = baseTextBeforeVoice + sep + finalAccumulated + interim;
+                    feedInputText.value = baseTextBeforeVoice + sep + finalStr + interimStr;
                     feedInputText.scrollTop = feedInputText.scrollHeight;
+                    feedInputText.dispatchEvent(new Event('input', { bubbles: true }));
                 }
             };
 
@@ -361,6 +364,7 @@ function setupVoiceCapture() {
 setupVoiceCapture();
 
 async function sendFeed() {
+    if (stopVoiceRecordingFn) stopVoiceRecordingFn();
     if (!feedInputText) return;
     const content = feedInputText.value.trim();
     const mediaUrl = feedMediaUrlInput ? feedMediaUrlInput.value.trim() : '';

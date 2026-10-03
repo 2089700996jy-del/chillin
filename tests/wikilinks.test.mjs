@@ -104,3 +104,22 @@ test('Wikilinks - markdownToHtml renders wikilinks alongside markdown formatting
     assert.ok(html.includes('data-wikilink="系统架构"'));
     assert.ok(html.includes('<code>code</code>'));
 });
+
+test('Wikilinks - parseWikilinksToHtml prevents double-escaping in preEscaped mode', () => {
+    const escapedText = '这里引用了 [[Tom &amp; Jerry]] 和 [[A &lt; B]]';
+    const html = parseWikilinksToHtml(escapedText, true);
+    assert.ok(!html.includes('&amp;amp;'));
+    assert.ok(html.includes('data-wikilink="Tom &amp; Jerry"'));
+    assert.ok(html.includes('<span class="wikilink-label">Tom &amp; Jerry</span>'));
+    assert.ok(html.includes('data-wikilink="A &lt; B"'));
+});
+
+test('Wikilinks - extractBacklinkSnippet safely handles dollar signs and strips HTML tags', () => {
+    const richContent = '<p>关于预算：这里是 <span class="highlight">[[ $100 Plan ]]</span> 的详细方案。</p>';
+    const snippet = extractBacklinkSnippet(richContent, '$100 Plan', 20);
+    assert.ok(!snippet.includes('<p>'));
+    assert.ok(!snippet.includes('<span'));
+    assert.ok(snippet.includes('<mark>$100 Plan</mark>'));
+    assert.ok(snippet.includes('关于预算'));
+});
+

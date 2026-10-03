@@ -12,6 +12,17 @@ import { saveNotesDatabase, apiSyncNote, stampLocalUpdate } from './api.js';
 /** Regular expression for matching [[target]] or [[target|alias]] */
 export const WIKILINK_REGEX = /\[\[([^[\]|\n\r]+)(?:\|([^[\]|\n\r]+))?\]\]/g;
 
+function unescapeHtmlEntities(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&amp;/g, '&')
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"')
+        .replace(/&#039;/g, "'")
+        .replace(/&#39;/g, "'");
+}
+
 /**
  * Parses wikilinks in safe text into clickable HTML pills.
  * Can be used after or during HTML formatting.
@@ -24,13 +35,11 @@ export function parseWikilinksToHtml(text, preEscaped = false) {
     if (!text) return '';
     const safeBase = preEscaped ? String(text) : escapeHtml(text);
     return safeBase.replace(WIKILINK_REGEX, (match, target, alias) => {
-        let cleanTarget = (target || '').trim();
-        let cleanLabel = (alias || target || '').trim();
-        if (!cleanTarget) return match;
-        if (preEscaped) {
-            cleanTarget = escapeHtml(cleanTarget);
-            cleanLabel = escapeHtml(cleanLabel);
-        }
+        const rawTarget = unescapeHtmlEntities((target || '').trim());
+        const rawLabel = unescapeHtmlEntities((alias || target || '').trim());
+        if (!rawTarget) return match;
+        const cleanTarget = escapeHtml(rawTarget);
+        const cleanLabel = escapeHtml(rawLabel);
         return `<span class="wikilink-pill" data-wikilink="${cleanTarget}" role="button" tabindex="0"><span class="wikilink-icon">🔗</span><span class="wikilink-label">${cleanLabel}</span></span>`;
     });
 }
@@ -63,31 +72,33 @@ export function extractWikilinks(text) {
  */
 export function extractBacklinkSnippet(content, targetTitle, radius = 28) {
     if (!content || !targetTitle) return '';
+    const plainText = String(content).replace(/<[^>]+>/g, ' ');
     const normalizedTarget = targetTitle.trim().toLowerCase();
     const regex = new RegExp(WIKILINK_REGEX.source, 'gi');
     let match;
     let snippetFound = '';
 
-    while ((match = regex.exec(content)) !== null) {
+    while ((match = regex.exec(plainText)) !== null) {
         const t = (match[1] || '').trim().toLowerCase();
         if (t === normalizedTarget) {
             const start = Math.max(0, match.index - radius);
-            const end = Math.min(content.length, match.index + match[0].length + radius);
+            const end = Math.min(plainText.length, match.index + match[0].length + radius);
             const prefix = start > 0 ? '…' : '';
-            const suffix = end < content.length ? '…' : '';
-            const rawSnippet = prefix + content.slice(start, end).replace(/[\r\n]+/g, ' ') + suffix;
+            const suffix = end < plainText.length ? '…' : '';
+            const rawSnippet = prefix + plainText.slice(start, end).replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ') + suffix;
             
-            // Safe escape and highlight target
+            // Safe escape and highlight target without $ special replacement issue
             const displayLabel = (match[2] || match[1] || '').trim();
             const escaped = escapeHtml(rawSnippet);
             const escapedTarget = escapeHtml(match[0]);
-            snippetFound = escaped.replace(escapedTarget, `<mark>${escapeHtml(displayLabel || targetTitle)}</mark>`);
+            const highlighted = `<mark>${escapeHtml(displayLabel || targetTitle)}</mark>`;
+            snippetFound = escaped.replace(escapedTarget, () => highlighted);
             break;
         }
     }
 
     if (!snippetFound) {
-        const clean = content.replace(/[\r\n]+/g, ' ').trim();
+        const clean = plainText.replace(/[\r\n\t]+/g, ' ').replace(/\s{2,}/g, ' ').trim();
         snippetFound = escapeHtml(clean.slice(0, radius * 2) + (clean.length > radius * 2 ? '…' : ''));
     }
     return snippetFound;
@@ -270,18 +281,26 @@ export function renderBacklinksSection(containerEl, targetTitle, currentId, curr
         </div>
     `).join(''));
 
-    // Bind backlink jump click
+    // Bind backlink jump click and keyboard activation
+    const handleJump = (card) => {
+        const bType = card.dataset.backlinkType;
+        const bId = card.dataset.backlinkId;
+        if (bType === 'note') {
+            actions.openNoteEditor?.(parseInt(bId, 10) || bId);
+        } else if (bType === 'weekly') {
+            const item = (state.database || []).find(d => String(d.id) === String(bId));
+            if (item) actions.openArticle?.(item);
+        } else if (bType === 'feed') {
+            actions.switchView?.('feeds');
+        }
+    };
+
     listEl.querySelectorAll('.backlink-card').forEach(card => {
-        card.addEventListener('click', () => {
-            const bType = card.dataset.backlinkType;
-            const bId = card.dataset.backlinkId;
-            if (bType === 'note') {
-                actions.openNoteEditor?.(parseInt(bId) || bId);
-            } else if (bType === 'weekly') {
-                const item = (state.database || []).find(d => String(d.id) === String(bId));
-                if (item) actions.openArticle?.(item);
-            } else if (bType === 'feed') {
-                actions.switchView?.('feeds');
+        card.addEventListener('click', () => handleJump(card));
+        card.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                handleJump(card);
             }
         });
     });
@@ -375,13 +394,15 @@ export function setupWikilinkAutocomplete(textarea) {
         `).join(''));
 
         popup.querySelectorAll('.wikilink-suggest-item').forEach(item => {
-            item.addEventListener('mousedown', (e) => {
+            const onSelect = (e) => {
                 e.preventDefault();
                 const idx = parseInt(item.dataset.idx, 10);
                 if (currentCandidates[idx]) {
                     insertCandidate(currentCandidates[idx].title);
                 }
-            });
+            };
+            item.addEventListener('mousedown', onSelect);
+            item.addEventListener('pointerdown', onSelect);
         });
     };
 
@@ -464,6 +485,7 @@ export function setupWikilinkAutocomplete(textarea) {
 
     textarea.addEventListener('keydown', (e) => {
         if (popup.style.display === 'none') return;
+        if (e.isComposing || e.keyCode === 229) return;
 
         if (e.key === 'ArrowDown') {
             e.preventDefault();
@@ -503,6 +525,20 @@ export function initWikilinks() {
         const target = pill.getAttribute('data-wikilink');
         if (target) {
             navigateToWikilink(target);
+        }
+    });
+
+    // Keyboard activation (Enter key) on focused [data-wikilink]
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const pill = e.target.closest('[data-wikilink]');
+            if (pill) {
+                e.preventDefault();
+                const target = pill.getAttribute('data-wikilink');
+                if (target) {
+                    navigateToWikilink(target);
+                }
+            }
         }
     });
 
