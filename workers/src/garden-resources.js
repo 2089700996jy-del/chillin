@@ -267,4 +267,39 @@ export async function handleDeleteFeed(id, db, userId) {
     return jsonResponse({ success: true }, 200);
 }
 
+// ── Reader Reading Progress (Sync) ──
+
+export async function handleGetReaderProgress(db, userId) {
+    const res = await db.prepare(
+        'SELECT book_key, book_title, chapter_index, chapter_title, scroll_percentage, updated_at FROM reader_progress WHERE user_id = ?1 ORDER BY updated_at DESC'
+    ).bind(userId).all();
+    return jsonResponse(res.results || [], 200);
+}
+
+export async function handlePostReaderProgress(request, db, userId) {
+    const body = await request.json();
+    const bookKey = (body.book_key || body.bookKey || '').trim();
+    const bookTitle = (body.book_title || body.bookTitle || '').trim();
+    if (!bookKey || !bookTitle) {
+        return jsonResponse({ error: 'Missing book_key or book_title' }, 400);
+    }
+    const chapterIndex = Number.isInteger(body.chapter_index) ? body.chapter_index : Number(body.chapterIndex || 0);
+    const chapterTitle = String(body.chapter_title || body.chapterTitle || '');
+    const scrollPercentage = Math.min(100, Math.max(0, Math.round(Number(body.scroll_percentage ?? body.scrollPct ?? 0))));
+
+    await db.prepare(
+        `INSERT INTO reader_progress (user_id, book_key, book_title, chapter_index, chapter_title, scroll_percentage, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))
+         ON CONFLICT(user_id, book_key) DO UPDATE SET
+            book_title = excluded.book_title,
+            chapter_index = excluded.chapter_index,
+            chapter_title = excluded.chapter_title,
+            scroll_percentage = excluded.scroll_percentage,
+            updated_at = datetime('now', '+8 hours')`
+    ).bind(userId, bookKey, bookTitle, chapterIndex, chapterTitle, scrollPercentage).run();
+
+    return jsonResponse({ success: true, book_key: bookKey, chapter_index: chapterIndex, scroll_percentage: scrollPercentage }, 200);
+}
+
+
 // ── Aggregated Sync Pull (NEW: 1 RTT replaces 5 sequential pulls) ──

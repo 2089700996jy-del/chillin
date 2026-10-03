@@ -56,7 +56,9 @@ import {
     handleGetFeeds,
     handlePostFeed,
     handlePutFeed,
-    handleDeleteFeed
+    handleDeleteFeed,
+    handleGetReaderProgress,
+    handlePostReaderProgress
 } from './src/garden-resources.js';
 
 import {
@@ -177,6 +179,10 @@ async function router(path, method, request, env, ctx) {
     const feedMatch = path.match(/^\/api\/feeds\/(\d+)$/);
     if (feedMatch && method === 'PUT') return handlePutFeed(parseInt(feedMatch[1]), request, db, userId);
     if (feedMatch && method === 'DELETE') return handleDeleteFeed(parseInt(feedMatch[1]), db, userId);
+
+    // ── 阅读器进度 (Reader Progress) ──
+    if (path === '/api/reader/progress' && method === 'GET') return handleGetReaderProgress(db, userId);
+    if (path === '/api/reader/progress' && method === 'POST') return handlePostReaderProgress(request, db, userId);
 
     // ── 增量同步与批处理 (Sync) ──
     if (path === '/api/sync/pull' && method === 'GET') return handleSyncPull(url, db, userId);

@@ -127,9 +127,13 @@ const openArticle = (item, opts = {}) => {
     articleTitle.innerText = item.title;
     let finalHtml = item.content || '';
     if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
+    if (actions.parseWikilinksToHtml) finalHtml = actions.parseWikilinksToHtml(finalHtml, true);
     setHtml(articleBody, sanitizeHtml(finalHtml));
     setHtml(articleCoverContainer, item.cover ? `<img src="${escapeHtml(resolveAssetUrl(item.cover))}" alt="Cover" loading="lazy" decoding="async">` : '');
     
+    // 渲染反向引用 (Backlinks)
+    actions.renderBacklinksSection?.(document.getElementById('weekly-backlinks-section'), item.title, item.id, 'weekly');
+
     // 加载记忆片段的追加批注
     document.getElementById('new-weekly-annotation-content').value = '';
     currentWeeklyAnnotations = item.annotations || [];

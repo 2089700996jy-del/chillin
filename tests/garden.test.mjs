@@ -8,6 +8,8 @@ import {
     handleDeleteWeekly,
     handlePostFeed,
     handleGetFeeds,
+    handleGetReaderProgress,
+    handlePostReaderProgress
 } from '../workers/src/garden-resources.js';
 import { handleSyncPull, handleSyncBatch, handleHeatmap } from '../workers/src/garden-sync.js';
 
@@ -99,3 +101,54 @@ integration('Garden stats - heatmap aggregates across resources for one user onl
     assert.equal(total, 1);
     assert.equal((await (await handleGetFeeds(new URL('https://x/api/feeds'), db, 1)).json()).length, 1);
 });
+
+integration('Garden reader progress - upsert, user isolation and progress sync', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    // 初始查询应为空
+    const initial = await (await handleGetReaderProgress(db, 1)).json();
+    assert.equal(initial.length, 0);
+
+    // 用户 1 保存进度
+    const saved = await handlePostReaderProgress(
+        jsonRequest('https://x/api/reader/progress', {
+            book_key: 'santi::85',
+            book_title: '三体',
+            chapter_index: 3,
+            chapter_title: '第4章 科学边界',
+            scroll_percentage: 42
+        }),
+        db, 1
+    );
+    assert.equal(saved.status, 200);
+
+    // 用户 1 读取进度
+    const list1 = await (await handleGetReaderProgress(db, 1)).json();
+    assert.equal(list1.length, 1);
+    assert.equal(list1[0].book_key, 'santi::85');
+    assert.equal(list1[0].chapter_index, 3);
+    assert.equal(list1[0].scroll_percentage, 42);
+
+    // 用户 2 相互隔离，看不到用户 1 的进度
+    const list2 = await (await handleGetReaderProgress(db, 2)).json();
+    assert.equal(list2.length, 0);
+
+    // 用户 1 更新同一本书的进度（触发 ON CONFLICT DO UPDATE）
+    await handlePostReaderProgress(
+        jsonRequest('https://x/api/reader/progress', {
+            book_key: 'santi::85',
+            book_title: '三体',
+            chapter_index: 5,
+            chapter_title: '第6章 射手与农场主',
+            scroll_percentage: 88
+        }),
+        db, 1
+    );
+    const updatedList1 = await (await handleGetReaderProgress(db, 1)).json();
+    assert.equal(updatedList1.length, 1);
+    assert.equal(updatedList1[0].chapter_index, 5);
+    assert.equal(updatedList1[0].scroll_percentage, 88);
+});
+

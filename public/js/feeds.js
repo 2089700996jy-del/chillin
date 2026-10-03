@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -148,7 +148,8 @@ function renderFeeds() {
 
         let textHtml = '';
         if (contentText) {
-            const formattedContent = escapeHtml(contentText).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" style="color:#007AFF;">$1</a>');
+            const rawFormatted = escapeHtml(contentText).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" style="color:#007AFF;">$1</a>');
+            const formattedContent = actions.parseWikilinksToHtml ? actions.parseWikilinksToHtml(rawFormatted, true) : rawFormatted;
             textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
         }
 
@@ -261,6 +262,103 @@ document.querySelectorAll('.feed-tools .btn-chip[data-tag]').forEach(chip => {
         }
     });
 });
+
+// ── Voice Capture (随手记语音速记) ──
+let speechRecognition = null;
+let isRecordingVoice = false;
+let baseTextBeforeVoice = '';
+
+function setupVoiceCapture() {
+    const voiceBtn = document.getElementById('btn-feed-voice-record');
+    const voiceLabel = document.getElementById('voice-record-label');
+    if (!voiceBtn) return;
+
+    const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRec) {
+        voiceBtn.addEventListener('click', () => {
+            showToast('当前浏览器暂不支持原生语音识别，建议使用 Chrome / Safari / Edge', 'warn');
+        });
+        return;
+    }
+
+    function stopVoiceRecording() {
+        if (speechRecognition) {
+            try { speechRecognition.stop(); } catch (_) {}
+        }
+        isRecordingVoice = false;
+        voiceBtn.classList.remove('is-recording');
+        if (voiceLabel) voiceLabel.textContent = '语音';
+    }
+
+    voiceBtn.addEventListener('click', () => {
+        if (isRecordingVoice) {
+            stopVoiceRecording();
+            showToast('语音识别已停止', 'info');
+            return;
+        }
+
+        try {
+            speechRecognition = new SpeechRec();
+            speechRecognition.lang = 'zh-CN';
+            speechRecognition.continuous = true;
+            speechRecognition.interimResults = true;
+            speechRecognition.maxAlternatives = 1;
+
+            baseTextBeforeVoice = feedInputText ? feedInputText.value : '';
+            let finalAccumulated = '';
+
+            speechRecognition.onstart = () => {
+                isRecordingVoice = true;
+                voiceBtn.classList.add('is-recording');
+                if (voiceLabel) voiceLabel.textContent = '聆听中...';
+                showToast('🎤 正在聆听，请对着麦克风说话...', 'info');
+            };
+
+            speechRecognition.onresult = (event) => {
+                let interim = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    const text = event.results[i][0].transcript;
+                    if (event.results[i].isFinal) {
+                        finalAccumulated += text;
+                    } else {
+                        interim += text;
+                    }
+                }
+                if (feedInputText) {
+                    const sep = baseTextBeforeVoice && !baseTextBeforeVoice.endsWith(' ') && !baseTextBeforeVoice.endsWith('\n') ? ' ' : '';
+                    feedInputText.value = baseTextBeforeVoice + sep + finalAccumulated + interim;
+                    feedInputText.scrollTop = feedInputText.scrollHeight;
+                }
+            };
+
+            speechRecognition.onerror = (event) => {
+                console.warn('[speech] error:', event.error);
+                if (event.error === 'not-allowed') {
+                    showToast('麦克风权限被拒绝，请在地址栏允许麦克风访问', 'error');
+                } else if (event.error === 'no-speech') {
+                    // silent timeout
+                } else {
+                    showToast('语音识别提示: ' + event.error, 'warn');
+                }
+                stopVoiceRecording();
+            };
+
+            speechRecognition.onend = () => {
+                if (isRecordingVoice) {
+                    stopVoiceRecording();
+                }
+            };
+
+            speechRecognition.start();
+        } catch (err) {
+            console.error('[speech] start failed:', err);
+            stopVoiceRecording();
+            showToast('启动麦克风失败: ' + err.message, 'error');
+        }
+    });
+}
+setupVoiceCapture();
 
 async function sendFeed() {
     if (!feedInputText) return;

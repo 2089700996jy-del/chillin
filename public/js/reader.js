@@ -2,6 +2,8 @@
 import { escapeHtml, showToast, confirmDialog } from './utils.js';
 import { actions } from './actions.js';
 import { setHtml } from './trusted-types.js';
+import { apiRequest } from './api.js';
+import { state } from './state.js';
 
 export function initReader() {
 // ── IndexedDB ──
@@ -64,11 +66,20 @@ function rdbDelete(store, key) {
 
 // ── Reader State ──
 let currentBookId = null;
+let currentBook = null;
 let currentChapterIdx = 0;
 let chapterMetas = [];
 let saveTimer = null;
+let cloudSyncTimer = null;
 
-// ── Progress (localStorage) ──
+function computeBookKey(book) {
+    if (!book) return '';
+    const title = (book.title || '').trim().toLowerCase();
+    const chapters = book.totalChapters || 0;
+    return `${title}::${chapters}`;
+}
+
+// ── Progress (localStorage & Cloud) ──
 function loadReaderProgress() {
     try { return JSON.parse(localStorage.getItem('reader_progress') || '{}'); } catch(e) { return {}; }
 }
@@ -94,15 +105,50 @@ function loadReaderSettings() {
         const raw = localStorage.getItem('reader_settings');
         if (raw) {
             const parsed = JSON.parse(raw) || {};
-            // 未手动选择过主题时跟随系统深浅色
             if (!parsed.theme) parsed.theme = systemPreferredTheme();
+            if (!parsed.fontSize) parsed.fontSize = 18;
+            if (!parsed.lineHeight) parsed.lineHeight = '1.8';
+            if (!parsed.fontFamily) parsed.fontFamily = 'sans';
             return parsed;
         }
     } catch (e) { /* 解析失败按默认处理 */ }
-    return { theme: systemPreferredTheme() };
+    return { theme: systemPreferredTheme(), fontSize: 18, lineHeight: '1.8', fontFamily: 'sans' };
 }
 function saveReaderSettings(s) {
     localStorage.setItem('reader_settings', JSON.stringify(s));
+}
+
+async function syncReaderProgressToCloud(book, chapterIdx, scrollPct, chapterTitle) {
+    if (!book || (!state.authToken && !state.cookieSession)) return;
+    const bookKey = book.bookKey || computeBookKey(book);
+    try {
+        await apiRequest('/api/reader/progress', {
+            method: 'POST',
+            body: JSON.stringify({
+                book_key: bookKey,
+                book_title: book.title,
+                chapter_index: chapterIdx,
+                chapter_title: chapterTitle || '',
+                scroll_percentage: scrollPct
+            })
+        });
+        const statusEl = document.getElementById('reader-sync-status-text');
+        if (statusEl) statusEl.textContent = '已同步至云端 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    } catch (err) {
+        console.warn('[reader] progress sync failed', err);
+    }
+}
+
+function scheduleCloudProgressSync() {
+    if (cloudSyncTimer) clearTimeout(cloudSyncTimer);
+    cloudSyncTimer = setTimeout(() => {
+        if (!currentBookId || !currentBook || !chapterMetas.length) return;
+        const ch = chapterMetas[currentChapterIdx];
+        const area = document.getElementById('reader-content-area');
+        const pct = area.scrollHeight > area.clientHeight
+            ? Math.round((area.scrollTop / (area.scrollHeight - area.clientHeight)) * 100) : 0;
+        syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '');
+    }, 2500);
 }
 
 // ── Parser ──
@@ -204,11 +250,13 @@ async function importBook(file) {
         }
 
         const bookId = 'book_' + Date.now();
+        const totalChapters = chapters.length;
+        const bookKey = computeBookKey({ title: bookTitle, totalChapters });
         progressText.textContent = '正在保存书籍信息...';
         await rdbPut('books', {
-            id: bookId, title: bookTitle, author: bookAuthor,
-            fileName: file.name, totalChapters: chapters.length,
-            groupCount: Math.ceil(chapters.length / 200), createdAt: Date.now()
+            id: bookId, bookKey: bookKey, title: bookTitle, author: bookAuthor,
+            fileName: file.name, totalChapters: totalChapters,
+            groupCount: Math.ceil(totalChapters / 200), createdAt: Date.now()
         });
 
         const BATCH = 80;
@@ -287,6 +335,8 @@ window.openReaderBook = async function(bookId) {
     const book = await rdbGet('books', bookId);
     if (!book) return;
     currentBookId = bookId;
+    currentBook = book;
+    const bookKey = book.bookKey || computeBookKey(book);
     document.getElementById('reader-book-title').textContent = book.title;
     const allChapters = await rdbGetAll('chapters');
     chapterMetas = allChapters.filter(c => c.bookId === bookId).sort((a, b) => a.index - b.index);
@@ -305,6 +355,32 @@ window.openReaderBook = async function(bookId) {
     }
     area.removeEventListener('scroll', onReaderScroll);
     area.addEventListener('scroll', onReaderScroll);
+
+    // 尝试拉取云端进度并自动对齐
+    if (state.authToken || state.cookieSession) {
+        apiRequest('/api/reader/progress')
+            .then(res => res.json())
+            .then(list => {
+                if (!Array.isArray(list) || !currentBookId || currentBookId !== bookId) return;
+                const cloud = list.find(p => p.book_key === bookKey);
+                if (!cloud) return;
+                const local = loadReaderProgress()[bookId] || { chapterIdx: 0, scrollPct: 0 };
+                const isCloudAhead = cloud.chapter_index > local.chapterIdx
+                    || (cloud.chapter_index === local.chapterIdx && cloud.scroll_percentage > (local.scrollPct || 0) + 5);
+                if (isCloudAhead && cloud.chapter_index < chapterMetas.length) {
+                    showToast(`已从云端同步最新进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage}%)`, 'info');
+                    loadChapterContent(cloud.chapter_index).then(() => {
+                        const contentEl = document.getElementById('reader-content-area');
+                        if (contentEl && cloud.scroll_percentage) {
+                            setTimeout(() => {
+                                contentEl.scrollTop = (cloud.scroll_percentage / 100) * contentEl.scrollHeight;
+                            }, 200);
+                        }
+                    });
+                }
+            })
+            .catch(err => console.warn('[reader] fetch cloud progress failed', err));
+    }
 };
 
 window.closeReaderBook = function() {
@@ -315,7 +391,15 @@ window.closeReaderBook = function() {
 /** Leave reader chrome/theme without switching views (swipe-back / route change). */
 function clearReaderSession() {
     if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-    if (currentBookId) onReaderScroll();
+    if (cloudSyncTimer) { clearTimeout(cloudSyncTimer); cloudSyncTimer = null; }
+    if (currentBookId && currentBook && chapterMetas.length) {
+        const ch = chapterMetas[currentChapterIdx];
+        const area = document.getElementById('reader-content-area');
+        const pct = (area && area.scrollHeight > area.clientHeight)
+            ? Math.round((area.scrollTop / (area.scrollHeight - area.clientHeight)) * 100) : 0;
+        saveReaderProgress(currentBookId, { chapterIdx: currentChapterIdx, scrollPct: pct, timestamp: Date.now() });
+        syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '');
+    }
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
     document.documentElement.classList.remove('in-reader-book');
     const layout = document.querySelector('.reader-layout');
@@ -323,6 +407,7 @@ function clearReaderSession() {
     const themeMeta = document.querySelector('meta[name="theme-color"]');
     if (themeMeta) themeMeta.setAttribute('content', '#F2F2F7');
     currentBookId = null;
+    currentBook = null;
     chapterMetas = [];
     currentChapterIdx = 0;
 }
@@ -335,6 +420,7 @@ function onReaderScroll() {
         const pct = area.scrollHeight > area.clientHeight
             ? Math.round((area.scrollTop / (area.scrollHeight - area.clientHeight)) * 100) : 0;
         saveReaderProgress(currentBookId, { chapterIdx: currentChapterIdx, scrollPct: pct, timestamp: Date.now() });
+        scheduleCloudProgressSync();
     }, 1500);
 }
 
@@ -405,6 +491,7 @@ async function loadChapterContent(idx) {
 
         document.getElementById('reader-content-area').scrollTop = 0;
         saveReaderProgress(currentBookId, { chapterIdx: idx, scrollPct: 0, timestamp: Date.now() });
+        scheduleCloudProgressSync();
     } finally {
         setTimeout(() => {
             document.body.classList.remove('is-loading');
@@ -432,6 +519,72 @@ document.getElementById('btn-reader-sidebar-close')?.addEventListener('click', (
 document.getElementById('btn-theme-toggle')?.addEventListener('click', () => window.toggleReaderTheme());
 document.getElementById('btn-prev-chapter')?.addEventListener('click', () => window.prevChapter());
 document.getElementById('btn-next-chapter')?.addEventListener('click', () => window.nextChapter());
+
+document.getElementById('btn-reader-typography-toggle')?.addEventListener('click', () => {
+    applyReaderSettings();
+    document.getElementById('reader-typography-modal')?.classList.add('show');
+});
+
+// 字号调节：步进器与滑块
+document.getElementById('btn-reader-font-decrease')?.addEventListener('click', () => {
+    const s = loadReaderSettings();
+    s.fontSize = Math.max(14, (Number(s.fontSize) || 18) - 1);
+    saveReaderSettings(s);
+    applyReaderSettings();
+});
+
+document.getElementById('btn-reader-font-increase')?.addEventListener('click', () => {
+    const s = loadReaderSettings();
+    s.fontSize = Math.min(28, (Number(s.fontSize) || 18) + 1);
+    saveReaderSettings(s);
+    applyReaderSettings();
+});
+
+document.getElementById('reader-font-size-slider')?.addEventListener('input', (e) => {
+    const s = loadReaderSettings();
+    s.fontSize = Number(e.target.value);
+    saveReaderSettings(s);
+    applyReaderSettings();
+});
+
+// 行间距切换
+document.getElementById('reader-line-height-control')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.segment-btn');
+    if (!btn) return;
+    const lh = btn.getAttribute('data-lh');
+    if (lh) {
+        const s = loadReaderSettings();
+        s.lineHeight = lh;
+        saveReaderSettings(s);
+        applyReaderSettings();
+    }
+});
+
+// 字体风格切换
+document.getElementById('reader-font-family-control')?.addEventListener('click', (e) => {
+    const btn = e.target.closest('.segment-btn');
+    if (!btn) return;
+    const font = btn.getAttribute('data-font');
+    if (font) {
+        const s = loadReaderSettings();
+        s.fontFamily = font;
+        saveReaderSettings(s);
+        applyReaderSettings();
+    }
+});
+
+// 阅读主题色板选择
+document.getElementById('reader-theme-swatches')?.addEventListener('click', (e) => {
+    const item = e.target.closest('.theme-swatch-item');
+    if (!item) return;
+    const theme = item.getAttribute('data-theme-swatch');
+    if (theme) {
+        const s = loadReaderSettings();
+        s.theme = theme;
+        saveReaderSettings(s);
+        applyReaderSettings();
+    }
+});
 
 document.getElementById('sidebar-chapter-list')?.addEventListener('click', (e) => {
     const target = e.target instanceof Element ? e.target : null;
@@ -461,10 +614,40 @@ window.deleteReaderBook = async function(bookId) {
 // ── Settings ──
 function applyReaderSettings() {
     const s = loadReaderSettings();
-    const fs = s.fontSize || 18;
+    const fs = Number(s.fontSize) || 18;
+    const lh = s.lineHeight || '1.8';
+    const font = s.fontFamily || 'sans';
     const theme = s.theme || 'light';
-    document.getElementById('reader-content-area').style.setProperty('--reader-font-size', fs + 'px');
-    document.getElementById('reader-content-area').style.fontSize = fs + 'px';
+
+    const contentArea = document.getElementById('reader-content-area');
+    if (contentArea) {
+        contentArea.style.setProperty('--reader-font-size', fs + 'px');
+        contentArea.style.setProperty('--reader-line-height', lh);
+        if (font === 'serif') {
+            contentArea.style.setProperty('--reader-font-family', '-apple-system-ui-serif, "Songti SC", "SimSun", "Noto Serif CJK SC", Georgia, serif');
+        } else {
+            contentArea.style.setProperty('--reader-font-family', '-apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", Roboto, sans-serif');
+        }
+        contentArea.style.fontSize = fs + 'px';
+    }
+
+    // 更新排版弹层控件状态
+    const sizeVal = document.getElementById('reader-font-size-val');
+    if (sizeVal) sizeVal.textContent = fs + 'px';
+    const slider = document.getElementById('reader-font-size-slider');
+    if (slider) slider.value = fs;
+
+    document.querySelectorAll('#reader-line-height-control .segment-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-lh') === lh);
+    });
+
+    document.querySelectorAll('#reader-font-family-control .segment-btn').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-font') === font);
+    });
+
+    document.querySelectorAll('#reader-theme-swatches .theme-swatch-item').forEach(b => {
+        b.classList.toggle('active', b.getAttribute('data-theme-swatch') === theme);
+    });
 
     // Remove all theme classes from body
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');

@@ -29,7 +29,10 @@ export function initNotes() {
     const btnDeleteNote = document.getElementById('btn-delete-note');
     const noteEditorDate = document.getElementById('note-editor-date');
 
-    editNoteContent.addEventListener('input', () => autoResizeTextarea(editNoteContent));
+    editNoteContent.addEventListener('input', () => {
+        autoResizeTextarea(editNoteContent);
+        actions.renderOutgoingLinksStrip?.(document.getElementById('note-outgoing-links-strip'), editNoteContent.value);
+    });
 
 let currentNoteAnnotations = [];
 
@@ -185,11 +188,17 @@ const openNoteEditor = (noteId = null, opts = {}) => {
             currentNoteAnnotations = note.annotations || [];
             renderAnnotationsList();
             document.getElementById('note-annotations-section').style.display = 'block';
+            actions.renderBacklinksSection?.(document.getElementById('note-backlinks-section'), note.title, note.id, 'note');
+            actions.renderOutgoingLinksStrip?.(document.getElementById('note-outgoing-links-strip'), note.content);
         }
     } else {
         ui.currentNoteId = null; editNoteId.value = ''; editNoteTitle.value = ''; editNoteContent.value = ''; noteEditorDate.innerText = getChineseDate(); btnDeleteNote.style.display = 'none';
         currentNoteAnnotations = [];
         document.getElementById('note-annotations-section').style.display = 'none';
+        const blSec = document.getElementById('note-backlinks-section');
+        if (blSec) blSec.style.display = 'none';
+        const ogStrip = document.getElementById('note-outgoing-links-strip');
+        if (ogStrip) ogStrip.style.display = 'none';
     }
     checkAndShowNoteDraftTip(noteId);
     actions.switchView('note-editor', opts);

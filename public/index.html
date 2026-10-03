@@ -83,6 +83,14 @@
                         <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                     </svg>
                 </button>
+                <button class="nav-reader-btn" title="排版与主题设置 (Aa)" id="btn-reader-typography-toggle" aria-label="排版与阅读设置">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M3 18l4.5-12h1L13 18"></path>
+                        <path d="M4.8 13.5h6.4"></path>
+                        <path d="M17 18v-5.5a2.5 2.5 0 0 1 5 0V18"></path>
+                        <path d="M17 15.5a2.5 2.5 0 0 1 5 0"></path>
+                    </svg>
+                </button>
                 <button class="nav-reader-btn" title="切换日间/夜间/护眼" id="btn-theme-toggle" aria-label="切换主题">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
@@ -187,6 +195,12 @@
                 <div id="article-cover-container" class="article-cover-container"></div>
                 <div id="article-body" class="article-body"></div>
                 
+                <!-- 🔗 反向引用 (Backlinks) -->
+                <div class="note-backlinks-section" id="weekly-backlinks-section" style="display: none; margin-top: 40px;">
+                    <h3 class="annotations-title">🔗 反向引用 (<span id="weekly-backlinks-count">0</span>)</h3>
+                    <div class="backlinks-list"></div>
+                </div>
+
                 <!-- 记忆片段批注与时间线 -->
                 <div class="note-annotations-section" id="weekly-annotations-section" style="margin-top: 50px;">
                     <h3 class="annotations-title">📌 记忆追记与时间线</h3>
@@ -411,6 +425,18 @@
                     </button>
                 </div>
                 <textarea id="edit-note-content" class="note-paper-content" placeholder="开始写下你的灵感 (支持粘贴或拖拽图片)..."></textarea>
+            </div>
+
+            <!-- 正向双链引用胶囊条 (Outgoing Links) -->
+            <div class="note-outgoing-links-strip" id="note-outgoing-links-strip" style="display: none;">
+                <span class="outgoing-links-label">🔗 引用知识:</span>
+                <div class="outgoing-links-container"></div>
+            </div>
+
+            <!-- 🔗 反向引用 (Backlinks) -->
+            <div class="note-backlinks-section" id="note-backlinks-section" style="display: none;">
+                <h3 class="annotations-title">🔗 反向引用 (<span id="note-backlinks-count">0</span>)</h3>
+                <div class="backlinks-list"></div>
             </div>
 
             <!-- 批注与补充说明 -->
@@ -704,6 +730,15 @@
                             <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             图片
                         </button>
+                        <button type="button" class="btn-chip btn-feed-voice" id="btn-feed-voice-record" title="语音速记 (点击开始/停止转写)">
+                            <svg class="ui-icon-inline voice-mic-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"></path>
+                                <path d="M19 10v2a7 7 0 0 1-14 0v-2"></path>
+                                <line x1="12" y1="19" x2="12" y2="23"></line>
+                                <line x1="8" y1="23" x2="16" y2="23"></line>
+                            </svg>
+                            <span id="voice-record-label">语音</span>
+                        </button>
                     </div>
                     <button class="btn-primary btn-feed-send" id="btn-send-feed">
                         <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -828,6 +863,84 @@
         </div>
     </div>
 
+    <!-- 阅读器排版与主题设置弹层 (Reader Typography & Style Modal) -->
+    <div class="modal-overlay" id="reader-typography-modal">
+        <div class="prompt-variable-card reader-typography-card">
+            <div class="sheet-pull-handle"></div>
+            <div class="prompt-variable-header">
+                <div class="prompt-variable-title-wrap">
+                    <span class="prompt-var-icon">Aa</span>
+                    <h3 class="prompt-variable-title">排版与阅读设置</h3>
+                </div>
+                <button type="button" class="btn-icon" data-close-modal="reader-typography-modal" title="关闭">✕</button>
+            </div>
+            <div class="prompt-variable-body reader-typography-body">
+                <!-- 字号调节 -->
+                <div class="reader-typography-group">
+                    <div class="reader-typography-label-row">
+                        <span class="reader-typography-label">字号大小</span>
+                        <span class="reader-typography-val" id="reader-font-size-val">18px</span>
+                    </div>
+                    <div class="reader-stepper-row">
+                        <button type="button" class="btn-typography-step" id="btn-reader-font-decrease" aria-label="减小字号">A-</button>
+                        <input type="range" id="reader-font-size-slider" min="14" max="28" step="1" value="18" class="typography-range-slider">
+                        <button type="button" class="btn-typography-step" id="btn-reader-font-increase" aria-label="增大字号">A+</button>
+                    </div>
+                </div>
+
+                <!-- 行间距 -->
+                <div class="reader-typography-group">
+                    <div class="reader-typography-label-row">
+                        <span class="reader-typography-label">行间距</span>
+                    </div>
+                    <div class="segmented-control typography-segmented" id="reader-line-height-control">
+                        <button type="button" class="segment-btn" data-lh="1.5">紧凑</button>
+                        <button type="button" class="segment-btn active" data-lh="1.8">舒适</button>
+                        <button type="button" class="segment-btn" data-lh="2.1">宽松</button>
+                    </div>
+                </div>
+
+                <!-- 字体风格 -->
+                <div class="reader-typography-group">
+                    <div class="reader-typography-label-row">
+                        <span class="reader-typography-label">字体风格</span>
+                    </div>
+                    <div class="segmented-control typography-segmented" id="reader-font-family-control">
+                        <button type="button" class="segment-btn active" data-font="sans">现代黑体</button>
+                        <button type="button" class="segment-btn" data-font="serif">雅致宋体</button>
+                    </div>
+                </div>
+
+                <!-- 阅读主题色板 -->
+                <div class="reader-typography-group">
+                    <div class="reader-typography-label-row">
+                        <span class="reader-typography-label">阅读主题</span>
+                    </div>
+                    <div class="reader-theme-swatches" id="reader-theme-swatches">
+                        <button type="button" class="theme-swatch-item active" data-theme-swatch="light" title="日间纸感">
+                            <span class="theme-swatch-preview swatch-light">文</span>
+                            <span class="theme-swatch-name">日间</span>
+                        </button>
+                        <button type="button" class="theme-swatch-item" data-theme-swatch="dark" title="深邃夜间">
+                            <span class="theme-swatch-preview swatch-dark">文</span>
+                            <span class="theme-swatch-name">夜间</span>
+                        </button>
+                        <button type="button" class="theme-swatch-item" data-theme-swatch="eyecare" title="温润护眼">
+                            <span class="theme-swatch-preview swatch-eyecare">文</span>
+                            <span class="theme-swatch-name">护眼</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 云端同步状态 -->
+                <div class="reader-sync-info" id="reader-sync-info">
+                    <svg class="ui-icon-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
+                    <span id="reader-sync-status-text">云端进度同步就绪</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 账号与安全：登录设备、通知与全端退出 -->
     <div class="modal-overlay" id="account-security-modal">
         <div class="prompt-variable-card account-security-card">
@@ -913,6 +1026,9 @@
             <span class="tab-label">阅读</span>
         </a>
     </nav>
+ 
+    <!-- 双链键入联想浮层 (Wikilink Autocomplete Dropdown) -->
+    <div id="wikilink-autocomplete-popup" class="wikilink-autocomplete-popup" style="display: none;" role="listbox" aria-label="双链联想建议"></div>
 
     <!-- Cloudflare Worker API 配置 -->
     <script>

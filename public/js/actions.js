@@ -26,4 +26,8 @@ export const actions = {
     renderEchoCards: null,
     jumpToElement: null,
     clearReaderSession: null,
+    navigateToWikilink: null,
+    parseWikilinksToHtml: null,
+    renderBacklinksSection: null,
+    renderOutgoingLinksStrip: null,
 };

@@ -26,6 +26,7 @@ import { initReader } from './js/reader.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
 import { initSearch } from './js/search.js';
+import { initWikilinks } from './js/wikilinks.js';
 import { showToast } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 
@@ -206,6 +207,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('feeds', initFeeds);
     safeInit('echoAi', initEchoAi);
     safeInit('search', initSearch);
+    safeInit('wikilinks', initWikilinks);
     safeInit('router', initRouter);
 
     loadLocalData();

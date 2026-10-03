@@ -86,7 +86,7 @@ export function createTestDb() {
         db.exec(fs.readFileSync(path.join(dir, file), 'utf8'));
     }
     // 迁移里带有演示用的种子数据（id=1 的周记等）；测试需要确定性，先清空业务表
-    for (const table of ['weeklies', 'notes', 'bookmarks', 'quick_feeds', 'prompts', 'echo_cards']) {
+    for (const table of ['weeklies', 'notes', 'bookmarks', 'quick_feeds', 'prompts', 'echo_cards', 'reader_progress']) {
         db.exec(`DELETE FROM ${table}`);
     }
     return new FakeD1(db);

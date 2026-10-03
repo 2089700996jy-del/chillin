@@ -78,6 +78,12 @@ export function markdownToHtml(text) {
         if (inOl) { html += '</ol>'; inOl = false; }
     };
     const inline = (s) => s
+        .replace(/\[\[([^[\]|\n\r]+)(?:\|([^[\]|\n\r]+))?\]\]/g, (m, target, alias) => {
+            const cleanTarget = (target || '').trim();
+            const cleanLabel = (alias || target || '').trim();
+            if (!cleanTarget) return m;
+            return `<span class="wikilink-pill" data-wikilink="${cleanTarget}" role="button" tabindex="0"><span class="wikilink-icon">🔗</span><span class="wikilink-label">${cleanLabel}</span></span>`;
+        })
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');

@@ -34,7 +34,8 @@ const ASSETS = [
     '/js/upload.js',
     '/js/utils.js',
     '/js/version.js',
-    '/js/weeklies.js'
+    '/js/weeklies.js',
+    '/js/wikilinks.js'
 ];
 
 self.addEventListener('install', (e) => {
