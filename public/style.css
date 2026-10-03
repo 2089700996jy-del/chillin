@@ -5259,6 +5259,16 @@ body.eyecare-reader-body .prompt-editor-card {
   gap: 8px;
 }
 
+body.dark-reader-body .prompt-variable-title,
+body.dark-reader-body .reader-typography-label,
+body.dark-reader-body .theme-swatch-name {
+  color: #f2f2f7;
+}
+
+body.dark-reader-body .btn-icon[data-close-modal="reader-typography-modal"] {
+  color: rgba(235, 235, 245, 0.7);
+}
+
 body.dark-reader-body .btn-typography-step {
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.12);
@@ -5277,6 +5287,19 @@ body.dark-reader-body .theme-swatch-item.active {
 body.dark-reader-body .reader-sync-info {
   background: rgba(255, 255, 255, 0.05);
   color: rgba(235, 235, 245, 0.6);
+}
+
+body.eyecare-reader-body .prompt-variable-title,
+body.eyecare-reader-body .reader-typography-label {
+  color: #1b5e20;
+}
+
+body.eyecare-reader-body .theme-swatch-name {
+  color: #2e7d32;
+}
+
+body.eyecare-reader-body .btn-icon[data-close-modal="reader-typography-modal"] {
+  color: #2e7d32;
 }
 
 body.eyecare-reader-body .btn-typography-step {
@@ -5299,13 +5322,27 @@ body.eyecare-reader-body .reader-sync-info {
   color: #2e7d32;
 }
 
+@media screen and (max-width: 640px) {
+  .reader-typography-body {
+    padding: 16px 20px calc(20px + env(safe-area-inset-bottom, 16px)) 20px;
+    gap: 16px;
+  }
+}
+
 /* ── Voice Capture (随手记语音速记) ── */
 .btn-feed-voice {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 28px;
+  padding: 4px 11px;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   cursor: pointer;
+}
+
+.btn-feed-voice:focus-visible {
+  outline: 2px solid var(--accent-color, #007aff);
+  outline-offset: 1px;
 }
 
 .btn-feed-voice.is-recording {
@@ -6353,31 +6390,39 @@ body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
 .wikilink-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   padding: 1px 7px;
   margin: 0 2px;
   border-radius: 6px;
-  background: var(--card-bg, #ffffff);
-  border: 1px solid var(--border-color, #e5e5ea);
-  color: var(--primary-color, #007aff);
-  font-size: 0.9em;
+  background: rgba(0, 102, 204, 0.08);
+  border: 1px solid rgba(0, 102, 204, 0.18);
+  color: var(--accent-color, var(--ios-blue, #0066cc));
+  font-size: 0.88em;
   font-weight: 500;
-  line-height: 1.4;
+  line-height: 1.35;
   text-decoration: none;
   cursor: pointer;
   user-select: none;
-  vertical-align: baseline;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s cubic-bezier(0.16, 1, 0.3, 1);
+  vertical-align: -1px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.12s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .wikilink-pill:hover {
-  background: var(--bg-active, #f2f2f7);
-  border-color: var(--primary-color, #007aff);
+  background: rgba(0, 102, 204, 0.14);
+  border-color: rgba(0, 102, 204, 0.35);
+  box-shadow: 0 2px 6px rgba(0, 102, 204, 0.1);
 }
 
 .wikilink-pill:active {
   transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.wikilink-pill:focus-visible {
+  outline: 2px solid var(--focus-ring-color, #0066cc);
+  outline-offset: 1px;
 }
 
 .wikilink-icon {
@@ -6444,17 +6489,25 @@ body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
   border: 1px solid var(--border-color, #e5e5ea);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .backlink-card:hover {
   background: var(--bg-active, #f2f2f7);
   border-color: rgba(0, 122, 255, 0.3);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .backlink-card:active {
-  transform: scale(0.99);
+  transform: scale(0.985);
+  opacity: 0.9;
+}
+
+.backlink-card:focus-visible {
+  outline: 2px solid var(--focus-ring-color, #007aff);
+  outline-offset: 2px;
 }
 
 .backlink-meta {
@@ -6506,9 +6559,9 @@ body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
 
 .backlink-snippet mark {
   background: rgba(0, 122, 255, 0.15);
-  color: var(--primary-color, #007aff);
-  padding: 1px 3px;
-  border-radius: 3px;
+  color: var(--accent-color, var(--ios-blue, #007aff));
+  padding: 1px 4px;
+  border-radius: 4px;
   font-weight: 500;
 }
 
@@ -6529,12 +6582,12 @@ body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  background: var(--card-bg, #ffffff);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid var(--border-color, #e5e5ea);
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: 14px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.15), 0 2px 6px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.04);
   padding: 6px;
 }
 
@@ -6548,17 +6601,19 @@ body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
   color: var(--text-color, #1c1c1e);
   cursor: pointer;
   transition: background-color 0.1s ease, color 0.1s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .wikilink-suggest-item:hover,
 .wikilink-suggest-item.is-selected {
-  background: var(--primary-color, #007aff);
+  background: var(--accent-color, var(--ios-blue, #007aff));
   color: #ffffff;
 }
 
 .wikilink-suggest-item.is-selected .suggest-item-sub,
 .wikilink-suggest-item:hover .suggest-item-sub {
-  color: rgba(255, 255, 255, 0.8);
+  color: rgba(255, 255, 255, 0.82);
 }
 
 .suggest-item-icon {
@@ -6579,6 +6634,147 @@ body.dark-reader-body .session-empty { color: rgba(235, 235, 245, 0.6); }
   font-size: 11px;
   color: var(--text-color-light, #8e8e93);
   flex-shrink: 0;
+}
+
+/* ── 夜间模式暗黑适配 (Dark Mode Parity for Wikilinks) ── */
+body.dark-reader-body .wikilink-pill {
+  background: rgba(88, 166, 255, 0.12);
+  border-color: rgba(88, 166, 255, 0.25);
+  color: #58a6ff;
+  box-shadow: none;
+}
+
+body.dark-reader-body .wikilink-pill:hover {
+  background: rgba(88, 166, 255, 0.22);
+  border-color: rgba(88, 166, 255, 0.45);
+}
+
+body.dark-reader-body .note-outgoing-links-strip {
+  background: #161920;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+body.dark-reader-body .outgoing-links-label {
+  color: rgba(235, 235, 245, 0.6);
+}
+
+body.dark-reader-body .note-backlinks-section {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-reader-body .backlink-card {
+  background: #161920;
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+body.dark-reader-body .backlink-card:hover {
+  background: #1e222b;
+  border-color: rgba(88, 166, 255, 0.35);
+}
+
+body.dark-reader-body .backlink-type-badge {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f2f2f7;
+}
+
+body.dark-reader-body .backlink-item-title {
+  color: #f2f2f7;
+}
+
+body.dark-reader-body .backlink-date {
+  color: rgba(235, 235, 245, 0.5);
+}
+
+body.dark-reader-body .backlink-snippet {
+  color: rgba(235, 235, 245, 0.65);
+}
+
+body.dark-reader-body .backlink-snippet mark {
+  background: rgba(88, 166, 255, 0.22);
+  color: #58a6ff;
+}
+
+body.dark-reader-body .backlinks-empty {
+  color: rgba(235, 235, 245, 0.5);
+}
+
+body.dark-reader-body .wikilink-autocomplete-popup {
+  background: rgba(24, 26, 32, 0.95);
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.5);
+}
+
+body.dark-reader-body .wikilink-suggest-item {
+  color: #f2f2f7;
+}
+
+body.dark-reader-body .wikilink-suggest-item:hover,
+body.dark-reader-body .wikilink-suggest-item.is-selected {
+  background: #0a84ff;
+  color: #ffffff;
+}
+
+body.dark-reader-body .suggest-item-sub {
+  color: rgba(235, 235, 245, 0.5);
+}
+
+/* ── 护眼羊皮纸模式适配 (Eyecare Theme Parity for Wikilinks) ── */
+body.eyecare-reader-body .wikilink-pill {
+  background: rgba(46, 125, 50, 0.1);
+  border-color: rgba(46, 125, 50, 0.25);
+  color: #2e7d32;
+}
+
+body.eyecare-reader-body .wikilink-pill:hover {
+  background: rgba(46, 125, 50, 0.16);
+  border-color: rgba(46, 125, 50, 0.4);
+}
+
+body.eyecare-reader-body .note-outgoing-links-strip {
+  background: #f1f8e9;
+  border-color: rgba(76, 175, 80, 0.2);
+}
+
+body.eyecare-reader-body .outgoing-links-label {
+  color: #2e7d32;
+}
+
+body.eyecare-reader-body .note-backlinks-section {
+  border-top-color: rgba(76, 175, 80, 0.2);
+}
+
+body.eyecare-reader-body .backlink-card {
+  background: #f1f8e9;
+  border-color: rgba(76, 175, 80, 0.2);
+}
+
+body.eyecare-reader-body .backlink-card:hover {
+  background: #e8f5e9;
+  border-color: rgba(46, 125, 50, 0.35);
+}
+
+body.eyecare-reader-body .backlink-type-badge {
+  background: rgba(46, 125, 50, 0.12);
+  color: #2e7d32;
+}
+
+body.eyecare-reader-body .backlink-item-title {
+  color: #1b5e20;
+}
+
+body.eyecare-reader-body .backlink-date {
+  color: #388e3c;
+}
+
+body.eyecare-reader-body .backlink-snippet {
+  color: #2e7d32;
+}
+
+body.eyecare-reader-body .backlink-snippet mark {
+  background: rgba(46, 125, 50, 0.16);
+  color: #1b5e20;
 }
 
 /* ♿ 尊重系统「减弱动态效果」偏好：关闭装饰性动画与过渡 */
