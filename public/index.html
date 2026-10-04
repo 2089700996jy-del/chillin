@@ -25,42 +25,90 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.59">
+    <link rel="stylesheet" href="style.css?v=2.5.60">
 </head>
 <body>
 
     <!-- 登录/注册遮罩层 (Auth Overlay) -->
     <div id="auth-overlay" class="auth-overlay">
+        <!-- 宁静自然背景氛围光斑 -->
+        <div class="auth-ambient-glow" aria-hidden="true"></div>
+
         <div class="auth-card">
+            <!-- 数字花园人文微标 (Garden Botanical Emblem) -->
+            <div class="auth-brand-badge" aria-hidden="true">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 22V12"></path>
+                    <path d="M12 12C12 7 7 4 2 4c0 7 5 10 10 10z"></path>
+                    <path d="M12 15c3-3 7-4 10-4 0 5-4 8-10 8"></path>
+                </svg>
+            </div>
+
             <div class="auth-header">
                 <h1 class="auth-title">Chillin</h1>
-                <p class="auth-desc">个人数字花园</p>
+                <p class="auth-desc" id="auth-subdesc">静下心，记录生活与灵感</p>
+            </div>
+
+            <!-- Apple HIG 风格 Segmented 切换标签 (登录 / 注册) -->
+            <div class="auth-segmented-control" role="tablist" aria-label="登录模式切换">
+                <button type="button" class="auth-segment-btn active" id="auth-tab-login" role="tab" aria-selected="true">登录</button>
+                <button type="button" class="auth-segment-btn" id="auth-tab-register" role="tab" aria-selected="false">注册</button>
             </div>
             
             <div id="auth-form" class="auth-form">
-                <div class="auth-field">
-                    <input type="text" id="auth-username" class="auth-input" placeholder="账号" autocomplete="username" enterkeyhint="next" autocorrect="off" autocapitalize="off" spellcheck="false">
-                </div>
-                <div class="auth-field auth-field-password">
-                    <input type="password" id="auth-password" class="auth-input" placeholder="密码" autocomplete="current-password" enterkeyhint="done">
-                    <button type="button" id="btn-toggle-password" class="auth-password-toggle" title="显示或隐藏密码" aria-label="显示密码">
-                        <svg class="eye-icon eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
-                            <line x1="1" y1="1" x2="23" y2="23"></line>
-                        </svg>
-                        <svg class="eye-icon eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
-                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
-                            <circle cx="12" cy="12" r="3"></circle>
-                        </svg>
-                    </button>
+                <!-- Apple Inset Grouped 输入槽：卡片包裹 + 内部分割线 -->
+                <div class="auth-inset-group">
+                    <div class="auth-field auth-field-username">
+                        <span class="auth-field-icon" aria-hidden="true">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+                                <circle cx="12" cy="7" r="4"></circle>
+                            </svg>
+                        </span>
+                        <input type="text" id="auth-username" class="auth-input" placeholder="账号" autocomplete="username" enterkeyhint="next" autocorrect="off" autocapitalize="off" spellcheck="false">
+                    </div>
+                    <div class="auth-field-divider" aria-hidden="true"></div>
+                    <div class="auth-field auth-field-password">
+                        <span class="auth-field-icon" aria-hidden="true">
+                            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                            </svg>
+                        </span>
+                        <input type="password" id="auth-password" class="auth-input" placeholder="密码" autocomplete="current-password" enterkeyhint="done">
+                        <button type="button" id="btn-toggle-password" class="auth-password-toggle" title="显示或隐藏密码" aria-label="显示密码">
+                            <svg class="eye-icon eye-off" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                                <line x1="1" y1="1" x2="23" y2="23"></line>
+                            </svg>
+                            <svg class="eye-icon eye-on" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                                <circle cx="12" cy="12" r="3"></circle>
+                            </svg>
+                        </button>
+                    </div>
                 </div>
                 
                 <div class="auth-error" id="auth-error-msg" style="display: none;">账号或密码错误</div>
                 
-                <button type="button" class="auth-btn btn-primary" id="btn-auth-submit">登录</button>
+                <button type="button" class="auth-btn btn-primary" id="btn-auth-submit">
+                    <span class="auth-btn-label">进入花园</span>
+                    <svg class="auth-btn-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                        <polyline points="12 5 19 12 12 19"></polyline>
+                    </svg>
+                </button>
             </div>
             
-            <div class="auth-switch">
+            <div class="auth-features">
+                <span class="auth-feature-badge">
+                    <span class="auth-dot" aria-hidden="true"></span>
+                    <span>私密数据 · 本地优先 · 离线可用</span>
+                </span>
+            </div>
+
+            <!-- 底部辅助链接（保持既有 JS 选择器兼容） -->
+            <div class="auth-switch" style="display: none;">
                 <span id="auth-switch-text">还没有账号？</span>
                 <button id="btn-auth-switch" class="btn-text auth-switch-btn" type="button">立即注册</button>
             </div>
@@ -69,7 +117,7 @@
                     <polyline points="23 4 23 10 17 10"></polyline>
                     <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
                 </svg>
-                <span>登录异常？强制刷新到最新版</span>
+                <span>版本异常？强制更新到最新版</span>
             </button>
         </div>
     </div>
@@ -195,7 +243,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.59</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.60</button>
         </section>
 
         <!-- ========================================== -->
@@ -408,7 +456,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.59</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.60</button>
         </section>
 
         <!-- ========================================== -->
@@ -551,7 +599,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.59</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.60</button>
         </section>
 
         <!-- ========================================== -->
@@ -701,7 +749,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.59</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.60</button>
         </section>
 
         <!-- ========================================== -->
@@ -782,7 +830,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.59</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.60</button>
         </section>
 
     </main>
@@ -1048,7 +1096,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.59"></script>
-    <script type="module" src="app.js?v=2.5.59"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.60"></script>
+    <script type="module" src="app.js?v=2.5.60"></script>
 </body>
 </html>

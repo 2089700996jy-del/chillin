@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-04T15:26:43.100Z · 提交数：274
+> 生成时间：2026-10-04T16:39:34.055Z · 提交数：275
 
 ## 2026-10-04
 
@@ -11,6 +11,7 @@
 
 ### 🐛 缺陷修复
 
+- **garden**: 完善 D1 自增 ID 生成、访客提示词同步与前端静态门禁
 - **sync**: preserve 2s auto-hide logic and attribute stripping on sync completion
 - **sync**: restore permanent status light in navbar with breathing pulse and click-to-sync
 - **reader**: eliminate excessive blank space at bottom of reader view

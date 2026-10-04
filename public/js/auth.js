@@ -290,19 +290,36 @@ export function initAuthUI() {
         });
     }
 
-    btnAuthSwitch?.addEventListener('click', () => {
-        state.isRegisterMode = !state.isRegisterMode;
-        if (state.isRegisterMode) {
-            document.querySelector('.auth-btn').innerText = '注册并进入';
+    const authTabLogin = document.getElementById('auth-tab-login');
+    const authTabRegister = document.getElementById('auth-tab-register');
+    const authSubdesc = document.getElementById('auth-subdesc');
+
+    const updateAuthMode = (isRegister) => {
+        state.isRegisterMode = isRegister;
+        if (authTabLogin && authTabRegister) {
+            authTabLogin.classList.toggle('active', !isRegister);
+            authTabLogin.setAttribute('aria-selected', !isRegister);
+            authTabRegister.classList.toggle('active', isRegister);
+            authTabRegister.setAttribute('aria-selected', isRegister);
+        }
+        const submitLabel = document.querySelector('.auth-btn-label') || document.querySelector('.auth-btn');
+        if (isRegister) {
+            if (submitLabel) submitLabel.innerText = '注册并创建花园';
+            if (authSubdesc) authSubdesc.innerText = '开启你的个人数字花园旅程';
             if (authSwitchText) authSwitchText.innerText = '已有账号？';
-            btnAuthSwitch.innerText = '直接登录';
+            if (btnAuthSwitch) btnAuthSwitch.innerText = '直接登录';
         } else {
-            document.querySelector('.auth-btn').innerText = '登录';
+            if (submitLabel) submitLabel.innerText = '进入花园';
+            if (authSubdesc) authSubdesc.innerText = '静下心，记录生活与灵感';
             if (authSwitchText) authSwitchText.innerText = '还没有账号？';
-            btnAuthSwitch.innerText = '立即注册';
+            if (btnAuthSwitch) btnAuthSwitch.innerText = '立即注册';
         }
         if (authErrorMsg) authErrorMsg.style.display = 'none';
-    });
+    };
+
+    authTabLogin?.addEventListener('click', () => updateAuthMode(false));
+    authTabRegister?.addEventListener('click', () => updateAuthMode(true));
+    btnAuthSwitch?.addEventListener('click', () => updateAuthMode(!state.isRegisterMode));
 
     window._chillinLogin = doLogin;
     document.getElementById('btn-auth-submit')?.addEventListener('click', doLogin);

@@ -1862,6 +1862,9 @@ body.eyecare-reader-body #btn-back {
 /* ========================================== */
 /* AUTH OVERLAY */
 /* ========================================== */
+/* ========================================== */
+/* AUTH OVERLAY (Konsta iOS HIG Standard) */
+/* ========================================== */
 .auth-overlay {
   position: fixed; 
   top: 0; 
@@ -1869,7 +1872,9 @@ body.eyecare-reader-body #btn-back {
   width: 100vw; 
   height: 100vh;
   height: 100dvh;
-  background-color: var(--bg-color, #ffffff); 
+  background-color: #F8F9FA !important; 
+  color: #111827;
+  color-scheme: light !important;
   z-index: 99999; 
   display: flex; 
   justify-content: center; 
@@ -1878,7 +1883,7 @@ body.eyecare-reader-body #btn-back {
   box-sizing: border-box;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  transition: opacity 0.25s ease, visibility 0.25s ease;
+  transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s ease;
 }
 .auth-overlay.hidden {
   display: none !important;
@@ -1903,101 +1908,227 @@ body.not-authenticated #btn-back {
   pointer-events: none !important;
 }
 
-/* 极简无浮岛卡片 (Mobile Full-Bleed / Clean Column) */
+/* 宁静自然背景环境光斑 */
+.auth-ambient-glow {
+  position: absolute;
+  top: -140px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 560px;
+  height: 480px;
+  max-width: 100vw;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(50% 50% at 50% 50%, rgba(52, 199, 89, 0.08) 0%, rgba(0, 122, 255, 0.035) 50%, transparent 80%);
+  filter: blur(50px);
+  opacity: 0.95;
+}
+
+/* Apple Inset Grouped 卡片容器 */
 .auth-card {
   position: relative;
+  z-index: 1;
   width: 100%; 
-  max-width: 320px;
+  max-width: 340px;
   margin: 0 auto;
   text-align: center;
   box-sizing: border-box;
-  padding: 8px 0 20px;
+  padding: 12px 0 24px;
+  animation: authSpringIn 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes authSpringIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* 数字花园人文微标 (Botanical Garden Emblem) */
+.auth-brand-badge {
+  width: 56px;
+  height: 56px;
+  border-radius: 17px;
+  margin: 0 auto 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  box-shadow: 0 8px 24px -4px rgba(34, 197, 94, 0.16), 0 1px 2px rgba(0, 0, 0, 0.04);
+  color: #15803d;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  user-select: none;
+}
+
+.auth-brand-badge:active {
+  transform: scale(0.94);
 }
 
 .auth-header {
-  margin-bottom: 28px;
+  margin-bottom: 20px;
 }
 
 .auth-title { 
-  font-size: 30px; 
+  font-size: 26px; 
   font-weight: 700; 
-  letter-spacing: -0.6px; 
+  letter-spacing: -0.035em; 
   color: var(--text-color, #111827);
   margin: 0 0 6px 0;
   line-height: 1.2;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
 }
 
 .auth-desc { 
   font-size: 13.5px; 
-  color: var(--text-color-light, #8e8e93); 
+  color: var(--text-color-light, #86868b); 
   margin: 0;
   line-height: 1.4;
-  letter-spacing: 0.02em;
+  letter-spacing: -0.01em;
+  font-weight: 400;
+}
+
+/* Konsta iOS 分段选择器 (Segmented Control) */
+.auth-segmented-control {
+  display: flex;
+  align-items: center;
+  position: relative;
+  background: rgba(120, 120, 128, 0.09);
+  padding: 3px;
+  border-radius: 12px;
+  margin: 0 auto 20px;
+  width: 100%;
+  max-width: 250px;
+  user-select: none;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+  box-sizing: border-box;
+}
+
+.auth-segment-btn {
+  flex: 1;
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: rgba(60, 60, 67, 0.72);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-segment-btn:active {
+  transform: scale(0.96);
+  opacity: 0.85;
+}
+
+.auth-segment-btn.active {
+  background: #ffffff;
+  color: #000000;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0.5px 1.5px rgba(0, 0, 0, 0.06);
 }
 
 .auth-form { 
   display: flex; 
   flex-direction: column; 
-  gap: 12px; 
-  margin-bottom: 22px; 
   width: 100%;
+}
+
+/* Konsta Inset Grouped 输入槽 */
+.auth-inset-group {
+  background: #ffffff;
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-inset-group:focus-within {
+  border-color: rgba(0, 122, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
 }
 
 .auth-field {
+  display: flex;
+  align-items: center;
+  height: 50px;
+  padding: 0 14px;
   position: relative;
   width: 100%;
+  box-sizing: border-box;
+  background: transparent;
+}
+
+.auth-field-icon {
+  color: #8e8e93;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  margin-right: 11px;
+  flex-shrink: 0;
+  transition: color 0.18s ease;
+}
+
+.auth-field:focus-within .auth-field-icon {
+  color: var(--accent-color, #007AFF);
 }
 
 .auth-input {
-  width: 100%;
-  height: 46px;
-  box-sizing: border-box;
-  padding: 0 14px;
-  border-radius: 10px;
+  flex: 1;
+  height: 100%;
+  border: none !important;
+  background: transparent !important;
   font-size: 15px;
   font-family: inherit;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-  background: rgba(0, 0, 0, 0.02);
   color: var(--text-color, #111827);
-  outline: none;
-  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  outline: none !important;
+  box-shadow: none !important;
+  padding: 0;
+  margin: 0;
   -webkit-appearance: none;
 }
 
 .auth-input::placeholder {
-  color: #9ca3af;
+  color: #a1a1aa;
   font-size: 14px;
+  font-weight: 400;
 }
 
-.auth-input:focus {
-  border-color: var(--accent-color, #007AFF);
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
-}
-
-.auth-field-password .auth-input {
-  padding-right: 40px;
+.auth-field-divider {
+  height: 1px;
+  background: rgba(0, 0, 0, 0.05);
+  margin-left: 45px;
 }
 
 /* 密码显隐切换按钮 */
 .auth-password-toggle {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
   background: transparent;
   border: none;
-  width: 32px;
-  height: 32px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #9ca3af;
+  color: #8e8e93;
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: 8px;
   padding: 0;
   transition: color 0.15s ease, opacity 0.15s ease;
   -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
 }
 
 .auth-password-toggle:hover {
@@ -2005,63 +2136,99 @@ body.not-authenticated #btn-back {
 }
 
 .auth-password-toggle:active {
-  opacity: 0.6;
+  transform: scale(0.92);
+  opacity: 0.7;
 }
 
 .auth-error { 
   color: #ff3b30; 
   font-size: 12.5px; 
   text-align: left; 
-  padding: 2px 4px; 
+  padding: 6px 6px 2px; 
   font-weight: 500;
 }
 
-/* 主操作按钮 (Apple System Accent) */
+/* 主操作按钮 (Apple Editorial Slate Style) */
 .auth-btn { 
   width: 100%; 
-  height: 46px;
-  padding: 0;
+  height: 48px;
+  padding: 0 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px; 
-  font-size: 15px; 
-  font-weight: 500;
-  letter-spacing: -0.2px;
-  background: var(--accent-color, #007AFF) !important;
+  gap: 8px;
+  border-radius: 14px; 
+  font-size: 15.5px; 
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  background: #111827 !important;
   color: #ffffff !important;
   border: none;
   cursor: pointer;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
-  transition: opacity 0.15s ease, transform 0.15s ease;
+  margin-top: 16px;
+  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.16), 0 1px 2px rgba(0, 0, 0, 0.06);
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, box-shadow 0.18s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 .auth-btn:hover {
-  opacity: 0.92;
+  opacity: 0.94;
+  transform: translateY(-1px);
 }
 
 .auth-btn:active {
-  transform: scale(0.98) !important;
-  opacity: 0.85;
+  transform: scale(0.97) translateY(0) !important;
+  opacity: 0.88;
 }
 
 .auth-btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
   transform: none !important;
 }
 
-/* 底部注册切换与操作链接 */
-.auth-switch { 
-  font-size: 13.5px; 
-  color: var(--text-color-light, #8e8e93); 
+.auth-btn-arrow {
+  transition: transform 0.18s ease;
+}
+
+.auth-btn:hover .auth-btn-arrow {
+  transform: translateX(2px);
+}
+
+/* 理念背书与特性小胶囊 */
+.auth-features {
+  margin: 22px auto 4px;
   display: flex;
-  align-items: center;
   justify-content: center;
-  gap: 4px;
-  margin-bottom: 22px;
+}
+
+.auth-feature-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border-radius: 9999px;
+  background: rgba(120, 120, 128, 0.07);
+  color: #86868b;
+  font-size: 12px;
+  font-weight: 450;
+  letter-spacing: -0.01em;
+  border: 1px solid rgba(0, 0, 0, 0.03);
+}
+
+.auth-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #34C759;
+  box-shadow: 0 0 6px rgba(52, 199, 89, 0.6);
+  display: inline-block;
+}
+
+/* 兼容旧选择器 */
+.auth-switch { 
+  display: none;
 }
 
 .auth-switch-btn { 
@@ -2073,28 +2240,25 @@ body.not-authenticated #btn-back {
   cursor: pointer;
   border-radius: 6px;
   font-size: 13.5px;
-  transition: opacity 0.15s ease;
 }
 
-.auth-switch-btn:active {
-  opacity: 0.6;
-}
-
-/* 异常强制刷新轻量链接 */
+/* 异常强制更新轻量链接 */
 .auth-force-refresh {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 6px 10px;
+  padding: 8px 12px;
   background: transparent;
   border: none;
-  color: #9ca3af;
+  color: #a1a1aa;
   font-size: 12px;
   line-height: 1.4;
   cursor: pointer;
   text-decoration: none;
+  margin-top: 10px;
   transition: color 0.15s ease, opacity 0.15s ease;
+  border-radius: 8px;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2104,88 +2268,8 @@ body.not-authenticated #btn-back {
 }
 
 .auth-force-refresh:active {
-  opacity: 0.6;
-}
-
-/* ========================================== */
-/* AUTH DARK THEME ADAPTATION */
-/* ========================================== */
-@media (prefers-color-scheme: dark) {
-  .auth-overlay {
-    background-color: #000000;
-  }
-  .auth-title {
-    color: #f9fafb;
-  }
-  .auth-desc {
-    color: #8e8e93;
-  }
-  .auth-input {
-    background: rgba(255, 255, 255, 0.06);
-    border-color: rgba(255, 255, 255, 0.12);
-    color: #ffffff;
-  }
-  .auth-input::placeholder {
-    color: #636366;
-  }
-  .auth-input:focus {
-    background: rgba(255, 255, 255, 0.1);
-    border-color: var(--accent-color, #007AFF);
-    box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
-  }
-  .auth-password-toggle {
-    color: #636366;
-  }
-  .auth-password-toggle:hover {
-    color: #ffffff;
-  }
-  .auth-switch {
-    color: #8e8e93;
-  }
-  .auth-force-refresh {
-    color: #636366;
-  }
-  .auth-force-refresh:hover {
-    color: #9ca3af;
-  }
-}
-
-body.dark-reader-body .auth-overlay {
-  background-color: #000000;
-}
-body.dark-reader-body .auth-title {
-  color: #f9fafb;
-}
-body.dark-reader-body .auth-desc {
-  color: #8e8e93;
-}
-body.dark-reader-body .auth-input {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.12);
-  color: #ffffff;
-}
-body.dark-reader-body .auth-input::placeholder {
-  color: #636366;
-}
-body.dark-reader-body .auth-input:focus {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: var(--accent-color, #007AFF);
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.25);
-}
-body.dark-reader-body .auth-password-toggle {
-  color: #636366;
-}
-body.dark-reader-body .auth-password-toggle:hover {
-  color: #ffffff;
-}
-body.dark-reader-body .auth-switch {
-  color: #8e8e93;
-}
-body.dark-reader-body .auth-force-refresh {
-  color: #636366;
-}
-body.dark-reader-body .auth-force-refresh:hover {
-  color: #9ca3af;
+  transform: scale(0.96);
+  opacity: 0.7;
 }
 
 /* Desktop default hide mobile bottom nav */
