@@ -1868,12 +1868,16 @@ body.eyecare-reader-body #btn-back {
   left: 0; 
   width: 100vw; 
   height: 100vh;
-  background: #F8FAFC; 
+  height: 100dvh;
+  background-color: var(--ios-bg, #F2F2F7); 
   z-index: 99999; 
   display: flex; 
   justify-content: center; 
   align-items: center;
-  transition: opacity 0.3s ease, visibility 0.3s ease;
+  padding: 16px;
+  box-sizing: border-box;
+  overflow: hidden;
+  transition: opacity 0.3s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.3s ease;
 }
 .auth-overlay.hidden {
   display: none !important;
@@ -1882,12 +1886,38 @@ body.eyecare-reader-body #btn-back {
   pointer-events: none;
 }
 
+/* 氛围弥散微光 (Ambient Light Orbs) */
+.auth-ambient-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  z-index: 0;
+  transform: translateZ(0);
+}
+
+.auth-ambient-glow-1 {
+  width: 320px;
+  height: 320px;
+  top: -40px;
+  left: -40px;
+  background: radial-gradient(circle, rgba(52, 199, 89, 0.2) 0%, rgba(52, 199, 89, 0) 70%);
+}
+
+.auth-ambient-glow-2 {
+  width: 360px;
+  height: 360px;
+  bottom: -60px;
+  right: -60px;
+  background: radial-gradient(circle, rgba(0, 122, 255, 0.2) 0%, rgba(0, 122, 255, 0) 70%);
+}
+
 /* 隐藏账号文本以去低级感，保留纯净极简工具栏 */
 .nav-username {
   display: none !important;
 }
 
-/* ???????????????????Tab ?????? */
+/* 未登录状态隐藏顶部和底部Tab导航栏 */
 body.not-authenticated .super-navbar,
 body.not-authenticated .mobile-bottom-nav,
 body.not-authenticated .fab-btn,
@@ -1897,76 +1927,355 @@ body.not-authenticated #btn-back {
   opacity: 0 !important;
   pointer-events: none !important;
 }
+
+/* iOS HIG Inset Grouped / Glassmorphism 卡片 */
 .auth-card {
-  background: #FFFFFF; 
-  border-radius: 24px; 
-  padding: 40px; 
+  position: relative;
+  z-index: 1;
+  background: rgba(255, 255, 255, 0.88); 
+  backdrop-filter: blur(28px) saturate(190%);
+  -webkit-backdrop-filter: blur(28px) saturate(190%);
+  border-radius: 28px; 
+  padding: 36px 28px 30px; 
   width: 100%; 
-  max-width: 400px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.05); 
-  border: 1px solid rgba(0, 0, 0, 0.03);
+  max-width: 380px;
+  box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.02); 
+  border: 1px solid rgba(255, 255, 255, 0.9);
   text-align: center;
+  box-sizing: border-box;
 }
+
+/* 品牌 App 徽标 (Apple Squircle Badge) */
+.auth-brand-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 17px;
+  background: linear-gradient(135deg, #34C759 0%, #30B0C7 50%, #007AFF 100%);
+  color: #ffffff;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 24px -4px rgba(48, 176, 199, 0.38), 0 2px 6px rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.45);
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.auth-brand-badge:hover {
+  transform: scale(1.04);
+}
+
+.auth-brand-svg {
+  display: block;
+  stroke: #ffffff;
+}
+
 .auth-title { 
-  font-size: 32px; 
+  font-size: 26px; 
   font-weight: 700; 
-  margin-bottom: 8px; 
-  letter-spacing: -1px; 
-  color: var(--text-color);
+  margin-bottom: 6px; 
+  letter-spacing: -0.6px; 
+  color: var(--text-color, #1c1c1e);
 }
+
 .auth-desc { 
-  font-size: 14px; 
-  color: var(--text-color-light); 
-  margin-bottom: 30px; 
+  font-size: 13.5px; 
+  color: #8e8e93; 
+  margin-bottom: 22px; 
   line-height: 1.5; 
 }
+
 .auth-form { 
   display: flex; 
   flex-direction: column; 
-  gap: 16px; 
-  margin-bottom: 24px; 
+  gap: 14px; 
+  margin-bottom: 20px; 
 }
+
+/* Apple Inset Grouped 连体输入框容器 */
+.auth-input-group {
+  display: flex;
+  flex-direction: column;
+  background: rgba(120, 120, 128, 0.08);
+  border-radius: 16px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+  transition: border-color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.auth-input-group:focus-within {
+  border-color: rgba(0, 122, 255, 0.35);
+  background: #ffffff;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.05);
+}
+
+.auth-input-wrap {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  position: relative;
+}
+
+.auth-input-divider {
+  height: 0.5px;
+  background: rgba(60, 60, 67, 0.12);
+  margin-left: 44px;
+}
+
+.auth-input-icon {
+  margin: 0 10px 0 14px;
+  color: #8e8e93;
+  flex-shrink: 0;
+  transition: color 0.2s ease;
+}
+
+.auth-input-wrap:focus-within .auth-input-icon {
+  color: var(--accent-color, #007AFF);
+}
+
 .auth-input {
-  width: 100%; 
-  padding: 14px 16px; 
-  border: 1px solid rgba(0,0,0,0.08); 
-  border-radius: 12px;
-  background: #f8fafc; 
-  font-family: var(--font-family); 
-  font-size: 15px; 
-  color: var(--text-color);
-  transition: all 0.2s ease; 
-  outline: none;
-}
-.auth-input:focus { 
-  border-color: rgba(0, 0, 0, 0.2); 
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05); 
-  background: #FFF; 
+  flex: 1;
+  min-width: 0;
+  border: none !important;
   outline: none !important;
+  box-shadow: none !important;
+  background: transparent;
+  padding: 12px 14px 12px 0;
+  font-family: inherit;
+  font-size: 15px;
+  color: var(--text-color, #1c1c1e);
 }
+
+.auth-input::placeholder {
+  color: #8e8e93;
+  opacity: 0.8;
+}
+
+/* 密码显隐切换按钮 */
+.auth-password-toggle {
+  background: transparent;
+  border: none;
+  padding: 8px 12px;
+  margin-right: 4px;
+  color: #8e8e93;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: color 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-password-toggle:hover {
+  color: var(--text-color, #1c1c1e);
+}
+
+.auth-password-toggle:active {
+  opacity: 0.5;
+}
+
 .auth-error { 
-  color: #ef4444; 
-  font-size: 13px; 
+  color: #ff3b30; 
+  font-size: 12.5px; 
   text-align: left; 
-  padding: 0 4px; 
+  padding: 2px 6px; 
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+
+/* 主操作按钮 (Apple Vibrant Button) */
 .auth-btn { 
   width: 100%; 
-  padding: 14px; 
-  border-radius: 12px; 
+  height: 48px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px; 
   font-size: 16px; 
-  margin-top: 8px;
-  background: #007AFF !important;
-  color: #fff !important;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  background: linear-gradient(180deg, #007AFF 0%, #0066E0 100%) !important;
+  color: #ffffff !important;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(0, 122, 255, 0.28);
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
+
+.auth-btn:active {
+  transform: scale(0.978) !important;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.2) !important;
+  opacity: 0.9;
+}
+
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+/* 底部注册切换与操作链接 */
 .auth-switch { 
-  font-size: 14px; 
-  color: var(--text-color-light); 
+  font-size: 13.5px; 
+  color: #8e8e93; 
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
-.auth-switch button { 
-  margin-left: 4px; 
-  font-weight: 500; 
-  color: var(--text-color); 
+
+.auth-switch-btn { 
+  padding: 4px 6px;
+  font-weight: 600; 
+  color: var(--accent-color, #007AFF) !important; 
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: opacity 0.15s ease;
+}
+
+.auth-switch-btn:active {
+  opacity: 0.6;
+}
+
+/* 异常强制刷新按钮 (Apple Pill Style) */
+.auth-force-refresh {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 22px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  background: rgba(0, 0, 0, 0.03);
+  color: #8e8e93;
+  font-size: 11.5px;
+  line-height: 1.4;
+  cursor: pointer;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.auth-force-refresh:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--text-color, #1c1c1e);
+}
+
+.auth-force-refresh:active {
+  transform: scale(0.96);
+  opacity: 0.7;
+}
+
+/* ========================================== */
+/* AUTH DARK THEME ADAPTATION */
+/* ========================================== */
+@media (prefers-color-scheme: dark) {
+  .auth-overlay {
+    background-color: #000000;
+  }
+  .auth-ambient-glow-1 {
+    background: radial-gradient(circle, rgba(48, 209, 88, 0.14) 0%, rgba(48, 209, 88, 0) 70%);
+  }
+  .auth-ambient-glow-2 {
+    background: radial-gradient(circle, rgba(10, 132, 255, 0.16) 0%, rgba(10, 132, 255, 0) 70%);
+  }
+  .auth-card {
+    background: rgba(28, 28, 30, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(255, 255, 255, 0.05);
+  }
+  .auth-title {
+    color: #ffffff;
+  }
+  .auth-desc {
+    color: #8e8e93;
+  }
+  .auth-input-group {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
+  }
+  .auth-input-group:focus-within {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(10, 132, 255, 0.55);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  }
+  .auth-input-divider {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .auth-input {
+    color: #ffffff;
+  }
+  .auth-password-toggle:hover {
+    color: #ffffff;
+  }
+  .auth-force-refresh {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
+    color: #8e8e93;
+  }
+  .auth-force-refresh:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #ffffff;
+  }
+}
+
+body.dark-reader-body .auth-overlay {
+  background-color: #000000;
+}
+body.dark-reader-body .auth-ambient-glow-1 {
+  background: radial-gradient(circle, rgba(48, 209, 88, 0.14) 0%, rgba(48, 209, 88, 0) 70%);
+}
+body.dark-reader-body .auth-ambient-glow-2 {
+  background: radial-gradient(circle, rgba(10, 132, 255, 0.16) 0%, rgba(10, 132, 255, 0) 70%);
+}
+body.dark-reader-body .auth-card {
+  background: rgba(28, 28, 30, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(255, 255, 255, 0.05);
+}
+body.dark-reader-body .auth-title {
+  color: #ffffff;
+}
+body.dark-reader-body .auth-desc {
+  color: #8e8e93;
+}
+body.dark-reader-body .auth-input-group {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .auth-input-group:focus-within {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(10, 132, 255, 0.55);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+}
+body.dark-reader-body .auth-input-divider {
+  background: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .auth-input {
+  color: #ffffff;
+}
+body.dark-reader-body .auth-password-toggle:hover {
+  color: #ffffff;
+}
+body.dark-reader-body .auth-force-refresh {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: #8e8e93;
+}
+body.dark-reader-body .auth-force-refresh:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
 }
 
 /* Desktop default hide mobile bottom nav */
@@ -4108,23 +4417,6 @@ body.keyboard-open .fab-btn {
 }
 .app-version-badge:active {
   opacity: 0.8;
-}
-
-.auth-force-refresh {
-  display: inline-block;
-  margin-top: 18px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: var(--text-color-light, #94a3b8);
-  font-size: 12px;
-  line-height: 1.4;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
-.auth-force-refresh:active {
-  color: var(--accent-color, #007AFF);
 }
 
 /* ========================================== */

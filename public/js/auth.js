@@ -273,6 +273,23 @@ export function initAuthUI() {
     document.getElementById('btn-security-logout-all')?.addEventListener('click', logoutAllDevices);
     document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
 
+    const btnTogglePassword = document.getElementById('btn-toggle-password');
+    const authPasswordInput = document.getElementById('auth-password');
+    if (btnTogglePassword && authPasswordInput) {
+        btnTogglePassword.addEventListener('click', (e) => {
+            e.preventDefault();
+            const isPassword = authPasswordInput.type === 'password';
+            authPasswordInput.type = isPassword ? 'text' : 'password';
+            const eyeOff = btnTogglePassword.querySelector('.eye-off');
+            const eyeOn = btnTogglePassword.querySelector('.eye-on');
+            if (eyeOff && eyeOn) {
+                eyeOff.style.display = isPassword ? 'none' : 'block';
+                eyeOn.style.display = isPassword ? 'block' : 'none';
+            }
+            btnTogglePassword.setAttribute('aria-label', isPassword ? '隐藏密码' : '显示密码');
+        });
+    }
+
     btnAuthSwitch?.addEventListener('click', () => {
         state.isRegisterMode = !state.isRegisterMode;
         if (state.isRegisterMode) {
