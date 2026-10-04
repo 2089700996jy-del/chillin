@@ -2958,7 +2958,7 @@ body.in-reader-book .reader-main {
   margin: 0 auto;
   white-space: pre-wrap;
   word-break: break-word;
-  padding-bottom: 140px !important;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important;
   letter-spacing: 0.2px;
 }
 
@@ -3344,7 +3344,7 @@ body.eyecare-reader-body .sidebar-header {
   .chapter-body {
     font-size: 16.5px;
     line-height: 1.9;
-    padding-bottom: 140px;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important;
   }
   .reader-nav-bottom {
     bottom: calc(14px + env(safe-area-inset-bottom, 0px));

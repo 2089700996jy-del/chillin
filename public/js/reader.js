@@ -468,7 +468,7 @@ async function loadChapterContent(idx) {
         const content = fullCh ? fullCh.content : '（加载失败）';
 
         document.getElementById('chapter-title-display').textContent = ch.title;
-        document.getElementById('chapter-body').textContent = content;
+        document.getElementById('chapter-body').textContent = typeof content === 'string' ? content.trimEnd() : content;
         document.getElementById('chapter-indicator').textContent = (idx + 1) + ' / ' + chapterMetas.length;
         document.getElementById('btn-prev-chapter').disabled = (idx <= 0);
         document.getElementById('btn-next-chapter').disabled = (idx >= chapterMetas.length - 1);
