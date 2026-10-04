@@ -179,6 +179,10 @@ body {
   gap: 12px;
 }
 
+.nav-right .btn-text {
+  font-size: 13px;
+}
+
 /* Reader Mode Single Bar Integration (Immersive Single-Row Navbar) */
 .nav-reader-title {
   display: none;
@@ -1990,7 +1994,7 @@ body.hide-bottom-nav .nav-brand-mobile {
   }
 
   .super-navbar__content {
-    padding: 0 16px;
+    padding: 0 8px 0 16px;
     height: 52px;
   }
 
@@ -2023,12 +2027,19 @@ body.hide-bottom-nav .nav-brand-mobile {
   }
 
   .nav-right {
-    gap: 4px;
+    gap: 2px;
     margin-left: auto;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
   }
 
   .nav-username {
-    display: none;
+    display: none !important;
+  }
+
+  #btn-logout-all {
+    display: none !important;
   }
 
   .btn-icon-text .btn-label {

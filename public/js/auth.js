@@ -225,7 +225,6 @@ async function doLogin() {
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
 
         checkAuth();
-        showToast('登录成功，欢迎来到数字花园', 'success');
         const sync = await import('./sync.js');
         try { sync.loadLocalData(); } catch (_) {}
         Promise.resolve()

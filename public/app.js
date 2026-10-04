@@ -218,7 +218,6 @@ document.addEventListener('DOMContentLoaded', () => {
         .then((restored) => {
             if (restored) {
                 checkAuth();
-                if (state.authUser) showToast(`欢迎回来，${state.authUser.username}`, 'success');
             }
             if (state.authToken || state.cookieSession) {
                 // 滑动续期：静默换新令牌，避免固定 7 天到期被强制登出
