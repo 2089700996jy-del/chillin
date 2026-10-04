@@ -5,7 +5,7 @@
 import { showToast, confirmDialog } from './utils.js';
 import { APP_VERSION, APP_BUILD_LABEL } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
-import { setHtml } from './trusted-types.js';
+import { setHtml, getScriptUrl } from './trusted-types.js';
 
 let forceRefreshing = false;
 
@@ -191,8 +191,10 @@ export function initPwaUpdates() {
     };
 
     const setup = async () => {
+        let reg = null;
         try {
-            const reg = await navigator.serviceWorker.register('/sw.js', {
+            const swUrl = getScriptUrl('/sw.js');
+            reg = await navigator.serviceWorker.register(swUrl, {
                 updateViaCache: 'none'
             });
 
@@ -208,23 +210,26 @@ export function initPwaUpdates() {
             navigator.serviceWorker.addEventListener('controllerchange', () => {
                 ensureBanner('新版本已激活');
             });
+        } catch (swErr) {
+            console.warn('[pwa] SW registration failed:', swErr);
+        }
 
-            const checkForUpdate = () => {
-                reg.update().catch(() => {});
-                probeRemoteVersion(reg);
-            };
+        // 即使 ServiceWorker 注册异常，HTTP 远端版本探针也必须独立正常执行！
+        const checkForUpdate = () => {
+            reg?.update().catch(() => {});
+            probeRemoteVersion(reg);
+        };
 
-            checkForUpdate();
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') checkForUpdate();
-            });
-            window.addEventListener('focus', checkForUpdate);
-            window.addEventListener('online', checkForUpdate);
-            // 省电：前台常开时约每 5 分钟探一次（原 20 秒）
-            setInterval(() => {
-                if (document.visibilityState === 'visible') checkForUpdate();
-            }, 5 * 60 * 1000);
-        } catch (_) {}
+        checkForUpdate();
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') checkForUpdate();
+        });
+        window.addEventListener('focus', checkForUpdate);
+        window.addEventListener('online', checkForUpdate);
+        // 省电：前台常开时约每 5 分钟探一次（原 20 秒）
+        setInterval(() => {
+            if (document.visibilityState === 'visible') checkForUpdate();
+        }, 5 * 60 * 1000);
     };
 
     if (document.readyState === 'complete') setup();

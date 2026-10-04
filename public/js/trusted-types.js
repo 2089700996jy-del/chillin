@@ -18,7 +18,7 @@ function getPolicy() {
     if (cachedPolicy !== null) return cachedPolicy;
     try {
         cachedPolicy = (typeof trustedTypes !== 'undefined' && typeof trustedTypes.createPolicy === 'function')
-            ? trustedTypes.createPolicy(POLICY_NAME, { createHTML: (value) => String(value) })
+            ? trustedTypes.createPolicy(POLICY_NAME, { createHTML: (value) => String(value), createScriptURL: (value) => String(value) })
             : false;
     } catch (err) {
         // 策略重名或 CSP 未放行该策略名：退回普通字符串（此时 CSP 未强制 Trusted Types）
@@ -38,4 +38,17 @@ export function setHtml(el, markup) {
     const value = markup == null ? '' : String(markup);
     const policy = getPolicy();
     el.innerHTML = policy ? policy.createHTML(value) : value;
+}
+
+/**
+ * 把脚本/Worker/SW URL 包装为 TrustedScriptURL。
+ * @param {string} url 目标脚本地址
+ * @returns {TrustedScriptURL|string}
+ */
+export function getScriptUrl(url) {
+    if (!url) return url;
+    const policy = getPolicy();
+    return policy && typeof policy.createScriptURL === 'function'
+        ? policy.createScriptURL(url)
+        : url;
 }
