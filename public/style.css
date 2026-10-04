@@ -66,19 +66,19 @@ button:focus:not(:focus-visible),
 a:focus:not(:focus-visible),
 .btn-text:focus:not(:focus-visible),
 .btn-chip:focus:not(:focus-visible),
-.mobile-tab-item:focus:not(:focus-visible),
-.nav-item:focus:not(:focus-visible),
+.mobile-tab-item:focus,
+.mobile-tab-item:focus-visible,
+.nav-item:focus,
+.nav-item:focus-visible,
 .fab-btn:focus:not(:focus-visible) {
-  outline: none;
-  box-shadow: none;
+  outline: none !important;
+  box-shadow: none !important;
 }
 
 /* 键盘导航时提供清晰的 iOS 蓝焦点指示（符合 WCAG 2.4.7 可访问性规范） */
 button:focus-visible,
-a:focus-visible,
+a:not(.mobile-tab-item):not(.nav-item):focus-visible,
 .btn-text:focus-visible,
-.btn-chip:focus-visible,
-.nav-item:focus-visible,
 .fab-btn:focus-visible {
   outline: 2px solid var(--accent-color, #007AFF);
   outline-offset: 2px;
@@ -3221,20 +3221,21 @@ body.eyecare-reader-body .sidebar-header {
 .heatmap-cell.level-3 { background-color: var(--ios-green); }
 .heatmap-cell.level-4 { background-color: #248a3d; }
 
-/* 2. Feed Input Card (?????? */
+/* 2. Feed Input Card (随手记输入卡片) */
 .feed-input-card {
   background: #ffffff;
   border-radius: 16px;
   padding: 20px;
   margin-bottom: 28px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.04);
-  border: 1px solid rgba(0, 122, 255, 0.12);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .feed-input-card:focus-within {
-  border-color: var(--accent-color);
-  box-shadow: 0 10px 36px rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  outline: none;
 }
 
 .feed-textarea {
@@ -3247,6 +3248,13 @@ body.eyecare-reader-body .sidebar-header {
   line-height: 1.6;
   color: #111827;
   background: transparent;
+}
+
+.feed-textarea:focus,
+.feed-textarea:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border: none !important;
 }
 
 /* ???????? Tab ?? FAB ?????? */
@@ -5460,44 +5468,7 @@ body.eyecare-reader-body .reader-sync-info {
   }
 }
 
-/* ── Voice Capture (随手记语音速记) ── */
-.btn-feed-voice {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 28px;
-  padding: 4px 11px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  cursor: pointer;
-}
 
-.btn-feed-voice:focus-visible {
-  outline: 2px solid var(--accent-color, #007aff);
-  outline-offset: 1px;
-}
-
-.btn-feed-voice.is-recording {
-  background: rgba(255, 59, 48, 0.12) !important;
-  color: #ff3b30 !important;
-  border-color: rgba(255, 59, 48, 0.35) !important;
-  font-weight: 600;
-  animation: pulseRecording 1.4s ease-in-out infinite;
-}
-
-.btn-feed-voice.is-recording .voice-mic-icon {
-  animation: micBlink 0.8s ease-in-out infinite alternate;
-}
-
-@keyframes pulseRecording {
-  0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0.35); }
-  50% { transform: scale(1.04); box-shadow: 0 0 0 6px rgba(255, 59, 48, 0); }
-  100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255, 59, 48, 0); }
-}
-
-@keyframes micBlink {
-  0% { opacity: 0.5; transform: scale(0.95); }
-  100% { opacity: 1; transform: scale(1.1); }
-}
 
 /* ========================================================================== */
 /* Konsta iOS HIG Design System Overhaul (All 10 Views & Global Components)    */
@@ -5603,14 +5574,15 @@ body.eyecare-reader-body .reader-sync-info {
 
 .feed-input-card {
   border-radius: 18px;
-  border: 1px solid rgba(0, 122, 255, 0.14);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.02);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .feed-input-card:focus-within {
-  border-color: #007AFF;
-  box-shadow: 0 0 0 3.5px rgba(0, 122, 255, 0.16);
+  border-color: rgba(0, 0, 0, 0.12);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  outline: none;
 }
 
 .rich-link-card {
@@ -5763,6 +5735,12 @@ body.dark-reader-body .feed-input-card {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+body.dark-reader-body .feed-input-card:focus-within {
+  border-color: rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  outline: none;
+}
+
 body.dark-reader-body .feed-textarea {
   color: #f2f2f7;
 }
@@ -5899,6 +5877,12 @@ body.eyecare-reader-body .bookmark-card {
 body.eyecare-reader-body .feed-input-card {
   background: #e8f5e9;
   border-color: rgba(76, 175, 80, 0.25);
+}
+
+body.eyecare-reader-body .feed-input-card:focus-within {
+  border-color: rgba(76, 175, 80, 0.4);
+  box-shadow: 0 4px 16px rgba(76, 175, 80, 0.1);
+  outline: none;
 }
 
 body.eyecare-reader-body .heatmap-widget {
@@ -6421,10 +6405,24 @@ body.dark-reader-body .list-load-more {
 
 .skip-link:focus { top: 0; }
 
-/* 键盘用户必须有可见焦点：多数控制项显式设了 outline:none，这里统一兜底 */
-:focus-visible {
+/* 键盘用户必须有可见焦点：多数控制项显式设了 outline:none，这里统一兜底（排除触摸导航Tab项、随手记输入框等） */
+:focus-visible:not(.mobile-tab-item):not(.nav-item):not(.feed-textarea):not(.btn-chip):not(.btn-upload-image) {
   outline: 2px solid var(--focus-ring-color, #0066CC) !important;
   outline-offset: 2px !important;
+}
+
+.mobile-tab-item:focus,
+.mobile-tab-item:focus-visible,
+.mobile-tab-item:active,
+.nav-item:focus,
+.nav-item:focus-visible,
+.nav-item:active,
+.feed-textarea:focus,
+.feed-textarea:focus-visible,
+.feed-input-card:focus,
+.feed-input-card:focus-visible {
+  outline: none !important;
+  border-left: none;
 }
 
 .confirm-dialog-overlay { align-items: center; justify-content: center; }
