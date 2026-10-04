@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.56">
+    <link rel="stylesheet" href="style.css?v=2.5.57">
 </head>
 <body>
 
@@ -118,7 +118,7 @@
                 </button>
             </div>
             <div class="nav-right" id="nav-right">
-                <div id="sync-status" class="sync-status" role="status" aria-live="polite" hidden></div>
+                <div id="sync-status" class="sync-status" role="status" aria-live="polite" data-tone="ok" title="云端连接正常，数据已同步（点击立即同步）"></div>
                 <button id="btn-open-global-search" class="btn-text text-primary btn-icon-text" title="全局搜索 (Cmd/Ctrl + K)">
                     <span class="btn-icon">
                         <svg class="nav-svg-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -195,7 +195,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.56</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.57</button>
         </section>
 
         <!-- ========================================== -->
@@ -408,7 +408,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.56</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.57</button>
         </section>
 
         <!-- ========================================== -->
@@ -551,7 +551,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.56</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.57</button>
         </section>
 
         <!-- ========================================== -->
@@ -701,7 +701,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.56</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.57</button>
         </section>
 
         <!-- ========================================== -->
@@ -782,7 +782,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.56</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.57</button>
         </section>
 
     </main>
@@ -1048,7 +1048,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.56"></script>
-    <script type="module" src="app.js?v=2.5.56"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.57"></script>
+    <script type="module" src="app.js?v=2.5.57"></script>
 </body>
 </html>

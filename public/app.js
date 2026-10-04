@@ -11,6 +11,7 @@ import {
     initAuthUI,
     loadLocalData,
     syncFromApi,
+    setSyncStatus,
     checkAndMergeGuestData,
     startAutoSyncEngine,
     bindApiHooks,
@@ -246,16 +247,19 @@ document.addEventListener('DOMContentLoaded', () => {
     // 📶 离线感知与网络恢复自动同步
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         document.body.classList.add('is-offline');
+        setSyncStatus('离线状态', 'error');
     }
 
     window.addEventListener('offline', () => {
         document.body.classList.add('is-offline');
         showToast('📶 当前处于离线状态，新内容将保存在本地', 'warn');
+        setSyncStatus('离线状态', 'error');
     });
 
     window.addEventListener('online', () => {
         document.body.classList.remove('is-offline');
         showToast('🌐 网络已恢复连接，正在自动同步...', 'success');
+        setSyncStatus('正在同步', 'warn');
         if (state.authToken || state.cookieSession) {
             syncFromApi().catch((err) => console.warn('[online] auto sync failed', err));
         }
