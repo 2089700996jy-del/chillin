@@ -6644,32 +6644,142 @@ body.dark-reader-body .list-load-more {
   outline: 2px solid var(--accent-color, #007AFF);
 }
 
-.confirm-dialog-overlay { align-items: center; justify-content: center; }
-
-.confirm-dialog-card {
-  width: min(92vw, 360px);
-  padding: 20px 18px 14px;
-  border-radius: 18px;
-  background: var(--widget-bg, #ffffff);
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.18);
-  transform: scale(0.96);
-  opacity: 0;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.2s ease;
+/* ==================== 确认弹窗 (Apple HIG Alert Modal) ==================== */
+.confirm-dialog-overlay { 
+  align-items: center; 
+  justify-content: center; 
+  background: rgba(0, 0, 0, 0.45) !important;
+  backdrop-filter: blur(12px) saturate(140%) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
+  cursor: default !important;
+  z-index: 100000 !important;
+  padding: 20px;
 }
 
-.modal-overlay.show .confirm-dialog-card { transform: scale(1); opacity: 1; }
+.confirm-dialog-card {
+  width: min(88vw, 320px);
+  padding: 24px 20px 18px;
+  border-radius: 18px;
+  background: #ffffff !important;
+  color: #1c1c1e !important;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.06);
+  transform: scale(0.94);
+  opacity: 0;
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.22s ease;
+  cursor: default;
+  box-sizing: border-box;
+}
 
-.confirm-dialog-message { font-size: 15px; line-height: 1.55; color: #1c1c1e; white-space: pre-wrap; }
+.modal-overlay.show .confirm-dialog-card { 
+  transform: scale(1); 
+  opacity: 1; 
+}
+
+.confirm-dialog-message { 
+  font-size: 15px; 
+  line-height: 1.5; 
+  font-weight: 500;
+  letter-spacing: -0.2px;
+  color: #1c1c1e !important; 
+  white-space: pre-wrap; 
+  text-align: center;
+  margin-bottom: 20px;
+  word-break: break-word;
+}
 
 .confirm-dialog-actions {
   display: flex;
-  justify-content: flex-end;
-  gap: 18px;
-  margin-top: 18px;
+  gap: 10px;
+  width: 100%;
 }
 
-body.dark-reader-body .confirm-dialog-card { background: #1c1f24; }
-body.dark-reader-body .confirm-dialog-message { color: #f2f2f7; }
+.confirm-dialog-actions button {
+  flex: 1;
+  height: 42px;
+  border-radius: 11px;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: opacity 0.15s ease, transform 0.15s ease, background-color 0.15s ease;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.confirm-dialog-actions button:active {
+  transform: scale(0.97);
+}
+
+#confirm-dialog-cancel {
+  background: rgba(120, 120, 128, 0.12) !important;
+  color: #1c1c1e !important;
+}
+
+#confirm-dialog-cancel:hover {
+  background: rgba(120, 120, 128, 0.18) !important;
+}
+
+#confirm-dialog-ok {
+  background: var(--accent-color, #007AFF) !important;
+  color: #ffffff !important;
+}
+
+#confirm-dialog-ok.text-danger {
+  background: #ff3b30 !important;
+  color: #ffffff !important;
+}
+
+#confirm-dialog-ok:hover {
+  opacity: 0.92;
+}
+
+/* 深色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .confirm-dialog-overlay {
+    background: rgba(0, 0, 0, 0.6) !important;
+  }
+  .confirm-dialog-card {
+    background: #252528 !important;
+    border-color: rgba(255, 255, 255, 0.12);
+    box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
+    color: #f2f2f7 !important;
+  }
+  .confirm-dialog-message {
+    color: #f2f2f7 !important;
+  }
+  #confirm-dialog-cancel {
+    background: rgba(255, 255, 255, 0.12) !important;
+    color: #f2f2f7 !important;
+  }
+  #confirm-dialog-cancel:hover {
+    background: rgba(255, 255, 255, 0.18) !important;
+  }
+}
+
+body.dark-reader-body .confirm-dialog-overlay {
+  background: rgba(0, 0, 0, 0.6) !important;
+}
+body.dark-reader-body .confirm-dialog-card { 
+  background: #252528 !important; 
+  border-color: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 24px 56px rgba(0, 0, 0, 0.65);
+  color: #f2f2f7 !important;
+}
+body.dark-reader-body .confirm-dialog-message { 
+  color: #f2f2f7 !important; 
+}
+body.dark-reader-body #confirm-dialog-cancel {
+  background: rgba(255, 255, 255, 0.12) !important;
+  color: #f2f2f7 !important;
+}
+body.dark-reader-body #confirm-dialog-cancel:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+}
 
 /* ==================== 账号与安全（登录设备） ==================== */
 .account-security-card {
