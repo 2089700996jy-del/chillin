@@ -3988,6 +3988,33 @@ body.keyboard-open .fab-btn {
   }
 }
 
+/* 移动端 Toast 悬浮定位（避让底部 Tab 导航栏与安全区） */
+@media (max-width: 768px) {
+  .toast-container {
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    width: calc(100% - 32px);
+    max-width: 400px;
+    align-items: center;
+  }
+
+  body.hide-bottom-nav .toast-container,
+  body.keyboard-open .toast-container {
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .toast {
+    max-width: 100%;
+    width: auto;
+    justify-content: center;
+    text-align: center;
+    border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
+  }
+}
+
 /* Echo ????????Link */
 .echo-card-feeds {
   display: flex;

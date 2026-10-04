@@ -293,11 +293,28 @@ function setupVoiceCapture() {
     }
     stopVoiceRecordingFn = stopVoiceRecording;
 
-    voiceBtn.addEventListener('click', () => {
+    voiceBtn.addEventListener('click', async () => {
         if (isRecordingVoice) {
             stopVoiceRecording();
             showToast('语音识别已停止', 'info');
             return;
+        }
+
+        // 1. Proactively request microphone permission via getUserMedia
+        // On mobile PWA / standalone WebAPK, speechRecognition.start() without prior getUserMedia
+        // frequently fails directly with not-allowed without ever displaying the permission dialog.
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                // Release the stream immediately as speechRecognition manages its own recording stream
+                stream.getTracks().forEach(t => t.stop());
+            } catch (permErr) {
+                console.warn('[speech] mic permission error:', permErr);
+                if (permErr.name === 'NotAllowedError' || permErr.name === 'PermissionDeniedError') {
+                    showToast('麦克风权限未开启，请在系统设置中允许本应用访问麦克风', 'error');
+                    return;
+                }
+            }
         }
 
         try {
@@ -338,9 +355,11 @@ function setupVoiceCapture() {
             speechRecognition.onerror = (event) => {
                 console.warn('[speech] error:', event.error);
                 if (event.error === 'not-allowed') {
-                    showToast('麦克风权限被拒绝，请在地址栏允许麦克风访问', 'error');
+                    showToast('麦克风权限未开启，请在系统设置中允许本应用访问麦克风', 'error');
                 } else if (event.error === 'no-speech') {
                     // silent timeout
+                } else if (event.error === 'network') {
+                    showToast('语音识别网络连接异常（依赖在线识别）', 'warn');
                 } else {
                     showToast('语音识别提示: ' + event.error, 'warn');
                 }
