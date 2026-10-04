@@ -232,38 +232,40 @@ function processApiSyncResult(localList, apiData, isIncremental = false) {
 }
 
 let syncStatusTimer = null;
-/** 同步指示灯：常驻小圆灯；ok=绿 / warn|info=黄 / error=红；无可见文字 */
+/** 同步指示灯：ok=绿 / warn|info=黄 / error=红；无可见文字，同步完成 2 秒后自动隐藏 */
 export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
     const el = document.getElementById('sync-status');
     const isBusy = (tone === 'info' || tone === 'warn') && !!message && !message.includes('已同步');
     document.body.classList.toggle('is-syncing', !!isBusy);
     if (!el) return;
-    el.hidden = false;
     if (!message) {
         document.body.classList.remove('is-syncing');
-        el.dataset.tone = 'ok';
-        el.setAttribute('aria-label', '已同步');
-        el.title = '云端连接正常，数据已同步（点击立即同步）';
+        el.hidden = true;
+        el.removeAttribute('data-tone');
+        el.removeAttribute('aria-label');
+        el.removeAttribute('title');
         return;
     }
     // ok→绿，error→红，其余（同步中/将重试）→黄
     const light = tone === 'ok' ? 'ok' : (tone === 'error' ? 'error' : 'warn');
+    el.hidden = false;
     el.textContent = '';
     el.dataset.tone = light;
     el.setAttribute('aria-label', message);
     el.title = message === '已同步' 
-        ? '云端连接正常，数据已同步（点击立即同步）' 
+        ? '云端数据已同步' 
         : (light === 'warn' ? '正在与云端同步中…' : `${message}（点击立即同步）`);
 
     if (syncStatusTimer) clearTimeout(syncStatusTimer);
     if (autoHideMs > 0) {
         syncStatusTimer = setTimeout(() => {
-            document.body.classList.remove('is-syncing');
-            // 状态灯保持常驻为正常绿灯（ok），不隐藏消失
-            el.hidden = false;
-            el.dataset.tone = 'ok';
-            el.setAttribute('aria-label', '已同步');
-            el.title = '云端连接正常，数据已同步（点击立即同步）';
+            if (el.getAttribute('aria-label') === message) {
+                document.body.classList.remove('is-syncing');
+                el.hidden = true;
+                el.removeAttribute('data-tone');
+                el.removeAttribute('aria-label');
+                el.removeAttribute('title');
+            }
         }, autoHideMs);
     }
 }

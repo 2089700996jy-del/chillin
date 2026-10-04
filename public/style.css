@@ -4039,6 +4039,9 @@ body.keyboard-open .fab-btn {
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
+.sync-status[hidden] {
+  display: none !important;
+}
 .sync-status:hover {
   transform: scale(1.3);
 }
