@@ -32,16 +32,24 @@ export async function handlePostWeekly(request, db, userId) {
     const body = await request.json();
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'weeklies', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
-    if (await isSoftDeletedRecord(db, 'weeklies', body.id, userId)) {
+    if (body.id && await isSoftDeletedRecord(db, 'weeklies', body.id, userId)) {
         return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     }
     const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
     const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
-    await db.prepare(
-        `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), 0)`
-    ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
-    const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    let row;
+    if (body.id) {
+        await db.prepare(
+            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), 0)`
+        ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
+        row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    } else {
+        row = await db.prepare(
+            `INSERT INTO weeklies (category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0) RETURNING *`
+        ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).first();
+    }
     return jsonResponse(formatWeekly(row), 201);
 }
 
@@ -80,15 +88,23 @@ export async function handlePostNote(request, db, userId) {
     const body = await request.json();
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'notes', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
-    if (await isSoftDeletedRecord(db, 'notes', body.id, userId)) {
+    if (body.id && await isSoftDeletedRecord(db, 'notes', body.id, userId)) {
         return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     }
     const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
-    await db.prepare(
-        `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at, is_deleted)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0)`
-    ).bind(body.id, body.title, body.content || '', body.date, annotations, userId).run();
-    const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    let row;
+    if (body.id) {
+        await db.prepare(
+            `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0)`
+        ).bind(body.id, body.title, body.content || '', body.date, annotations, userId).run();
+        row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    } else {
+        row = await db.prepare(
+            `INSERT INTO notes (title, content, date, annotations, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours'), 0) RETURNING *`
+        ).bind(body.title, body.content || '', body.date, annotations, userId).first();
+    }
     return jsonResponse(formatNote(row), 201);
 }
 
@@ -125,16 +141,24 @@ export async function handlePostBookmark(request, db, userId) {
     const body = await request.json();
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'bookmarks', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
-    if (await isSoftDeletedRecord(db, 'bookmarks', body.id, userId)) {
+    if (body.id && await isSoftDeletedRecord(db, 'bookmarks', body.id, userId)) {
         return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     }
     const image = body.image || body.img || null;
     const description = body.desc || body.description || '';
-    await db.prepare(
-        `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at, is_deleted)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), 0)`
-    ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
-    const row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    let row;
+    if (body.id) {
+        await db.prepare(
+            `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), 0)`
+        ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
+        row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    } else {
+        row = await db.prepare(
+            `INSERT INTO bookmarks (type, title, url, description, image, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0) RETURNING *`
+        ).bind(body.type, body.title, body.url, description, image, userId).first();
+    }
     return jsonResponse(formatBookmark(row), 201);
 }
 
@@ -175,7 +199,7 @@ export async function handlePostPrompt(request, db, userId) {
     const body = await request.json();
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'prompts', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
-    if (await isSoftDeletedRecord(db, 'prompts', body.id, userId)) {
+    if (body.id && await isSoftDeletedRecord(db, 'prompts', body.id, userId)) {
         return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     }
     const title = (body.title || '').trim();
@@ -188,12 +212,19 @@ export async function handlePostPrompt(request, db, userId) {
     const tags = (body.tags || '').trim();
     const isPinned = body.is_pinned ? 1 : 0;
 
-    await db.prepare(
-        `INSERT OR REPLACE INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)`
-    ).bind(body.id, title, project, scene, content, description, tags, isPinned, userId).run();
-
-    const row = await db.prepare('SELECT * FROM prompts WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    let row;
+    if (body.id) {
+        await db.prepare(
+            `INSERT OR REPLACE INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)`
+        ).bind(body.id, title, project, scene, content, description, tags, isPinned, userId).run();
+        row = await db.prepare('SELECT * FROM prompts WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
+    } else {
+        row = await db.prepare(
+            `INSERT INTO prompts (title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, datetime('now', '+8 hours'), 0) RETURNING *`
+        ).bind(title, project, scene, content, description, tags, isPinned, userId).first();
+    }
     return jsonResponse(formatPrompt(row), 201);
 }
 

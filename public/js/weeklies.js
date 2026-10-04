@@ -6,6 +6,7 @@ import {
     getChineseDateTime,
     skeletonListHtml,
     isSyncingNow,
+    confirmDialog,
 } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -418,6 +419,7 @@ editorForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const idStr = document.getElementById('edit-id').value;
     const isEdit = !!idStr;
+    const existingWeekly = isEdit ? state.database.find(d => String(d.id) === String(idStr)) : null;
     const newData = {
         id: isEdit ? parseInt(idStr) : Date.now(), 
         category: document.getElementById('edit-category').value, 
@@ -425,8 +427,8 @@ editorForm.addEventListener('submit', (e) => {
         summary: document.getElementById('edit-summary').value, 
         cover: document.getElementById('edit-cover').value, 
         content: document.getElementById('edit-content').value,
-        date: isEdit ? state.database.find(d => d.id === parseInt(idStr)).date : getChineseDate(),
-        annotations: isEdit ? (state.database.find(d => d.id === parseInt(idStr)).annotations || []) : [],
+        date: existingWeekly ? existingWeekly.date : getChineseDate(),
+        annotations: existingWeekly?.annotations || [],
         weeklyData: {
             music: { title: document.getElementById('edit-music-title').value, artist: document.getElementById('edit-music-artist').value, lyric: document.getElementById('edit-music-lyric').value },
             media: [{ icon: document.getElementById('edit-media-icon').value, title: document.getElementById('edit-media-title').value, desc: document.getElementById('edit-media-desc').value }],

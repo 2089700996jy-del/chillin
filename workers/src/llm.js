@@ -117,6 +117,14 @@ export async function callCustomLlmWithMessages(env, messages) {
             return data.choices[0].message.content;
         }
     }
+
+    if (env.AI) {
+        try {
+            const aiRes = await env.AI.run('@cf/meta/llama-3-8b-instruct', { messages });
+            if (aiRes && aiRes.response) return aiRes.response;
+        } catch (_) {}
+    }
+
     return '';
 }
 

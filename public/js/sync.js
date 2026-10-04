@@ -596,14 +596,16 @@ export async function checkAndMergeGuestData() {
     const guestNotes = JSON.parse(localStorage.getItem('default_gardenNotes')) || [];
     const guestBookmarks = JSON.parse(localStorage.getItem('default_gardenBookmarks')) || [];
     const guestFeeds = JSON.parse(localStorage.getItem('default_gardenFeeds')) || [];
+    const guestPrompts = JSON.parse(localStorage.getItem('default_gardenPrompts')) || [];
 
     const hasGuestData = guestData.length > 0 && !(guestData.length === 1 && guestData[0].id === 1);
     const hasGuestNotes = guestNotes.length > 0 && !guestNotes.every(n => n.id === 101 || n.id === 102);
     const hasGuestBookmarks = guestBookmarks.length > 0 && !guestBookmarks.every(b => b.id === 201 || b.id === 202 || b.id === 203);
     const hasGuestFeeds = guestFeeds.length > 0 && !(guestFeeds.length === 1 && guestFeeds[0].id === 1);
+    const hasGuestPrompts = guestPrompts.length > 0 && !guestPrompts.every(p => [301, 302, 303, 304].includes(Number(p.id)));
 
-    if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds) {
-        if (await confirmDialog('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记）。是否将这些数据导入并同步到您当前的账号中？')) {
+    if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds || hasGuestPrompts) {
+        if (await confirmDialog('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记/提示词）。是否将这些数据导入并同步到您当前的账号中？')) {
             try {
                 const userKey = getLocalKey('gardenData');
                 let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];
@@ -637,13 +639,22 @@ export async function checkAndMergeGuestData() {
                 localStorage.setItem(userFeedsKey, JSON.stringify(userFeedsDatabase));
                 state.feedsDatabase = userFeedsDatabase;
 
+                const userPromptsKey = getLocalKey('gardenPrompts');
+                let userPromptsDatabase = JSON.parse(localStorage.getItem(userPromptsKey)) || [];
+                userPromptsDatabase = [...userPromptsDatabase, ...guestPrompts].filter((item, index, self) =>
+                    self.findIndex(t => t.id === item.id) === index
+                );
+                localStorage.setItem(userPromptsKey, JSON.stringify(userPromptsDatabase));
+                state.promptsDatabase = userPromptsDatabase;
+
                 await apiRequest('/api/sync/batch', {
                     method: 'POST',
                     body: JSON.stringify({
                         weeklies: guestData,
                         notes: guestNotes,
                         bookmarks: guestBookmarks,
-                        feeds: guestFeeds
+                        feeds: guestFeeds,
+                        prompts: guestPrompts
                     })
                 });
 
@@ -651,6 +662,7 @@ export async function checkAndMergeGuestData() {
                 localStorage.removeItem('default_gardenNotes');
                 localStorage.removeItem('default_gardenBookmarks');
                 localStorage.removeItem('default_gardenFeeds');
+                localStorage.removeItem('default_gardenPrompts');
 
                 showToast('本地数据已成功合并并同步至云端！', 'success');
                 refresh('all');

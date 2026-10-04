@@ -16,6 +16,7 @@ import {
     startAutoSyncEngine,
     bindApiHooks,
     restoreCookieSession,
+    refreshSession,
 } from './js/api.js';
 import { initRouter } from './js/router.js';
 import { initWeeklies } from './js/weeklies.js';

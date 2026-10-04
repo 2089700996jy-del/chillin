@@ -3,7 +3,7 @@
  * Handles dual-dimension filtering (Project & Scene), search, one-click copy,
  * variable replacement, AI chat pipeline, tactile haptic feedback, and editor CRUD.
  */
-import { generateUniqueId, escapeHtml, showToast } from './utils.js';
+import { generateUniqueId, escapeHtml, showToast, confirmDialog } from './utils.js';
 import { state, DEFAULT_PROMPTS } from './state.js';
 import { actions } from './actions.js';
 import {

@@ -1,12 +1,49 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-02T03:10:15.401Z · 提交数：243
+> 生成时间：2026-10-04T15:26:43.100Z · 提交数：274
+
+## 2026-10-04
+
+### ✨ 新功能
+
+- **auth**: overhaul login page with Apple HIG glassmorphism, brand emblem, and password toggle
+
+### 🐛 缺陷修复
+
+- **sync**: preserve 2s auto-hide logic and attribute stripping on sync completion
+- **sync**: restore permanent status light in navbar with breathing pulse and click-to-sync
+- **reader**: eliminate excessive blank space at bottom of reader view
+- **ui**: resolve transparent confirm dialog bug and upgrade to Apple HIG alert modal
+- **ui**: eliminate harsh focus borders, outlines, and blue halos across all modules
+- **feeds**: remove voice capture and eliminate aggressive card/tab focus borders
+- **feeds**: pre-request mic permission and elevate mobile toasts above bottom nav
+- **ui**: remove welcome toast and align mobile navbar icons flush right
+- **ui**: resolve navbar scroll jump and reader mode layout collisions
+
+### ♻️ 重构
+
+- **auth**: remove AI-slop visual tropes, adopt tranquil human minimalism
+
+## 2026-10-03
+
+### ✨ 新功能
+
+- complete phases 1-5 (reader progress sync, voice capture, bi-directional wikilinks, security decoupling, and css debt cleanup)
+
+### 🐛 缺陷修复
+
+- resolve reader progress api parsing, modal dismissal, voice capture duplication and wikilink edge cases
+
+### 🎨 样式
+
+- **ui**: polish reader typography modal contrast, wikilinks pills and dark/eyecare themes
 
 ## 2026-10-02
 
 ### ✨ 新功能
 
+- **pwa**: add a favicon and precache the iOS 180px icon (v2.5.48)
 - **ops**: add a public /api/health probe and document observability
 - **ops**: add a ship pipeline that cannot bypass the quality gates
 - **upload**: real progress, one-tap retry, and push permission on user gesture
@@ -16,6 +53,8 @@
 
 ### 🐛 缺陷修复
 
+- **pwa**: ship a real multi-size favicon instead of a 16px-only one (v2.5.49)
+- **security**: enforce Trusted Types instead of observing them (v2.5.47)
 - **audit**: give audit_log and ugc_quarantine a 180-day retention policy
 - **worker**: cap outbound link-parse bodies and add a Microlink privacy switch
 - **csp**: add object-src/frame-src none, upgrade-insecure-requests and drop dead font allowances
@@ -29,10 +68,14 @@
 
 ### ♻️ 重构
 
+- **security**: route every HTML sink through one Trusted Types choke point (v2.5.46)
+- **worker**: split the 999-line garden module into five focused modules
 - **worker**: extract the AI chat route so the gateway fits the 300-line red line
 
 ### 🧪 测试
 
+- **security**: prove setHtml takes the Trusted Types path and degrades without it
+- **worker**: add SQLite-backed integration tests for CRUD and sessions
 - **pwa**: guard the service worker precache list and the no-HTML-fallback rule
 
 ### 🤖 持续集成
@@ -41,6 +84,10 @@
 
 ### 📝 文档
 
+- **report**: refresh the architecture report to v2.5.49 across security, testing and the publish surface
+- **readme**: record the remote Pages project settings the repository cannot express
+- describe the public/ publishing layout across README, rules and PROGRESS
+- sync version, migration and test-count references to v2.5.45
 - **ops**: evaluate repository history slimming and generate a CHANGELOG
 - sync the architecture report and progress log to v2.5.43
 
@@ -50,6 +97,13 @@
 
 ### 🔧 杂务
 
+- **pages**: remove the duplicated site copies from the repository root (phase 3b/3)
+- **pages**: point tooling and tests at public/ and guard the Pages layout (phase 3a/3)
+- **pages**: stage the site assets under public/ for the output-directory migration (phase 1/3)
+- **repo**: remove the stale APK and archive the one-off icon generator
+- **repo**: archive the vendored Konsta UI snapshot outside the repository
+- **repo**: drop the stale preview-ios.html ignore rule and clear the wrangler cache
+- **ops**: regenerate the CHANGELOG inside ship and declare the Node engine
 - **release**: bump to v2.5.44 and log the engineering/UX batch
 - **deps**: update wrangler to 4.145 and move the compatibility date to 2026-10-01
 - **repo**: add .dev.vars example and an explicit all-rights-reserved LICENSE
@@ -382,7 +436,6 @@
 - 修复 sw.js Content-Type（Service Worker 注册需要 JS 类型）
 - 新增 PWA(manifest+SW+图标) 与 AI 本周回顾
 - 安全升级：密码 PBKDF2(透明升级)、Session 7天、一键导出备份、文件防爬取、.gitignore 排除 txt
-- 删除 images 目录下的沙县旅行照片
 - 合规加固：CORS 白名单、外链黑名单、AI 输出过滤、UGC 审计(cron)、referrer 防泄露
 - 移除公开的 X-API-Key 鉴权层，改为仅靠 Bearer token 用户鉴权
 - 安全加固：link/parse 防 SSRF、正文 XSS 清洗、DeepSeek 密钥收敛到后端、上传与文件响应加固

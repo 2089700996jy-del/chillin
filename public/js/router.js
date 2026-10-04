@@ -87,6 +87,7 @@ const applyRoute = (route) => {
 };
 
 const switchView = (targetViewId, opts = {}) => {
+    targetViewId = String(targetViewId || '').replace(/^view-/, '');
     const { skipHistory = false, replaceHistory = false } = opts;
     const targetEl = document.getElementById(`view-${targetViewId}`);
     if (!targetEl) return;

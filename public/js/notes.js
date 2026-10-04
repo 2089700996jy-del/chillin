@@ -208,15 +208,16 @@ const openNoteEditor = (noteId = null, opts = {}) => {
 btnSaveNote.addEventListener('click', () => {
     const idStr = editNoteId.value; const isEdit = !!idStr; const titleVal = editNoteTitle.value.trim(); const contentVal = editNoteContent.value.trim();
     if (!titleVal && !contentVal) { discardNoteDraft(); actions.switchView('notes'); return; }
+    const existingNote = isEdit ? state.notesDatabase.find(n => String(n.id) === String(idStr)) : null;
     const newNote = { 
         id: isEdit ? parseInt(idStr) : Date.now(), 
         title: titleVal || '无标题笔记', 
         content: contentVal, 
-        date: isEdit ? state.notesDatabase.find(n => n.id === parseInt(idStr)).date : getChineseDate(),
+        date: existingNote ? existingNote.date : getChineseDate(),
         annotations: currentNoteAnnotations
     };
     stampLocalUpdate(newNote);
-    if (isEdit) { const index = state.notesDatabase.findIndex(n => n.id === parseInt(idStr)); if(index !== -1) state.notesDatabase[index] = newNote; } else { state.notesDatabase.push(newNote); }
+    if (isEdit) { const index = state.notesDatabase.findIndex(n => String(n.id) === String(idStr)); if(index !== -1) state.notesDatabase[index] = newNote; } else { state.notesDatabase.push(newNote); }
     discardNoteDraft();
     saveNotesDatabase(); apiSyncNote(newNote, isEdit ? 'PUT' : 'POST'); renderNotes(); actions.switchView('notes');
 });

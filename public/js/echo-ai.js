@@ -89,6 +89,7 @@ function getLocalAiReply(question) {
     (state.notesDatabase || []).forEach(n => allMemory.push(`[备忘录 ${n.date || ''}] ${n.title}: ${n.content || ''}`));
     (state.database || []).forEach(w => allMemory.push(`[周记 ${w.date || ''}] ${w.title}: ${w.summary || ''}`));
     (state.bookmarksDatabase || []).forEach(b => allMemory.push(`[书签] ${b.title}: ${b.desc || b.description || ''} (${b.url || ''})`));
+    (state.promptsDatabase || []).forEach(p => allMemory.push(`[提示词] ${p.title} (${p.project}/${p.scene}): ${p.content || ''} ${p.description || ''}`));
 
     if (allMemory.length === 0) {
         return `我在您的记忆花园里还没有找到记录。试试先在“随手记”里记录一些想法吧！`;
@@ -263,7 +264,7 @@ async function sendAiChatMessage() {
                             location.hash = `#/note-editor/${id}`;
                         }
                     } else if (type === '随手记') {
-                        if (actions.switchView) actions.switchView('view-feeds');
+                        if (actions.switchView) actions.switchView('feeds');
                         location.hash = '#/feeds';
                         setTimeout(() => {
                             const card = document.querySelector(`.feed-item-card[data-feed-id="${id}"]`);
@@ -275,7 +276,7 @@ async function sendAiChatMessage() {
                             }
                         }, 120);
                     } else if (type === '提示词') {
-                        if (actions.switchView) actions.switchView('view-bookmarks');
+                        if (actions.switchView) actions.switchView('bookmarks');
                         location.hash = '#/bookmarks';
                         const subtabBtn = document.querySelector('[data-subtab="prompts"]');
                         if (subtabBtn) subtabBtn.click();
@@ -285,7 +286,7 @@ async function sendAiChatMessage() {
                             }
                         }, 120);
                     } else if (type === '收藏') {
-                        if (actions.switchView) actions.switchView('view-bookmarks');
+                        if (actions.switchView) actions.switchView('bookmarks');
                         location.hash = '#/bookmarks';
                         const subtabBtn = document.querySelector('[data-subtab="resources"]');
                         if (subtabBtn) subtabBtn.click();

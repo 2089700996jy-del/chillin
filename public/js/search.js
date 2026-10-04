@@ -64,7 +64,7 @@ export function initSearch() {
                 closeGlobalSearch();
                 actions.switchView('feeds');
                 setTimeout(() => {
-                    const feedInput = document.getElementById('feed-input');
+                    const feedInput = document.getElementById('feed-input-text') || document.getElementById('feed-input');
                     if (feedInput) {
                         feedInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
                         feedInput.focus();

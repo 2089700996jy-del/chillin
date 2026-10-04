@@ -49,3 +49,49 @@ test('Architecture - the gateway exposes a public health probe', async () => {
     assert.ok(healthIndex !== -1 && gateIndex !== -1 && healthIndex < gateIndex, 'health must be a public route');
     assert.ok(!/health[\s\S]{0,400}?FROM (weeklies|notes|quick_feeds|users)/.test(source), 'health must not query business tables');
 });
+
+test('Architecture - frontend modules have valid imports and no undeclared function calls', async () => {
+    const jsDir = path.join(root, 'public', 'js');
+    const files = (await fs.readdir(jsDir)).filter((f) => f.endsWith('.js'));
+    const allModulePaths = [...files.map((f) => path.join(jsDir, f)), path.join(root, 'public', 'app.js')];
+
+    const allExports = new Set();
+    for (const f of allModulePaths) {
+        const content = await fs.readFile(f, 'utf8');
+        for (const m of content.matchAll(/export\s+(?:async\s+)?(?:function|const|let|var)\s+([a-zA-Z0-9_$]+)/g)) {
+            allExports.add(m[1]);
+        }
+        for (const eb of content.matchAll(/export\s*\{([^}]+)\}/g)) {
+            for (const item of eb[1].split(',')) {
+                const name = item.trim().split(/\s+as\s+/)[0].trim();
+                if (name) allExports.add(name);
+            }
+        }
+    }
+
+    for (const f of allModulePaths) {
+        const rawContent = await fs.readFile(f, 'utf8');
+        // Strip comments and string literals so words in prose/templates aren't mistaken for function calls
+        const content = rawContent
+            .replace(/\/\*[\s\S]*?\*\//g, '')
+            .replace(/\/\/.*/g, '')
+            .replace(/'(?:\\.|[^'\\])*'/g, "''")
+            .replace(/"(?:\\.|[^"\\])*"/g, '""');
+        const rel = path.relative(root, f).replace(/\\/g, '/');
+        for (const exp of allExports) {
+            const callRegex = new RegExp(`\\b${exp}\\s*\\(`, 'g');
+            let match;
+            while ((match = callRegex.exec(content)) !== null) {
+                const idx = match.index;
+                if (idx > 0 && content[idx - 1] === '.') continue;
+                const isImported = new RegExp(`import\\s*\\{[^}]*\\b${exp}\\b[^}]*\\}`).test(content);
+                const isDynamicImported = new RegExp(`\\b${exp}\\b[^;\\n]*=\\s*(?:await\\s+)?import\\(`).test(content);
+                const isDeclared = new RegExp(`(?:function|const|let|var)\\s+${exp}\\b`).test(content);
+                assert.ok(
+                    isImported || isDynamicImported || isDeclared,
+                    `Frontend file ${rel} calls "${exp}()" without importing or declaring it!`
+                );
+            }
+        }
+    }
+});

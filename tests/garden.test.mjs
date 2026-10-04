@@ -6,6 +6,9 @@ import {
     handleGetWeeklies,
     handlePutWeekly,
     handleDeleteWeekly,
+    handlePostNote,
+    handlePostBookmark,
+    handlePostPrompt,
     handlePostFeed,
     handleGetFeeds,
     handleGetReaderProgress,
@@ -151,4 +154,40 @@ integration('Garden reader progress - upsert, user isolation and progress sync',
     assert.equal(updatedList1[0].chapter_index, 5);
     assert.equal(updatedList1[0].scroll_percentage, 88);
 });
+
+integration('Garden CRUD - autoincrement ID generation when ID is omitted', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const createdWeekly = await handlePostWeekly(
+        jsonRequest('https://x/api/weeklies', { category: '工作', title: '自增周记', summary: '自动ID', date: '2026-10-02' }),
+        db, 1
+    );
+    assert.equal(createdWeekly.status, 201);
+    const weeklyJson = await createdWeekly.json();
+    assert.ok(weeklyJson.id > 0, 'should return positive autoincrement ID for weekly');
+    assert.equal(weeklyJson.title, '自增周记');
+
+    const createdNote = await handlePostNote(
+        jsonRequest('https://x/api/notes', { title: '自增笔记', content: '内容', date: '2026-10-02' }),
+        db, 1
+    );
+    assert.equal(createdNote.status, 201);
+    assert.ok((await createdNote.json()).id > 0);
+
+    const createdBm = await handlePostBookmark(
+        jsonRequest('https://x/api/bookmarks', { type: '🌐 网站', title: '自增收藏', url: 'https://example.com' }),
+        db, 1
+    );
+    assert.equal(createdBm.status, 201);
+    assert.ok((await createdBm.json()).id > 0);
+
+    const createdPrompt = await handlePostPrompt(
+        jsonRequest('https://x/api/prompts', { title: '自增提示词', project: '测试', scene: '开发', content: '提示词内容' }),
+        db, 1
+    );
+    assert.equal(createdPrompt.status, 201);
+    assert.ok((await createdPrompt.json()).id > 0);
+});
+
 
