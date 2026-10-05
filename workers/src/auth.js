@@ -295,13 +295,13 @@ export async function handleListSessions(request, db, userId) {
 
 /** 吊销指定会话（「退出该设备」）；吊销当前会话时同时清 Cookie */
 export async function handleRevokeSession(request, db, userId, sessionId) {
-    if (!sessionId || !/^[0-9a-f]{64}$/.test(sessionId)) {
+    if (!sessionId || !/^[0-9a-zA-Z_-]{16,128}$/.test(sessionId)) {
         return jsonResponse({ error: '无效的会话标识' }, 400);
     }
     const res = await db.prepare('DELETE FROM sessions WHERE token = ?1 AND user_id = ?2')
         .bind(sessionId, userId).run();
     const raw = extractSessionToken(request);
-    const isCurrent = !!raw && (await tokenHash(raw)) === sessionId;
+    const isCurrent = !!raw && ((await tokenHash(raw)) === sessionId || raw === sessionId);
     return jsonResponse(
         { success: true, revoked: res.meta?.changes || 0, current: isCurrent },
         200,

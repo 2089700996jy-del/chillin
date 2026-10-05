@@ -76,6 +76,14 @@ integration('Auth - refresh rotates the cookie session, and devices can be liste
     const revoked = await (await handleRevokeSession(new Request('https://x/'), db, userId, list[0].id)).json();
     assert.equal(revoked.revoked, 1);
     assert.equal((await sessionRows(db)).length, 0);
+
+    // Test revoking legacy UUID session (e.g. unknown device created in older version)
+    const legacyUuid = 'c7a8b6e5-4d2f-4a3b-9e1c-5f8d2e3a4b5c';
+    await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
+        .bind(legacyUuid, userId, Date.now() + 100000).run();
+    const revokedLegacy = await (await handleRevokeSession(new Request('https://x/'), db, userId, legacyUuid)).json();
+    assert.equal(revokedLegacy.revoked, 1);
+    assert.equal((await sessionRows(db)).length, 0);
 });
 
 integration('Auth - logout-all revokes every session of the account only', async () => {

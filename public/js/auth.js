@@ -496,15 +496,22 @@ async function revokeSession(sessionId) {
 }
 
 export async function registerPushNotification() {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+        showToast('当前浏览器环境不支持系统通知推送', 'warn');
+        return;
+    }
     try {
         const reg = await navigator.serviceWorker.ready;
         const permission = await Notification.requestPermission();
-        if (permission !== 'granted') return;
+        if (permission !== 'granted') {
+            showToast('已取消或未授予系统通知权限', 'info');
+            return;
+        }
 
         const existingSub = await reg.pushManager.getSubscription();
         if (existingSub) {
             await sendSubscriptionToServer(existingSub);
+            showToast('已成功开启设备推送通知！', 'ok');
             return;
         }
 
@@ -514,8 +521,10 @@ export async function registerPushNotification() {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
         await sendSubscriptionToServer(subscription);
+        showToast('已成功开启设备推送通知！', 'ok');
     } catch (e) {
         console.error('Push registration failed:', e);
+        showToast('开启推送失败：' + (e?.message || e), 'warn');
     }
 }
 

@@ -77,7 +77,7 @@ import {
 } from './src/garden-echo.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.64';
+const APP_VERSION = '2.5.65';
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
@@ -144,7 +144,7 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/auth/logout-all' && method === 'POST') return handleLogoutAll(request, db, userId);
     if (path === '/api/auth/refresh' && method === 'POST') return handleRefreshSession(request, env, db, userId);
     if (path === '/api/auth/sessions' && method === 'GET') return handleListSessions(request, db, userId);
-    const sessionMatch = path.match(/^\/api\/auth\/sessions\/([0-9a-f]{64})$/);
+    const sessionMatch = path.match(/^\/api\/auth\/sessions\/([0-9a-zA-Z_-]{16,128})$/);
     if (sessionMatch && method === 'DELETE') return handleRevokeSession(request, db, userId, sessionMatch[1]);
     if (path === '/api/auth/me' && method === 'GET') return handleMe(db, userId);
 
