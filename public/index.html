@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.69">
+    <link rel="stylesheet" href="style.css?v=2.5.70">
 </head>
 <body>
 
@@ -233,49 +233,51 @@
                     </div>
                     <div class="heatmap-grid" id="heatmap-grid"></div>
 
-                    <!-- 3秒心绪打卡条 (Mood Check-in) -->
-                    <div class="mood-checkin-bar" id="mood-checkin-bar">
-                        <div class="mood-checkin-header">
-                            <span class="mood-checkin-label">今日心绪</span>
-                            <span class="mood-checkin-status" id="mood-checkin-status">点一下打卡今日</span>
+                    <!-- 3秒心绪打卡条 (Konsta iOS Mood Selector) -->
+                    <div class="k-mood-bar" id="mood-checkin-bar">
+                        <div class="k-mood-header">
+                            <span class="k-mood-title">心绪状态</span>
+                            <span class="k-mood-status" id="mood-checkin-status">轻按标记状态</span>
                         </div>
-                        <div class="mood-pills-row" id="mood-pills-row" role="radiogroup" aria-label="今日心绪打卡"></div>
+                        <div class="k-mood-scroll-row" id="mood-pills-row" role="radiogroup" aria-label="今日心绪打卡"></div>
                     </div>
                 </div>
 
-                <!-- 每日轻启发 (Daily Spark) 卡片 -->
-                <div class="daily-spark-card" id="daily-spark-card">
-                    <div class="daily-spark-header">
-                        <div class="daily-spark-tag">
-                            <span class="daily-spark-icon">💡</span>
-                            <span class="daily-spark-title">今日轻启发</span>
+                <!-- 每日偶想 (Apple Journal Style Reflection Card) -->
+                <div class="k-journal-card" id="daily-spark-card">
+                    <div class="k-journal-top">
+                        <div class="k-journal-meta">
+                            <span class="k-journal-dot" aria-hidden="true"></span>
+                            <span class="k-journal-tag">今日偶想</span>
                         </div>
-                        <div class="daily-spark-actions">
-                            <button type="button" class="btn-text btn-spark-shuffle" id="btn-shuffle-spark" title="换一个问题">
-                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
-                                <span>换一个</span>
-                            </button>
-                        </div>
+                        <button type="button" class="k-journal-shuffle-btn" id="btn-shuffle-spark" title="换一题" aria-label="换一题">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                            </svg>
+                            <span>换一题</span>
+                        </button>
                     </div>
-                    <div class="daily-spark-question" id="daily-spark-question">
-                        正在加载今日轻启发…
+                    <div class="k-journal-prompt" id="daily-spark-question">
+                        正在加载今日偶想…
                     </div>
-                    <div class="daily-spark-composer" id="daily-spark-composer">
-                        <div class="daily-spark-input-wrap">
-                            <input type="text" id="daily-spark-input" class="daily-spark-input" placeholder="写下一两句随想，记录此刻的生活…" enterkeyhint="done" autocomplete="off">
-                            <button type="button" class="btn-spark-save" id="btn-save-spark">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                                <span>存入随手记</span>
+                    <div class="k-journal-composer" id="daily-spark-composer">
+                        <div class="k-journal-field">
+                            <input type="text" id="daily-spark-input" class="k-journal-input" placeholder="轻按记录此刻的一两句随想…" enterkeyhint="send" autocomplete="off">
+                            <button type="button" class="k-spark-send-btn" id="btn-save-spark" aria-label="存入随手记" title="存入随手记">
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                                    <line x1="12" y1="19" x2="12" y2="5"></line>
+                                    <polyline points="5 12 12 5 19 12"></polyline>
+                                </svg>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- 时光偶遇卡片 (Serendipity Capsule) -->
-                <div class="serendipity-capsule-card" id="serendipity-capsule-card"></div>
+                <!-- 时光留痕 (Apple Inset Grouped Serendipity Card) -->
+                <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.69</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.70</button>
         </section>
 
         <!-- ========================================== -->
@@ -488,7 +490,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.69</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.70</button>
         </section>
 
         <!-- ========================================== -->
@@ -631,7 +633,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.69</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.70</button>
         </section>
 
         <!-- ========================================== -->
@@ -781,7 +783,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.69</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.70</button>
         </section>
 
         <!-- ========================================== -->
@@ -862,7 +864,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.69</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.70</button>
         </section>
 
     </main>
@@ -1121,8 +1123,7 @@
             <div class="sheet-pull-handle"></div>
             <div class="prompt-variable-header">
                 <div class="prompt-variable-title-wrap">
-                    <span class="prompt-var-icon">🪞</span>
-                    <h3 class="prompt-variable-title">本周精神切片</h3>
+                    <h3 class="prompt-variable-title">本周回顾</h3>
                     <span class="weekly-review-date-badge" id="weekly-review-daterange"></span>
                 </div>
                 <button type="button" class="btn-icon ios-modal-close-btn" data-close-modal="weekly-review-modal" aria-label="关闭" title="关闭">
@@ -1149,14 +1150,14 @@
                     </div>
                 </div>
 
-                <!-- AI 侧写正文区 -->
+                <!-- 侧写正文区 -->
                 <div class="weekly-review-content-card">
                     <div class="weekly-review-ai-badge">
-                        <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
-                        <span>AI 镜像观察</span>
+                        <span class="k-journal-dot" aria-hidden="true"></span>
+                        <span>思绪脉络整理</span>
                     </div>
                     <div class="weekly-review-markdown" id="weekly-review-markdown">
-                        <!-- AI 动态生成正文 -->
+                        <!-- 动态生成正文 -->
                     </div>
                 </div>
 
@@ -1248,7 +1249,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.69"></script>
-    <script type="module" src="app.js?v=2.5.69"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.70"></script>
+    <script type="module" src="app.js?v=2.5.70"></script>
 </body>
 </html>

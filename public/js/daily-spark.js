@@ -97,9 +97,9 @@ export function renderMoodPills() {
     setHtml(container, MOODS.map(m => {
         const isActive = todayMood === m.id;
         return `
-            <button type="button" class="mood-pill-btn${isActive ? ' active' : ''}" data-mood-id="${m.id}" title="${m.label} · ${m.desc}" role="radio" aria-checked="${isActive}">
-                <span class="mood-pill-emoji">${m.emoji}</span>
-                <span class="mood-pill-label">${m.label}</span>
+            <button type="button" class="k-mood-chip${isActive ? ' active' : ''}" data-mood-id="${m.id}" title="${m.label} · ${m.desc}" role="radio" aria-checked="${isActive}">
+                <span class="k-mood-emoji">${m.emoji}</span>
+                <span class="k-mood-text">${m.label}</span>
             </button>
         `;
     }).join(''));
@@ -107,10 +107,10 @@ export function renderMoodPills() {
     if (statusEl) {
         if (todayMood) {
             const m = MOODS.find(x => x.id === todayMood);
-            statusEl.textContent = m ? `今日：${m.emoji} ${m.label}` : '';
+            statusEl.textContent = m ? `已记：${m.emoji} ${m.label}` : '';
             statusEl.classList.add('is-checked');
         } else {
-            statusEl.textContent = '点一下打卡今日';
+            statusEl.textContent = '轻按标记状态';
             statusEl.classList.remove('is-checked');
         }
     }
@@ -314,33 +314,38 @@ export function renderSerendipityCard() {
     const snippet = target.content.replace(/<[^>]+>/g, '').slice(0, 120) + (target.content.length > 120 ? '…' : '');
 
     setHtml(cardEl, `
-        <div class="serendipity-capsule-inner">
-            <div class="serendipity-header">
-                <div class="serendipity-badge">
-                    <span class="serendipity-icon">⏳</span>
-                    <span class="serendipity-tag-text">${escapeHtml(badgeLabel)}</span>
+        <div class="k-memory-card-inner">
+            <div class="k-memory-top">
+                <div class="k-memory-badge">
+                    <span class="k-memory-dot" aria-hidden="true"></span>
+                    <span class="k-memory-label">${escapeHtml(badgeLabel)}</span>
                 </div>
-                <div class="serendipity-header-actions">
-                    <button type="button" class="btn-text btn-serendipity-shuffle" id="btn-shuffle-serendipity" title="偶遇下一条">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
-                        <span>换一条</span>
-                    </button>
-                </div>
-            </div>
-            <div class="serendipity-body">
-                ${target.title && target.title !== snippet ? `<div class="serendipity-memory-title">《${escapeHtml(target.title)}》</div>` : ''}
-                <div class="serendipity-memory-text">“${escapeHtml(snippet)}”</div>
-            </div>
-            <div class="serendipity-footer">
-                <span class="serendipity-date">${escapeHtml(target.date)}</span>
-                <button type="button" class="btn-text text-primary btn-serendipity-reflect" id="btn-serendipity-reflect" data-target-id="${escapeHtml(String(target.id))}" data-target-type="${escapeHtml(target.type)}" data-target-title="${escapeHtml(target.title)}">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                    <span>隔空对话 · 留句回响</span>
+                <button type="button" class="k-memory-shuffle-btn" id="btn-shuffle-serendipity" title="偶遇下一条" aria-label="偶遇下一条">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/>
+                    </svg>
+                    <span>换一条</span>
                 </button>
             </div>
-            <div class="serendipity-reflection-box" id="serendipity-reflection-box" style="display: none;">
-                <input type="text" id="serendipity-reflection-input" class="serendipity-reflection-input" placeholder="回看当时的自己，现在的你想说点什么…" autocomplete="off">
-                <button type="button" class="btn-spark-save" id="btn-save-serendipity-reflection">发送回响</button>
+            <div class="k-memory-body">
+                ${target.title && target.title !== snippet ? `<div class="k-memory-title">${escapeHtml(target.title)}</div>` : ''}
+                <div class="k-memory-quote">“${escapeHtml(snippet)}”</div>
+            </div>
+            <div class="k-memory-footer">
+                <span class="k-memory-date">${escapeHtml(target.date)}</span>
+                <button type="button" class="k-memory-reflect-trigger" id="btn-serendipity-reflect" data-target-id="${escapeHtml(String(target.id))}" data-target-type="${escapeHtml(target.type)}" data-target-title="${escapeHtml(target.title)}">
+                    <span>留句回响</span>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
+                </button>
+            </div>
+            <div class="k-memory-reflection-composer" id="serendipity-reflection-box" style="display: none;">
+                <input type="text" id="serendipity-reflection-input" class="k-memory-input" placeholder="回看当时的自己，想写点什么…" autocomplete="off">
+                <button type="button" class="k-spark-send-btn" id="btn-save-serendipity-reflection" title="发送回响" aria-label="发送回响">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="12" y1="19" x2="12" y2="5"></line>
+                        <polyline points="5 12 12 5 19 12"></polyline>
+                    </svg>
+                </button>
             </div>
         </div>
     `);
@@ -458,7 +463,7 @@ export async function openWeeklyReviewModal() {
     setHtml(markdownEl, `
         <div class="weekly-loading-wrap">
             <span class="weekly-spinner"></span>
-            <span>AI 记忆镜像正在提炼你的心迹碎片…</span>
+            <span>正在梳理本周的心绪脉络…</span>
         </div>
     `);
 
@@ -467,7 +472,7 @@ export async function openWeeklyReviewModal() {
         cachedWeeklyReviewReply = (res && res.reply) ? res.reply : '本周记录较少，继续随手记下更多灵感吧~';
         setHtml(markdownEl, markdownToHtml(cachedWeeklyReviewReply));
     } catch (err) {
-        cachedWeeklyReviewReply = '本周思考汇总：\n\n' + (totalItems > 0 ? `本周累计留下 ${totalItems} 条思绪碎片，心绪偏向 ${matchedMood.emoji} ${matchedMood.label}。每一份随手记录都是生活的见证。` : '本周暂未检测到较多记录，去随手记敲下一句吧~');
+        cachedWeeklyReviewReply = '本周随想汇总：\n\n' + (totalItems > 0 ? `本周累计留下 ${totalItems} 条思绪碎片，心绪偏向 ${matchedMood.emoji} ${matchedMood.label}。每一份随手记录都是生活的见证。` : '本周暂未检测到较多记录，去随手记敲下一句吧~');
         setHtml(markdownEl, markdownToHtml(cachedWeeklyReviewReply));
     }
 }
@@ -486,7 +491,7 @@ export function initDailySpark() {
     const moodRow = document.getElementById('mood-pills-row');
     if (moodRow) {
         moodRow.addEventListener('click', (e) => {
-            const btn = e.target.closest('.mood-pill-btn');
+            const btn = e.target.closest('.k-mood-chip, .mood-pill-btn');
             if (btn && btn.dataset.moodId) {
                 checkInMood(btn.dataset.moodId);
             }
@@ -519,7 +524,7 @@ export function initDailySpark() {
     document.getElementById('btn-copy-weekly-review')?.addEventListener('click', () => {
         if (!cachedWeeklyReviewReply) return;
         navigator.clipboard?.writeText(cachedWeeklyReviewReply).then(() => {
-            showToast('📋 本周精神切片已复制到剪贴板！', 'ok');
+            showToast('📋 本周回顾已复制到剪贴板', 'ok');
         }).catch(() => {
             showToast('复制失败，请手动选取', 'warn');
         });
@@ -538,15 +543,15 @@ export function initDailySpark() {
             const contentTextarea = document.getElementById('edit-content');
 
             if (titleInput && !titleInput.value) {
-                titleInput.value = `本周心绪切片 (${getEast8Time().slice(0, 10)})`;
+                titleInput.value = `本周随想回顾 (${getEast8Time().slice(0, 10)})`;
             }
             if (summaryInput && !summaryInput.value) {
-                summaryInput.value = `AI 镜像整理与本周碎片沉淀`;
+                summaryInput.value = `本周心绪脉络与碎片沉淀`;
             }
             if (contentTextarea) {
                 contentTextarea.value = (contentTextarea.value ? contentTextarea.value + '\n\n' : '') + cachedWeeklyReviewReply;
             }
-            showToast('📝 已自动将本周回顾注入周记草稿！', 'ok');
+            showToast('📝 已将本周回顾填入周记草稿', 'ok');
         }, 300);
     });
 }
