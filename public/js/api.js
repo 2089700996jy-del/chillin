@@ -37,3 +37,19 @@ export {
     checkAndMergeGuestData,
     startAutoSyncEngine,
 } from './sync.js';
+
+export {
+    openDatabase,
+    idbGet,
+    idbSet,
+    idbDel,
+    migrateFromLocalStorage,
+} from './db.js';
+
+export {
+    createZip,
+    buildBackupFiles,
+    generateBackupZipBlob,
+    downloadBackupZip,
+    sendBackupByEmail,
+} from './backup.js';

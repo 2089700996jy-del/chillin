@@ -117,6 +117,20 @@ export function initSearch() {
             }
         },
         {
+            id: 'action-backup',
+            icon: '📦',
+            title: '全量资产备份与导出',
+            desc: '打包所有 Markdown 笔记、随手记、周刊、书签为 ZIP 或发送至邮箱',
+            keywords: ['备份', '导出', 'backup', 'export', 'zip', 'markdown', '下载', '邮箱'],
+            run: () => {
+                closeGlobalSearch();
+                const secModal = document.getElementById('account-security-modal');
+                if (secModal) {
+                    secModal.classList.add('show');
+                }
+            }
+        },
+        {
             id: 'action-sync-now',
             icon: '🔄',
             title: '立即执行云端同步',

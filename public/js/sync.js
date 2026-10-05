@@ -17,6 +17,7 @@ import {
     refresh,
 } from './auth.js';
 import { setHtml } from './trusted-types.js';
+import { idbGet, idbSet, migrateFromLocalStorage } from './db.js';
 
 const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds', 'prompts'];
 
@@ -306,6 +307,15 @@ export function loadLocalData() {
         saveFeedsDatabase();
     }
 
+    migrateFromLocalStorage([
+        getLocalKey('gardenData'),
+        getLocalKey('gardenNotes'),
+        getLocalKey('gardenBookmarks'),
+        getLocalKey('gardenPrompts'),
+        getLocalKey('gardenFeeds'),
+        getLocalKey('gardenEchoCards')
+    ]);
+
     refresh('all');
 }
 
@@ -513,19 +523,19 @@ export async function syncFromApi() {
 }
 
 export function saveDatabase() {
-    localStorage.setItem(getLocalKey('gardenData'), JSON.stringify(state.database));
+    idbSet(getLocalKey('gardenData'), state.database);
 }
 export function saveNotesDatabase() {
-    localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(state.notesDatabase));
+    idbSet(getLocalKey('gardenNotes'), state.notesDatabase);
 }
 export function saveBookmarksDatabase() {
-    localStorage.setItem(getLocalKey('gardenBookmarks'), JSON.stringify(state.bookmarksDatabase));
+    idbSet(getLocalKey('gardenBookmarks'), state.bookmarksDatabase);
 }
 export function savePromptsDatabase() {
-    localStorage.setItem(getLocalKey('gardenPrompts'), JSON.stringify(state.promptsDatabase));
+    idbSet(getLocalKey('gardenPrompts'), state.promptsDatabase);
 }
 export function saveFeedsDatabase() {
-    localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
+    idbSet(getLocalKey('gardenFeeds'), state.feedsDatabase);
 }
 
 function markSyncedItem(item) {

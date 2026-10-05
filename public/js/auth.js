@@ -6,6 +6,7 @@ import { showToast, urlBase64ToUint8Array, escapeHtml, confirmDialog } from './u
 import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
 import { setHtml } from './trusted-types.js';
+import { downloadBackupZip, sendBackupByEmail } from './backup.js';
 
 let hooks = {
     onRefresh: (_kind, _opts) => {},
@@ -261,6 +262,7 @@ export function initAuthUI() {
     document.getElementById('btn-logout-all')?.addEventListener('click', logoutAllDevices);
 
     // 账号与安全入口（用户名）与弹层内交互
+    document.getElementById('btn-open-security')?.addEventListener('click', openSecurityModal);
     const navUsername = document.getElementById('nav-username');
     navUsername?.addEventListener('click', openSecurityModal);
     navUsername?.addEventListener('keydown', (e) => {
@@ -272,6 +274,21 @@ export function initAuthUI() {
     });
     document.getElementById('btn-security-logout-all')?.addEventListener('click', logoutAllDevices);
     document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
+
+    // 全量资产备份与导出交互
+    document.getElementById('btn-backup-download')?.addEventListener('click', () => {
+        downloadBackupZip();
+    });
+    document.getElementById('btn-backup-email')?.addEventListener('click', async () => {
+        const input = document.getElementById('backup-email-input');
+        const email = input?.value?.trim();
+        if (!email) {
+            showToast('请输入接收邮箱地址', 'warn');
+            input?.focus();
+            return;
+        }
+        await sendBackupByEmail(email);
+    });
 
     const btnTogglePassword = document.getElementById('btn-toggle-password');
     const authPasswordInput = document.getElementById('auth-password');

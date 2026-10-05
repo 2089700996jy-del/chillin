@@ -208,4 +208,91 @@ export async function handleHeatmap(db, userId) {
     return jsonResponse(result.results || [], 200);
 }
 
-// ── Echo Generation & AI Review ──
+// ── 全量数据备份邮件直发 (Resend API) ──
+
+export async function handleBackupEmail(request, env, userId) {
+    if (!userId) return jsonResponse({ error: 'Unauthorized' }, 401);
+
+    let body;
+    try {
+        body = await request.json();
+    } catch (_) {
+        return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const { email, filename, zipBase64 } = body || {};
+    if (!email || typeof email !== 'string' || !email.includes('@') || email.length > 254) {
+        return jsonResponse({ error: 'Invalid email address' }, 400);
+    }
+    if (!zipBase64 || typeof zipBase64 !== 'string') {
+        return jsonResponse({ error: 'Missing zip payload' }, 400);
+    }
+
+    const resendKey = env.RESEND_API_KEY;
+    if (!resendKey) {
+        return jsonResponse({
+            success: false,
+            code: 'NO_RESEND_KEY',
+            message: '未配置 RESEND_API_KEY 环境变量，无法发送邮件'
+        }, 200);
+    }
+
+    try {
+        const fromAddress = env.RESEND_FROM || 'Chillin Garden <onboarding@resend.dev>';
+        const res = await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${resendKey}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                from: fromAddress,
+                to: [email],
+                subject: `[Chillin] 你的个人数字花园全量备份 (${new Date().toLocaleDateString('zh-CN')})`,
+                html: `
+                    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #1c1c1e;">
+                        <h2 style="font-size: 20px; font-weight: 700; color: #000; margin-bottom: 12px;">🌿 Chillin 数字花园全量备份</h2>
+                        <p style="font-size: 15px; line-height: 1.6; color: #3c3c43;">你好！这是你在 Chillin 数字花园生成的全量数据归档压缩包。</p>
+                        <div style="background: #f2f2f7; border-radius: 12px; padding: 16px; margin: 20px 0; font-size: 14px; line-height: 1.6;">
+                            <div>📦 <strong>包含内容：</strong></div>
+                            <ul style="margin: 8px 0 0 20px; padding: 0;">
+                                <li><strong>notes/</strong>：所有笔记的独立 Markdown 文件（含 Frontmatter 元数据）</li>
+                                <li><strong>weeklies/</strong>：所有周刊长文的独立 Markdown 文件</li>
+                                <li><strong>feeds/feeds.md</strong>：随手记完整时间线归档</li>
+                                <li><strong>bookmarks/</strong>：标准 Netscape HTML 书签（可直接导入任意浏览器）</li>
+                                <li><strong>chillin-full-backup.json</strong>：全量结构化数据（供一键恢复还原）</li>
+                            </ul>
+                        </div>
+                        <p style="font-size: 13px; color: #8e8e93; margin-top: 24px;">附件已携带压缩包文件：${filename || 'chillin-backup.zip'}<br/>Chillin · 个人离线优先数字花园</p>
+                    </div>
+                `,
+                attachments: [
+                    {
+                        filename: filename || 'chillin-backup.zip',
+                        content: zipBase64
+                    }
+                ]
+            })
+        });
+
+        if (!res.ok) {
+            const errText = await res.text();
+            console.error('[resend] email sending failed:', res.status, errText);
+            return jsonResponse({
+                success: false,
+                code: 'RESEND_ERROR',
+                message: `Resend 服务返回错误 (${res.status})`
+            }, 200);
+        }
+
+        const data = await res.json();
+        return jsonResponse({ success: true, id: data.id }, 200);
+    } catch (err) {
+        console.error('[resend] fetch exception:', err);
+        return jsonResponse({
+            success: false,
+            code: 'FETCH_ERROR',
+            message: err?.message || '邮件发送异常'
+        }, 500);
+    }
+}

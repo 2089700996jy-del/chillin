@@ -64,7 +64,8 @@ import {
 import {
     handleSyncPull,
     handleSyncBatch,
-    handleHeatmap
+    handleHeatmap,
+    handleBackupEmail
 } from './src/garden-sync.js';
 
 import {
@@ -76,7 +77,7 @@ import {
 } from './src/garden-echo.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.63';
+const APP_VERSION = '2.5.64';
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
@@ -203,6 +204,9 @@ async function router(path, method, request, env, ctx) {
 
     // ── 审计扫描 ──
     if (path === '/api/audit/scan' && method === 'POST') return handleAuditScan(db, userId);
+
+    // ── 全量数据备份邮件直发 ──
+    if (path === '/api/backup/email' && method === 'POST') return handleBackupEmail(request, env, userId);
 
     return jsonResponse({ error: 'Not found' }, 404);
 }
