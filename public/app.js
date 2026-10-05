@@ -29,6 +29,7 @@ import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
 import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
+import { initDailySpark } from './js/daily-spark.js';
 import { showToast } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 
@@ -186,6 +187,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.renderFeeds?.();
                 actions.renderEchoCards?.();
                 actions.renderHeatmap?.();
+                actions.renderMoodPills?.();
+                actions.renderSerendipityCard?.();
                 return;
             }
             if (kind === 'weeklies') actions.renderCards?.(opts.filter || 'all');
@@ -210,6 +213,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('echoAi', initEchoAi);
     safeInit('search', initSearch);
     safeInit('wikilinks', initWikilinks);
+    safeInit('dailySpark', initDailySpark);
     safeInit('router', initRouter);
 
     loadLocalData();

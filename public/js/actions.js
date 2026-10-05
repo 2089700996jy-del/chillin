@@ -30,4 +30,6 @@ export const actions = {
     parseWikilinksToHtml: null,
     renderBacklinksSection: null,
     renderOutgoingLinksStrip: null,
+    renderMoodPills: null,
+    renderSerendipityCard: null,
 };

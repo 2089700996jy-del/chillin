@@ -8003,6 +8003,510 @@ body.dark-reader-body .storage-diag-footer {
   color: rgba(235, 235, 245, 0.45);
 }
 
+/* ==================== 3秒心绪打卡 (Mood Check-in) ==================== */
+.mood-checkin-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+.mood-checkin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.mood-checkin-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: rgba(60, 60, 67, 0.6);
+  letter-spacing: -0.1px;
+}
+
+.mood-checkin-status {
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(60, 60, 67, 0.45);
+}
+
+.mood-checkin-status.is-checked {
+  color: var(--ios-blue, #007aff);
+  font-weight: 600;
+}
+
+.mood-pills-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding-bottom: 2px;
+}
+
+.mood-pills-row::-webkit-scrollbar {
+  display: none;
+}
+
+.mood-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9999px;
+  background: rgba(120, 120, 128, 0.08);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  color: rgba(60, 60, 67, 0.85);
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mood-pill-btn:hover {
+  background: rgba(120, 120, 128, 0.15);
+  transform: translateY(-1px);
+}
+
+.mood-pill-btn:active {
+  transform: scale(0.95);
+}
+
+.mood-pill-btn.active {
+  background: rgba(0, 122, 255, 0.12);
+  border-color: rgba(0, 122, 255, 0.3);
+  color: var(--ios-blue, #007aff);
+  font-weight: 600;
+  box-shadow: 0 1px 4px rgba(0, 122, 255, 0.15);
+}
+
+.mood-pill-emoji {
+  font-size: 13px;
+  line-height: 1;
+}
+
+body.dark-reader-body .mood-checkin-bar {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .mood-checkin-label {
+  color: rgba(235, 235, 245, 0.55);
+}
+body.dark-reader-body .mood-checkin-status {
+  color: rgba(235, 235, 245, 0.4);
+}
+body.dark-reader-body .mood-pill-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 235, 245, 0.85);
+}
+body.dark-reader-body .mood-pill-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+body.dark-reader-body .mood-pill-btn.active {
+  background: rgba(10, 132, 255, 0.22);
+  border-color: rgba(10, 132, 255, 0.4);
+  color: #0a84ff;
+}
+
+/* ==================== 每日轻启发 (Daily Spark) ==================== */
+.daily-spark-card {
+  margin: 14px 0 12px;
+  padding: 16px;
+  background: var(--card-bg, #ffffff);
+  border: 1px solid rgba(0, 0, 0, 0.07);
+  border-radius: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.daily-spark-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.daily-spark-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.daily-spark-icon {
+  font-size: 14px;
+}
+
+.daily-spark-title {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: #ff9500;
+  letter-spacing: 0.2px;
+}
+
+.btn-spark-shuffle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: rgba(60, 60, 67, 0.6);
+  padding: 2px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-spark-shuffle:hover {
+  background: rgba(120, 120, 128, 0.08);
+  color: var(--text-color, #1c1c1e);
+}
+
+.daily-spark-question {
+  font-size: 14.5px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--text-color, #1c1c1e);
+  margin-bottom: 12px;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.daily-spark-question.spark-pulse {
+  animation: sparkPulse 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes sparkPulse {
+  0% { opacity: 0.4; transform: translateY(-3px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+.daily-spark-composer {
+  width: 100%;
+}
+
+.daily-spark-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.daily-spark-input {
+  flex: 1;
+  min-width: 0;
+  height: 38px;
+  padding: 0 12px;
+  font-size: 13.5px;
+  border: 1px solid rgba(0, 0, 0, 0.09);
+  border-radius: 10px;
+  background: rgba(120, 120, 128, 0.04);
+  color: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.daily-spark-input:focus {
+  border-color: var(--ios-blue, #007aff);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
+  background: var(--card-bg, #ffffff);
+}
+
+.btn-spark-save {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 38px;
+  padding: 0 13px;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: var(--ios-blue, #007aff);
+  color: #ffffff;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-spark-save:hover {
+  background: #0063d1;
+  transform: translateY(-1px);
+}
+
+.btn-spark-save:active {
+  transform: scale(0.97);
+}
+
+body.dark-reader-body .daily-spark-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .daily-spark-input {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: #f2f2f7;
+}
+body.dark-reader-body .daily-spark-input:focus {
+  background: #1c1c1e;
+  border-color: #0a84ff;
+}
+
+/* ==================== 时光偶遇卡片 (Serendipity Capsule) ==================== */
+.serendipity-capsule-card {
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, rgba(255, 149, 0, 0.06) 0%, rgba(175, 82, 222, 0.05) 100%);
+  border: 1px solid rgba(255, 149, 0, 0.18);
+  border-radius: 16px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.serendipity-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.serendipity-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #ff9500;
+}
+
+.btn-serendipity-shuffle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11.5px;
+  color: rgba(60, 60, 67, 0.6);
+  cursor: pointer;
+}
+
+.serendipity-memory-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-color, #1c1c1e);
+  margin-bottom: 4px;
+}
+
+.serendipity-memory-text {
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: rgba(60, 60, 67, 0.85);
+  font-style: italic;
+}
+
+.serendipity-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  font-size: 12px;
+  color: rgba(60, 60, 67, 0.5);
+}
+
+.btn-serendipity-reflect {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ios-blue, #007aff);
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.serendipity-reflection-box {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  animation: sparkPulse 0.25s ease;
+}
+
+.serendipity-reflection-input {
+  flex: 1;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: var(--card-bg, #ffffff);
+  color: inherit;
+  outline: none;
+}
+
+.serendipity-empty-state {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  color: rgba(60, 60, 67, 0.65);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.serendipity-empty-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+body.dark-reader-body .serendipity-capsule-card {
+  background: linear-gradient(135deg, rgba(255, 149, 0, 0.08) 0%, rgba(175, 82, 222, 0.07) 100%);
+  border-color: rgba(255, 149, 0, 0.22);
+}
+body.dark-reader-body .serendipity-memory-text {
+  color: rgba(235, 235, 245, 0.85);
+}
+body.dark-reader-body .serendipity-reflection-input {
+  background: #1c1c1e;
+  border-color: rgba(255, 255, 255, 0.15);
+  color: #f2f2f7;
+}
+
+/* ==================== 本周精神切片 (Weekly Mind Mirror Modal) ==================== */
+.weekly-review-card {
+  max-width: 580px;
+  width: 100%;
+}
+
+.weekly-review-date-badge {
+  font-size: 11.5px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 6px;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--ios-blue, #007aff);
+  margin-left: 8px;
+}
+
+.weekly-metrics-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.weekly-metric-cell {
+  background: rgba(120, 120, 128, 0.06);
+  border-radius: 12px;
+  padding: 12px 10px;
+  text-align: center;
+}
+
+.weekly-metric-cell .metric-num {
+  display: block;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-color, #1c1c1e);
+  margin-bottom: 2px;
+}
+
+.weekly-metric-cell .metric-lbl {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(60, 60, 67, 0.55);
+}
+
+.weekly-review-content-card {
+  background: rgba(120, 120, 128, 0.05);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+  max-height: 48vh;
+  overflow-y: auto;
+}
+
+.weekly-review-ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ios-blue, #007aff);
+  margin-bottom: 10px;
+}
+
+.weekly-review-markdown {
+  font-size: 14px;
+  line-height: 1.65;
+  color: rgba(60, 60, 67, 0.9);
+}
+
+.weekly-review-markdown p {
+  margin: 0 0 10px;
+}
+
+.weekly-review-markdown ul, .weekly-review-markdown ol {
+  padding-left: 20px;
+  margin: 0 0 10px;
+}
+
+.weekly-review-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.weekly-loading-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 0;
+  color: rgba(60, 60, 67, 0.65);
+  font-size: 13.5px;
+}
+
+.weekly-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 122, 255, 0.2);
+  border-top-color: var(--ios-blue, #007aff);
+  border-radius: 50%;
+  animation: weeklySpin 0.8s infinite linear;
+}
+
+@keyframes weeklySpin {
+  to { transform: rotate(360deg); }
+}
+
+body.dark-reader-body .weekly-review-date-badge {
+  background: rgba(10, 132, 255, 0.18);
+  color: #0a84ff;
+}
+body.dark-reader-body .weekly-metric-cell {
+  background: rgba(255, 255, 255, 0.06);
+}
+body.dark-reader-body .weekly-metric-cell .metric-num {
+  color: #f2f2f7;
+}
+body.dark-reader-body .weekly-metric-cell .metric-lbl {
+  color: rgba(235, 235, 245, 0.5);
+}
+body.dark-reader-body .weekly-review-content-card {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .weekly-review-markdown {
+  color: rgba(235, 235, 245, 0.88);
+}
+body.dark-reader-body .weekly-loading-wrap {
+  color: rgba(235, 235, 245, 0.6);
+}
+
 /* ♿ 尊重系统「减弱动态效果」偏好：关闭装饰性动画与过渡 */
 @media (prefers-reduced-motion: reduce) {
   *,

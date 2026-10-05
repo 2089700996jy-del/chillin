@@ -133,3 +133,24 @@ test('Storage - getStorageEstimate provides formatted stats and persist status',
     assert.equal(typeof est.isPersistent, 'boolean');
 });
 
+const { MOODS, getEligibleMemories } = await import('../public/js/daily-spark.js');
+
+test('Daily Spark - MOODS definitions are complete and structured', () => {
+    assert.equal(MOODS.length, 5);
+    const ids = MOODS.map(m => m.id);
+    assert.deepEqual(ids, ['energy', 'calm', 'focus', 'tired', 'inspired']);
+    for (const m of MOODS) {
+        assert.ok(m.emoji && m.label && m.desc);
+    }
+});
+
+test('Daily Spark - getEligibleMemories filters memories older than threshold', async () => {
+    const { state } = await import('../public/js/state.js');
+    const oldDate = new Date(Date.now() - 5 * 86400 * 1000).toISOString();
+    state.notesDatabase = [
+        { id: 999, title: '5天前的深思', content: '关于生活的节奏', date: oldDate, is_deleted: 0 }
+    ];
+    const memories = getEligibleMemories();
+    assert.ok(memories.some(m => m.id === 999));
+});
+
