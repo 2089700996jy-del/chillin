@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.71">
+    <link rel="stylesheet" href="style.css?v=2.5.72">
 </head>
 <body>
 
@@ -277,7 +277,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.71</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
         </section>
 
         <!-- ========================================== -->
@@ -490,7 +490,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.71</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
         </section>
 
         <!-- ========================================== -->
@@ -633,7 +633,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.71</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
         </section>
 
         <!-- ========================================== -->
@@ -783,7 +783,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.71</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
         </section>
 
         <!-- ========================================== -->
@@ -862,25 +862,25 @@
                 <div id="echo-cards-container" class="echo-cards-container"></div>
             </div>
 
-            <!-- 常青主题资产台 (Konsta iOS Evergreen Topic Shelves) -->
+            <!-- 常青专栏 (Konsta iOS Evergreen Topic Shelves) -->
             <div class="k-evergreen-shelves-section" id="evergreen-shelves-section">
                 <div class="k-shelves-header">
                     <div class="k-shelves-title-group">
                         <span class="k-shelves-dot" aria-hidden="true"></span>
-                        <h2 class="k-shelves-title">常青主题资产</h2>
-                        <span class="k-shelves-badge" id="evergreen-shelves-summary">0 棵常青树</span>
+                        <h2 class="k-shelves-title">常青专栏</h2>
+                        <span class="k-shelves-badge" id="evergreen-shelves-summary">0 个专栏</span>
                     </div>
-                    <button type="button" class="k-shelves-more-btn" id="btn-view-all-topics" title="查看主题全貌">
-                        <span>全览</span>
+                    <button type="button" class="k-shelves-more-btn" id="btn-view-all-topics" title="查看专栏全貌">
+                        <span>全部</span>
                         <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                     </button>
                 </div>
-                <div class="k-shelves-scroll" id="evergreen-shelves-scroll" role="region" aria-label="常青主题货架"></div>
+                <div class="k-shelves-scroll" id="evergreen-shelves-scroll" role="region" aria-label="常青专栏货架"></div>
             </div>
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.71</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
         </section>
 
     </main>
@@ -1191,14 +1191,16 @@
         </div>
     </div>
 
-    <!-- 常青主题资产详情 Sheet (Apple HIG Inset Grouped Sheet) -->
+    <!-- 常青专栏详情 Sheet (Apple HIG Inset Grouped Sheet) -->
     <div class="modal-overlay" id="topic-detail-modal">
         <div class="prompt-variable-card k-topic-sheet-card">
             <div class="sheet-pull-handle"></div>
             <div class="prompt-variable-header">
                 <div class="prompt-variable-title-wrap">
-                    <span class="k-topic-stage-pill" id="topic-detail-stage-pill">🌳 常青资产</span>
-                    <h3 class="prompt-variable-title" id="topic-detail-title">#主题</h3>
+                    <div class="k-topic-sheet-headline">
+                        <h3 class="prompt-variable-title" id="topic-detail-title">#专栏</h3>
+                        <p class="k-topic-sheet-subtitle" id="topic-detail-subtitle">0 条记录 · 共 0 字</p>
+                    </div>
                 </div>
                 <button type="button" class="btn-icon ios-modal-close-btn" data-close-modal="topic-detail-modal" aria-label="关闭" title="关闭">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
@@ -1208,40 +1210,21 @@
                 </button>
             </div>
             <div class="prompt-variable-body k-topic-sheet-body">
-                <!-- 统计指标格 (Metrics Group) -->
-                <div class="weekly-metrics-row k-topic-metrics-row">
-                    <div class="weekly-metric-cell">
-                        <span class="metric-num" id="topic-metric-count">0</span>
-                        <span class="metric-lbl">累积沉淀</span>
-                    </div>
-                    <div class="weekly-metric-cell">
-                        <span class="metric-num" id="topic-metric-words">0</span>
-                        <span class="metric-lbl">字数规模</span>
-                    </div>
-                    <div class="weekly-metric-cell">
-                        <span class="metric-num" id="topic-metric-span">0天</span>
-                        <span class="metric-lbl">思考跨度</span>
-                    </div>
-                </div>
-
-                <!-- 主题沉淀内容列表 -->
+                <!-- 专栏内容列表 -->
                 <div class="k-topic-items-wrapper">
-                    <div class="k-topic-items-header">
-                        <span>关联思绪与笔记</span>
-                    </div>
                     <div class="k-topic-items-list" id="topic-detail-items-list">
                         <!-- 条目动态渲染 -->
                     </div>
                 </div>
 
-                <!-- 快捷追加思绪动作栏 -->
+                <!-- 底部快捷动作 -->
                 <div class="k-topic-sheet-actions">
                     <button type="button" class="btn-primary k-topic-append-btn" id="btn-topic-append-thought">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
                             <line x1="12" y1="5" x2="12" y2="19"></line>
                             <line x1="5" y1="12" x2="19" y2="12"></line>
                         </svg>
-                        <span>为此主题追加一条随想</span>
+                        <span>为此专栏记一笔</span>
                     </button>
                 </div>
             </div>
@@ -1322,7 +1305,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.71"></script>
-    <script type="module" src="app.js?v=2.5.71"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.72"></script>
+    <script type="module" src="app.js?v=2.5.72"></script>
 </body>
 </html>

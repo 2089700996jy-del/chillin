@@ -8672,28 +8672,18 @@ body.dark-reader-body .weekly-review-markdown {
   margin-bottom: 6px;
 }
 
-.k-topic-stage-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
+.k-topic-tier-pill {
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: rgba(120, 120, 128, 0.08);
+  color: rgba(60, 60, 67, 0.6);
+}
+.k-topic-tier-pill.tier-deep {
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--ios-blue, #007aff);
   font-weight: 600;
-  padding: 1.5px 6px;
-  border-radius: 999px;
-  letter-spacing: 0.2px;
-}
-
-.stage-evergreen {
-  background: rgba(52, 199, 89, 0.12);
-  color: #248a3d;
-}
-.stage-branching {
-  background: rgba(48, 176, 199, 0.12);
-  color: #1f7a8c;
-}
-.stage-budding {
-  background: rgba(142, 142, 147, 0.12);
-  color: #636366;
 }
 
 .k-shelf-count-badge {
@@ -8703,7 +8693,7 @@ body.dark-reader-body .weekly-review-markdown {
 }
 
 .k-shelf-card-title {
-  font-size: 14px;
+  font-size: 14.5px;
   font-weight: 600;
   color: var(--text-color, #1c1c1e);
   margin-bottom: 4px;
@@ -8748,7 +8738,7 @@ body.dark-reader-body .weekly-review-markdown {
 }
 
 .k-shelf-empty-icon {
-  font-size: 18px;
+  font-size: 16px;
   flex-shrink: 0;
 }
 
@@ -8758,27 +8748,23 @@ body.dark-reader-body .weekly-review-markdown {
   width: 100%;
 }
 
-.k-topic-stage-pill {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 6px;
-  margin-right: 8px;
+.k-topic-sheet-headline {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.k-topic-sheet-subtitle {
+  font-size: 12px;
+  font-weight: 400;
+  color: rgba(60, 60, 67, 0.55);
+  margin: 0;
 }
 
 .k-topic-items-wrapper {
-  margin-top: 14px;
-  max-height: 46vh;
+  margin-top: 12px;
+  max-height: 52vh;
   overflow-y: auto;
-}
-
-.k-topic-items-header {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: rgba(60, 60, 67, 0.5);
-  margin-bottom: 8px;
 }
 
 .k-topic-item-row {
@@ -8812,11 +8798,16 @@ body.dark-reader-body .weekly-review-markdown {
   color: var(--ios-blue, #007aff);
 }
 
+.k-topic-item-info {
+  font-size: 11px;
+  color: rgba(60, 60, 67, 0.4);
+}
+
 .k-topic-item-title {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-color, #1c1c1e);
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .k-topic-sheet-actions {
@@ -8839,6 +8830,21 @@ body.dark-reader-body .weekly-review-markdown {
   0% { transform: scale(1.02); box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.35); }
   50% { transform: scale(1.01); box-shadow: 0 0 0 5px rgba(0, 122, 255, 0.2); }
   100% { transform: scale(1); box-shadow: none; }
+}
+
+body.dark-reader-body .k-topic-tier-pill {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(235, 235, 245, 0.6);
+}
+body.dark-reader-body .k-topic-tier-pill.tier-deep {
+  background: rgba(10, 132, 255, 0.18);
+  color: #0a84ff;
+}
+body.dark-reader-body .k-topic-sheet-subtitle {
+  color: rgba(235, 235, 245, 0.45);
+}
+body.dark-reader-body .k-topic-item-info {
+  color: rgba(235, 235, 245, 0.35);
 }
 
 /* Dark Mode */

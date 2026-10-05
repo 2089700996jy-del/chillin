@@ -26,23 +26,40 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { getStage, STAGES, aggregateTopics } = await import('../public/js/evergreen-topics.js');
+const { countWords, isValidTopic, getItemWordCount, aggregateTopics } = await import('../public/js/evergreen-topics.js');
 const { state } = await import('../public/js/state.js');
 
-test('Evergreen Topics - getStage calculates stages based on entry thresholds', () => {
-    assert.equal(getStage(1).id, STAGES.BUDDING.id);
-    assert.equal(getStage(4).id, STAGES.BUDDING.id);
-    assert.equal(getStage(5).id, STAGES.BRANCHING.id);
-    assert.equal(getStage(9).id, STAGES.BRANCHING.id);
-    assert.equal(getStage(10).id, STAGES.EVERGREEN.id);
-    assert.equal(getStage(99).id, STAGES.EVERGREEN.id);
+test('Evergreen Topics - countWords accurately counts mixed Chinese characters and English words', () => {
+    // Chinese text
+    assert.equal(countWords('今天天气真好'), 6);
+    // English words
+    assert.equal(countWords('Hello world deepseek'), 3);
+    // Mixed Chinese + English + Numbers
+    assert.equal(countWords('今天测试了 DeepSeek 的 API 接口，耗时 25 毫秒'), 15);
+    // Strip HTML and URLs
+    assert.equal(countWords('<p>分享链接 https://example.com/test 很棒</p>'), 6);
+    // Empty text
+    assert.equal(countWords(''), 0);
+    assert.equal(countWords(null), 0);
 });
 
-test('Evergreen Topics - aggregateTopics aggregates across feeds, notes and weeklies', () => {
-    // Setup test state
+test('Evergreen Topics - isValidTopic rejects emojis and system tags', () => {
+    assert.equal(isValidTopic('🌸'), false, 'single emoji should be rejected');
+    assert.equal(isValidTopic('🌿'), false);
+    assert.equal(isValidTopic('随手记'), false, 'catch-all system tag should be rejected');
+    assert.equal(isValidTopic('#随手记'), false);
+    assert.equal(isValidTopic('未分类'), false);
+    assert.equal(isValidTopic('a'), false, 'single char should be rejected');
+
+    assert.equal(isValidTopic('认知模型'), true);
+    assert.equal(isValidTopic('#投资哲学'), true);
+    assert.equal(isValidTopic('Web3'), true);
+});
+
+test('Evergreen Topics - aggregateTopics accurately calculates words across feeds, notes and weeklies', () => {
     state.feedsDatabase = [
-        { id: 101, content: '今天探讨了 #认知模型 的核心应用', tags: ['认知模型'], created_at: '2026-10-01 10:00' },
-        { id: 102, content: '双重视角思考 #认知模型', tags: [], created_at: '2026-10-02 12:00' }
+        { id: 101, content: '今天阅读了 #认知模型 相关的书籍', tags: ['认知模型'], created_at: '2026-10-01 10:00' },
+        { id: 102, content: '关于 #认知模型 的第二点思考', tags: [], created_at: '2026-10-02 12:00' }
     ];
     state.notesDatabase = [
         { id: 201, title: '查理芒格与 [[认知模型]]', content: '多元思维模型是人生的基础工具箱', date: '2026-10-03 14:00' }
@@ -59,31 +76,9 @@ test('Evergreen Topics - aggregateTopics aggregates across feeds, notes and week
     assert.equal(topic.notes.length, 1);
     assert.equal(topic.weeklies.length, 1);
     assert.equal(topic.totalCount, 4);
-    assert.equal(topic.stage.id, 'budding');
-    assert.ok(topic.characterCount > 50);
+    assert.ok(topic.wordCount > 40, `wordCount should be > 40, got ${topic.wordCount}`);
     assert.ok(topic.timespanDays >= 1);
-});
 
-test('Evergreen Topics - promotes topic to evergreen stage when count >= 10', () => {
-    const feeds = [];
-    for (let i = 0; i < 11; i++) {
-        feeds.push({
-            id: 1000 + i,
-            content: `记录第 ${i} 条 #投资 思考碎片，关注长期价值`,
-            tags: ['投资'],
-            created_at: `2026-09-${String(i + 1).padStart(2, '0')} 10:00`
-        });
-    }
-    state.feedsDatabase = feeds;
-    state.notesDatabase = [];
-    state.database = [];
-
-    const topics = aggregateTopics();
-    const topic = topics.find(t => t.name === '投资');
-
-    assert.ok(topic);
-    assert.equal(topic.totalCount, 11);
-    assert.equal(topic.stage.id, 'evergreen');
-    assert.equal(topic.stage.label, '常青');
-    assert.equal(topic.stage.icon, '🌳');
+    // Ensure system tag "随手记" is not created as a topic
+    assert.equal(topics.some(t => t.name === '随手记'), false, '随手记 must not be in topics');
 });

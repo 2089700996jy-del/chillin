@@ -1,40 +1,114 @@
 /**
- * Chillin Evergreen Topic Shelves (常青主题资产台).
- * Aggregates hashtags, wikilinks, and categories across Feeds, Notes, and Weeklies
- * into curated topic assets with tangible growth stages:
- * - 🌱 萌芽 (Budding Spark, 1-4 entries)
- * - 🌿 抽枝 (Branching Topic, 5-9 entries)
- * - 🌳 常青 (Evergreen Asset, 10+ entries)
- *
- * Implements Konsta iOS Inset Grouped design, zero-build native ESM.
+ * Chillin Evergreen Topic Shelves (常青专栏与主题归集).
+ * Aggregates user-defined hashtags, wikilinks, and topics across Feeds, Notes, and Weeklies.
+ * Strictly adheres to Konsta iOS HIG: calm editorial typography, accurate bilingual word count,
+ * zero AI chatbot/dashboard aesthetic.
  */
 import { escapeHtml, showToast } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import { setHtml } from './trusted-types.js';
 
-export const STAGES = {
-    EVERGREEN: { id: 'evergreen', label: '常青', icon: '🌳', minCount: 10, badgeClass: 'stage-evergreen' },
-    BRANCHING: { id: 'branching', label: '抽枝', icon: '🌿', minCount: 5, badgeClass: 'stage-branching' },
-    BUDDING: { id: 'budding', label: '萌芽', icon: '🌱', minCount: 1, badgeClass: 'stage-budding' }
-};
+const IGNORED_TOPIC_NAMES = new Set([
+    '随手记', '备忘录', '周记', 'default', '未分类', '全部', 'all',
+    '心绪', '平静', '充能', '疲惫', '续命', '灵感_sys',
+    '时光胶囊', '回响', '轻启发', 'undefined', 'null'
+]);
 
-export function getStage(count) {
-    if (count >= STAGES.EVERGREEN.minCount) return STAGES.EVERGREEN;
-    if (count >= STAGES.BRANCHING.minCount) return STAGES.BRANCHING;
-    return STAGES.BUDDING;
+/**
+ * 校验话题是否为有效的人文/知识主题（过滤系统占位符、单一 Emoji 表情及空标签）
+ * @param {string} rawName 
+ * @returns {boolean}
+ */
+export function isValidTopic(rawName) {
+    if (!rawName) return false;
+    const clean = String(rawName).trim().replace(/^#/, '');
+    if (clean.length < 2) return false;
+    // 排除纯 Emoji 表情或符号（必须包含至少一个中文字符或英文字符/数字）
+    if (!/[\u4e00-\u9fa5a-zA-Z0-9]/.test(clean)) return false;
+    if (IGNORED_TOPIC_NAMES.has(clean.toLowerCase())) return false;
+    return true;
 }
 
 /**
- * 聚合全库思考碎片，生成常青主题资产
- * @returns {Array<Object>} 排序后的常青主题列表
+ * 精准中英文混合字数统计（符合 Word / Pages / Notion 标准）
+ * - 中文字符、日韩文字按字统计（1 字符 = 1 字）
+ * - 英文单词、数字按词统计（1 连续词 = 1 字）
+ * - 剥离 HTML 标签、Markdown 标记、超链接与空格
+ * @param {string} text
+ * @returns {number}
+ */
+export function countWords(text) {
+    if (!text) return 0;
+    const clean = String(text)
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/https?:\/\/[^\s]+/g, ' ')
+        .replace(/!\[.*?\]\(.*?\)/g, ' ')
+        .replace(/\[.*?\]\(.*?\)/g, ' ')
+        .trim();
+    if (!clean) return 0;
+    const cjk = clean.match(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g) || [];
+    const nonCjk = clean.replace(/[\u4e00-\u9fa5\u3040-\u30ff\uac00-\ud7af]/g, ' ');
+    const enWords = nonCjk.match(/[a-zA-Z0-9_\-]+/g) || [];
+    return cjk.length + enWords.length;
+}
+
+/**
+ * 统计单条花园实体的真实全文字数
+ */
+export function getItemWordCount(item, type) {
+    if (!item) return 0;
+    let total = 0;
+    if (type === 'feed') {
+        total += countWords(item.content);
+        if (item.summary) {
+            try {
+                const s = typeof item.summary === 'object' ? item.summary : JSON.parse(item.summary);
+                if (s && s.title) total += countWords(s.title);
+                if (s && s.description) total += countWords(s.description);
+            } catch {
+                if (typeof item.summary === 'string' && !item.summary.startsWith('{')) {
+                    total += countWords(item.summary);
+                }
+            }
+        }
+    } else if (type === 'note') {
+        total += countWords(item.title) + countWords(item.content);
+        if (Array.isArray(item.annotations)) {
+            item.annotations.forEach(a => { if (a && a.content) total += countWords(a.content); });
+        }
+    } else if (type === 'weekly') {
+        total += countWords(item.title) + countWords(item.summary) + countWords(item.content);
+        if (item.weeklyData && typeof item.weeklyData === 'object') {
+            const wd = item.weeklyData;
+            if (wd.podcast) total += countWords(wd.podcast);
+            if (wd.work?.desc) total += countWords(wd.work.desc);
+            if (wd.music?.lyric) total += countWords(wd.music.lyric);
+            if (wd.life?.caption) total += countWords(wd.life.caption);
+            if (Array.isArray(wd.media)) {
+                wd.media.forEach(m => { if (m?.desc) total += countWords(m.desc); });
+            }
+        }
+    }
+    return total;
+}
+
+export function formatWordsText(words) {
+    if (words >= 10000) return `${(words / 10000).toFixed(1)}万字`;
+    if (words >= 1000) return `${(words / 1000).toFixed(1)}k字`;
+    return `${words}字`;
+}
+
+/**
+ * 聚合全库有效主题，计算真实篇数、精准字数与跨度
+ * @returns {Array<Object>} 排序后的专栏主题列表
  */
 export function aggregateTopics() {
     const topicMap = new Map();
 
     const getOrCreate = (name, type = 'tag') => {
-        const cleanName = String(name || '').trim().replace(/^#/, '');
-        if (!cleanName || cleanName.length > 30) return null;
+        if (!isValidTopic(name)) return null;
+        const cleanName = String(name).trim().replace(/^#/, '');
         const key = cleanName.toLowerCase();
         if (!topicMap.has(key)) {
             topicMap.set(key, {
@@ -45,7 +119,7 @@ export function aggregateTopics() {
                 notes: [],
                 weeklies: [],
                 totalCount: 0,
-                characterCount: 0,
+                wordCount: 0,
                 timestamps: [],
                 latestSnippet: '',
                 latestDate: ''
@@ -73,12 +147,15 @@ export function aggregateTopics() {
             });
         }
 
+        if (matchedTopicKeys.size === 0) return;
+        const feedWords = getItemWordCount(feed, 'feed');
+        const ts = feed.created_at ? new Date(feed.created_at.replace(' ', 'T')).getTime() : Date.now();
+
         matchedTopicKeys.forEach(k => {
             const entry = topicMap.get(k);
             if (entry && !entry.feeds.some(f => f.id === feed.id)) {
                 entry.feeds.push(feed);
-                entry.characterCount += content.length;
-                const ts = feed.created_at ? new Date(feed.created_at.replace(' ', 'T')).getTime() : Date.now();
+                entry.wordCount += feedWords;
                 if (!isNaN(ts)) entry.timestamps.push(ts);
                 if (!entry.latestSnippet && content) {
                     entry.latestSnippet = content.replace(/<[^>]+>/g, '').slice(0, 60);
@@ -112,12 +189,15 @@ export function aggregateTopics() {
             });
         }
 
+        if (matchedTopicKeys.size === 0) return;
+        const noteWords = getItemWordCount(note, 'note');
+        const ts = note.date ? new Date(note.date.replace(' ', 'T')).getTime() : Date.now();
+
         matchedTopicKeys.forEach(k => {
             const entry = topicMap.get(k);
             if (entry && !entry.notes.some(n => n.id === note.id)) {
                 entry.notes.push(note);
-                entry.characterCount += content.length + title.length;
-                const ts = note.date ? new Date(note.date.replace(' ', 'T')).getTime() : Date.now();
+                entry.wordCount += noteWords;
                 if (!isNaN(ts)) entry.timestamps.push(ts);
                 if (!entry.latestSnippet && (title || content)) {
                     entry.latestSnippet = (title || content).replace(/<[^>]+>/g, '').slice(0, 60);
@@ -137,31 +217,28 @@ export function aggregateTopics() {
                 if (item) matchedTopicKeys.add(item.key);
             });
         }
-        if (weekly.category) {
-            const item = getOrCreate(weekly.category, 'topic');
-            if (item) matchedTopicKeys.add(item.key);
-        }
+
+        if (matchedTopicKeys.size === 0) return;
+        const weeklyWords = getItemWordCount(weekly, 'weekly');
+        const ts = weekly.date ? new Date(weekly.date.replace(' ', 'T')).getTime() : Date.now();
 
         matchedTopicKeys.forEach(k => {
             const entry = topicMap.get(k);
             if (entry && !entry.weeklies.some(w => w.id === weekly.id)) {
                 entry.weeklies.push(weekly);
-                const text = String(weekly.content || '') + String(weekly.title || '');
-                entry.characterCount += text.length;
-                const ts = weekly.date ? new Date(weekly.date.replace(' ', 'T')).getTime() : Date.now();
+                entry.wordCount += weeklyWords;
                 if (!isNaN(ts)) entry.timestamps.push(ts);
                 if (!entry.latestSnippet) {
-                    entry.latestSnippet = (weekly.title || text).replace(/<[^>]+>/g, '').slice(0, 60);
+                    entry.latestSnippet = (weekly.title || weekly.summary || '').replace(/<[^>]+>/g, '').slice(0, 60);
                     entry.latestDate = (weekly.date || '').slice(0, 10);
                 }
             }
         });
     });
 
-    // 计算衍生指标
+    // 汇总与排序
     const topics = Array.from(topicMap.values()).map(t => {
         t.totalCount = t.feeds.length + t.notes.length + t.weeklies.length;
-        t.stage = getStage(t.totalCount);
         if (t.timestamps.length > 0) {
             const minTs = Math.min(...t.timestamps);
             const maxTs = Math.max(...t.timestamps);
@@ -172,12 +249,10 @@ export function aggregateTopics() {
         return t;
     });
 
-    // 排序：常青 > 抽枝 > 萌芽，同阶段按沉淀条数倒序
+    // 按篇数降序排列，篇数相同按字数降序
     topics.sort((a, b) => {
-        const stageWeight = { evergreen: 3, branching: 2, budding: 1 };
-        const diff = (stageWeight[b.stage.id] || 0) - (stageWeight[a.stage.id] || 0);
-        if (diff !== 0) return diff;
-        return b.totalCount - a.totalCount;
+        if (b.totalCount !== a.totalCount) return b.totalCount - a.totalCount;
+        return b.wordCount - a.wordCount;
     });
 
     return topics;
@@ -186,7 +261,7 @@ export function aggregateTopics() {
 let activeDetailTopic = null;
 
 /**
- * 渲染随手记顶部的常青货架
+ * 渲染随手记顶部的专栏货架（Konsta Inset Grouped 标准）
  */
 export function renderTopicShelves() {
     const scrollContainer = document.getElementById('evergreen-shelves-scroll');
@@ -194,44 +269,42 @@ export function renderTopicShelves() {
     if (!scrollContainer) return;
 
     const topics = aggregateTopics();
+    const totalEntries = topics.reduce((sum, t) => sum + t.totalCount, 0);
 
     if (summaryBadge) {
-        const evergreenCount = topics.filter(t => t.stage.id === 'evergreen').length;
         if (topics.length === 0) {
-            summaryBadge.textContent = '等待播种';
-        } else if (evergreenCount > 0) {
-            summaryBadge.textContent = `${evergreenCount} 棵常青树 · ${topics.length} 个主题`;
+            summaryBadge.textContent = '暂无归集';
         } else {
-            summaryBadge.textContent = `${topics.length} 个主题孕育中`;
+            summaryBadge.textContent = `${topics.length} 个主题 · ${totalEntries} 条沉淀`;
         }
     }
 
     if (topics.length === 0) {
         setHtml(scrollContainer, `
             <div class="k-shelf-empty">
-                <span class="k-shelf-empty-icon">🌱</span>
-                <span class="k-shelf-empty-text">随手记中输入 <b>#标签</b> 或 <b>[[双链]]</b>，此处将自动凝炼为常青主题资产</span>
+                <span class="k-shelf-empty-icon">📁</span>
+                <span class="k-shelf-empty-text">在随手记或笔记中键入 <b>#标签</b> 或 <b>[[双链]]</b>，此处将自动沉淀为思考专栏</span>
             </div>
         `);
         return;
     }
 
     setHtml(scrollContainer, topics.map(t => {
-        const wordText = t.characterCount >= 1000 ? `${(t.characterCount / 1000).toFixed(1)}k` : `${t.characterCount}`;
+        const wordsFormatted = formatWordsText(t.wordCount);
         const prefix = t.type === 'wikilink' ? '🔗 ' : '# ';
+        const isDeep = t.totalCount >= 8 || t.wordCount >= 2000;
+        const tagBadge = isDeep ? '<span class="k-topic-tier-pill tier-deep">深度</span>' : '<span class="k-topic-tier-pill">专栏</span>';
+
         return `
-            <div class="k-shelf-card" data-topic-key="${escapeHtml(t.key)}" role="button" tabindex="0" title="${escapeHtml(t.name)} · 轻按查看主题全貌">
+            <div class="k-shelf-card" data-topic-key="${escapeHtml(t.key)}" role="button" tabindex="0" title="${escapeHtml(t.name)} · 轻按查看专栏内容">
                 <div class="k-shelf-card-top">
-                    <span class="k-topic-stage-chip ${t.stage.badgeClass}">
-                        <span class="k-stage-icon">${t.stage.icon}</span>
-                        <span>${t.stage.label}</span>
-                    </span>
+                    ${tagBadge}
                     <span class="k-shelf-count-badge">${t.totalCount} 篇</span>
                 </div>
                 <div class="k-shelf-card-title">${prefix}${escapeHtml(t.name)}</div>
                 <div class="k-shelf-card-snippet">“${escapeHtml(t.latestSnippet || '暂无文字摘要')}”</div>
                 <div class="k-shelf-card-footer">
-                    <span class="k-shelf-stat">约 ${wordText} 字</span>
+                    <span class="k-shelf-stat">共 ${wordsFormatted}</span>
                     <span class="k-shelf-dot-sep">·</span>
                     <span class="k-shelf-span">${t.timespanDays}天跨度</span>
                 </div>
@@ -241,7 +314,7 @@ export function renderTopicShelves() {
 }
 
 /**
- * 打开特定主题的 Inset Grouped 详情 Sheet
+ * 打开专栏详情 Sheet (Apple HIG Inset Grouped Sheet)
  */
 export function openTopicDetailSheet(topicKey) {
     const modal = document.getElementById('topic-detail-modal');
@@ -253,39 +326,32 @@ export function openTopicDetailSheet(topicKey) {
 
     activeDetailTopic = topic;
 
-    const stagePill = document.getElementById('topic-detail-stage-pill');
     const titleEl = document.getElementById('topic-detail-title');
-    const metricCount = document.getElementById('topic-metric-count');
-    const metricWords = document.getElementById('topic-metric-words');
-    const metricSpan = document.getElementById('topic-metric-span');
+    const subtitleEl = document.getElementById('topic-detail-subtitle');
     const itemsList = document.getElementById('topic-detail-items-list');
 
-    if (stagePill) {
-        stagePill.textContent = `${topic.stage.icon} ${topic.stage.label}资产`;
-        stagePill.className = `k-topic-stage-pill ${topic.stage.badgeClass}`;
-    }
     if (titleEl) {
         titleEl.textContent = topic.type === 'wikilink' ? `[[${topic.name}]]` : `#${topic.name}`;
     }
-    if (metricCount) metricCount.textContent = String(topic.totalCount);
-    if (metricWords) {
-        metricWords.textContent = topic.characterCount >= 1000 ? `${(topic.characterCount / 1000).toFixed(1)}k` : String(topic.characterCount);
+    if (subtitleEl) {
+        subtitleEl.textContent = `${topic.totalCount} 条记录 · 共 ${formatWordsText(topic.wordCount)} · 跨越 ${topic.timespanDays} 天`;
     }
-    if (metricSpan) metricSpan.textContent = `${topic.timespanDays}天`;
 
     if (itemsList) {
         const allItems = [
             ...topic.feeds.map(f => ({
                 id: f.id,
                 kind: '随手记',
-                title: f.content.replace(/<[^>]+>/g, '').slice(0, 40) + '…',
+                title: f.content.replace(/<[^>]+>/g, '').slice(0, 50) + (f.content.length > 50 ? '…' : ''),
+                words: getItemWordCount(f, 'feed'),
                 date: (f.created_at || '').slice(0, 10),
                 raw: f
             })),
             ...topic.notes.map(n => ({
                 id: n.id,
                 kind: '备忘录',
-                title: n.title || '无标题笔记',
+                title: n.title || '无标题备忘录',
+                words: getItemWordCount(n, 'note'),
                 date: (n.date || '').slice(0, 10),
                 raw: n
             })),
@@ -293,6 +359,7 @@ export function openTopicDetailSheet(topicKey) {
                 id: w.id,
                 kind: '周记',
                 title: w.title || '无标题周记',
+                words: getItemWordCount(w, 'weekly'),
                 date: (w.date || '').slice(0, 10),
                 raw: w
             }))
@@ -304,7 +371,7 @@ export function openTopicDetailSheet(topicKey) {
             <div class="k-topic-item-row" data-kind="${item.kind}" data-id="${escapeHtml(String(item.id))}">
                 <div class="k-topic-item-meta">
                     <span class="k-topic-item-kind">${item.kind}</span>
-                    <span class="k-topic-item-date">${escapeHtml(item.date)}</span>
+                    <span class="k-topic-item-info">${item.words} 字 · ${escapeHtml(item.date)}</span>
                 </div>
                 <div class="k-topic-item-title">${escapeHtml(item.title)}</div>
             </div>
@@ -340,11 +407,11 @@ export function initEvergreenTopics() {
         if (topics.length > 0) {
             openTopicDetailSheet(topics[0].key);
         } else {
-            showToast('当前暂无主题，试着在随手记里写个 #标签 吧', 'info');
+            showToast('当前暂无主题，在随手记里写个 #标签 吧', 'info');
         }
     });
 
-    // 3. 详情 Sheet 中的条目点击
+    // 3. 详情 Sheet 中的条目点击跳转
     const itemsList = document.getElementById('topic-detail-items-list');
     if (itemsList) {
         itemsList.addEventListener('click', (e) => {
@@ -377,7 +444,7 @@ export function initEvergreenTopics() {
         });
     }
 
-    // 4. 追加随想按钮
+    // 4. 追加思绪按钮
     document.getElementById('btn-topic-append-thought')?.addEventListener('click', () => {
         if (!activeDetailTopic) return;
         const topicName = activeDetailTopic.name;
