@@ -304,13 +304,13 @@ export function initAuthUI() {
         }
         const submitLabel = document.querySelector('.auth-btn-label') || document.querySelector('.auth-btn');
         if (isRegister) {
-            if (submitLabel) submitLabel.innerText = '注册并创建花园';
-            if (authSubdesc) authSubdesc.innerText = '开启你的个人数字花园旅程';
+            if (submitLabel) submitLabel.innerText = '注册新账户';
+            if (authSubdesc) authSubdesc.innerText = '注册后即可跨设备同步随手记、笔记与阅读进度。';
             if (authSwitchText) authSwitchText.innerText = '已有账号？';
             if (btnAuthSwitch) btnAuthSwitch.innerText = '直接登录';
         } else {
-            if (submitLabel) submitLabel.innerText = '进入花园';
-            if (authSubdesc) authSubdesc.innerText = '静下心，记录生活与灵感';
+            if (submitLabel) submitLabel.innerText = '登录';
+            if (authSubdesc) authSubdesc.innerText = '首次使用请切换至「注册」以创建账户。';
             if (authSwitchText) authSwitchText.innerText = '还没有账号？';
             if (btnAuthSwitch) btnAuthSwitch.innerText = '立即注册';
         }

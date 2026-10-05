@@ -1872,18 +1872,20 @@ body.eyecare-reader-body #btn-back {
   width: 100vw; 
   height: 100vh;
   height: 100dvh;
-  background-color: #F8F9FA !important; 
-  color: #111827;
+  background-color: #F2F2F7 !important; 
+  color: #000000;
   color-scheme: light !important;
   z-index: 99999; 
   display: flex; 
-  justify-content: center; 
+  flex-direction: column;
+  justify-content: flex-start; 
   align-items: center;
-  padding: 24px 20px;
+  padding: max(56px, calc(env(safe-area-inset-top) + 36px)) 20px max(24px, calc(env(safe-area-inset-bottom) + 16px));
   box-sizing: border-box;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   transition: opacity 0.28s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.28s ease;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "PingFang SC", "Segoe UI", system-ui, sans-serif;
 }
 .auth-overlay.hidden {
   display: none !important;
@@ -1908,39 +1910,25 @@ body.not-authenticated #btn-back {
   pointer-events: none !important;
 }
 
-/* 宁静自然背景环境光斑 */
-.auth-ambient-glow {
-  position: absolute;
-  top: -140px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 560px;
-  height: 480px;
-  max-width: 100vw;
-  pointer-events: none;
-  z-index: 0;
-  background: radial-gradient(50% 50% at 50% 50%, rgba(52, 199, 89, 0.08) 0%, rgba(0, 122, 255, 0.035) 50%, transparent 80%);
-  filter: blur(50px);
-  opacity: 0.95;
-}
-
-/* Apple Inset Grouped 卡片容器 */
+/* Apple Inset Grouped 页面卡片容器 */
 .auth-card {
   position: relative;
   z-index: 1;
   width: 100%; 
-  max-width: 340px;
+  max-width: 358px;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   box-sizing: border-box;
-  padding: 12px 0 24px;
-  animation: authSpringIn 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: authSpringIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes authSpringIn {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(8px);
+    transform: scale(0.97) translateY(8px);
   }
   to {
     opacity: 1;
@@ -1948,44 +1936,25 @@ body.not-authenticated #btn-back {
   }
 }
 
-/* 数字花园人文微标 (Botanical Garden Emblem) */
-.auth-brand-badge {
-  width: 56px;
-  height: 56px;
-  border-radius: 17px;
-  margin: 0 auto 16px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: linear-gradient(145deg, #f0fdf4 0%, #dcfce7 100%);
-  border: 1px solid rgba(34, 197, 94, 0.2);
-  box-shadow: 0 8px 24px -4px rgba(34, 197, 94, 0.16), 0 1px 2px rgba(0, 0, 0, 0.04);
-  color: #15803d;
-  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  user-select: none;
-}
-
-.auth-brand-badge:active {
-  transform: scale(0.94);
-}
-
+/* iOS Large Title Header */
 .auth-header {
-  margin-bottom: 20px;
+  margin-bottom: 26px;
+  text-align: center;
 }
 
 .auth-title { 
-  font-size: 26px; 
+  font-size: 32px; 
   font-weight: 700; 
   letter-spacing: -0.035em; 
-  color: var(--text-color, #111827);
+  color: #000000;
   margin: 0 0 6px 0;
-  line-height: 1.2;
+  line-height: 1.15;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
 }
 
 .auth-desc { 
-  font-size: 13.5px; 
-  color: var(--text-color-light, #86868b); 
+  font-size: 15px; 
+  color: #8E8E93; 
   margin: 0;
   line-height: 1.4;
   letter-spacing: -0.01em;
@@ -1997,27 +1966,26 @@ body.not-authenticated #btn-back {
   display: flex;
   align-items: center;
   position: relative;
-  background: rgba(120, 120, 128, 0.09);
-  padding: 3px;
-  border-radius: 12px;
-  margin: 0 auto 20px;
+  background: rgba(120, 120, 128, 0.12);
+  padding: 2px;
+  border-radius: 9px;
+  margin: 0 auto 24px;
   width: 100%;
-  max-width: 250px;
+  max-width: 220px;
   user-select: none;
-  border: 1px solid rgba(0, 0, 0, 0.03);
   box-sizing: border-box;
 }
 
 .auth-segment-btn {
   flex: 1;
-  height: 32px;
+  height: 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 9px;
-  font-size: 13.5px;
+  border-radius: 7px;
+  font-size: 13px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.72);
+  color: rgba(60, 60, 67, 0.7);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -2025,16 +1993,15 @@ body.not-authenticated #btn-back {
   -webkit-tap-highlight-color: transparent;
 }
 
-.auth-segment-btn:active {
-  transform: scale(0.96);
-  opacity: 0.85;
-}
-
 .auth-segment-btn.active {
   background: #ffffff;
   color: #000000;
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0.5px 1.5px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1), 0 0.5px 1px rgba(0, 0, 0, 0.06);
+}
+
+.auth-segment-btn:active {
+  transform: scale(0.97);
 }
 
 .auth-form { 
@@ -2043,187 +2010,162 @@ body.not-authenticated #btn-back {
   width: 100%;
 }
 
-/* Konsta Inset Grouped 输入槽 */
+/* Inset Grouped Section Header */
+.auth-section-title {
+  font-size: 13px;
+  font-weight: 400;
+  color: #6E6E73;
+  letter-spacing: -0.01em;
+  text-align: left;
+  padding: 0 16px;
+  margin-bottom: 7px;
+}
+
+/* Konsta Inset Grouped List */
 .auth-inset-group {
   background: #ffffff;
-  border-radius: 16px;
-  border: 1px solid rgba(0, 0, 0, 0.07);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  border-radius: 10px;
+  border: 0.5px solid rgba(60, 60, 67, 0.15);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   overflow: hidden;
   width: 100%;
   box-sizing: border-box;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.auth-inset-group:focus-within {
-  border-color: rgba(0, 122, 255, 0.45);
-  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.12);
-}
-
-.auth-field {
+.auth-list-row {
   display: flex;
   align-items: center;
-  height: 50px;
-  padding: 0 14px;
+  height: 48px;
+  padding: 0 16px;
   position: relative;
-  width: 100%;
-  box-sizing: border-box;
-  background: transparent;
+  background: #ffffff;
 }
 
-.auth-field-icon {
-  color: #8e8e93;
+.auth-row-label {
+  width: 52px;
+  font-size: 16px;
+  font-weight: 400;
+  color: #000000;
+  text-align: left;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.auth-row-input-wrap {
+  flex: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 20px;
-  margin-right: 11px;
-  flex-shrink: 0;
-  transition: color 0.18s ease;
-}
-
-.auth-field:focus-within .auth-field-icon {
-  color: var(--accent-color, #007AFF);
+  height: 100%;
 }
 
 .auth-input {
-  flex: 1;
+  width: 100%;
   height: 100%;
   border: none !important;
   background: transparent !important;
-  font-size: 15px;
+  font-size: 16px;
   font-family: inherit;
-  color: var(--text-color, #111827);
+  color: #000000;
   outline: none !important;
   box-shadow: none !important;
   padding: 0;
   margin: 0;
+  caret-color: #007AFF;
   -webkit-appearance: none;
 }
 
 .auth-input::placeholder {
-  color: #a1a1aa;
-  font-size: 14px;
+  color: #C7C7CC;
+  font-size: 16px;
   font-weight: 400;
 }
 
-.auth-field-divider {
-  height: 1px;
-  background: rgba(0, 0, 0, 0.05);
-  margin-left: 45px;
+.auth-row-divider {
+  height: 0.5px;
+  background: rgba(60, 60, 67, 0.15);
+  margin-left: 68px; /* Inset matching input start column */
 }
 
 /* 密码显隐切换按钮 */
 .auth-password-toggle {
   background: transparent;
   border: none;
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8e8e93;
+  color: #8E8E93;
   cursor: pointer;
-  border-radius: 8px;
+  border-radius: 6px;
   padding: 0;
-  transition: color 0.15s ease, opacity 0.15s ease;
+  transition: color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
   flex-shrink: 0;
 }
 
 .auth-password-toggle:hover {
-  color: var(--text-color, #111827);
+  color: #000000;
 }
 
 .auth-password-toggle:active {
   transform: scale(0.92);
-  opacity: 0.7;
+}
+
+/* Section Footnote */
+.auth-section-footnote {
+  font-size: 13px;
+  color: #8E8E93;
+  line-height: 1.35;
+  text-align: left;
+  padding: 8px 16px 0;
+  font-weight: 400;
+  letter-spacing: -0.01em;
 }
 
 .auth-error { 
-  color: #ff3b30; 
-  font-size: 12.5px; 
+  color: #FF3B30; 
+  font-size: 13px; 
   text-align: left; 
-  padding: 6px 6px 2px; 
+  padding: 8px 16px 0; 
   font-weight: 500;
 }
 
-/* 主操作按钮 (Apple Editorial Slate Style) */
+/* Apple HIG Primary Action Button */
 .auth-btn { 
   width: 100%; 
   height: 48px;
-  padding: 0 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  border-radius: 14px; 
-  font-size: 15.5px; 
+  border-radius: 12px; 
+  font-size: 17px; 
   font-weight: 600;
-  letter-spacing: -0.01em;
-  background: #111827 !important;
+  letter-spacing: -0.02em;
+  background: #007AFF !important;
   color: #ffffff !important;
   border: none;
   cursor: pointer;
-  margin-top: 16px;
-  box-shadow: 0 4px 14px rgba(17, 24, 39, 0.16), 0 1px 2px rgba(0, 0, 0, 0.06);
-  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.18s ease, box-shadow 0.18s ease;
+  margin-top: 20px;
+  box-shadow: none; /* Pure Apple HIG Flat Filled Button */
+  transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.15s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 .auth-btn:hover {
-  opacity: 0.94;
-  transform: translateY(-1px);
+  opacity: 0.95;
 }
 
 .auth-btn:active {
-  transform: scale(0.97) translateY(0) !important;
-  opacity: 0.88;
+  transform: scale(0.98);
+  opacity: 0.85;
 }
 
 .auth-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
   transform: none !important;
-}
-
-.auth-btn-arrow {
-  transition: transform 0.18s ease;
-}
-
-.auth-btn:hover .auth-btn-arrow {
-  transform: translateX(2px);
-}
-
-/* 理念背书与特性小胶囊 */
-.auth-features {
-  margin: 22px auto 4px;
-  display: flex;
-  justify-content: center;
-}
-
-.auth-feature-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 9999px;
-  background: rgba(120, 120, 128, 0.07);
-  color: #86868b;
-  font-size: 12px;
-  font-weight: 450;
-  letter-spacing: -0.01em;
-  border: 1px solid rgba(0, 0, 0, 0.03);
-}
-
-.auth-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #34C759;
-  box-shadow: 0 0 6px rgba(52, 199, 89, 0.6);
-  display: inline-block;
 }
 
 /* 兼容旧选择器 */
@@ -2242,34 +2184,41 @@ body.not-authenticated #btn-back {
   font-size: 13.5px;
 }
 
+/* 底部功能与版本区 */
+.auth-footer {
+  margin-top: 36px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
 /* 异常强制更新轻量链接 */
 .auth-force-refresh {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: transparent;
   border: none;
-  color: #a1a1aa;
-  font-size: 12px;
+  color: #8E8E93;
+  font-size: 12.5px;
   line-height: 1.4;
   cursor: pointer;
   text-decoration: none;
-  margin-top: 10px;
-  transition: color 0.15s ease, opacity 0.15s ease;
-  border-radius: 8px;
+  transition: color 0.15s ease;
+  border-radius: 6px;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
 
 .auth-force-refresh:hover {
-  color: var(--text-color, #111827);
+  color: #000000;
 }
 
 .auth-force-refresh:active {
-  transform: scale(0.96);
-  opacity: 0.7;
+  opacity: 0.6;
 }
 
 /* Desktop default hide mobile bottom nav */
