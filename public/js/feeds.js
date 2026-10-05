@@ -157,10 +157,14 @@ function renderFeeds() {
             <div class="feed-item-card" data-feed-id="${feed.id}">
                 <div class="feed-header">
                     <div class="feed-tags">${tagHtml}</div>
-                    <div class="feed-actions" style="display:flex;align-items:center;gap:10px;">
+                    <div class="feed-actions">
                         <span class="feed-date">${escapeHtml(feed.created_at || '')}</span>
-                        <button class="btn-text feed-copy-btn" data-feed-id="${escapeHtml(String(feed.id))}" style="font-size:12px;" type="button" title="复制内容">复制</button>
-                        <button class="btn-text text-danger feed-delete-btn" data-feed-id="${escapeHtml(String(feed.id))}" style="font-size:12px;" type="button">删除</button>
+                        <button class="feed-action-btn feed-copy-btn" data-feed-id="${escapeHtml(String(feed.id))}" type="button" title="复制内容" aria-label="复制内容">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button class="feed-action-btn feed-delete-btn" data-feed-id="${escapeHtml(String(feed.id))}" type="button" title="删除" aria-label="删除">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                        </button>
                     </div>
                 </div>
                 ${textHtml}
@@ -365,9 +369,9 @@ if (feedsStreamContainer) {
             const feed = state.feedsDatabase.find(f => String(f.id) === String(copyBtn.dataset.feedId));
             if (feed) {
                 navigator.clipboard.writeText(feed.content || '').then(() => {
-                    const originalText = copyBtn.innerText;
-                    copyBtn.innerText = '已复制';
-                    setTimeout(() => { copyBtn.innerText = originalText; }, 1500);
+                    copyBtn.classList.add('copied');
+                    showToast('已复制内容至剪贴板', 'success');
+                    setTimeout(() => { copyBtn.classList.remove('copied'); }, 1500);
                 });
             }
             return;

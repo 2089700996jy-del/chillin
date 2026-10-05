@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.66">
+    <link rel="stylesheet" href="style.css?v=2.5.67">
 </head>
 <body>
 
@@ -209,15 +209,15 @@
                     <div class="heatmap-header">
                         <span class="heatmap-title">
                             <svg class="ui-icon-inline" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 3z"/></svg>
-                            思考与记忆轨迹
+                            思考轨迹
                             <span id="heatmap-streak-badge" class="heatmap-streak-badge" style="display: none;"></span>
                         </span>
                         <div class="heatmap-actions">
-                            <button class="btn-ai-pill" id="btn-trigger-echo-card">
+                            <button class="btn-ai-pill" id="btn-trigger-echo-card" title="生成记忆回响">
                                 <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
-                                <span>生成 AI 回响</span>
+                                <span>生成回响</span>
                             </button>
-                            <button class="btn-ai-pill btn-ai-pill-secondary" id="btn-weekly-review">
+                            <button class="btn-ai-pill btn-ai-pill-secondary" id="btn-weekly-review" title="查看本周回顾">
                                 <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                                 <span>本周回顾</span>
                             </button>
@@ -227,7 +227,7 @@
                 </div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.66</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.67</button>
         </section>
 
         <!-- ========================================== -->
@@ -440,7 +440,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.66</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.67</button>
         </section>
 
         <!-- ========================================== -->
@@ -583,7 +583,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.66</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.67</button>
         </section>
 
         <!-- ========================================== -->
@@ -733,7 +733,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.66</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.67</button>
         </section>
 
         <!-- ========================================== -->
@@ -802,7 +802,7 @@
                 <div class="echo-cards-header" id="echo-cards-header">
                     <span class="echo-cards-header-title">
                         <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
-                        AI 记忆回响
+                        记忆回响
                     </span>
                     <span class="echo-cards-toggle-btn">
                         <span class="toggle-text">展开</span>
@@ -814,7 +814,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.66</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.67</button>
         </section>
 
     </main>
@@ -825,25 +825,34 @@
             <div class="sheet-pull-handle"></div>
             <div class="ai-chat-header">
                 <div class="ai-chat-title">
-                    <span style="font-size:18px;">🤖</span> AI 记忆回响助手
+                    <span class="ai-chat-title-icon">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
+                    </span>
+                    <span>记忆拾光</span>
                 </div>
-                <button class="btn-icon-close" id="btn-close-ai-chat" style="background:none;border:none;color:#a1a1aa;font-size:18px;cursor:pointer;">✕</button>
+                <button type="button" class="btn-icon ios-modal-close-btn" id="btn-close-ai-chat" aria-label="关闭" title="关闭">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
             </div>
             <div class="ai-chat-body" id="ai-chat-body">
                 <div class="ai-msg ai-msg-bot">
                     <div class="ai-msg-bubble">
-                        <p>你好！我是你的 AI 记忆回响助手。</p>
-                        <p>我已连接你的花园记忆库（随手记、备忘录、周记与书签）。可以随时问我类似：</p>
-                        <ul>
-                            <li>“我上个月去吃过什么好的餐厅？”</li>
-                            <li>“整理一下我关于开发或算法的想法”</li>
-                        </ul>
+                        <p class="ai-welcome-lead">在记忆的长河中打捞吉光片羽。</p>
+                        <p class="ai-welcome-sub">连接数字花园的全量记忆（随手记、笔记、周记与书签），随时为你联想与穿透：</p>
+                        <div class="ai-prompt-suggestions">
+                            <button type="button" class="ai-suggest-pill" data-prompt="上个月我记录了哪些灵感或思考？">“上个月我记录了哪些灵感或思考？”</button>
+                            <button type="button" class="ai-suggest-pill" data-prompt="梳理一下我关于技术与架构的想法">“梳理一下我关于技术与架构的想法”</button>
+                        </div>
                     </div>
                 </div>
             </div>
             <div class="ai-chat-footer">
-                <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="提问你的过往记忆...">
-                <button class="btn-primary" id="btn-send-ai-chat">提问</button>
+                <div class="ai-chat-input-wrapper">
+                    <input type="text" id="ai-chat-input" class="ai-chat-input" placeholder="输入你想联想或回忆的片段...">
+                    <button class="ai-chat-send-btn" id="btn-send-ai-chat" aria-label="发送" title="发送">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1114,7 +1123,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.66"></script>
-    <script type="module" src="app.js?v=2.5.66"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.67"></script>
+    <script type="module" src="app.js?v=2.5.67"></script>
 </body>
 </html>

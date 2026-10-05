@@ -175,11 +175,16 @@ export function initPrompts() {
             if (!state.promptsDatabase || state.promptsDatabase.length === 0) {
                 setHtml(promptsListContainer, `
                     <div class="list-empty prompt-empty-state">
-                        <div class="list-empty-icon">🤖</div>
+                        <div class="list-empty-icon">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-color-light);opacity:0.7;">
+                                <polyline points="4 17 10 11 4 5"/>
+                                <line x1="12" y1="19" x2="20" y2="19"/>
+                            </svg>
+                        </div>
                         <div class="list-empty-title">提示词库空空如也</div>
-                        <div class="list-empty-sub">收集并分类你在不同项目与场景下的专属 AI 提示词</div>
+                        <div class="list-empty-sub">收集并分类你在不同项目与场景下的专属提示词</div>
                         <div style="margin-top: 16px; display: flex; gap: 10px; justify-content: center; flex-wrap: wrap;">
-                            <button type="button" class="btn-primary" id="btn-import-starter-prompts">✨ 一键载入常用模板</button>
+                            <button type="button" class="btn-primary" id="btn-import-starter-prompts">载入精选模板</button>
                             <button type="button" class="btn-secondary" id="btn-empty-create-prompt">+ 手动新建</button>
                         </div>
                     </div>
@@ -191,7 +196,7 @@ export function initPrompts() {
                         savePromptsDatabase();
                         state.promptsDatabase.forEach(p => apiSyncPrompt(p, 'POST'));
                         renderPrompts();
-                        showToast('已载入 4 条常用精选提示词模板！', 'success');
+                        showToast('已载入 4 条精选提示词模板！', 'success');
                     });
                 }
                 const btnEmptyCreate = document.getElementById('btn-empty-create-prompt');
@@ -201,10 +206,15 @@ export function initPrompts() {
 
             setHtml(promptsListContainer, `
                 <div class="list-empty">
-                    <div class="list-empty-icon">🔍</div>
+                    <div class="list-empty-icon">
+                        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-color-light);opacity:0.6;">
+                            <circle cx="11" cy="11" r="8"/>
+                            <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                        </svg>
+                    </div>
                     <div class="list-empty-title">未找到匹配的提示词</div>
-                    <div class="list-empty-sub">当前已按项目或场景过滤，可一键重置视图</div>
-                    <button type="button" class="btn-secondary" id="btn-reset-filters" style="margin-top: 12px;">↺ 清空所有筛选与搜索</button>
+                    <div class="list-empty-sub">当前已按项目或场景过滤，可重置视图</div>
+                    <button type="button" class="btn-secondary" id="btn-reset-filters" style="margin-top: 12px;">重置筛选与搜索</button>
                 </div>
             `);
             const btnReset = document.getElementById('btn-reset-filters');
@@ -221,7 +231,6 @@ export function initPrompts() {
                         });
                     }
                     renderPrompts();
-                    
                 });
             }
             return;
@@ -235,23 +244,39 @@ export function initPrompts() {
 
             const vars = extractVariables(prompt.content || '');
             const hasVariables = vars.length > 0;
-            const sceneIcon = getSceneIcon(prompt.scene || '通用');
             const charCount = (prompt.content || '').length;
 
             const tagHtml = prompt.tags
                 ? prompt.tags.split(/[,，\s]+/).filter(Boolean).map(t => '<span class="prompt-tag" role="button" title="点击筛选此标签">' + escapeHtml(t.startsWith('#') ? t : '#' + t) + '</span>').join('')
                 : '';
 
+            const projectText = (prompt.project || '').trim();
+            const sceneText = (prompt.scene || '').trim();
+            const hasSpecificProject = projectText && projectText !== '通用';
+            const hasSpecificScene = sceneText && sceneText !== '通用';
+
+            let badgesHtml = '';
+            if (hasVariables) {
+                badgesHtml += `<span class="prompt-badge prompt-badge-vars" title="包含 ${vars.length} 个参数">${vars.length} 变量</span>`;
+            }
+            if (hasSpecificProject) {
+                badgesHtml += `<span class="prompt-badge prompt-badge-project" title="所属项目">${escapeHtml(projectText)}</span>`;
+            }
+            if (hasSpecificScene) {
+                badgesHtml += `<span class="prompt-badge prompt-badge-scene" title="使用场景">${escapeHtml(sceneText)}</span>`;
+            }
+            if (!hasSpecificProject && !hasSpecificScene && !hasVariables) {
+                badgesHtml += `<span class="prompt-badge prompt-badge-project">通用</span>`;
+            }
+
             setHtml(card, `
                 <div class="prompt-card-header">
                     <div class="prompt-card-title-group">
-                        ${prompt.is_pinned ? '<span class="prompt-card-pin" title="已置顶"><svg class="ui-icon-inline" width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M16 2v2l-2 3v5l3 3v2h-6v5l-1 2-1-2v-5H3v-2l3-3V7L4 4V2z"/></svg></span>' : ''}
+                        ${prompt.is_pinned ? '<span class="prompt-card-pin" title="已置顶"><svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M16 2v2l-2 3v5l3 3v2h-6v5l-1 2-1-2v-5H3v-2l3-3V7L4 4V2z"/></svg></span>' : ''}
                         <span class="prompt-card-title">${escapeHtml(prompt.title)}</span>
                     </div>
                     <div class="prompt-card-badges">
-                        ${hasVariables ? `<span class="prompt-badge prompt-badge-vars" title="包含 ${vars.length} 个可填参数"><svg class="ui-icon-inline" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>${vars.length} 参数</span>` : ''}
-                        <span class="prompt-badge prompt-badge-project" title="所属项目"><svg class="ui-icon-inline" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>${escapeHtml(prompt.project || '通用')}</span>
-                        <span class="prompt-badge prompt-badge-scene" title="使用场景"><svg class="ui-icon-inline" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>${escapeHtml(prompt.scene || '通用')}</span>
+                        ${badgesHtml}
                     </div>
                 </div>
 
@@ -272,11 +297,11 @@ export function initPrompts() {
                             </span>
                             <span class="action-label">${hasVariables ? '填参 / 复制' : '复制'}</span>
                         </button>
-                        <button type="button" class="btn-prompt-action btn-prompt-ai" data-id="${prompt.id}" title="发送至 AI 对话助手">
+                        <button type="button" class="btn-prompt-action btn-prompt-ai" data-id="${prompt.id}" title="发送至记忆回响">
                             <span class="action-icon">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L9.5 9.5 2 12l7.5 2.5L12 22l2.5-7.5L22 12l-7.5-2.5z"/></svg>
                             </span>
-                            <span class="action-label">直发 AI</span>
+                            <span class="action-label">发送至回响</span>
                         </button>
                     </div>
                     <div class="prompt-action-right">

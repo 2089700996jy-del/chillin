@@ -53,9 +53,13 @@ const renderBookmarks = () => {
         }
         setHtml(bookmarkListContainer, `
             <div class="list-empty">
-                <div class="list-empty-icon">🔖</div>
+                <div class="list-empty-icon">
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="color:var(--text-color-light);opacity:0.6;">
+                        <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                    </svg>
+                </div>
                 <div class="list-empty-title">还没有收藏</div>
-                <div class="list-empty-sub">点右下角「+」收下一站宝藏</div>
+                <div class="list-empty-sub">点右上角「+ 网址」收下一站宝藏</div>
             </div>
         `);
         return;
@@ -73,6 +77,7 @@ const renderBookmarks = () => {
         const descRaw = (bm.desc || bm.description || '').trim();
         const typeLabel = (bm.type || '🔖').trim();
         const emoji = typeLabel.split(' ')[0] || '🔖';
+        const typeText = typeLabel.replace(/^[^\w\s\u4e00-\u9fa5]+/, '').trim() || typeLabel;
         setHtml(card, `
             <div class="bookmark-card-inner">
                 <div class="bookmark-card-media">
@@ -84,11 +89,16 @@ const renderBookmarks = () => {
                 <div class="bookmark-card-body">
                     <div class="bookmark-card-title">${escapeHtml(bm.title)}</div>
                     <div class="bookmark-card-meta">
-                        <span class="bookmark-card-type">${escapeHtml(typeLabel)}</span>
+                        <span class="bookmark-card-type">${escapeHtml(typeText)}</span>
                         ${descRaw ? '<span class="bookmark-card-desc">' + escapeHtml(descRaw) + '</span>' : ''}
                     </div>
                 </div>
-                <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏" type="button">×</button>
+                <button class="bookmark-card-delete" data-id="${escapeHtml(String(bm.id))}" title="删除收藏" aria-label="删除收藏" type="button">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
             </div>
         `);
 

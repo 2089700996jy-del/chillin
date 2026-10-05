@@ -96,12 +96,13 @@ const renderNotes = () => {
         const el = document.createElement('div');
         el.className = 'note-item';
         el.setAttribute('data-note-id', String(note.id));
-        const previewText = note.content ? escapeHtml(note.content.substring(0, 30)).replace(/\n/g, ' ') + '...' : '无正文内容';
+        const cleanContent = (note.content || '').replace(/\\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+        const previewText = cleanContent ? escapeHtml(cleanContent.substring(0, 36)) + (cleanContent.length > 36 ? '...' : '') : '无正文内容';
         
         // 如果笔记有批注，显示批注数量气泡
         const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
         
-        setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-date">${escapeHtml(note.date)}</div>`);
+        setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-meta"><span class="note-item-date">${escapeHtml(note.date)}</span><span class="note-item-arrow" aria-hidden="true">›</span></div>`);
         el.addEventListener('click', () => openNoteEditor(note.id));
         notesListContainer.appendChild(el);
     });

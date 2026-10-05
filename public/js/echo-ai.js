@@ -217,7 +217,7 @@ async function sendAiChatMessage() {
     // Append Bot Typing Indicator
     const botMsgDiv = document.createElement('div');
     botMsgDiv.className = 'ai-msg ai-msg-bot';
-    setHtml(botMsgDiv, `<div class="ai-msg-bubble">🤖 思考中...</div>`);
+    setHtml(botMsgDiv, `<div class="ai-msg-bubble"><div class="ai-typing-indicator"><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span> 联想中...</div></div>`);
     aiChatBody.appendChild(botMsgDiv);
     aiChatBody.scrollTop = aiChatBody.scrollHeight;
 
@@ -231,7 +231,7 @@ async function sendAiChatMessage() {
         const response = await fetchAiChatStream({ question, stream: true, history: recentHistory });
         if (!response) {
             state.aiChatHistory.pop();
-            setHtml(bubbleEl, '🤖 登录已过期，请重新登录后再试');
+            setHtml(bubbleEl, '登录已过期，请重新登录后再试');
             return;
         }
 
@@ -348,13 +348,13 @@ async function sendAiChatMessage() {
                         try {
                             const payload = JSON.parse(trimmed.slice(6));
                             if (payload.error) {
-                                setHtml(bubbleEl, '🤖 ' + escapeHtml(payload.error));
+                                setHtml(bubbleEl, escapeHtml(payload.error));
                                 break;
                             }
                             if (payload.type === 'rag' && payload.sources) {
                                 mountSources(payload.sources);
                                 if (!payload.sources.length) {
-                                    setHtml(bubbleEl, '🤖 未检索到直接相关记忆，正在据此回答…');
+                                    setHtml(bubbleEl, '未检索到直接相关记忆，正在结合全局为你回答…');
                                 }
                                 continue;
                             }
@@ -407,7 +407,7 @@ if (btnWeeklyReview) {
         aiChatModal.classList.add('show');
         const botMsgDiv = document.createElement('div');
         botMsgDiv.className = 'ai-msg ai-msg-bot';
-        setHtml(botMsgDiv, `<div class="ai-msg-bubble">🤖 正在为你生成本周回顾...</div>`);
+        setHtml(botMsgDiv, `<div class="ai-msg-bubble"><div class="ai-typing-indicator"><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span><span class="ai-typing-dot"></span> 正在为你梳理本周回顾...</div></div>`);
         aiChatBody.appendChild(botMsgDiv);
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
         try {
@@ -419,6 +419,20 @@ if (btnWeeklyReview) {
             setHtml(botMsgDiv.querySelector('.ai-msg-bubble'), '本周回顾生成失败：' + escapeHtml(err.message));
         }
         aiChatBody.scrollTop = aiChatBody.scrollHeight;
+    });
+}
+
+// 快捷建议气泡点击即发
+if (aiChatBody) {
+    aiChatBody.addEventListener('click', (e) => {
+        const pill = e.target.closest('.ai-suggest-pill');
+        if (pill) {
+            const promptText = pill.dataset.prompt || pill.textContent.trim().replace(/^[“"']|[”"']$/g, '');
+            if (promptText && aiChatInput) {
+                aiChatInput.value = promptText;
+                sendAiChatMessage();
+            }
+        }
     });
 }
 
