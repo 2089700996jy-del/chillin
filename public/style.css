@@ -8896,6 +8896,160 @@ body.dark-reader-body .k-topic-item-title {
   color: #f2f2f7;
 }
 
+/* Konsta iOS: 所有专栏全览 Sheet 与层级导航 (Topics Directory & Hierarchy) */
+.k-searchbar-inner {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: rgba(118, 118, 128, 0.08);
+  border-radius: 10px;
+  height: 36px;
+  padding: 0 10px;
+  transition: all 0.2s ease;
+}
+
+.k-searchbar-inner:focus-within {
+  background: rgba(118, 118, 128, 0.14);
+  box-shadow: 0 0 0 2.5px rgba(0, 122, 255, 0.2);
+}
+
+.k-searchbar-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 13.5px;
+  padding-left: 8px;
+  outline: none;
+  color: var(--text-color, #1c1c1e);
+}
+
+.k-searchbar-input::placeholder {
+  color: rgba(60, 60, 67, 0.45);
+}
+
+.k-topic-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--ios-blue, #007aff);
+  background: transparent;
+  border: none;
+  padding: 0 0 4px 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: opacity 0.15s ease;
+}
+.k-topic-back-btn:hover {
+  opacity: 0.75;
+}
+
+.k-directory-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(120, 120, 128, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: 12px;
+  padding: 11px 13px;
+  margin-bottom: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.k-directory-row:hover {
+  background: rgba(120, 120, 128, 0.08);
+}
+.k-directory-row:active {
+  transform: scale(0.99);
+}
+
+.k-directory-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.k-directory-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.k-directory-title {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--text-color, #1c1c1e);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.k-directory-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 11.5px;
+  color: rgba(60, 60, 67, 0.45);
+}
+
+.k-directory-snippet {
+  font-size: 12px;
+  color: rgba(60, 60, 67, 0.7);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  margin-top: 1px;
+}
+
+.k-directory-arrow {
+  color: rgba(60, 60, 67, 0.3);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+body.dark-reader-body .k-searchbar-inner {
+  background: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .k-searchbar-inner:focus-within {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: 0 0 0 2.5px rgba(10, 132, 255, 0.3);
+}
+body.dark-reader-body .k-searchbar-input {
+  color: #f2f2f7;
+}
+body.dark-reader-body .k-searchbar-input::placeholder {
+  color: rgba(235, 235, 245, 0.35);
+}
+body.dark-reader-body .k-directory-row {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+body.dark-reader-body .k-directory-row:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+body.dark-reader-body .k-directory-title {
+  color: #f2f2f7;
+}
+body.dark-reader-body .k-directory-meta {
+  color: rgba(235, 235, 245, 0.4);
+}
+body.dark-reader-body .k-directory-snippet {
+  color: rgba(235, 235, 245, 0.65);
+}
+body.dark-reader-body .k-directory-arrow {
+  color: rgba(235, 235, 245, 0.3);
+}
+
 /* ♿ 尊重系统「减弱动态效果」偏好：关闭装饰性动画与过渡 */
 @media (prefers-reduced-motion: reduce) {
   *,

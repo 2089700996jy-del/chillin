@@ -314,9 +314,86 @@ export function renderTopicShelves() {
 }
 
 /**
- * 打开专栏详情 Sheet (Apple HIG Inset Grouped Sheet)
+ * 打开所有常青专栏全览 Sheet (Apple HIG Directory Sheet)
+ * @param {string} [filterText=''] 过滤关键词
  */
-export function openTopicDetailSheet(topicKey) {
+export function openTopicsDirectorySheet(filterText = '') {
+    const modal = document.getElementById('topics-directory-modal');
+    if (!modal) return;
+
+    const topics = aggregateTopics();
+    const totalEntries = topics.reduce((sum, t) => sum + t.totalCount, 0);
+
+    const subtitleEl = document.getElementById('topics-directory-subtitle');
+    const listEl = document.getElementById('topics-directory-list');
+    const searchInput = document.getElementById('topics-directory-search');
+
+    if (searchInput && filterText === '' && !modal.classList.contains('show')) {
+        searchInput.value = '';
+    }
+
+    const cleanFilter = String(filterText || '').trim().toLowerCase();
+    const filteredTopics = cleanFilter
+        ? topics.filter(t => t.name.toLowerCase().includes(cleanFilter) || (t.latestSnippet && t.latestSnippet.toLowerCase().includes(cleanFilter)))
+        : topics;
+
+    if (subtitleEl) {
+        if (cleanFilter) {
+            subtitleEl.textContent = `找到 ${filteredTopics.length} 个专栏 (共 ${topics.length} 个) · 共 ${totalEntries} 条沉淀`;
+        } else {
+            subtitleEl.textContent = `${topics.length} 个专栏 · 共 ${totalEntries} 条沉淀`;
+        }
+    }
+
+    if (listEl) {
+        if (filteredTopics.length === 0) {
+            setHtml(listEl, `
+                <div class="k-shelf-empty" style="padding: 24px 16px; justify-content: center;">
+                    <span class="k-shelf-empty-text">未找到与 “${escapeHtml(filterText)}” 相关的专栏</span>
+                </div>
+            `);
+        } else {
+            setHtml(listEl, filteredTopics.map(t => {
+                const prefix = t.type === 'wikilink' ? '🔗 ' : '# ';
+                const isDeep = t.totalCount >= 8 || t.wordCount >= 2000;
+                const tagBadge = isDeep ? '<span class="k-topic-tier-pill tier-deep">深度</span>' : '';
+                return `
+                    <div class="k-directory-row" data-topic-key="${escapeHtml(t.key)}" role="button" tabindex="0">
+                        <div class="k-directory-main">
+                            <div class="k-directory-header">
+                                <span class="k-directory-title">${prefix}${escapeHtml(t.name)}</span>
+                                ${tagBadge}
+                            </div>
+                            <div class="k-directory-meta">
+                                <span>${t.totalCount} 篇</span>
+                                <span class="k-shelf-dot-sep">·</span>
+                                <span>共 ${formatWordsText(t.wordCount)}</span>
+                                <span class="k-shelf-dot-sep">·</span>
+                                <span>跨越 ${t.timespanDays} 天</span>
+                            </div>
+                            ${t.latestSnippet ? `<div class="k-directory-snippet">“${escapeHtml(t.latestSnippet)}”</div>` : ''}
+                        </div>
+                        <div class="k-directory-arrow">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="9 18 15 12 9 6"></polyline>
+                            </svg>
+                        </div>
+                    </div>
+                `;
+            }).join(''));
+        }
+    }
+
+    modal.classList.add('show');
+}
+
+/**
+ * 打开专栏详情 Sheet (Apple HIG Inset Grouped Sheet)
+ * @param {string} topicKey 主题标识
+ * @param {Object} [options] 导航选项
+ * @param {boolean} [options.fromDirectory] 是否从所有专栏目录打开
+ */
+export function openTopicDetailSheet(topicKey, options = {}) {
     const modal = document.getElementById('topic-detail-modal');
     if (!modal) return;
 
@@ -325,6 +402,11 @@ export function openTopicDetailSheet(topicKey) {
     if (!topic) return;
 
     activeDetailTopic = topic;
+
+    const backBtn = document.getElementById('btn-topic-back-to-directory');
+    if (backBtn) {
+        backBtn.style.display = options.fromDirectory ? 'inline-flex' : 'none';
+    }
 
     const titleEl = document.getElementById('topic-detail-title');
     const subtitleEl = document.getElementById('topic-detail-subtitle');
@@ -387,6 +469,7 @@ export function openTopicDetailSheet(topicKey) {
 export function initEvergreenTopics() {
     actions.renderTopicShelves = renderTopicShelves;
     actions.openTopicDetailSheet = openTopicDetailSheet;
+    actions.openTopicsDirectorySheet = openTopicsDirectorySheet;
 
     renderTopicShelves();
 
@@ -396,22 +479,51 @@ export function initEvergreenTopics() {
         scrollContainer.addEventListener('click', (e) => {
             const card = e.target.closest('.k-shelf-card');
             if (card && card.dataset.topicKey) {
-                openTopicDetailSheet(card.dataset.topicKey);
+                openTopicDetailSheet(card.dataset.topicKey, { fromDirectory: false });
             }
         });
     }
 
-    // 2. 货架顶部“全览”按钮
+    // 2. 货架顶部“全部”按钮 -> 打开专栏目录全览 Sheet
     document.getElementById('btn-view-all-topics')?.addEventListener('click', () => {
         const topics = aggregateTopics();
         if (topics.length > 0) {
-            openTopicDetailSheet(topics[0].key);
+            openTopicsDirectorySheet();
         } else {
             showToast('当前暂无主题，在随手记里写个 #标签 吧', 'info');
         }
     });
 
-    // 3. 详情 Sheet 中的条目点击跳转
+    // 3. 专栏目录实时搜索过滤
+    const directorySearchInput = document.getElementById('topics-directory-search');
+    if (directorySearchInput) {
+        directorySearchInput.addEventListener('input', (e) => {
+            openTopicsDirectorySheet(e.target.value);
+        });
+    }
+
+    // 4. 专栏目录点击条目 -> 进入对应专栏详情 Sheet
+    const directoryList = document.getElementById('topics-directory-list');
+    if (directoryList) {
+        directoryList.addEventListener('click', (e) => {
+            const row = e.target.closest('.k-directory-row');
+            if (row && row.dataset.topicKey) {
+                const dirModal = document.getElementById('topics-directory-modal');
+                if (dirModal) dirModal.classList.remove('show');
+                openTopicDetailSheet(row.dataset.topicKey, { fromDirectory: true });
+            }
+        });
+    }
+
+    // 5. 详情页层级返回按钮 -> 回到专栏全览 Sheet
+    document.getElementById('btn-topic-back-to-directory')?.addEventListener('click', () => {
+        const detailModal = document.getElementById('topic-detail-modal');
+        if (detailModal) detailModal.classList.remove('show');
+        const searchVal = document.getElementById('topics-directory-search')?.value || '';
+        openTopicsDirectorySheet(searchVal);
+    });
+
+    // 6. 详情 Sheet 中的条目点击跳转
     const itemsList = document.getElementById('topic-detail-items-list');
     if (itemsList) {
         itemsList.addEventListener('click', (e) => {
@@ -444,7 +556,7 @@ export function initEvergreenTopics() {
         });
     }
 
-    // 4. 追加思绪按钮
+    // 7. 追加思绪按钮
     document.getElementById('btn-topic-append-thought')?.addEventListener('click', () => {
         if (!activeDetailTopic) return;
         const topicName = activeDetailTopic.name;

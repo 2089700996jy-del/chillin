@@ -26,7 +26,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { countWords, isValidTopic, getItemWordCount, aggregateTopics } = await import('../public/js/evergreen-topics.js');
+const { countWords, isValidTopic, getItemWordCount, aggregateTopics, openTopicsDirectorySheet, openTopicDetailSheet } = await import('../public/js/evergreen-topics.js');
 const { state } = await import('../public/js/state.js');
 
 test('Evergreen Topics - countWords accurately counts mixed Chinese characters and English words', () => {
@@ -81,4 +81,50 @@ test('Evergreen Topics - aggregateTopics accurately calculates words across feed
 
     // Ensure system tag "随手记" is not created as a topic
     assert.equal(topics.some(t => t.name === '随手记'), false, '随手记 must not be in topics');
+});
+
+test('Evergreen Topics - Directory Sheet & Back navigation lifecycle', () => {
+    assert.equal(typeof openTopicsDirectorySheet, 'function');
+    assert.equal(typeof openTopicDetailSheet, 'function');
+
+    const modalClasses = new Set();
+    const mockModal = {
+        classList: {
+            add: (c) => modalClasses.add(c),
+            remove: (c) => modalClasses.delete(c),
+            contains: (c) => modalClasses.has(c)
+        }
+    };
+    const mockSubtitle = { textContent: '' };
+    const mockList = { innerHTML: '' };
+    const mockSearch = { value: '' };
+
+    const originalGetElementById = globalThis.document.getElementById;
+    globalThis.document.getElementById = (id) => {
+        if (id === 'topics-directory-modal') return mockModal;
+        if (id === 'topics-directory-subtitle') return mockSubtitle;
+        if (id === 'topics-directory-list') return mockList;
+        if (id === 'topics-directory-search') return mockSearch;
+        return null;
+    };
+
+    try {
+        // Open without filter
+        openTopicsDirectorySheet();
+        assert.ok(mockModal.classList.contains('show'), 'modal should have show class');
+        assert.ok(mockSubtitle.textContent.includes('专栏'), 'subtitle should display topic summary');
+        assert.ok(mockList.innerHTML.includes('k-directory-row'), 'list should render directory rows');
+        assert.ok(mockList.innerHTML.includes('认知模型'), 'list should include topic name');
+
+        // Open with filter that matches
+        openTopicsDirectorySheet('认知');
+        assert.ok(mockSubtitle.textContent.includes('找到 1 个专栏'), 'filtered count should be 1');
+        assert.ok(mockList.innerHTML.includes('认知模型'));
+
+        // Open with non-matching filter
+        openTopicsDirectorySheet('不存在的专栏XYZ');
+        assert.ok(mockList.innerHTML.includes('未找到与 “不存在的专栏XYZ” 相关的专栏'));
+    } finally {
+        globalThis.document.getElementById = originalGetElementById;
+    }
 });

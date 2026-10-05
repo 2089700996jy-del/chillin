@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.72">
+    <link rel="stylesheet" href="style.css?v=2.5.73">
 </head>
 <body>
 
@@ -277,7 +277,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.73</button>
         </section>
 
         <!-- ========================================== -->
@@ -490,7 +490,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.73</button>
         </section>
 
         <!-- ========================================== -->
@@ -633,7 +633,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.73</button>
         </section>
 
         <!-- ========================================== -->
@@ -783,7 +783,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.73</button>
         </section>
 
         <!-- ========================================== -->
@@ -880,7 +880,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.72</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.73</button>
         </section>
 
     </main>
@@ -1191,12 +1191,55 @@
         </div>
     </div>
 
+    <!-- 所有常青专栏全览 Sheet (Apple HIG Directory Sheet) -->
+    <div class="modal-overlay" id="topics-directory-modal">
+        <div class="prompt-variable-card k-topic-sheet-card">
+            <div class="sheet-pull-handle"></div>
+            <div class="prompt-variable-header">
+                <div class="prompt-variable-title-wrap">
+                    <div class="k-topic-sheet-headline">
+                        <h3 class="prompt-variable-title">所有专栏</h3>
+                        <p class="k-topic-sheet-subtitle" id="topics-directory-subtitle">0 个专栏 · 共 0 条沉淀</p>
+                    </div>
+                </div>
+                <button type="button" class="btn-icon ios-modal-close-btn" data-close-modal="topics-directory-modal" aria-label="关闭" title="关闭">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+                        <line x1="2" y1="2" x2="10" y2="10"></line>
+                        <line x1="10" y1="2" x2="2" y2="10"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="prompt-variable-body k-topic-sheet-body">
+                <!-- 搜索过滤栏 -->
+                <div class="k-searchbar-inner" style="margin-bottom: 12px;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity: 0.5;">
+                        <circle cx="11" cy="11" r="8"></circle>
+                        <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                    </svg>
+                    <input type="text" id="topics-directory-search" class="k-searchbar-input" placeholder="搜索专栏名称..." autocomplete="off">
+                </div>
+                <!-- 专栏条目全览列表 -->
+                <div class="k-topic-items-wrapper">
+                    <div class="k-topic-items-list" id="topics-directory-list">
+                        <!-- 动态渲染 -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- 常青专栏详情 Sheet (Apple HIG Inset Grouped Sheet) -->
     <div class="modal-overlay" id="topic-detail-modal">
         <div class="prompt-variable-card k-topic-sheet-card">
             <div class="sheet-pull-handle"></div>
             <div class="prompt-variable-header">
                 <div class="prompt-variable-title-wrap">
+                    <button type="button" class="btn-text k-topic-back-btn" id="btn-topic-back-to-directory" style="display: none;">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="15 18 9 12 15 6"></polyline>
+                        </svg>
+                        <span>所有专栏</span>
+                    </button>
                     <div class="k-topic-sheet-headline">
                         <h3 class="prompt-variable-title" id="topic-detail-title">#专栏</h3>
                         <p class="k-topic-sheet-subtitle" id="topic-detail-subtitle">0 条记录 · 共 0 字</p>
@@ -1305,7 +1348,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.72"></script>
-    <script type="module" src="app.js?v=2.5.72"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.73"></script>
+    <script type="module" src="app.js?v=2.5.73"></script>
 </body>
 </html>
