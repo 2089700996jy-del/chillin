@@ -30,6 +30,7 @@ import { initEchoAi } from './js/echo-ai.js';
 import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
+import { initEvergreenTopics } from './js/evergreen-topics.js';
 import { showToast } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 
@@ -189,13 +190,23 @@ document.addEventListener('DOMContentLoaded', () => {
                 actions.renderHeatmap?.();
                 actions.renderMoodPills?.();
                 actions.renderSerendipityCard?.();
+                actions.renderTopicShelves?.();
                 return;
             }
-            if (kind === 'weeklies') actions.renderCards?.(opts.filter || 'all');
-            if (kind === 'notes') actions.renderNotes?.();
+            if (kind === 'weeklies') {
+                actions.renderCards?.(opts.filter || 'all');
+                actions.renderTopicShelves?.();
+            }
+            if (kind === 'notes') {
+                actions.renderNotes?.();
+                actions.renderTopicShelves?.();
+            }
             if (kind === 'bookmarks') actions.renderBookmarks?.();
             if (kind === 'prompts') actions.renderPrompts?.();
-            if (kind === 'feeds') actions.renderFeeds?.();
+            if (kind === 'feeds') {
+                actions.renderFeeds?.();
+                actions.renderTopicShelves?.();
+            }
             if (kind === 'echo') actions.renderEchoCards?.();
             if (kind === 'heatmap') actions.renderHeatmap?.();
         }
@@ -214,6 +225,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('search', initSearch);
     safeInit('wikilinks', initWikilinks);
     safeInit('dailySpark', initDailySpark);
+    safeInit('evergreenTopics', initEvergreenTopics);
     safeInit('router', initRouter);
 
     loadLocalData();

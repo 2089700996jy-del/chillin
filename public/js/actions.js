@@ -32,4 +32,6 @@ export const actions = {
     renderOutgoingLinksStrip: null,
     renderMoodPills: null,
     renderSerendipityCard: null,
+    renderTopicShelves: null,
+    openTopicDetailSheet: null,
 };

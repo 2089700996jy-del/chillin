@@ -299,13 +299,15 @@ async function sendFeed() {
         type = 'image';
     }
 
+    const extractedTags = (content.match(/#([\w\u4e00-\u9fa5\-_]+)/g) || []).map(t => t.slice(1));
+
     const newFeed = {
         id: Date.now(),
         content: content || '分享了图片/链接',
         type,
         media_url: mediaUrl || parsedCover || null,
         summary,
-        tags: [],
+        tags: extractedTags,
         created_at: getEast8Time().slice(0, 16)
     };
     stampLocalUpdate(newFeed);
@@ -314,6 +316,7 @@ async function sendFeed() {
     saveFeedsDatabase();
     renderFeeds();
     actions.renderHeatmap();
+    actions.renderTopicShelves?.();
 
     feedInputText.value = '';
     if (feedMediaUrlInput) feedMediaUrlInput.value = '';
@@ -324,7 +327,7 @@ async function sendFeed() {
     if (feedPreviewImg) feedPreviewImg.removeAttribute('src');
 
     btnSendFeed.disabled = false;
-    btnSendFeed.innerText = '发送 🚀';
+    btnSendFeed.innerText = '发送';
 
     // Sync with Cloudflare Worker API
     try {
@@ -393,6 +396,7 @@ window.deleteFeed = async function(id) {
     saveFeedsDatabase();
     renderFeeds();
     actions.renderHeatmap();
+    actions.renderTopicShelves?.();
     apiSyncFeed({ id }, 'DELETE');
 };
 
