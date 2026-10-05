@@ -1878,9 +1878,9 @@ body.eyecare-reader-body #btn-back {
   z-index: 99999; 
   display: flex; 
   flex-direction: column;
-  justify-content: flex-start; 
+  justify-content: center; 
   align-items: center;
-  padding: max(56px, calc(env(safe-area-inset-top) + 36px)) 20px max(24px, calc(env(safe-area-inset-bottom) + 16px));
+  padding: max(24px, env(safe-area-inset-top, 24px)) 20px max(24px, env(safe-area-inset-bottom, 20px));
   box-sizing: border-box;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
@@ -1916,7 +1916,7 @@ body.not-authenticated #btn-back {
   z-index: 1;
   width: 100%; 
   max-width: 358px;
-  margin: 0 auto;
+  margin: auto 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1938,27 +1938,18 @@ body.not-authenticated #btn-back {
 
 /* iOS Large Title Header */
 .auth-header {
-  margin-bottom: 26px;
+  margin-bottom: 24px;
   text-align: center;
 }
 
 .auth-title { 
-  font-size: 32px; 
+  font-size: 34px; 
   font-weight: 700; 
-  letter-spacing: -0.035em; 
+  letter-spacing: -0.04em; 
   color: #000000;
-  margin: 0 0 6px 0;
+  margin: 0;
   line-height: 1.15;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", sans-serif;
-}
-
-.auth-desc { 
-  font-size: 15px; 
-  color: #8E8E93; 
-  margin: 0;
-  line-height: 1.4;
-  letter-spacing: -0.01em;
-  font-weight: 400;
 }
 
 /* Konsta iOS 分段选择器 (Segmented Control) */
