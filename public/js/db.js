@@ -68,7 +68,7 @@ export async function idbGet(key) {
     });
 }
 
-/** 异步写入数据：存入 IndexedDB 并静默镜像到 localStorage（超限时 IndexedDB 仍保全） */
+/** 异步写入数据：存入 IndexedDB 并静默镜像到 localStorage（超限时降级为近期快照，IndexedDB 仍保全 100% 全量数据） */
 export async function idbSet(key, value) {
     const db = await openDatabase();
     if (db) {
@@ -84,7 +84,59 @@ export async function idbSet(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
     } catch (e) {
         // QuotaExceededError 安全捕获：IndexedDB 已成功写入，无数据丢失风险
+        // 降级写入最新的 30 条数据作为秒开启动缓存
+        if (Array.isArray(value)) {
+            try {
+                localStorage.setItem(key, JSON.stringify(value.slice(0, 30)));
+            } catch (_) {}
+        }
     }
+}
+
+/** 异步批量读取多个键：单次事务批量拉取，减少事务开销 */
+export async function idbGetBatch(keys) {
+    if (!Array.isArray(keys) || keys.length === 0) return {};
+    const db = await openDatabase();
+    if (!db) {
+        const result = {};
+        for (const k of keys) {
+            try {
+                const val = localStorage.getItem(k);
+                result[k] = val ? JSON.parse(val) : null;
+            } catch (_) {
+                result[k] = null;
+            }
+        }
+        return result;
+    }
+    return new Promise((resolve) => {
+        try {
+            const tx = db.transaction(STORE_NAME, 'readonly');
+            const store = tx.objectStore(STORE_NAME);
+            const result = {};
+            let completed = 0;
+            for (const k of keys) {
+                const req = store.get(k);
+                req.onsuccess = () => {
+                    result[k] = req.result !== undefined ? req.result : null;
+                    completed++;
+                    if (completed === keys.length) resolve(result);
+                };
+                req.onerror = () => {
+                    try {
+                        const fallback = localStorage.getItem(k);
+                        result[k] = fallback ? JSON.parse(fallback) : null;
+                    } catch (_) {
+                        result[k] = null;
+                    }
+                    completed++;
+                    if (completed === keys.length) resolve(result);
+                };
+            }
+        } catch (e) {
+            resolve({});
+        }
+    });
 }
 
 /** 异步删除键 */
@@ -121,4 +173,47 @@ export async function migrateFromLocalStorage(keys) {
     } catch (err) {
         console.warn('[IDB] migration warning:', err);
     }
+}
+
+function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+}
+
+/** 获取客户端存储使用估值与持久化状态 */
+export async function getStorageEstimate() {
+    let usageBytes = 0;
+    let quotaBytes = 0;
+    let isPersistent = false;
+
+    if (typeof navigator !== 'undefined' && navigator.storage) {
+        try {
+            if (navigator.storage.estimate) {
+                const est = await navigator.storage.estimate();
+                usageBytes = est.usage || 0;
+                quotaBytes = est.quota || 0;
+            }
+            if (navigator.storage.persisted) {
+                isPersistent = await navigator.storage.persisted();
+            }
+            if (!isPersistent && navigator.storage.persist) {
+                isPersistent = await navigator.storage.persist().catch(() => false);
+            }
+        } catch (e) {
+            console.warn('[Storage] estimate exception:', e);
+        }
+    }
+
+    const percent = quotaBytes > 0 ? Math.min(100, Math.round((usageBytes / quotaBytes) * 100)) : 0;
+
+    return {
+        usageBytes,
+        quotaBytes,
+        usageFormatted: formatBytes(usageBytes),
+        quotaFormatted: formatBytes(quotaBytes),
+        percent,
+        isPersistent
+    };
 }

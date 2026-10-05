@@ -88,3 +88,48 @@ test('Sync - ensureLocalId keeps existing ids stable and never reuses one', () =
     assert.ok(Number.isSafeInteger(first.id) && first.id > 0);
     assert.notEqual(first.id, second.id, 'two id-less items must not collide');
 });
+
+const { idbSet, idbGet, idbGetBatch, getStorageEstimate } = await import('../public/js/db.js');
+
+test('IDB - fallback to localStorage and batch reads', async () => {
+    await idbSet('test_key_1', [{ id: 1, title: 'Item 1' }]);
+    await idbSet('test_key_2', [{ id: 2, title: 'Item 2' }]);
+
+    const single = await idbGet('test_key_1');
+    assert.deepEqual(single, [{ id: 1, title: 'Item 1' }]);
+
+    const batch = await idbGetBatch(['test_key_1', 'test_key_2', 'non_existent']);
+    assert.deepEqual(batch['test_key_1'], [{ id: 1, title: 'Item 1' }]);
+    assert.deepEqual(batch['test_key_2'], [{ id: 2, title: 'Item 2' }]);
+    assert.equal(batch['non_existent'], null);
+});
+
+test('IDB - QuotaExceeded fallback saves slice snapshot without throwing', async () => {
+    const originalSetItem = globalThis.localStorage.setItem;
+    let thrownOnce = false;
+    globalThis.localStorage.setItem = (k, v) => {
+        if (!thrownOnce && k === 'quota_key') {
+            thrownOnce = true;
+            const err = new Error('Quota exceeded');
+            err.name = 'QuotaExceededError';
+            throw err;
+        }
+        return originalSetItem(k, v);
+    };
+
+    const bigArray = Array.from({ length: 50 }, (_, i) => ({ id: i + 1, content: 'data' }));
+    await idbSet('quota_key', bigArray);
+
+    const cached = JSON.parse(globalThis.localStorage.getItem('quota_key'));
+    assert.equal(cached.length, 30, 'should gracefully degrade to 30 items in localStorage');
+    globalThis.localStorage.setItem = originalSetItem;
+});
+
+test('Storage - getStorageEstimate provides formatted stats and persist status', async () => {
+    const est = await getStorageEstimate();
+    assert.ok(typeof est.usageBytes === 'number');
+    assert.ok(typeof est.usageFormatted === 'string');
+    assert.ok(typeof est.percent === 'number');
+    assert.equal(typeof est.isPersistent, 'boolean');
+});
+

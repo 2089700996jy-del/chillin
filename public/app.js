@@ -245,24 +245,70 @@ document.addEventListener('DOMContentLoaded', () => {
     // PWA：注册 SW，并在打开/切回前台时主动检查更新
     safeInit('pwaUpdates', initPwaUpdates);
 
-    // 📶 离线感知与网络恢复自动同步
+    // 📶 极简 Apple HIG 离线韧性提示条 (Reassuring Offline Bar)
+    const offlineBar = document.getElementById('offline-bar');
+    const offlineBarText = document.getElementById('offline-bar-text');
+    let offlineDismissTimer = null;
+
+    function showOfflineBar(message, status = 'offline') {
+        if (!offlineBar) return;
+        if (offlineDismissTimer) {
+            clearTimeout(offlineDismissTimer);
+            offlineDismissTimer = null;
+        }
+        offlineBar.hidden = false;
+        offlineBar.className = `offline-banner is-${status}`;
+        if (offlineBarText) offlineBarText.textContent = message;
+    }
+
+    function hideOfflineBar(delay = 0) {
+        if (!offlineBar) return;
+        if (offlineDismissTimer) clearTimeout(offlineDismissTimer);
+        const performHide = () => {
+            offlineBar.classList.add('is-hiding');
+            setTimeout(() => {
+                offlineBar.hidden = true;
+                offlineBar.classList.remove('is-hiding');
+            }, 350);
+        };
+        if (delay <= 0) {
+            performHide();
+        } else {
+            offlineDismissTimer = setTimeout(performHide, delay);
+        }
+    }
+
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         document.body.classList.add('is-offline');
-        setSyncStatus('离线状态', 'error');
+        setSyncStatus('离线就绪', 'warn');
+        showOfflineBar('离线就绪 · 本地 IndexedDB 已安全持久化，联网自动增量同步', 'offline');
     }
 
     window.addEventListener('offline', () => {
         document.body.classList.add('is-offline');
-        showToast('📶 当前处于离线状态，新内容将保存在本地', 'warn');
-        setSyncStatus('离线状态', 'error');
+        setSyncStatus('离线就绪', 'warn');
+        showOfflineBar('离线就绪 · 本地 IndexedDB 已安全持久化，联网自动增量同步', 'offline');
     });
 
     window.addEventListener('online', () => {
         document.body.classList.remove('is-offline');
-        showToast('🌐 网络已恢复连接，正在自动同步...', 'success');
         setSyncStatus('正在同步', 'warn');
+        showOfflineBar('网络已恢复 · 正在增量同步本地最新改动...', 'syncing');
+
         if (state.authToken || state.cookieSession) {
-            syncFromApi().catch((err) => console.warn('[online] auto sync failed', err));
+            syncFromApi()
+                .then(() => {
+                    showOfflineBar('已恢复在线 · 云端与本地数据已全部对齐', 'synced');
+                    hideOfflineBar(3000);
+                })
+                .catch((err) => {
+                    console.warn('[online] auto sync failed', err);
+                    showOfflineBar('网络已连接 · 后台增量同步重试中', 'warn');
+                    hideOfflineBar(4000);
+                });
+        } else {
+            showOfflineBar('已恢复在线', 'synced');
+            hideOfflineBar(2500);
         }
     });
 });

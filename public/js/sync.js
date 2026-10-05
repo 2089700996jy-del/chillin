@@ -17,7 +17,7 @@ import {
     refresh,
 } from './auth.js';
 import { setHtml } from './trusted-types.js';
-import { idbGet, idbSet, migrateFromLocalStorage } from './db.js';
+import { idbGet, idbSet, idbGetBatch, migrateFromLocalStorage } from './db.js';
 
 const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds', 'prompts'];
 
@@ -316,7 +316,73 @@ export function loadLocalData() {
         getLocalKey('gardenEchoCards')
     ]);
 
+    hydrateFromIndexedDb().catch((err) => console.warn('[IDB] hydrate error:', err));
+
     refresh('all');
+}
+
+/**
+ * 阶段二异步注水：从 IndexedDB 批量拉取全量数据，
+ * 当 IndexedDB 中有因超限未完整存入 localStorage 的历史全量数据时，无缝合并并静默刷新视图。
+ */
+export async function hydrateFromIndexedDb() {
+    try {
+        const keys = [
+            getLocalKey('gardenData'),
+            getLocalKey('gardenNotes'),
+            getLocalKey('gardenBookmarks'),
+            getLocalKey('gardenPrompts'),
+            getLocalKey('gardenFeeds'),
+            getLocalKey('gardenEchoCards')
+        ];
+        const dataMap = await idbGetBatch(keys);
+        let hasNewData = false;
+
+        const idbWeeklies = dataMap[getLocalKey('gardenData')];
+        const idbNotes = dataMap[getLocalKey('gardenNotes')];
+        const idbBookmarks = dataMap[getLocalKey('gardenBookmarks')];
+        const idbPrompts = dataMap[getLocalKey('gardenPrompts')];
+        const idbFeeds = dataMap[getLocalKey('gardenFeeds')];
+        const idbEchoCards = dataMap[getLocalKey('gardenEchoCards')];
+
+        if (Array.isArray(idbWeeklies) && idbWeeklies.length > 0) {
+            const beforeLen = state.database.length;
+            state.database = mergeDataLists(state.database, idbWeeklies);
+            if (state.database.length !== beforeLen) hasNewData = true;
+        }
+        if (Array.isArray(idbNotes) && idbNotes.length > 0) {
+            const beforeLen = state.notesDatabase.length;
+            state.notesDatabase = mergeDataLists(state.notesDatabase, idbNotes);
+            if (state.notesDatabase.length !== beforeLen) hasNewData = true;
+        }
+        if (Array.isArray(idbBookmarks) && idbBookmarks.length > 0) {
+            const beforeLen = state.bookmarksDatabase.length;
+            state.bookmarksDatabase = mergeDataLists(state.bookmarksDatabase, idbBookmarks);
+            if (state.bookmarksDatabase.length !== beforeLen) hasNewData = true;
+        }
+        if (Array.isArray(idbPrompts) && idbPrompts.length > 0) {
+            const beforeLen = state.promptsDatabase.length;
+            state.promptsDatabase = mergeDataLists(state.promptsDatabase, idbPrompts);
+            if (state.promptsDatabase.length !== beforeLen) hasNewData = true;
+        }
+        if (Array.isArray(idbFeeds) && idbFeeds.length > 0) {
+            const beforeLen = state.feedsDatabase.length;
+            state.feedsDatabase = mergeDataLists(state.feedsDatabase, idbFeeds);
+            if (state.feedsDatabase.length !== beforeLen) hasNewData = true;
+        }
+        if (Array.isArray(idbEchoCards) && idbEchoCards.length > 0) {
+            if (!state.echoCardsDatabase || state.echoCardsDatabase.length < idbEchoCards.length) {
+                state.echoCardsDatabase = idbEchoCards;
+                hasNewData = true;
+            }
+        }
+
+        if (hasNewData && !isProtectingLocalEdits()) {
+            refresh('all');
+        }
+    } catch (err) {
+        console.warn('[IDB] hydrateFromIndexedDb failed:', err);
+    }
 }
 
 /** 首屏同步时把仍停留在空态的列表换成骨架屏，避免"暂无内容"的误导 */

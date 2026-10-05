@@ -7,6 +7,7 @@ import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
 import { setHtml } from './trusted-types.js';
 import { downloadBackupZip, sendBackupByEmail } from './backup.js';
+import { getStorageEstimate } from './db.js';
 
 let hooks = {
     onRefresh: (_kind, _opts) => {},
@@ -469,12 +470,44 @@ export async function openSecurityModal() {
     const modal = document.getElementById('account-security-modal');
     if (!modal) return;
     modal.classList.add('show');
+    updateStorageDiagnostics();
     const container = document.getElementById('session-list');
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
         renderSessions(await apiRequest('/api/auth/sessions'));
     } catch (_) {
         if (container) setHtml(container, '<div class="session-empty">读取失败，请稍后重试</div>');
+    }
+}
+
+/** 更新本地存储与离线韧性诊断指标 */
+export async function updateStorageDiagnostics() {
+    const usageText = document.getElementById('storage-usage-text');
+    const fillBar = document.getElementById('storage-progress-fill');
+    const persistBadge = document.getElementById('storage-persist-badge');
+    if (!usageText) return;
+
+    try {
+        const est = await getStorageEstimate();
+        if (est.quotaBytes > 0) {
+            usageText.textContent = `${est.usageFormatted} / ${est.quotaFormatted} (${est.percent}%)`;
+            if (fillBar) fillBar.style.width = `${Math.max(est.percent, 1)}%`;
+        } else {
+            usageText.textContent = est.usageFormatted || '就绪';
+            if (fillBar) fillBar.style.width = '2%';
+        }
+
+        if (persistBadge) {
+            if (est.isPersistent) {
+                persistBadge.textContent = '持久化已保障';
+                persistBadge.classList.add('is-persisted');
+            } else {
+                persistBadge.textContent = '标准存储';
+                persistBadge.classList.remove('is-persisted');
+            }
+        }
+    } catch (e) {
+        if (usageText) usageText.textContent = 'IndexedDB 就绪';
     }
 }
 
