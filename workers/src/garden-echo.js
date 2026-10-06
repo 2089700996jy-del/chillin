@@ -90,8 +90,8 @@ export async function handleEchoGenerate(request, env, ctx, db, userId) {
             if (subs && subs.results && subs.results.length > 0) {
                 webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
                 const payload = JSON.stringify({
-                    title: '✨ AI 记忆回响已生成',
-                    body: `探讨了关于 ${moderatedTopic.text} 的新灵感`,
+                    title: 'Chillin',
+                    body: `记忆回响 · 关于 ${moderatedTopic.text} 的新灵感`,
                     url: '/'
                 });
                 const pushPromises = subs.results.map(async sub => {

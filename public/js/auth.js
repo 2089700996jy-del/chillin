@@ -538,6 +538,13 @@ export async function sendTestNotification() {
     }
     try {
         let sent = false;
+        const options = {
+            body: '通知已就绪 · 在这里，随时安放思绪与时光回响',
+            tag: 'chillin-notification',
+            vibrate: [80, 40, 80],
+            data: { url: '/#/feeds' }
+        };
+
         // 1. 优先尝试 Service Worker 通知通道（支持移动端/PWA/后台通知）
         if ('serviceWorker' in navigator) {
             try {
@@ -546,14 +553,7 @@ export async function sendTestNotification() {
                     new Promise((_, reject) => setTimeout(() => reject(new Error('ready timeout')), 1500))
                 ]);
                 if (reg && typeof reg.showNotification === 'function') {
-                    await reg.showNotification('🌿 Chillin 数字花园', {
-                        body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
-                        icon: '/icons/icon-192.png',
-                        badge: '/icons/icon-192.png',
-                        tag: 'chillin-test-push',
-                        vibrate: [100, 50, 100],
-                        data: { url: '/#/feeds' }
-                    });
+                    await reg.showNotification('Chillin', options);
                     sent = true;
                 }
             } catch (swErr) {
@@ -564,11 +564,7 @@ export async function sendTestNotification() {
         // 2. 桌面端原生 Notification 兜底（直接呼起系统通知横幅，无需等待 SW）
         if (!sent && typeof Notification !== 'undefined') {
             try {
-                const n = new Notification('🌿 Chillin 数字花园', {
-                    body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
-                    icon: '/icons/icon-192.png',
-                    tag: 'chillin-test-push'
-                });
+                const n = new Notification('Chillin', options);
                 n.onclick = () => { window.focus(); n.close(); };
                 sent = true;
             } catch (nativeErr) {
