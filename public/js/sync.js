@@ -153,6 +153,41 @@ export function stripClientSyncFlags(item) {
     return copy;
 }
 
+/**
+ * 记录本次推送中每条记录的 ID 及其对应的 updated_at 时间戳（毫秒）
+ */
+export function makePushedTimestampMap(items) {
+    const map = new Map();
+    if (!Array.isArray(items)) return map;
+    for (const item of items) {
+        if (item && item.id != null) {
+            map.set(String(item.id), toUpdatedTs(item.updated_at));
+        }
+    }
+    return map;
+}
+
+/**
+ * 安全清除脏标记：仅清除更新时间戳不超过本次推送快照的记录
+ * 若用户在网络传输期间进行了新编辑，其 updated_at 会大于推送快照，从而安全保留 _dirty: true
+ */
+export function clearPushedDirtyFlags(list, pushedMap) {
+    if (!Array.isArray(list) || !pushedMap) return false;
+    let changed = false;
+    for (const item of list) {
+        if (!item || item.id == null || !item._dirty) continue;
+        const pushedTs = pushedMap.get(String(item.id));
+        if (pushedTs !== undefined) {
+            const currentTs = toUpdatedTs(item.updated_at);
+            if (currentTs <= pushedTs) {
+                item._dirty = false;
+                changed = true;
+            }
+        }
+    }
+    return changed;
+}
+
 export function mergeDataLists(localList, apiList) {
     if (!Array.isArray(localList)) localList = [];
     if (!Array.isArray(apiList)) apiList = [];
@@ -530,6 +565,12 @@ export async function syncFromApi() {
                 const totalDirty = dirtyWeeklies.length + dirtyNotes.length + dirtyBookmarks.length + dirtyFeeds.length + dirtyPrompts.length;
 
                 if (totalDirty > 0) {
+                    const pushedWeeklies = makePushedTimestampMap(dirtyWeeklies);
+                    const pushedNotes = makePushedTimestampMap(dirtyNotes);
+                    const pushedBookmarks = makePushedTimestampMap(dirtyBookmarks);
+                    const pushedFeeds = makePushedTimestampMap(dirtyFeeds);
+                    const pushedPrompts = makePushedTimestampMap(dirtyPrompts);
+
                     await apiRequest('/api/sync/batch', {
                         method: 'POST',
                         body: JSON.stringify({
@@ -540,11 +581,13 @@ export async function syncFromApi() {
                             prompts: dirtyPrompts
                         })
                     });
-                    state.database.forEach(i => { if (i && i._dirty) i._dirty = false; });
-                    state.notesDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
-                    state.bookmarksDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
-                    state.feedsDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
-                    state.promptsDatabase.forEach(i => { if (i && i._dirty) i._dirty = false; });
+
+                    clearPushedDirtyFlags(state.database, pushedWeeklies);
+                    clearPushedDirtyFlags(state.notesDatabase, pushedNotes);
+                    clearPushedDirtyFlags(state.bookmarksDatabase, pushedBookmarks);
+                    clearPushedDirtyFlags(state.feedsDatabase, pushedFeeds);
+                    clearPushedDirtyFlags(state.promptsDatabase, pushedPrompts);
+
                     saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase(); savePromptsDatabase();
                 }
                 setSyncStatus('已同步', 'ok', 2000);
@@ -604,9 +647,11 @@ export function saveFeedsDatabase() {
     idbSet(getLocalKey('gardenFeeds'), state.feedsDatabase);
 }
 
-function markSyncedItem(item) {
+function markSyncedItem(item, pushedUpdatedAt) {
     if (!item || item.id == null) return;
-    item._dirty = false;
+    if (!pushedUpdatedAt || toUpdatedTs(item.updated_at) <= toUpdatedTs(pushedUpdatedAt)) {
+        item._dirty = false;
+    }
     if (!item.updated_at) item.updated_at = getEast8Time();
     addSyncedIds([item.id]);
 }
@@ -638,7 +683,7 @@ function apiSyncResource(apiPath, item, method) {
         if (method !== 'DELETE') {
             // 兜底：服务端若回填了 id（历史无 id 数据），以服务端为准再标记同步
             if (item && item.id == null && res && res.id != null) item.id = res.id;
-            markSyncedItem(item);
+            markSyncedItem(item, payload.updated_at);
         }
         setSyncStatus('已同步', 'ok', 1800);
         return res;

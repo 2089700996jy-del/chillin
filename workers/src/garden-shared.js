@@ -117,11 +117,19 @@ export async function isSoftDeletedRecord(db, table, id, userId) {
 export async function fetchSoftDeletedIdSet(db, tableName, userId, items) {
     const ids = items.map(i => i.id).filter(id => id != null && id !== '');
     if (ids.length === 0) return new Set();
-    const placeholders = ids.map((_, idx) => `?${idx + 2}`).join(',');
-    const res = await db.prepare(
-        `SELECT id FROM ${tableName} WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 1 AND id IN (${placeholders})`
-    ).bind(userId, ...ids).all();
-    return new Set((res.results || []).map(r => Number(r.id)));
+    const result = new Set();
+    const CHUNK_SIZE = 80;
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunkIds = ids.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunkIds.map((_, idx) => `?${idx + 2}`).join(',');
+        const res = await db.prepare(
+            `SELECT id FROM ${tableName} WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 1 AND id IN (${placeholders})`
+        ).bind(userId, ...chunkIds).all();
+        for (const r of (res.results || [])) {
+            result.add(Number(r.id));
+        }
+    }
+    return result;
 }
 
 let softDeleteSchemaReady = false;

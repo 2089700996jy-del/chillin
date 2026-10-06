@@ -25,7 +25,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { mergeDataLists, toUpdatedTs } = await import('../public/js/sync.js');
+const { mergeDataLists, toUpdatedTs, makePushedTimestampMap, clearPushedDirtyFlags } = await import('../public/js/sync.js');
 
 test('Sync - toUpdatedTs converts various date formats accurately', () => {
     const tsIso = toUpdatedTs('2026-09-23T10:00:00+08:00');
@@ -59,6 +59,32 @@ test('Sync - mergeDataLists applies Last-Write-Wins and merges unique items', ()
     assert.equal(item1.title, '本地新周记');
     assert.equal(item2.title, '云端较新笔记', 'Cloud item with newer timestamp should win');
     assert.equal(item3.title, '云端新增提示词');
+});
+
+test('Sync - clearPushedDirtyFlags preserves _dirty if modified in-flight during sync', () => {
+    // 模拟上传快照：Item 1 和 Item 2 准备上传
+    const itemsToPush = [
+        { id: 1, title: '未改动的笔记', updated_at: '2026-10-06 14:00:00' },
+        { id: 2, title: '网络传输中被改动的笔记', updated_at: '2026-10-06 14:00:00' }
+    ];
+    const pushedMap = makePushedTimestampMap(itemsToPush);
+
+    // 本地状态：Item 1 保持原样，Item 2 在网络传输这几百毫秒内被用户再次编辑并更新了时间戳
+    const localList = [
+        { id: 1, title: '未改动的笔记', updated_at: '2026-10-06 14:00:00', _dirty: true },
+        { id: 2, title: '用户在传输中修改了正文', updated_at: '2026-10-06 14:00:01', _dirty: true },
+        { id: 3, title: '新创建的未推送笔记', updated_at: '2026-10-06 14:00:02', _dirty: true }
+    ];
+
+    const changed = clearPushedDirtyFlags(localList, pushedMap);
+    assert.equal(changed, true);
+
+    // Item 1 已经成功被服务端接收且本地未变动，脏标记被清除
+    assert.equal(localList[0]._dirty, false);
+    // Item 2 在传输中有更新的时间戳产生，脏标记必须安全保留，待下次同步推送最新版本
+    assert.equal(localList[1]._dirty, true, 'in-flight newer modification must preserve _dirty=true');
+    // Item 3 根本没有包含在上次推送中，脏标记必须保留
+    assert.equal(localList[2]._dirty, true);
 });
 
 const { ensureLocalId, selectDirtyItems } = await import('../public/js/utils.js');

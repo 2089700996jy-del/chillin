@@ -16,6 +16,22 @@ import {
     fetchSoftDeletedIdSet
 } from './garden-shared.js';
 
+export const D1_BATCH_MAX_SIZE = 100;
+
+/**
+ * 将 D1 批处理 SQL 语句切片执行，确保单批不超过 100 条硬性上限
+ */
+export async function executeStatementsInChunks(db, statements, chunkSize = D1_BATCH_MAX_SIZE) {
+    if (!statements || statements.length === 0) return [];
+    const results = [];
+    for (let i = 0; i < statements.length; i += chunkSize) {
+        const chunk = statements.slice(i, i + chunkSize);
+        const chunkRes = await db.batch(chunk);
+        if (Array.isArray(chunkRes)) results.push(...chunkRes);
+    }
+    return results;
+}
+
 export async function handleSyncPull(url, db, userId) {
     const sinceWeeklies = url.searchParams.get('since_weeklies') || url.searchParams.get('since');
     const sinceNotes = url.searchParams.get('since_notes') || url.searchParams.get('since');
@@ -65,13 +81,17 @@ export async function handleSyncBatch(request, db, userId) {
     const fetchOwnedSet = async (tableName, items) => {
         const ids = items.map(i => i.id).filter(id => id != null && id !== '' && isValidRecordId(id));
         if (ids.length === 0) return new Set();
-        const placeholders = ids.map((_, idx) => `?${idx + 1}`).join(',');
-        const res = await db.prepare(`SELECT id, user_id FROM ${tableName} WHERE id IN (${placeholders})`).bind(...ids).all();
         const allowed = new Set();
-        const existingMap = new Map((res.results || []).map(r => [r.id, r.user_id]));
-        for (const id of ids) {
-            if (!existingMap.has(id) || Number(existingMap.get(id)) === Number(userId)) {
-                allowed.add(id);
+        const CHUNK_SIZE = 80;
+        for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+            const chunkIds = ids.slice(i, i + CHUNK_SIZE);
+            const placeholders = chunkIds.map((_, idx) => `?${idx + 1}`).join(',');
+            const res = await db.prepare(`SELECT id, user_id FROM ${tableName} WHERE id IN (${placeholders})`).bind(...chunkIds).all();
+            const existingMap = new Map((res.results || []).map(r => [r.id, r.user_id]));
+            for (const id of chunkIds) {
+                if (!existingMap.has(id) || Number(existingMap.get(id)) === Number(userId)) {
+                    allowed.add(id);
+                }
             }
         }
         return allowed;
@@ -184,7 +204,7 @@ export async function handleSyncBatch(request, db, userId) {
     }
 
     if (statements.length > 0) {
-        await db.batch(statements);
+        await executeStatementsInChunks(db, statements);
     }
     return jsonResponse({ success: true, count: statements.length }, 200);
 }

@@ -92,6 +92,42 @@ integration('Garden sync - pull returns rows, batch push applies deltas and tomb
     assert.equal(final.weeklies.filter((w) => w.id === 3001 && !w.is_deleted).length, 0);
 });
 
+integration('Garden sync - batch pushes > 100 statements safely with D1 chunking', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 1. 验证 FakeD1 本身严格拦截超额单次 batch 调用
+    const overflowStmts = Array.from({ length: 105 }, () => db.prepare('SELECT 1'));
+    await assert.rejects(
+        () => db.batch(overflowStmts),
+        /D1_ERROR: Batch size too large/
+    );
+
+    // 2. 验证 handleSyncBatch 在面对 120 条数据时自动切片并全部入库成功
+    const bulkFeeds = Array.from({ length: 120 }, (_, i) => ({
+        id: 5000 + i,
+        content: `批量测试随手记 #${i}`,
+        type: 'idea',
+        tags: ['#测试']
+    }));
+
+    const res = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', {
+        weeklies: [],
+        notes: [],
+        bookmarks: [],
+        feeds: bulkFeeds,
+        prompts: []
+    }), db, 1);
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.count, 120);
+
+    // 3. 验证聚合拉取全部 120 条生效
+    const pulled = await (await handleSyncPull(new URL('https://x/api/sync/pull'), db, 1)).json();
+    assert.equal(pulled.feeds.length, 120);
+});
+
 integration('Garden stats - heatmap aggregates across resources for one user only', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

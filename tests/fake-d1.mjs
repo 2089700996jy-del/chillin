@@ -47,6 +47,8 @@ class Statement {
     }
 }
 
+export const D1_MAX_BATCH_SIZE = 100;
+
 export class FakeD1 {
     constructor(db) {
         this.db = db;
@@ -56,8 +58,14 @@ export class FakeD1 {
         return new Statement(this.db, sql);
     }
 
-    /** 与 D1 一致的事务性批量执行 */
+    /** 与 D1 一致的事务性批量执行（严格模拟单次最多 100 条语句上限） */
     async batch(statements) {
+        if (!Array.isArray(statements)) {
+            throw new TypeError('statements must be an array');
+        }
+        if (statements.length > D1_MAX_BATCH_SIZE) {
+            throw new Error(`D1_ERROR: Batch size too large (maximum is ${D1_MAX_BATCH_SIZE} statements)`);
+        }
         const results = [];
         this.db.exec('BEGIN');
         try {
