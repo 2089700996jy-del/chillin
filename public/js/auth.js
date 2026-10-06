@@ -531,27 +531,63 @@ export async function sendTestNotification() {
         showToast('请先开启系统通知权限', 'warn');
         return;
     }
+    const btnTest = document.getElementById('btn-test-push');
+    if (btnTest) {
+        btnTest.disabled = true;
+        btnTest.textContent = '发送中…';
+    }
     try {
+        let sent = false;
+        // 1. 优先尝试 Service Worker 通知通道（支持移动端/PWA/后台通知）
         if ('serviceWorker' in navigator) {
-            const reg = await navigator.serviceWorker.ready;
-            await reg.showNotification('🌿 Chillin 数字花园', {
-                body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
-                icon: '/icons/icon-192.png',
-                badge: '/icons/icon-192.png',
-                tag: 'chillin-test-push',
-                vibrate: [100, 50, 100],
-                data: { url: '/#/feeds' }
-            });
-            showToast('已向系统发送测试通知，请查看通知栏！', 'ok');
+            try {
+                const reg = await Promise.race([
+                    navigator.serviceWorker.ready,
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('ready timeout')), 1500))
+                ]);
+                if (reg && typeof reg.showNotification === 'function') {
+                    await reg.showNotification('🌿 Chillin 数字花园', {
+                        body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
+                        icon: '/icons/icon-192.png',
+                        badge: '/icons/icon-192.png',
+                        tag: 'chillin-test-push',
+                        vibrate: [100, 50, 100],
+                        data: { url: '/#/feeds' }
+                    });
+                    sent = true;
+                }
+            } catch (swErr) {
+                console.warn('[Push] ServiceWorker showNotification fallback:', swErr);
+            }
+        }
+
+        // 2. 桌面端原生 Notification 兜底（直接呼起系统通知横幅，无需等待 SW）
+        if (!sent && typeof Notification !== 'undefined') {
+            try {
+                const n = new Notification('🌿 Chillin 数字花园', {
+                    body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
+                    icon: '/icons/icon-192.png',
+                    tag: 'chillin-test-push'
+                });
+                n.onclick = () => { window.focus(); n.close(); };
+                sent = true;
+            } catch (nativeErr) {
+                console.warn('[Push] Native Notification fallback failed:', nativeErr);
+            }
+        }
+
+        if (sent) {
+            showToast('🔔 测试通知已发出！若未弹出横幅，请检查操作中心或免打扰设置', 'ok');
         } else {
-            new Notification('🌿 Chillin 数字花园', {
-                body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
-                icon: '/icons/icon-192.png'
-            });
-            showToast('已向系统发送测试通知，请查看通知栏！', 'ok');
+            showToast('通知发送受阻，请检查系统免打扰或浏览器通知权限', 'warn');
         }
     } catch (err) {
         showToast('发送测试通知失败：' + (err.message || err), 'error');
+    } finally {
+        if (btnTest) {
+            btnTest.disabled = false;
+            btnTest.textContent = '测试通知';
+        }
     }
 }
 
