@@ -133,7 +133,7 @@ test('Storage - getStorageEstimate provides formatted stats and persist status',
     assert.equal(typeof est.isPersistent, 'boolean');
 });
 
-const { MOODS, getEligibleMemories } = await import('../public/js/daily-spark.js');
+const { MOODS, getEligibleMemories, getSparkEffectiveDate, getTodayKey, computeDailyIndex, DAY_ROLLOVER_OFFSET_MS } = await import('../public/js/daily-spark.js');
 
 test('Daily Spark - MOODS definitions are complete and structured', () => {
     assert.equal(MOODS.length, 5);
@@ -153,4 +153,30 @@ test('Daily Spark - getEligibleMemories filters memories older than threshold', 
     const memories = getEligibleMemories();
     assert.ok(memories.some(m => m.id === 999));
 });
+
+test('Daily Spark - 04:00 AM day rollover shifts late-night entries into previous evening', () => {
+    assert.equal(DAY_ROLLOVER_OFFSET_MS, 4 * 60 * 60 * 1000);
+
+    // 凌晨 02:30 (依然归属前一天)
+    const lateNightTime = new Date('2026-10-06T02:30:00');
+    assert.equal(getTodayKey(lateNightTime), '2026-10-05');
+
+    // 凌晨 03:59:59 (依然归属前一天)
+    const almostFourAm = new Date('2026-10-06T03:59:59');
+    assert.equal(getTodayKey(almostFourAm), '2026-10-05');
+
+    // 凌晨 04:00:00 (正式跨入新的一天)
+    const exactlyFourAm = new Date('2026-10-06T04:00:00');
+    assert.equal(getTodayKey(exactlyFourAm), '2026-10-06');
+
+    // 白天 14:00:00 (归属当天)
+    const afternoonTime = new Date('2026-10-06T14:00:00');
+    assert.equal(getTodayKey(afternoonTime), '2026-10-06');
+
+    // 检验索引在 04:00 发生轮换
+    const prevIdx = computeDailyIndex(almostFourAm);
+    const newIdx = computeDailyIndex(exactlyFourAm);
+    assert.equal((prevIdx + 1) % 36, newIdx);
+});
+
 

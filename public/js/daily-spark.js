@@ -66,8 +66,16 @@ export const MOODS = [
 let currentSparkIndex = 0;
 let currentSerendipityShuffleOffset = 0;
 
-function getTodayKey() {
-    const d = new Date();
+// 每日凌晨 04:00 换日（夜猫子友好：凌晨 00:00 ~ 03:59 依然归属前一日心绪与偶想周期）
+export const DAY_ROLLOVER_OFFSET_MS = 4 * 60 * 60 * 1000;
+
+export function getSparkEffectiveDate(now = new Date()) {
+    const timestamp = now instanceof Date ? now.getTime() : Number(now);
+    return new Date(timestamp - DAY_ROLLOVER_OFFSET_MS);
+}
+
+export function getTodayKey(now = new Date()) {
+    const d = getSparkEffectiveDate(now);
     const pad = n => String(n).padStart(2, '0');
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 }
@@ -148,10 +156,10 @@ export async function checkInMood(moodId) {
 }
 
 /** 2. 每日轻启发 (Daily Spark) */
-function computeDailyIndex() {
-    const now = new Date();
-    const start = new Date(now.getFullYear(), 0, 0);
-    const diff = now - start;
+export function computeDailyIndex(now = new Date()) {
+    const eff = getSparkEffectiveDate(now);
+    const start = new Date(eff.getFullYear(), 0, 0);
+    const diff = eff - start;
     const dayOfYear = Math.floor(diff / (1000 * 60 * 60 * 24));
     return dayOfYear % SPARK_PROMPTS.length;
 }
@@ -290,7 +298,7 @@ export function renderSerendipityCard() {
         return;
     }
 
-    const today = new Date();
+    const today = getSparkEffectiveDate();
     const todayMonth = today.getMonth();
     const todayDay = today.getDate();
 
