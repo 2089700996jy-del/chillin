@@ -477,15 +477,37 @@ export async function openWeeklyReviewModal() {
     }
 }
 
+let lastRenderedDateKey = getTodayKey();
+
+export function checkDateRollover() {
+    const today = getTodayKey();
+    if (today !== lastRenderedDateKey) {
+        lastRenderedDateKey = today;
+        currentSparkIndex = computeDailyIndex();
+        currentSerendipityShuffleOffset = 0;
+        renderMoodPills();
+        renderDailySparkCard();
+        renderSerendipityCard();
+    }
+}
+
 /** 初始化 Daily Spark 模块交互 */
 export function initDailySpark() {
     actions.renderMoodPills = renderMoodPills;
     actions.renderSerendipityCard = renderSerendipityCard;
+    actions.checkDateRollover = checkDateRollover;
 
     currentSparkIndex = computeDailyIndex();
     renderMoodPills();
     renderDailySparkCard();
     renderSerendipityCard();
+
+    // 0. 日期跨越自动感知：后台唤醒、聚焦窗口或跨越午夜时自动刷新今日题目与历史偶遇
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') checkDateRollover();
+    });
+    window.addEventListener('focus', () => checkDateRollover());
+    setInterval(checkDateRollover, 15 * 60 * 1000);
 
     // 1. 心绪胶囊点击
     const moodRow = document.getElementById('mood-pills-row');
