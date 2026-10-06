@@ -25,7 +25,18 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { crc32, createZip, buildBackupFiles } = await import('../public/js/backup.js');
+const {
+    crc32,
+    createZip,
+    buildBackupFiles,
+    recordBackupSuccess,
+    getLastBackupMeta,
+    getBackupGuardSettings,
+    setBackupGuardSettings,
+    computeBackupGuardStatus,
+    STORAGE_KEY_LAST_BACKUP,
+    STORAGE_KEY_GUARD_INTERVAL
+} = await import('../public/js/backup.js');
 const { handleBackupEmail } = await import('../workers/src/garden-sync.js');
 const { state } = await import('../public/js/state.js');
 
@@ -147,4 +158,86 @@ test('Backup - handleBackupEmail sends email via Resend when configured', async 
     } finally {
         globalThis.fetch = originalFetch;
     }
+});
+
+test('Backup Guard - records metadata and retrieves last backup info', () => {
+    localStorage.clear();
+    state.notesDatabase = [{ id: 1 }, { id: 2 }];
+    state.database = [{ id: 1 }];
+    state.feedsDatabase = [{ id: 1 }, { id: 2 }, { id: 3 }];
+    state.bookmarksDatabase = [{ id: 1 }];
+
+    const meta = recordBackupSuccess('download');
+    assert.ok(meta);
+    assert.equal(meta.method, 'download');
+    assert.equal(meta.notesCount, 2);
+    assert.equal(meta.weekliesCount, 1);
+    assert.equal(meta.feedsCount, 3);
+    assert.equal(meta.bookmarksCount, 1);
+
+    const saved = getLastBackupMeta();
+    assert.ok(saved);
+    assert.equal(saved.method, 'download');
+    assert.equal(saved.notesCount, 2);
+});
+
+test('Backup Guard - get and set guard interval settings', () => {
+    localStorage.clear();
+    // Default is 14 days
+    assert.equal(getBackupGuardSettings(), 14);
+
+    setBackupGuardSettings(7);
+    assert.equal(getBackupGuardSettings(), 7);
+
+    setBackupGuardSettings(30);
+    assert.equal(getBackupGuardSettings(), 30);
+
+    setBackupGuardSettings(0);
+    assert.equal(getBackupGuardSettings(), 0);
+});
+
+test('Backup Guard - computeBackupGuardStatus handles all states accurately', () => {
+    localStorage.clear();
+    const now = 1728189600000; // Fixed timestamp
+
+    // 1. Never backed up
+    setBackupGuardSettings(14);
+    const sNone = computeBackupGuardStatus(now);
+    assert.equal(sNone.status, 'none');
+    assert.equal(sNone.isOverdue, true);
+    assert.equal(sNone.badgeClass, 'status-warn');
+    assert.equal(sNone.badgeText, '建议备份');
+
+    // 2. Disabled
+    setBackupGuardSettings(0);
+    const sDisabled = computeBackupGuardStatus(now);
+    assert.equal(sDisabled.status, 'disabled');
+    assert.equal(sDisabled.isOverdue, false);
+    assert.equal(sDisabled.badgeClass, 'status-none');
+    assert.equal(sDisabled.badgeText, '已关闭');
+
+    // 3. Protected (backed up 3 days ago, interval 14 days)
+    setBackupGuardSettings(14);
+    localStorage.setItem(STORAGE_KEY_LAST_BACKUP, JSON.stringify({
+        timestamp: now - 3 * 86400000,
+        method: 'download'
+    }));
+    const sProtected = computeBackupGuardStatus(now);
+    assert.equal(sProtected.status, 'protected');
+    assert.equal(sProtected.isOverdue, false);
+    assert.equal(sProtected.badgeClass, 'status-ok');
+    assert.equal(sProtected.badgeText, '已守护');
+    assert.equal(sProtected.daysSince, 3);
+
+    // 4. Overdue (backed up 20 days ago, interval 14 days)
+    localStorage.setItem(STORAGE_KEY_LAST_BACKUP, JSON.stringify({
+        timestamp: now - 20 * 86400000,
+        method: 'email'
+    }));
+    const sOverdue = computeBackupGuardStatus(now);
+    assert.equal(sOverdue.status, 'overdue');
+    assert.equal(sOverdue.isOverdue, true);
+    assert.equal(sOverdue.badgeClass, 'status-warn');
+    assert.equal(sOverdue.badgeText, '建议备份');
+    assert.equal(sOverdue.daysSince, 20);
 });

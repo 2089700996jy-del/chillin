@@ -52,4 +52,11 @@ export {
     generateBackupZipBlob,
     downloadBackupZip,
     sendBackupByEmail,
+    recordBackupSuccess,
+    getLastBackupMeta,
+    getBackupGuardSettings,
+    setBackupGuardSettings,
+    computeBackupGuardStatus,
+    updateBackupGuardUI,
+    checkAndSendBackupGuardNotification
 } from './backup.js';

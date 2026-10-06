@@ -250,6 +250,7 @@ export function downloadBackupZip() {
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 1000);
+        recordBackupSuccess('download');
         showToast('备份包已生成并开始下载！', 'ok');
         return true;
     } catch (err) {
@@ -297,6 +298,7 @@ export async function sendBackupByEmail(email) {
         });
 
         if (res.success) {
+            recordBackupSuccess('email');
             showToast(`备份已成功发送至 ${email}！`, 'ok');
             return true;
         } else if (res.code === 'NO_RESEND_KEY') {
@@ -312,6 +314,212 @@ export async function sendBackupByEmail(email) {
         console.error('[backup] email send failed:', err);
         showToast('邮件发送异常，已为您下载备份到本地：' + (err?.message || err), 'warn');
         downloadBackupZip();
+        return false;
+    }
+}
+
+export const STORAGE_KEY_LAST_BACKUP = 'chillin_last_backup_meta';
+export const STORAGE_KEY_GUARD_INTERVAL = 'chillin_backup_guard_days';
+export const STORAGE_KEY_LAST_GUARD_ALERT = 'chillin_last_backup_guard_alert';
+
+/** 记录备份成功元数据并触发守护状态更新 */
+export function recordBackupSuccess(method = 'download') {
+    try {
+        const meta = {
+            timestamp: Date.now(),
+            iso: new Date().toISOString(),
+            method,
+            notesCount: state.notesDatabase?.length || 0,
+            weekliesCount: state.database?.length || 0,
+            feedsCount: state.feedsDatabase?.length || 0,
+            bookmarksCount: state.bookmarksDatabase?.length || 0
+        };
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_KEY_LAST_BACKUP, JSON.stringify(meta));
+        }
+        updateBackupGuardUI();
+        return meta;
+    } catch (e) {
+        console.warn('[backup] record backup success failed:', e);
+        return null;
+    }
+}
+
+/** 获取上次备份元数据 */
+export function getLastBackupMeta() {
+    try {
+        if (typeof localStorage === 'undefined') return null;
+        const raw = localStorage.getItem(STORAGE_KEY_LAST_BACKUP);
+        return raw ? JSON.parse(raw) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** 获取备份守卫周期（天数，默认 14；0 表示关闭） */
+export function getBackupGuardSettings() {
+    try {
+        if (typeof localStorage === 'undefined') return 14;
+        const val = localStorage.getItem(STORAGE_KEY_GUARD_INTERVAL);
+        if (val === null || val === undefined) return 14;
+        const num = parseInt(val, 10);
+        return isNaN(num) ? 14 : num;
+    } catch {
+        return 14;
+    }
+}
+
+/** 设置备份守卫周期 */
+export function setBackupGuardSettings(days) {
+    try {
+        const num = Math.max(0, parseInt(days, 10) || 0);
+        if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(STORAGE_KEY_GUARD_INTERVAL, String(num));
+        }
+        updateBackupGuardUI();
+        return num;
+    } catch {
+        return 14;
+    }
+}
+
+function formatRelativeDays(timestamp, now = Date.now()) {
+    const diff = Math.max(0, Math.floor((now - timestamp) / 86400000));
+    if (diff === 0) return '今天';
+    if (diff === 1) return '昨天';
+    return `${diff} 天前`;
+}
+
+/** 计算当前备份守卫状态指标 */
+export function computeBackupGuardStatus(now = Date.now()) {
+    const meta = getLastBackupMeta();
+    const interval = getBackupGuardSettings();
+
+    if (interval === 0) {
+        return {
+            status: 'disabled',
+            badgeClass: 'status-none',
+            badgeText: '已关闭',
+            hintText: meta ? `上次备份：${formatRelativeDays(meta.timestamp, now)}已归档` : '定期提醒已关闭',
+            isOverdue: false,
+            daysSince: meta ? Math.max(0, Math.floor((now - meta.timestamp) / 86400000)) : null,
+            interval
+        };
+    }
+
+    if (!meta || !meta.timestamp) {
+        return {
+            status: 'none',
+            badgeClass: 'status-warn',
+            badgeText: '建议备份',
+            hintText: '未曾备份 · 建议生成首个全量副本',
+            isOverdue: true,
+            daysSince: null,
+            interval
+        };
+    }
+
+    const diffDays = Math.max(0, Math.floor((now - meta.timestamp) / 86400000));
+    const isOverdue = diffDays >= interval;
+
+    if (isOverdue) {
+        return {
+            status: 'overdue',
+            badgeClass: 'status-warn',
+            badgeText: '建议备份',
+            hintText: `已有 ${diffDays} 天未备份 · 建议导出新副本`,
+            isOverdue: true,
+            daysSince: diffDays,
+            interval
+        };
+    }
+
+    return {
+        status: 'protected',
+        badgeClass: 'status-ok',
+        badgeText: '已守护',
+        hintText: diffDays === 0 ? '今天已生成最新副本' : (diffDays === 1 ? '昨天已生成最新副本' : `上次备份：${diffDays} 天前`),
+        isOverdue: false,
+        daysSince: diffDays,
+        interval
+    };
+}
+
+/** 刷新账号与安全弹窗中的备份守卫 UI 状态 */
+export function updateBackupGuardUI() {
+    if (typeof document === 'undefined') return;
+    const badge = document.getElementById('backup-guard-badge');
+    const hint = document.getElementById('backup-guard-time-hint');
+    const segmented = document.getElementById('backup-guard-segmented');
+
+    const stateInfo = computeBackupGuardStatus();
+
+    if (badge) {
+        badge.className = `backup-guard-badge ${stateInfo.badgeClass}`;
+        badge.textContent = stateInfo.badgeText;
+    }
+    if (hint) {
+        hint.textContent = stateInfo.hintText;
+    }
+    if (segmented) {
+        const btns = segmented.querySelectorAll('[data-days]');
+        btns.forEach(btn => {
+            const days = parseInt(btn.getAttribute('data-days'), 10);
+            if (days === stateInfo.interval) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+}
+
+/** 检查并适时触发系统级 Web Push 备份守卫提醒（防频扰：至少间隔 3 天） */
+export async function checkAndSendBackupGuardNotification(force = false) {
+    if (typeof window === 'undefined' || typeof Notification === 'undefined') return false;
+    if (Notification.permission !== 'granted') return false;
+
+    const statusInfo = computeBackupGuardStatus();
+    if (!statusInfo.isOverdue || statusInfo.status === 'disabled') return false;
+
+    // 频控检查：3 天内最多提醒一次
+    const lastAlert = parseInt(localStorage.getItem(STORAGE_KEY_LAST_GUARD_ALERT) || '0', 10);
+    const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+    if (!force && (Date.now() - lastAlert < threeDaysMs)) {
+        return false;
+    }
+
+    try {
+        let reg = null;
+        if ('serviceWorker' in navigator) {
+            reg = await navigator.serviceWorker.getRegistration();
+            if (!reg) reg = await navigator.serviceWorker.ready;
+        }
+
+        const bodyText = statusInfo.daysSince === null
+            ? '花园尚未生成全量本地副本，点击前往归档'
+            : `备份守护 · 花园已有 ${statusInfo.daysSince} 天未导出全量副本，点击前往归档`;
+
+        const options = {
+            body: bodyText,
+            icon: '/icons/transparent.png',
+            tag: 'chillin-backup-guard',
+            renotify: true,
+            vibrate: [80, 40, 80],
+            data: { url: '/#/settings?focus=backup' }
+        };
+
+        if (reg && typeof reg.showNotification === 'function') {
+            await reg.showNotification('Chillin', options);
+        } else {
+            const n = new Notification('Chillin', options);
+            n.onclick = () => { window.focus(); n.close(); };
+        }
+
+        localStorage.setItem(STORAGE_KEY_LAST_GUARD_ALERT, String(Date.now()));
+        return true;
+    } catch (err) {
+        console.warn('[backup] guard push notification failed:', err);
         return false;
     }
 }

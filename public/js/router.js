@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { ui } from './ui.js';
 import { actions } from './actions.js';
+import { openSecurityModal } from './auth.js';
 
 export function initRouter() {
     const views = document.querySelectorAll('.view-section');
@@ -77,6 +78,15 @@ const applyRoute = (route) => {
     if (route.view === 'reader-book') {
         if ((document.querySelector('.view-section.active')?.id || '') !== 'view-reader-book') switchView('reader', { skipHistory: true });
         else switchView('reader-book', { skipHistory: true });
+        return;
+    }
+    if (route.view === 'settings') {
+        openSecurityModal();
+        if (typeof location !== 'undefined' && location.hash.includes('focus=backup')) {
+            setTimeout(() => {
+                document.getElementById('backup-section-card')?.scrollIntoView({ behavior: 'smooth' });
+            }, 120);
+        }
         return;
     }
     if (MAIN_VIEWS.has(route.view)) {

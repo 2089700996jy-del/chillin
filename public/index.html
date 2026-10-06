@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.80">
+    <link rel="stylesheet" href="style.css?v=2.5.81">
 </head>
 <body>
 
@@ -277,7 +277,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.80</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.81</button>
         </section>
 
         <!-- ========================================== -->
@@ -490,7 +490,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.80</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.81</button>
         </section>
 
         <!-- ========================================== -->
@@ -633,7 +633,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.80</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.81</button>
         </section>
 
         <!-- ========================================== -->
@@ -783,7 +783,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.80</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.81</button>
         </section>
 
         <!-- ========================================== -->
@@ -880,7 +880,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.80</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.81</button>
         </section>
 
     </main>
@@ -1088,7 +1088,23 @@
             <div class="prompt-variable-body">
                 <!-- 全量数据备份与导出 -->
                 <div class="security-section-title">全量资产备份与导出</div>
-                <div class="backup-section-card">
+                <div class="backup-section-card" id="backup-section-card">
+                    <div class="backup-guard-header">
+                        <div class="backup-guard-title-wrap">
+                            <span class="backup-guard-title">定期备份守卫</span>
+                            <span class="backup-guard-badge status-warn" id="backup-guard-badge">检测中...</span>
+                        </div>
+                        <span class="backup-guard-time-hint" id="backup-guard-time-hint">上次备份：检测中</span>
+                    </div>
+                    <div class="backup-guard-interval-row">
+                        <span class="backup-guard-interval-label">守护提醒周期</span>
+                        <div class="k-segmented backup-guard-segmented" id="backup-guard-segmented" role="radiogroup" aria-label="备份守护提醒周期">
+                            <button type="button" class="k-segment-btn" data-days="7">7 天</button>
+                            <button type="button" class="k-segment-btn active" data-days="14">14 天</button>
+                            <button type="button" class="k-segment-btn" data-days="30">30 天</button>
+                            <button type="button" class="k-segment-btn" data-days="0">关闭</button>
+                        </div>
+                    </div>
                     <p class="backup-section-desc">将您的全部笔记（Markdown 标准格式）、随手记、周刊长文、浏览器书签及全量 JSON 数据打包归档。</p>
                     <div class="backup-action-row">
                         <button type="button" class="btn-primary backup-dl-btn" id="btn-backup-download">
@@ -1364,7 +1380,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.80"></script>
-    <script type="module" src="app.js?v=2.5.80"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.81"></script>
+    <script type="module" src="app.js?v=2.5.81"></script>
 </body>
 </html>

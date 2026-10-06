@@ -6,7 +6,7 @@ import { showToast, urlBase64ToUint8Array, escapeHtml, confirmDialog } from './u
 import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
 import { setHtml } from './trusted-types.js';
-import { downloadBackupZip, sendBackupByEmail } from './backup.js';
+import { downloadBackupZip, sendBackupByEmail, setBackupGuardSettings, updateBackupGuardUI } from './backup.js';
 import { getStorageEstimate } from './db.js';
 
 let hooks = {
@@ -291,6 +291,14 @@ export function initAuthUI() {
         }
         await sendBackupByEmail(email);
     });
+    document.getElementById('backup-guard-segmented')?.addEventListener('click', (e) => {
+        const btn = e.target instanceof Element ? e.target.closest('[data-days]') : null;
+        if (!btn) return;
+        const days = parseInt(btn.getAttribute('data-days'), 10);
+        setBackupGuardSettings(days);
+        const daysLabel = days === 0 ? '已关闭定期备份提醒' : `备份守护周期已设置为 ${days} 天`;
+        showToast(daysLabel, 'ok');
+    });
 
     const btnTogglePassword = document.getElementById('btn-toggle-password');
     const authPasswordInput = document.getElementById('auth-password');
@@ -473,6 +481,7 @@ export async function openSecurityModal() {
     modal.classList.add('show');
     updateStorageDiagnostics();
     updatePushNotificationStatus();
+    updateBackupGuardUI();
     const container = document.getElementById('session-list');
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {

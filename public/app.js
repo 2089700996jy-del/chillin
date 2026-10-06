@@ -33,6 +33,7 @@ import { initDailySpark } from './js/daily-spark.js';
 import { initEvergreenTopics } from './js/evergreen-topics.js';
 import { showToast } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
+import { checkAndSendBackupGuardNotification } from './js/backup.js';
 
 // Disable device vibration across the entire app as requested
 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
@@ -260,6 +261,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // PWA：注册 SW，并在打开/切回前台时主动检查更新
     safeInit('pwaUpdates', initPwaUpdates);
+
+    // 定期备份守卫：延迟静默巡检并适时提醒
+    setTimeout(() => {
+        checkAndSendBackupGuardNotification().catch(() => {});
+    }, 3000);
 
     // 📶 极简 Apple HIG 离线韧性提示条 (Reassuring Offline Bar)
     const offlineBar = document.getElementById('offline-bar');
