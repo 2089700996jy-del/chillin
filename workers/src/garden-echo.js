@@ -92,6 +92,7 @@ export async function handleEchoGenerate(request, env, ctx, db, userId) {
                 const payload = JSON.stringify({
                     title: 'Chillin',
                     body: `记忆回响 · 关于 ${moderatedTopic.text} 的新灵感`,
+                    icon: '/icons/transparent.png',
                     url: '/'
                 });
                 const pushPromises = subs.results.map(async sub => {

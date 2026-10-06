@@ -1,6 +1,6 @@
 // Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
-const CACHE_NAME = 'chillin-v125';
-const APP_V = '2.5.78';
+const CACHE_NAME = 'chillin-v126';
+const APP_V = '2.5.79';
 const ASSETS = [
     '/',
     '/index.html',
@@ -14,6 +14,7 @@ const ASSETS = [
     '/icons/icon-180.png',
     '/icons/icon-192.png',
     '/icons/icon-512.png',
+    '/icons/transparent.png',
     '/js/actions.js',
     '/js/api.js',
     '/js/auth.js',
@@ -134,6 +135,7 @@ self.addEventListener('push', (e) => {
     const title = data.title || 'Chillin';
     const options = {
         body: data.body || '随时安放思绪与时光回响',
+        icon: data.icon || '/icons/transparent.png',
         tag: data.tag || 'chillin-notification',
         vibrate: [80, 40, 80],
         data: {

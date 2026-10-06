@@ -540,6 +540,7 @@ export async function sendTestNotification() {
         let sent = false;
         const options = {
             body: '通知已就绪 · 在这里，随时安放思绪与时光回响',
+            icon: '/icons/transparent.png',
             tag: 'chillin-notification',
             vibrate: [80, 40, 80],
             data: { url: '/#/feeds' }
