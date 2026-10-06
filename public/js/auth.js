@@ -538,26 +538,33 @@ export async function sendTestNotification() {
     }
     try {
         let sent = false;
+        let lastError = null;
         const options = {
             body: '通知已就绪 · 在这里，随时安放思绪与时光回响',
             icon: '/icons/transparent.png',
-            tag: 'chillin-notification',
-            vibrate: [80, 40, 80],
+            tag: 'chillin-test-' + Date.now(),
+            renotify: true,
+            vibrate: [100, 50, 100],
             data: { url: '/#/feeds' }
         };
 
         // 1. 优先尝试 Service Worker 通知通道（支持移动端/PWA/后台通知）
         if ('serviceWorker' in navigator) {
             try {
-                const reg = await Promise.race([
-                    navigator.serviceWorker.ready,
-                    new Promise((_, reject) => setTimeout(() => reject(new Error('ready timeout')), 1500))
-                ]);
+                // 优先直接获取当前 registration，无挂起延迟；若无则快速等待 ready
+                let reg = await navigator.serviceWorker.getRegistration();
+                if (!reg || typeof reg.showNotification !== 'function') {
+                    reg = await Promise.race([
+                        navigator.serviceWorker.ready,
+                        new Promise((_, reject) => setTimeout(() => reject(new Error('等待 ServiceWorker 超时')), 4000))
+                    ]);
+                }
                 if (reg && typeof reg.showNotification === 'function') {
                     await reg.showNotification('Chillin', options);
                     sent = true;
                 }
             } catch (swErr) {
+                lastError = swErr;
                 console.warn('[Push] ServiceWorker showNotification fallback:', swErr);
             }
         }
@@ -569,14 +576,15 @@ export async function sendTestNotification() {
                 n.onclick = () => { window.focus(); n.close(); };
                 sent = true;
             } catch (nativeErr) {
+                lastError = lastError || nativeErr;
                 console.warn('[Push] Native Notification fallback failed:', nativeErr);
             }
         }
 
         if (sent) {
-            showToast('🔔 测试通知已发出！若未弹出横幅，请检查操作中心或免打扰设置', 'ok');
+            showToast('🔔 测试通知已发出！若未弹出横幅，请下拉通知栏查看', 'ok');
         } else {
-            showToast('通知发送受阻，请检查系统免打扰或浏览器通知权限', 'warn');
+            showToast('通知发送受阻：' + (lastError?.message || '请检查系统免打扰或浏览器通知权限'), 'warn');
         }
     } catch (err) {
         showToast('发送测试通知失败：' + (err.message || err), 'error');
