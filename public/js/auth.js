@@ -275,6 +275,7 @@ export function initAuthUI() {
     });
     document.getElementById('btn-security-logout-all')?.addEventListener('click', logoutAllDevices);
     document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
+    document.getElementById('btn-test-push')?.addEventListener('click', sendTestNotification);
 
     // 全量资产备份与导出交互
     document.getElementById('btn-backup-download')?.addEventListener('click', () => {
@@ -471,12 +472,86 @@ export async function openSecurityModal() {
     if (!modal) return;
     modal.classList.add('show');
     updateStorageDiagnostics();
+    updatePushNotificationStatus();
     const container = document.getElementById('session-list');
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
         renderSessions(await apiRequest('/api/auth/sessions'));
     } catch (_) {
         if (container) setHtml(container, '<div class="session-empty">读取失败，请稍后重试</div>');
+    }
+}
+
+/** 刷新系统推送通知状态指示与操作按钮 */
+export function updatePushNotificationStatus() {
+    const badge = document.getElementById('push-status-badge');
+    const btnEnable = document.getElementById('btn-enable-push');
+    const btnTest = document.getElementById('btn-test-push');
+    const hint = document.getElementById('push-status-hint');
+    if (!badge || !btnEnable || !btnTest) return;
+
+    if (typeof window === 'undefined' || typeof Notification === 'undefined' || !('serviceWorker' in navigator)) {
+        badge.textContent = '不受支持';
+        badge.classList.remove('is-persisted');
+        btnEnable.style.display = 'none';
+        btnTest.style.display = 'none';
+        if (hint) hint.textContent = '当前浏览器或运行环境不支持系统级通知';
+        return;
+    }
+
+    const permission = Notification.permission;
+    if (permission === 'granted') {
+        badge.textContent = '已开启';
+        badge.classList.add('is-persisted');
+        btnEnable.style.display = 'none';
+        btnTest.style.display = 'inline-block';
+        if (hint) hint.textContent = '设备通知已授权就绪，轻按「测试通知」可向系统通知中心发送测试消息';
+    } else if (permission === 'denied') {
+        badge.textContent = '已拦截';
+        badge.classList.remove('is-persisted');
+        btnEnable.style.display = 'inline-block';
+        btnEnable.textContent = '权限受限';
+        btnEnable.disabled = true;
+        btnTest.style.display = 'none';
+        if (hint) hint.textContent = '通知权限已被浏览器拒绝，请在浏览器或手机系统设置中解除拦截';
+    } else {
+        badge.textContent = '未开启';
+        badge.classList.remove('is-persisted');
+        btnEnable.style.display = 'inline-block';
+        btnEnable.textContent = '开启通知';
+        btnEnable.disabled = false;
+        btnTest.style.display = 'none';
+        if (hint) hint.textContent = '开启后可在设备通知中心接收每日偶想提醒与周年记忆唤醒';
+    }
+}
+
+/** 发送一条本地/系统级测试通知，让用户直观验证通知中心接收能力 */
+export async function sendTestNotification() {
+    if (typeof Notification === 'undefined' || Notification.permission !== 'granted') {
+        showToast('请先开启系统通知权限', 'warn');
+        return;
+    }
+    try {
+        if ('serviceWorker' in navigator) {
+            const reg = await navigator.serviceWorker.ready;
+            await reg.showNotification('🌿 Chillin 数字花园', {
+                body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
+                icon: '/icons/icon-192.png',
+                badge: '/icons/icon-192.png',
+                tag: 'chillin-test-push',
+                vibrate: [100, 50, 100],
+                data: { url: '/#/feeds' }
+            });
+            showToast('已向系统发送测试通知，请查看通知栏！', 'ok');
+        } else {
+            new Notification('🌿 Chillin 数字花园', {
+                body: '测试通知已送达！你的设备已成功开启每日灵感关怀与记忆回响。',
+                icon: '/icons/icon-192.png'
+            });
+            showToast('已向系统发送测试通知，请查看通知栏！', 'ok');
+        }
+    } catch (err) {
+        showToast('发送测试通知失败：' + (err.message || err), 'error');
     }
 }
 
@@ -536,6 +611,7 @@ export async function registerPushNotification() {
     try {
         const reg = await navigator.serviceWorker.ready;
         const permission = await Notification.requestPermission();
+        updatePushNotificationStatus();
         if (permission !== 'granted') {
             showToast('已取消或未授予系统通知权限', 'info');
             return;
@@ -544,6 +620,7 @@ export async function registerPushNotification() {
         const existingSub = await reg.pushManager.getSubscription();
         if (existingSub) {
             await sendSubscriptionToServer(existingSub);
+            updatePushNotificationStatus();
             showToast('已成功开启设备推送通知！', 'ok');
             return;
         }
@@ -554,6 +631,7 @@ export async function registerPushNotification() {
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
         await sendSubscriptionToServer(subscription);
+        updatePushNotificationStatus();
         showToast('已成功开启设备推送通知！', 'ok');
     } catch (e) {
         console.error('Push registration failed:', e);
