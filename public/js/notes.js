@@ -12,6 +12,7 @@ import { state } from './state.js';
 import { ui } from './ui.js';
 import { actions } from './actions.js';
 import {
+    resolveAssetUrl,
     getLocalKey,
     saveNotesDatabase,
     apiSyncNote,
@@ -29,9 +30,81 @@ export function initNotes() {
     const btnDeleteNote = document.getElementById('btn-delete-note');
     const noteEditorDate = document.getElementById('note-editor-date');
 
+    const updateNoteContentImagePreview = () => {
+        const textarea = document.getElementById('edit-note-content');
+        const previewStrip = document.getElementById('edit-note-content-preview');
+        if (!textarea || !previewStrip) return;
+
+        const val = textarea.value || '';
+        const imgMatches = [];
+        const mdImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+        let match;
+        while ((match = mdImgRegex.exec(val)) !== null) {
+            imgMatches.push({
+                raw: match[0],
+                alt: match[1] || '配图',
+                url: match[2].trim()
+            });
+        }
+        const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+        while ((match = htmlImgRegex.exec(val)) !== null) {
+            imgMatches.push({
+                raw: match[0],
+                alt: '配图',
+                url: match[1].trim()
+            });
+        }
+
+        if (imgMatches.length === 0) {
+            previewStrip.style.display = 'none';
+            setHtml(previewStrip, '');
+            return;
+        }
+
+        previewStrip.style.display = 'flex';
+        const itemsHtml = imgMatches.map((img, index) => {
+            const resolved = resolveAssetUrl(img.url);
+            return `
+                <div class="ios-content-preview-item" data-index="${index}" title="${escapeHtml(img.alt)}">
+                    <img src="${escapeHtml(resolved)}" alt="${escapeHtml(img.alt)}" loading="lazy" decoding="async">
+                    <span class="ios-content-preview-caption">${escapeHtml(img.alt || `图 ${index + 1}`)}</span>
+                    <button type="button" class="ios-content-preview-remove" data-raw="${escapeHtml(img.raw)}" title="从笔记中移除此图片" aria-label="移除此图片">×</button>
+                </div>
+            `;
+        }).join('');
+
+        setHtml(previewStrip, `
+            <div class="ios-content-preview-header">
+                <span class="ios-content-preview-count">🖼️ 正文图片预览 (${imgMatches.length})</span>
+                <span class="ios-content-preview-hint">轻按 × 可从笔记中移除</span>
+            </div>
+            <div class="ios-content-preview-list">
+                ${itemsHtml}
+            </div>
+        `);
+
+        previewStrip.querySelectorAll('.ios-content-preview-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const rawToRemove = btn.getAttribute('data-raw');
+                if (rawToRemove) {
+                    textarea.value = textarea.value.replace(rawToRemove, '').replace(/\n\s*\n\s*\n/g, '\n\n');
+                    autoResizeTextarea(textarea);
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                    textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                    updateNoteContentImagePreview();
+                }
+            });
+        });
+    };
+
     editNoteContent.addEventListener('input', () => {
         autoResizeTextarea(editNoteContent);
         actions.renderOutgoingLinksStrip?.(document.getElementById('note-outgoing-links-strip'), editNoteContent.value);
+        updateNoteContentImagePreview();
+    });
+    editNoteContent.addEventListener('change', () => {
+        updateNoteContentImagePreview();
     });
 
 let currentNoteAnnotations = [];
@@ -138,6 +211,7 @@ const restoreNoteDraft = () => {
         editNoteTitle.value = draft.title || '';
         editNoteContent.value = draft.content || '';
         autoResizeTextarea(editNoteContent);
+        updateNoteContentImagePreview();
         document.getElementById('note-draft-tip').style.display = 'none';
     } catch (e) {
         console.error('Failed to restore note draft', e);
@@ -204,6 +278,7 @@ const openNoteEditor = (noteId = null, opts = {}) => {
     checkAndShowNoteDraftTip(noteId);
     actions.switchView('note-editor', opts);
     autoResizeTextarea(editNoteContent);
+    updateNoteContentImagePreview();
 };
 
 btnSaveNote.addEventListener('click', () => {

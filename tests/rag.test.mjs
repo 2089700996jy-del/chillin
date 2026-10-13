@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
     tokenizeQuery,
     parseTimeRangeFromQuestion,
+    parseDateToYmd,
+    extractItemDate,
     scoreMemoryChunk
 } from '../workers/src/rag.js';
 import { formatPrompt } from '../workers/src/garden-shared.js';
@@ -22,11 +24,38 @@ test('RAG - parseTimeRangeFromQuestion recognizes natural date queries', () => {
     const tYesterday = parseTimeRangeFromQuestion('昨天我写了什么');
     assert.ok(tYesterday && tYesterday.label === '昨天');
 
+    const tBeforeYesterday = parseTimeRangeFromQuestion('前天记录了什么');
+    assert.ok(tBeforeYesterday && tBeforeYesterday.label === '前天');
+
     const tThisWeek = parseTimeRangeFromQuestion('本周的工作总结');
     assert.ok(tThisWeek && tThisWeek.label === '本周');
 
+    const tThisWeekVar = parseTimeRangeFromQuestion('这一周的心情');
+    assert.ok(tThisWeekVar && tThisWeekVar.label === '本周');
+
+    const tLastWeek1 = parseTimeRangeFromQuestion('上一周我做了什么');
+    assert.ok(tLastWeek1 && tLastWeek1.label === '上周');
+
+    const tLastWeek2 = parseTimeRangeFromQuestion('上个星期的周记');
+    assert.ok(tLastWeek2 && tLastWeek2.label === '上周');
+
     const tLastMonth = parseTimeRangeFromQuestion('上个月看过的书');
     assert.ok(tLastMonth && tLastMonth.label === '上个月');
+});
+
+test('RAG - parseDateToYmd and extractItemDate correctly normalize all date formats', () => {
+    assert.equal(parseDateToYmd('2026年6月26日'), '2026-06-26');
+    assert.equal(parseDateToYmd('2026年10月13日'), '2026-10-13');
+    assert.equal(parseDateToYmd('2026.6.26'), '2026-06-26');
+    assert.equal(parseDateToYmd('2026/06/26'), '2026-06-26');
+    assert.equal(parseDateToYmd('2026-6-26'), '2026-06-26');
+    assert.equal(parseDateToYmd('2023-W42: 记忆切片'), '2023-10-16');
+
+    // extractItemDate 各种资产真实格式提取
+    assert.equal(extractItemDate({ date: '2026年6月26日' }), '2026-06-26');
+    assert.equal(extractItemDate({ title: '2026.6.26 — PO8测试' }), '2026-06-26');
+    assert.equal(extractItemDate({ title: '2023-W42: 记忆切片' }), '2023-10-16');
+    assert.equal(extractItemDate({ created_at: '2026-10-06 15:30:00' }), '2026-10-06');
 });
 
 test('RAG - scoreMemoryChunk accurately ranks matching garden chunks', () => {
@@ -46,6 +75,14 @@ test('RAG - scoreMemoryChunk accurately ranks matching garden chunks', () => {
         date: '2026-09-12'
     };
 
+    const weeklyItem = {
+        type: '周记',
+        id: 42,
+        title: '换环境 最近心情还不错',
+        body: '下班麻木但下班后非常快乐，做了一个职业生涯规划的决定。',
+        date: '2026年10月06日'
+    };
+
     const tokens = tokenizeQuery('代码重构');
     const scorePrompt = scoreMemoryChunk(promptItem, tokens, null);
     const scoreUnrelated = scoreMemoryChunk(unrelatedItem, tokens, null);
@@ -53,4 +90,9 @@ test('RAG - scoreMemoryChunk accurately ranks matching garden chunks', () => {
     assert.ok(scorePrompt > 0, 'Prompt item should have positive match score');
     assert.equal(scoreUnrelated, -1, 'Unrelated item with no keyword hits should return -1');
     assert.ok(scorePrompt > scoreUnrelated);
+
+    // 验证中文日期的周记可以在时间范围过滤下成功命中并得分
+    const timeRange = { label: '上周', start: '2026-10-05', end: '2026-10-11' };
+    const scoreWeekly = scoreMemoryChunk(weeklyItem, tokenizeQuery('心情 规划'), timeRange);
+    assert.ok(scoreWeekly > 0, 'Weekly item with Chinese date should match within timeRange');
 });

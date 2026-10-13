@@ -10,7 +10,7 @@ import {
     checkRateLimitShared,
     rateLimitedResponse
 } from './security.js';
-import { retrieveGardenMemories, generateFallbackReply } from './rag.js';
+import { retrieveGardenMemories, generateFallbackReply, east8NowParts, pad2 } from './rag.js';
 import { callCustomLlmStreamWithMessages, callCustomLlmWithMessages, moderateText } from './llm.js';
 
 export async function handleAiChat(request, env, db, userId) {
@@ -24,12 +24,32 @@ export async function handleAiChat(request, env, db, userId) {
     const contextText = rag.contextText;
     const sources = rag.sources;
 
+    const now = east8NowParts();
+    const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+    const dayOfWeek = weekdays[now.date.getDay()];
+    const todayStr = `${now.y}年${now.m + 1}月${now.d}日`;
+    // 计算本周与上周的年月日范围 (周一至周日)
+    const day = now.date.getDay() || 7;
+    const thisMonday = new Date(now.date);
+    thisMonday.setDate(now.d - day + 1);
+    const thisSunday = new Date(thisMonday);
+    thisSunday.setDate(thisMonday.getDate() + 6);
+    const lastMonday = new Date(thisMonday);
+    lastMonday.setDate(thisMonday.getDate() - 7);
+    const lastSunday = new Date(thisMonday);
+    lastSunday.setDate(thisMonday.getDate() - 1);
+
+    const fmtDate = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+    const thisWeekRange = `${fmtDate(thisMonday)} 至 ${fmtDate(thisSunday)}`;
+    const lastWeekRange = `${fmtDate(lastMonday)} 至 ${fmtDate(lastSunday)}`;
+
     const systemPrompt = [
         '你是用户在数字花园 Chillin 中的 AI 记忆助手。',
+        `当前基准时间（东八区）：${todayStr} 星期${dayOfWeek}（本周范围：${thisWeekRange}；上周范围：${lastWeekRange}）。`,
         '下面【检索到的记忆片段】已由系统按用户问题做过 RAG 筛选，请【只依据这些片段】回答，不要假设还有未提供的日记全文。',
         '若片段为空或不相关，请明确说没有找到相关记忆，不要编造。',
         '回答用温暖简炼的中文；可引用片段中的日期或标题，但不要逐字粘贴过长原文。'
-    ].join('');
+    ].join('\n');
 
     const sanitizedHistory = (Array.isArray(history) ? history : [])
         .filter(h => h && (h.role === 'user' || h.role === 'assistant') && typeof h.content === 'string')

@@ -67,6 +67,18 @@ export function urlBase64ToUint8Array(base64String) {
     return outputArray;
 }
 
+function resolveAssetUrlHelper(src) {
+    if (!src || typeof src !== 'string') return '';
+    if (src.startsWith('http://') || src.startsWith('https://') || src.startsWith('data:')) {
+        return src;
+    }
+    const apiBase = (typeof CHILLIN_API_URL !== 'undefined' ? CHILLIN_API_URL : '').replace(/\/+$/, '');
+    if (src.startsWith('/')) {
+        return apiBase ? `${apiBase}${src}` : src;
+    }
+    return apiBase ? `${apiBase}/${src}` : `/${src}`;
+}
+
 /** Markdown → safe HTML (escape first, then light formatting). */
 export function markdownToHtml(text) {
     if (!text) return '';
@@ -78,6 +90,15 @@ export function markdownToHtml(text) {
         if (inOl) { html += '</ol>'; inOl = false; }
     };
     const inline = (s) => s
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, src) => {
+            const cleanAlt = (alt || '').trim() || '图片';
+            const cleanSrc = (src || '').trim();
+            const resolved = resolveAssetUrlHelper(cleanSrc);
+            return `<span class="article-img-wrap"><img src="${resolved}" alt="${cleanAlt}" class="article-body-img" loading="lazy" decoding="async"></span>`;
+        })
+        .replace(/\[([^\]]+)\]\(((?:https?:\/\/|\/)[^)]+)\)/g, (m, text, url) => {
+            return `<a href="${url.trim()}" target="_blank" rel="noopener noreferrer" class="article-inline-link">${text}</a>`;
+        })
         .replace(/\[\[([^[\]|\n\r]+)(?:\|([^[\]|\n\r]+))?\]\]/g, (m, target, alias) => {
             const cleanTarget = (target || '').trim();
             const cleanLabel = (alias || target || '').trim();
@@ -138,6 +159,33 @@ export function getChineseDateTime() {
     const date = new Date();
     const pad = (n) => String(n).padStart(2, '0');
     return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function getIsoDate(d = new Date()) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function formatChineseDate(str) {
+    if (!str) return getChineseDate();
+    const s = String(str).trim();
+    const m = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+    if (m) {
+        return `${m[1]}年${Number(m[2])}月${Number(m[3])}日`;
+    }
+    return s;
+}
+
+export function parseIsoDate(str) {
+    if (!str) return '';
+    const s = String(str).trim();
+    const mIso = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+    if (mIso) return `${mIso[1]}-${String(mIso[2]).padStart(2, '0')}-${String(mIso[3]).padStart(2, '0')}`;
+    const mZh = s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+    if (mZh) return `${mZh[1]}-${String(mZh[2]).padStart(2, '0')}-${String(mZh[3]).padStart(2, '0')}`;
+    const mDot = s.match(/\b(\d{4})[./](\d{1,2})[./](\d{1,2})\b/);
+    if (mDot) return `${mDot[1]}-${String(mDot[2]).padStart(2, '0')}-${String(mDot[3]).padStart(2, '0')}`;
+    return '';
 }
 
 export function getEast8Time() {

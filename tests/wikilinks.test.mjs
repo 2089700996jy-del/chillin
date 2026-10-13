@@ -123,3 +123,32 @@ test('Wikilinks - extractBacklinkSnippet safely handles dollar signs and strips 
     assert.ok(snippet.includes('关于预算'));
 });
 
+test('Markdown - markdownToHtml renders images with lazy loading and clean classes', () => {
+    const md = '记录今天在公园拍的花：\n![盛开的樱花](/api/file/2026/10/cherry.webp)\n心情格外惬意。';
+    const html = markdownToHtml(md);
+    assert.ok(html.includes('<img src="/api/file/2026/10/cherry.webp"'));
+    assert.ok(html.includes('alt="盛开的樱花"'));
+    assert.ok(html.includes('class="article-body-img"'));
+    assert.ok(html.includes('loading="lazy"'));
+    assert.ok(html.includes('decoding="async"'));
+    assert.ok(html.includes('article-img-wrap'));
+});
+
+test('Markdown - markdownToHtml escapes potential XSS in markdown image alt and text', () => {
+    const md = '![<script>alert("xss")</script>](https://example.com/pic.jpg)';
+    const html = markdownToHtml(md);
+    assert.ok(!html.includes('<script>'));
+    assert.ok(html.includes('&lt;script&gt;'));
+    assert.ok(html.includes('src="https://example.com/pic.jpg"'));
+});
+
+test('Markdown - markdownToHtml renders external markdown links', () => {
+    const md = '阅读参考：[项目文档](https://github.com/example/repo)';
+    const html = markdownToHtml(md);
+    assert.ok(html.includes('<a href="https://github.com/example/repo"'));
+    assert.ok(html.includes('target="_blank"'));
+    assert.ok(html.includes('rel="noopener noreferrer"'));
+    assert.ok(html.includes('>项目文档</a>'));
+});
+
+

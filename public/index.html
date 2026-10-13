@@ -25,7 +25,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.82">
+    <link rel="stylesheet" href="style.css?v=2.5.83">
 </head>
 <body>
 
@@ -277,7 +277,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.82</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.83</button>
         </section>
 
         <!-- ========================================== -->
@@ -355,6 +355,15 @@
                             <input type="text" id="edit-summary" class="ios-editor-summary-input" placeholder="一句话概述这周的生活或感悟..." required autocomplete="off">
                         </div>
 
+                        <!-- 周记所属日期 -->
+                        <div class="ios-card-row ios-date-row">
+                            <div class="ios-date-input-wrap">
+                                <span class="ios-input-icon">📅</span>
+                                <input type="date" id="edit-date" class="ios-editor-date-input" title="周记所属日期" aria-label="周记所属日期">
+                                <button type="button" class="ios-btn-date-today" id="btn-weekly-date-today" title="重置为今天">今天</button>
+                            </div>
+                        </div>
+
                         <!-- 封面图设置 -->
                         <div class="ios-card-row ios-cover-row">
                             <div class="ios-cover-input-wrap">
@@ -392,6 +401,8 @@
                         <div class="ios-card-row ios-content-row">
                             <textarea id="edit-content" class="ios-editor-content-textarea" rows="7" placeholder="在此自由记录本周的日常、随想与反思 (支持 Markdown / HTML，可直接粘贴或拖拽图片)..."></textarea>
                         </div>
+                        <!-- 自由书写正文图片实时缩略图栏 -->
+                        <div id="edit-content-preview" class="ios-content-image-preview-strip" style="display: none;"></div>
                     </div>
 
                     <!-- Group 3: 周记精美微件 (Collapsible Accordion Card) -->
@@ -490,7 +501,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.82</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.83</button>
         </section>
 
         <!-- ========================================== -->
@@ -527,6 +538,8 @@
                     </button>
                 </div>
                 <textarea id="edit-note-content" class="note-paper-content" placeholder="开始写下你的灵感 (支持粘贴或拖拽图片)..."></textarea>
+                <!-- 笔记正文图片实时缩略图栏 -->
+                <div id="edit-note-content-preview" class="ios-content-image-preview-strip note-paper-preview-strip" style="display: none;"></div>
             </div>
 
             <!-- 正向双链引用胶囊条 (Outgoing Links) -->
@@ -633,7 +646,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.82</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.83</button>
         </section>
 
         <!-- ========================================== -->
@@ -783,7 +796,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.82</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.83</button>
         </section>
 
         <!-- ========================================== -->
@@ -880,7 +893,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.82</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.83</button>
         </section>
 
     </main>
@@ -1380,7 +1393,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.82"></script>
-    <script type="module" src="app.js?v=2.5.82"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.83"></script>
+    <script type="module" src="app.js?v=2.5.83"></script>
 </body>
 </html>

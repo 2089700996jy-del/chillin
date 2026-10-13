@@ -35,7 +35,7 @@ export function ymd(y, m0, d) {
 export function parseTimeRangeFromQuestion(question) {
     const q = String(question || '');
     const { y, m, d, date } = east8NowParts();
-    if (/上个月|上月/.test(q)) {
+    if (/上(一?个?)月/.test(q)) {
         const prev = new Date(y, m - 1, 1);
         const last = new Date(y, m, 0);
         return {
@@ -44,11 +44,12 @@ export function parseTimeRangeFromQuestion(question) {
             end: ymd(last.getFullYear(), last.getMonth(), last.getDate())
         };
     }
-    if (/本月|这个月/.test(q)) {
+    if (/(本|这(一?个?))月/.test(q)) {
         const last = new Date(y, m + 1, 0);
         return { label: '本月', start: ymd(y, m, 1), end: ymd(y, m, last.getDate()) };
     }
-    if (/上周|上星期/.test(q)) {
+    // 上周 / 上一周 / 上个周 / 上星期 / 上个星期 / 上一个星期 / 上礼拜
+    if (/上(一?个?)(周|星期|礼拜)/.test(q)) {
         const day = date.getDay() || 7;
         const end = new Date(date);
         end.setDate(d - day);
@@ -60,17 +61,42 @@ export function parseTimeRangeFromQuestion(question) {
             end: ymd(end.getFullYear(), end.getMonth(), end.getDate())
         };
     }
-    if (/本周|这周|这个星期/.test(q)) {
+    // 本周 / 这周 / 这一周 / 这个周 / 这个星期 / 这一个星期 / 这礼拜
+    if (/(本|这(一?个?))(周|星期|礼拜)/.test(q)) {
         const day = date.getDay() || 7;
         const start = new Date(date);
         start.setDate(d - day + 1);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6);
         return {
             label: '本周',
+            start: ymd(start.getFullYear(), start.getMonth(), start.getDate()),
+            end: ymd(end.getFullYear(), end.getMonth(), end.getDate())
+        };
+    }
+    // 过去一周 / 最近一周 / 近一周 / 近7天
+    if (/(过去|最近|近)(一?)(周|7\s*天|七天)/.test(q)) {
+        const start = new Date(date);
+        start.setDate(d - 7);
+        return {
+            label: '近一周',
             start: ymd(start.getFullYear(), start.getMonth(), start.getDate()),
             end: ymd(y, m, d)
         };
     }
-    if (/昨天/.test(q)) {
+    if (/大前天/.test(q)) {
+        const b = new Date(date);
+        b.setDate(d - 3);
+        const s = ymd(b.getFullYear(), b.getMonth(), b.getDate());
+        return { label: '大前天', start: s, end: s };
+    }
+    if (/前天/.test(q)) {
+        const b = new Date(date);
+        b.setDate(d - 2);
+        const s = ymd(b.getFullYear(), b.getMonth(), b.getDate());
+        return { label: '前天', start: s, end: s };
+    }
+    if (/昨天|昨日/.test(q)) {
         const yest = new Date(date);
         yest.setDate(d - 1);
         const s = ymd(yest.getFullYear(), yest.getMonth(), yest.getDate());
@@ -123,10 +149,66 @@ export function tokenizeQuery(question) {
     return [...tokens].filter(t => t && t.length >= 2);
 }
 
+/**
+ * 健壮的多格式日期解析器
+ * 支持: YYYY-MM-DD, YYYY年M月D日, YYYY.M.D, YYYY/M/D, YYYY-Wxx, Date.parse
+ */
+export function parseDateToYmd(str) {
+    if (!str) return '';
+    const s = String(str).trim();
+    if (!s) return '';
+    // 1. 标准 YYYY-MM-DD 或 YYYY-M-D
+    const mHyphen = s.match(/\b(\d{4})-(\d{1,2})-(\d{1,2})\b/);
+    if (mHyphen) return `${mHyphen[1]}-${pad2(mHyphen[2])}-${pad2(mHyphen[3])}`;
+    // 2. 中文格式 2026年6月26日 或 2026年06月26日
+    const mChinese = s.match(/(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日?/);
+    if (mChinese) return `${mChinese[1]}-${pad2(mChinese[2])}-${pad2(mChinese[3])}`;
+    // 3. 点分或斜杠 2026.6.26, 2026.06.26, 2026/6/26, 2026/06/26
+    const mDotSlash = s.match(/\b(\d{4})[./](\d{1,2})[./](\d{1,2})\b/);
+    if (mDotSlash) return `${mDotSlash[1]}-${pad2(mDotSlash[2])}-${pad2(mDotSlash[3])}`;
+    // 4. ISO 周标记 2023-W42 或 2023W42
+    const mWeek = s.match(/\b(\d{4})[-_]?W(\d{1,2})\b/i);
+    if (mWeek) {
+        const year = Number(mWeek[1]);
+        const week = Number(mWeek[2]);
+        if (week >= 1 && week <= 53) {
+            const jan4 = new Date(Date.UTC(year, 0, 4));
+            const dayOfWeek = jan4.getUTCDay() || 7;
+            const mondayOfW1 = new Date(jan4.getTime() - (dayOfWeek - 1) * 86400000);
+            const mondayOfWeek = new Date(mondayOfW1.getTime() + (week - 1) * 7 * 86400000);
+            const yy = mondayOfWeek.getUTCFullYear();
+            const mm = pad2(mondayOfWeek.getUTCMonth() + 1);
+            const dd = pad2(mondayOfWeek.getUTCDate());
+            return `${yy}-${mm}-${dd}`;
+        }
+    }
+    // 5. 尝试 Date.parse 兜底（处理 SQLite datetime 或 ISO 格式）
+    const parsed = Date.parse(s);
+    if (!isNaN(parsed)) {
+        const d = new Date(parsed);
+        const yy = d.getFullYear();
+        if (yy >= 2000 && yy <= 2100) {
+            return `${yy}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+        }
+    }
+    return '';
+}
+
 export function extractItemDate(item) {
-    const raw = item.date || item.created_at || item.updated_at || '';
-    const m = String(raw).match(/(\d{4}-\d{2}-\d{2})/);
-    return m ? m[1] : '';
+    if (!item) return '';
+    // 优先级 1: item.date 字段
+    const d1 = parseDateToYmd(item.date);
+    if (d1) return d1;
+    // 优先级 2: 标题中可能包含日期 (例如 "2026.6.26 — PO8" 或 "2023-W42: 记忆切片")
+    const dTitle = parseDateToYmd(item.title);
+    if (dTitle) return dTitle;
+    // 优先级 3: 数据库真实创建时间 item.created_at
+    const d2 = parseDateToYmd(item.created_at);
+    if (d2) return d2;
+    // 优先级 4: 数据库更新时间 item.updated_at
+    const d3 = parseDateToYmd(item.updated_at);
+    if (d3) return d3;
+    return '';
 }
 
 export function scoreMemoryChunk(item, tokens, timeRange) {

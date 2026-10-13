@@ -2,8 +2,12 @@
 import {
     escapeHtml,
     sanitizeHtml,
+    markdownToHtml,
     getChineseDate,
     getChineseDateTime,
+    getIsoDate,
+    formatChineseDate,
+    parseIsoDate,
     skeletonListHtml,
     isSyncingNow,
     confirmDialog,
@@ -126,7 +130,19 @@ const openArticle = (item, opts = {}) => {
     if (articleCategory) articleCategory.innerText = '';
     articleDate.innerText = item.date;
     articleTitle.innerText = item.title;
-    let finalHtml = item.content || '';
+    const contentStr = item.content || '';
+    let finalHtml = '';
+    const hasHtmlTags = /<[a-z][\s\S]*>/i.test(contentStr);
+    if (hasHtmlTags) {
+        // 若包含现有 HTML 标签但含有 Markdown 图片 ![]()，将 ![]() 转换为安全 img 标签
+        finalHtml = contentStr.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m, alt, src) => {
+            const resolvedSrc = resolveAssetUrl(src.trim());
+            const cleanAlt = (alt || '').trim() || '图片';
+            return `<div class="article-img-wrap"><img src="${escapeHtml(resolvedSrc)}" alt="${escapeHtml(cleanAlt)}" class="article-body-img" loading="lazy" decoding="async"></div>`;
+        });
+    } else {
+        finalHtml = markdownToHtml(contentStr);
+    }
     if (item.weeklyData) finalHtml += generateWeeklyWidgetsHtml(item.weeklyData);
     if (actions.parseWikilinksToHtml) finalHtml = actions.parseWikilinksToHtml(finalHtml, true);
     setHtml(articleBody, sanitizeHtml(finalHtml));
@@ -219,6 +235,7 @@ const saveWeeklyDraft = () => {
         summary: document.getElementById('edit-summary').value,
         cover: document.getElementById('edit-cover').value,
         content: document.getElementById('edit-content').value,
+        date: document.getElementById('edit-date')?.value || getIsoDate(),
         musicTitle: document.getElementById('edit-music-title').value,
         musicArtist: document.getElementById('edit-music-artist').value,
         musicLyric: document.getElementById('edit-music-lyric').value,
@@ -243,6 +260,10 @@ const restoreWeeklyDraft = () => {
         document.getElementById('edit-category').value = draft.category || '🌸';
         document.getElementById('edit-title').value = draft.title || '';
         document.getElementById('edit-summary').value = draft.summary || '';
+        if (draft.date) {
+            const editDateEl = document.getElementById('edit-date');
+            if (editDateEl) editDateEl.value = draft.date;
+        }
         document.getElementById('edit-cover').value = draft.cover || '';
         document.getElementById('edit-content').value = draft.content || '';
         document.getElementById('edit-music-title').value = draft.musicTitle || '';
@@ -371,10 +392,78 @@ const updateWidgetBadgeAndState = (shouldAutoOpen = false) => {
     }
 };
 
+const updateContentImagePreview = () => {
+    const textarea = document.getElementById('edit-content');
+    const previewStrip = document.getElementById('edit-content-preview');
+    if (!textarea || !previewStrip) return;
+
+    const val = textarea.value || '';
+    const imgMatches = [];
+    const mdImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let match;
+    while ((match = mdImgRegex.exec(val)) !== null) {
+        imgMatches.push({
+            raw: match[0],
+            alt: match[1] || '配图',
+            url: match[2].trim()
+        });
+    }
+    const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    while ((match = htmlImgRegex.exec(val)) !== null) {
+        imgMatches.push({
+            raw: match[0],
+            alt: '配图',
+            url: match[1].trim()
+        });
+    }
+
+    if (imgMatches.length === 0) {
+        previewStrip.style.display = 'none';
+        setHtml(previewStrip, '');
+        return;
+    }
+
+    previewStrip.style.display = 'flex';
+    const itemsHtml = imgMatches.map((img, index) => {
+        const resolved = resolveAssetUrl(img.url);
+        return `
+            <div class="ios-content-preview-item" data-index="${index}" title="${escapeHtml(img.alt)}">
+                <img src="${escapeHtml(resolved)}" alt="${escapeHtml(img.alt)}" loading="lazy" decoding="async">
+                <span class="ios-content-preview-caption">${escapeHtml(img.alt || `图 ${index + 1}`)}</span>
+                <button type="button" class="ios-content-preview-remove" data-raw="${escapeHtml(img.raw)}" title="从正文中移除此图片" aria-label="移除此图片">×</button>
+            </div>
+        `;
+    }).join('');
+
+    setHtml(previewStrip, `
+        <div class="ios-content-preview-header">
+            <span class="ios-content-preview-count">🖼️ 正文图片预览 (${imgMatches.length})</span>
+            <span class="ios-content-preview-hint">轻按 × 可从正文移除</span>
+        </div>
+        <div class="ios-content-preview-list">
+            ${itemsHtml}
+        </div>
+    `);
+
+    previewStrip.querySelectorAll('.ios-content-preview-remove').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const rawToRemove = btn.getAttribute('data-raw');
+            if (rawToRemove) {
+                textarea.value = textarea.value.replace(rawToRemove, '').replace(/\n\s*\n\s*\n/g, '\n\n');
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                textarea.dispatchEvent(new Event('change', { bubbles: true }));
+                updateContentImagePreview();
+            }
+        });
+    });
+};
+
 const refreshEditorUI = (shouldAutoOpenWidgets = false) => {
     const catVal = document.getElementById('edit-category')?.value || '🌸';
     syncCategorySegmented(catVal);
     updateCoverPreview();
+    updateContentImagePreview();
     updateWidgetBadgeAndState(shouldAutoOpenWidgets);
 };
 
@@ -388,6 +477,8 @@ const openWeeklyEditor = (editId = null, opts = {}) => {
             document.getElementById('edit-category').value = item.category;
             document.getElementById('edit-title').value = item.title;
             document.getElementById('edit-summary').value = item.summary;
+            const editDateEl = document.getElementById('edit-date');
+            if (editDateEl) editDateEl.value = parseIsoDate(item.date) || getIsoDate();
             document.getElementById('edit-cover').value = item.cover || '';
             document.getElementById('edit-content').value = item.content || '';
             if (item.weeklyData) {
@@ -401,6 +492,8 @@ const openWeeklyEditor = (editId = null, opts = {}) => {
     } else {
         editorPageTitle.innerText = "新增记忆";
         document.getElementById('edit-id').value = '';
+        const editDateEl = document.getElementById('edit-date');
+        if (editDateEl) editDateEl.value = getIsoDate();
     }
     refreshEditorUI(Boolean(editId));
     checkAndShowWeeklyDraftTip(editId);
@@ -420,6 +513,8 @@ editorForm.addEventListener('submit', (e) => {
     const idStr = document.getElementById('edit-id').value;
     const isEdit = !!idStr;
     const existingWeekly = isEdit ? state.database.find(d => String(d.id) === String(idStr)) : null;
+    const pickedDateVal = document.getElementById('edit-date')?.value || '';
+    const finalDate = pickedDateVal ? formatChineseDate(pickedDateVal) : (existingWeekly ? existingWeekly.date : getChineseDate());
     const newData = {
         id: isEdit ? parseInt(idStr) : Date.now(), 
         category: document.getElementById('edit-category').value, 
@@ -427,7 +522,7 @@ editorForm.addEventListener('submit', (e) => {
         summary: document.getElementById('edit-summary').value, 
         cover: document.getElementById('edit-cover').value, 
         content: document.getElementById('edit-content').value,
-        date: existingWeekly ? existingWeekly.date : getChineseDate(),
+        date: finalDate,
         annotations: existingWeekly?.annotations || [],
         weeklyData: {
             music: { title: document.getElementById('edit-music-title').value, artist: document.getElementById('edit-music-artist').value, lyric: document.getElementById('edit-music-lyric').value },
@@ -447,6 +542,13 @@ editorForm.addEventListener('submit', (e) => {
 // 绑定草稿箱相关按钮与自动保存监听
 document.getElementById('btn-restore-weekly-draft').addEventListener('click', restoreWeeklyDraft);
 document.getElementById('btn-discard-weekly-draft').addEventListener('click', discardWeeklyDraft);
+document.getElementById('btn-weekly-date-today')?.addEventListener('click', () => {
+    const editDate = document.getElementById('edit-date');
+    if (editDate) {
+        editDate.value = getIsoDate();
+        saveWeeklyDraft();
+    }
+});
 
 editorForm.addEventListener('input', () => {
     updateWidgetBadgeAndState(false);
@@ -491,6 +593,13 @@ document.getElementById('btn-clear-cover')?.addEventListener('click', () => {
         editCoverEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
 });
+
+// 自由书写正文图片实时缩略图栏交互
+const editContentEl = document.getElementById('edit-content');
+if (editContentEl) {
+    editContentEl.addEventListener('input', updateContentImagePreview);
+    editContentEl.addEventListener('change', updateContentImagePreview);
+}
 
 window.addEventListener('beforeunload', (e) => {
     const activeView = document.querySelector('.view-section.active');
