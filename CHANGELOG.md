@@ -1,18 +1,26 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-06T02:13:20.098Z · 提交数：296
+> 生成时间：2026-10-13T13:02:38.283Z · 提交数：303
+
+## 2026-10-12
+
+### 📝 文档
+
+- update architecture report to v2.5.81 across evergreen topics, wikilinks, idb storage, and backup guard
 
 ## 2026-10-06
 
 ### ✨ 新功能
 
+- **backup**: 新增定期备份守卫支持周期设置状态徽章与系统级提醒
 - **push**: 重构账号与安全中的系统通知卡片，增加实时状态徽章与测试通知验证
 - **spark**: 将今日偶想与心绪换日时间调整为每日凌晨04:00
 - **spark**: 增加午夜跨天与后台切回自动感知，确保今日偶想与时光留痕实时更新
 
 ### 🐛 缺陷修复
 
+- **sync**: 修复 D1 批处理 100 条切片与增量同步途中竞态脏标记丢失
 - **push**: 优化通知发送通道使用动态tag与renotify并消除ready等待延迟
 - **push**: 优化测试通知发送通道，增加超时保护、双通道兜底与按钮状态反馈
 - **topics**: 实现所有专栏全览 Sheet 与层级返回，修复全部按钮交互
@@ -21,6 +29,13 @@
 
 - **push**: 移除通知右侧多余图标采用透明占位保持纯净
 - **push**: 简化通知标题为Chillin并优化排版布局
+
+### 🔧 杂务
+
+- **skills**: 引入 systematic-debugging 系统化根因排错技能
+- **skills**: 添加全套开发辅助与灵感构思技能矩阵
+- **skills**: 添加 pwa-offline-engine 与 garden-rag-llm 开发技能
+- **skills**: 添加 cf-worker-d1 边缘架构开发技能
 
 ## 2026-10-05
 

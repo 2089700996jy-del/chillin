@@ -409,20 +409,31 @@ export async function apiRequest(path, options = {}) {
  * 旧后端不认 Cookie 时会静默失败，不影响原有 Bearer 流程。
  */
 export async function restoreCookieSession() {
-    if (state.authToken || state.cookieSession) return false;
+    if (state.authToken) return false;
     try {
         const res = await fetchWithFallback('/api/auth/me', {
             method: 'GET',
             headers: { Accept: 'application/json' }
         });
-        if (!res.ok) return false;
+        if (!res.ok) {
+            if (res.status === 401 && (state.authUser || state.cookieSession)) {
+                logout({ reason: 'expired', silent: false });
+            }
+            return false;
+        }
         const user = await res.json();
-        if (!user || !user.id) return false;
+        if (!user || !user.id) {
+            if (state.authUser || state.cookieSession) {
+                logout({ reason: 'expired', silent: false });
+            }
+            return false;
+        }
         state.cookieSession = true;
         state.authUser = { id: user.id, username: user.username };
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
         return true;
     } catch {
+        // 离线/弱网超时：保留乐观会话状态，允许在无网环境下继续使用本地离线数据
         return false;
     }
 }

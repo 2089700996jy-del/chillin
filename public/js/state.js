@@ -79,11 +79,20 @@ export const DEFAULT_PROMPTS = [
     }
 ];
 
+const savedUser = (() => {
+    try {
+        return JSON.parse(localStorage.getItem('chillin_user') || 'null');
+    } catch {
+        return null;
+    }
+})();
+const savedToken = localStorage.getItem('chillin_token') || '';
+
 export const state = {
-    authToken: localStorage.getItem('chillin_token') || '',
-    authUser: JSON.parse(localStorage.getItem('chillin_user') || 'null'),
-    // true 表示会话由服务端 HttpOnly Cookie 维持（localStorage 中不再保存令牌）
-    cookieSession: false,
+    authToken: savedToken,
+    authUser: savedUser,
+    // true 表示会话由服务端 HttpOnly Cookie 维持；若本地已存有有效用户档案，乐观假定会话有效，避免首屏闪烁登录遮罩
+    cookieSession: Boolean(savedUser && !savedToken),
     database: [],
     notesDatabase: [],
     bookmarksDatabase: [],
