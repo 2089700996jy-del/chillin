@@ -176,8 +176,25 @@ test('Daily Spark - getEligibleMemories filters memories older than threshold', 
     state.notesDatabase = [
         { id: 999, title: '5天前的深思', content: '关于生活的节奏', date: oldDate, is_deleted: 0 }
     ];
+    state.feedsDatabase = [
+        { id: 888, content: 'https://www.xiaoyuzhoufm.com/episode/6a78715ac40', created_at: oldDate, is_deleted: 0 },
+        { id: 777, content: '今天在海边散步，看到夕阳把云朵染成了粉紫色，非常治愈。', created_at: oldDate, is_deleted: 0 }
+    ];
     const memories = getEligibleMemories();
-    assert.ok(memories.some(m => m.id === 999));
+    const noteMem = memories.find(m => m.id === 999);
+    assert.ok(noteMem);
+    assert.equal(noteMem.typeName, '笔记');
+
+    const podcastFeed = memories.find(m => m.id === 888);
+    assert.ok(podcastFeed);
+    // 应该智能识别为小宇宙播客，而不是截断成前24字符的残缺字符串 'https://www.xiaoyuzhoufm'
+    assert.equal(podcastFeed.title, '🪐 小宇宙播客');
+    assert.notEqual(podcastFeed.title, 'https://www.xiaoyuzhoufm');
+
+    const textFeed = memories.find(m => m.id === 777);
+    assert.ok(textFeed);
+    // 普通长文随手记不应被截断24字当作伪标题导致重复
+    assert.equal(textFeed.title, '');
 });
 
 test('Daily Spark - 04:00 AM day rollover shifts late-night entries into previous evening', () => {

@@ -237,7 +237,7 @@ export function getEligibleMemories() {
             pool.push({
                 id: n.id,
                 type: 'note',
-                typeName: '备忘录',
+                typeName: '笔记',
                 title: n.title || '无题随笔',
                 content: n.content || '',
                 date: (n.date || n.created_at || '').slice(0, 10),
@@ -266,11 +266,42 @@ export function getEligibleMemories() {
         if (!f || f.is_deleted) return;
         const ts = parseTimestamp(f.created_at || f.updated_at);
         if (ts && (now - ts) > MIN_AGE_MS) {
+            let feedTitle = '';
+            // 尝试从 summary 提取富文本解析标题
+            if (f.summary) {
+                try {
+                    if (f.summary.trim().startsWith('{')) {
+                        const meta = JSON.parse(f.summary);
+                        if (meta && meta.title && !/^(403|404|500|Forbidden|Error)/i.test(meta.title.trim())) {
+                            feedTitle = (meta.platform ? `${meta.platform} · ` : '') + meta.title;
+                        }
+                    } else if (!f.summary.startsWith('{')) {
+                        feedTitle = f.summary;
+                    }
+                } catch {}
+            }
+            // 若内容为纯 URL 且无标题，智能识别知名媒体平台标签
+            if (!feedTitle && f.content) {
+                const urlMatch = f.content.match(/https?:\/\/[^\s]+/i);
+                if (urlMatch) {
+                    try {
+                        const host = new URL(urlMatch[0]).hostname.toLowerCase();
+                        if (host.includes('xiaoyuzhoufm.com')) feedTitle = '🪐 小宇宙播客';
+                        else if (host.includes('bilibili.com') || host.includes('b23.tv')) feedTitle = '📺 Bilibili 视频';
+                        else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) feedTitle = '📕 小红书笔记';
+                        else if (host.includes('music.163.com')) feedTitle = '🎵 网易云音乐';
+                        else if (host.includes('zhihu.com')) feedTitle = '💡 知乎';
+                        else if (host.includes('github.com')) feedTitle = '🐙 GitHub';
+                        else if (host.includes('weixin.qq.com')) feedTitle = '💬 微信文章';
+                    } catch {}
+                }
+            }
+
             pool.push({
                 id: f.id,
                 type: 'feed',
                 typeName: '随手记',
-                title: (f.content || '').slice(0, 24),
+                title: feedTitle,
                 content: f.content || '',
                 date: (f.created_at || '').slice(0, 10),
                 ts
@@ -319,7 +350,16 @@ export function renderSerendipityCard() {
         badgeLabel = `${daysAgo} 天前 · ${target.typeName}`;
     }
 
-    const snippet = target.content.replace(/<[^>]+>/g, '').slice(0, 120) + (target.content.length > 120 ? '…' : '');
+    const rawSnippet = (target.content || '').replace(/<[^>]+>/g, '').trim();
+    const snippet = rawSnippet.slice(0, 120) + (rawSnippet.length > 120 ? '…' : '');
+    const isUrlContent = /^(https?:\/\/[^\s]+)$/i.test(rawSnippet);
+
+    let quoteHtml = '';
+    if (isUrlContent) {
+        quoteHtml = `<a href="${escapeHtml(rawSnippet)}" target="_blank" rel="noopener noreferrer" class="k-memory-link-quote" style="word-break: break-all; color: var(--ios-blue, #007aff); text-decoration: none;">🔗 ${escapeHtml(snippet)}</a>`;
+    } else {
+        quoteHtml = `“${escapeHtml(snippet)}”`;
+    }
 
     setHtml(cardEl, `
         <div class="k-memory-card-inner">
@@ -336,12 +376,12 @@ export function renderSerendipityCard() {
                 </button>
             </div>
             <div class="k-memory-body">
-                ${target.title && target.title !== snippet ? `<div class="k-memory-title">${escapeHtml(target.title)}</div>` : ''}
-                <div class="k-memory-quote">“${escapeHtml(snippet)}”</div>
+                ${target.title ? `<div class="k-memory-title">${escapeHtml(target.title)}</div>` : ''}
+                <div class="k-memory-quote">${quoteHtml}</div>
             </div>
             <div class="k-memory-footer">
                 <span class="k-memory-date">${escapeHtml(target.date)}</span>
-                <button type="button" class="k-memory-reflect-trigger" id="btn-serendipity-reflect" data-target-id="${escapeHtml(String(target.id))}" data-target-type="${escapeHtml(target.type)}" data-target-title="${escapeHtml(target.title)}">
+                <button type="button" class="k-memory-reflect-trigger" id="btn-serendipity-reflect" data-target-id="${escapeHtml(String(target.id))}" data-target-type="${escapeHtml(target.type)}" data-target-title="${escapeHtml(target.title || target.typeName || '历史记忆')}">
                     <span>留句回响</span>
                     <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"></polyline></svg>
                 </button>
@@ -379,7 +419,9 @@ export function renderSerendipityCard() {
             const text = reflectInput.value.trim();
             if (!text) return;
             const refTitle = reflectBtn.dataset.targetTitle || '历史记忆';
-            const content = `⏳ 【回溯时光胶囊】 回看《${refTitle}》：\n${text}`;
+            const content = (refTitle === '随手记' || refTitle === '历史记忆')
+                ? `⏳ 【回溯时光胶囊】 回看当年的随手记：\n${text}`
+                : `⏳ 【回溯时光胶囊】 回看《${refTitle}》：\n${text}`;
 
             const newFeed = {
                 id: Date.now(),
