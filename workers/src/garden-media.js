@@ -128,6 +128,77 @@ async function fetchMicrolinkPreview(targetUrl) {
     }
 }
 
+export function parseRssOrAtom(xml) {
+    if (!xml || typeof xml !== 'string') return null;
+    const isXml = /^\s*<(\?xml|rss|feed)/i.test(xml) || /<channel[\s\S]*?>/i.test(xml);
+    if (!isXml) return null;
+
+    const decodeXml = (s) => {
+        if (!s) return '';
+        return s
+            .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, '$1')
+            .replace(/&quot;/g, '"')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&#x27;/g, "'")
+            .replace(/&#8230;/g, '…')
+            .trim();
+    };
+    const cleanText = (s) => decodeXml(s).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+
+    // 1. Channel metadata
+    const channelMatch = xml.match(/<channel[\s\S]*?<\/channel>/i);
+    const channelXml = channelMatch ? channelMatch[0] : xml;
+    const channelTitleMatch = channelXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+    const channelTitle = decodeXml(channelTitleMatch ? channelTitleMatch[1] : '');
+
+    const channelDescMatch = channelXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i);
+    const channelDesc = cleanText(channelDescMatch ? channelDescMatch[1] : '');
+
+    const channelImageMatch = channelXml.match(/<itunes:image[^>]*href=["']([^"']+)["']/i) ||
+                             channelXml.match(/<image>[\s\S]*?<url>([\s\S]*?)<\/url>/i);
+    let cover = channelImageMatch ? (channelImageMatch[1] || '').trim() : '';
+
+    // 2. Latest item (Episode / Article)
+    const itemMatch = xml.match(/<item[\s\S]*?<\/item>/i) || xml.match(/<entry[\s\S]*?<\/entry>/i);
+    let title = channelTitle;
+    let description = channelDesc;
+    let audioUrl = '';
+
+    if (itemMatch) {
+        const itemXml = itemMatch[0];
+        const itemTitleMatch = itemXml.match(/<title>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/title>/i);
+        if (itemTitleMatch) title = decodeXml(itemTitleMatch[1]);
+
+        const itemDescMatch = itemXml.match(/<description>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/description>/i) ||
+                              itemXml.match(/<itunes:summary>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/itunes:summary>/i) ||
+                              itemXml.match(/<content[^>]*>(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?<\/content>/i);
+        if (itemDescMatch) description = cleanText(itemDescMatch[1]);
+
+        const itemImageMatch = itemXml.match(/<itunes:image[^>]*href=["']([^"']+)["']/i);
+        if (itemImageMatch && itemImageMatch[1]) cover = itemImageMatch[1].trim();
+
+        const encMatch = itemXml.match(/<enclosure[^>]*url=["']([^"']+)["']/i) ||
+                         itemXml.match(/<link[^>]*rel=["']enclosure["'][^>]*href=["']([^"']+)["']/i);
+        if (encMatch && encMatch[1]) audioUrl = encMatch[1].trim();
+    }
+
+    if (cover && cover.startsWith('http://')) cover = cover.replace(/^http:\/\//i, 'https://');
+    else if (cover && cover.startsWith('//')) cover = 'https:' + cover;
+    if (audioUrl && audioUrl.startsWith('http://')) audioUrl = audioUrl.replace(/^http:\/\//i, 'https://');
+
+    return {
+        title: title || channelTitle || '',
+        siteName: channelTitle ? `${channelTitle} · 播客` : '播客 RSS',
+        description: description.slice(0, 240),
+        cover,
+        audioUrl,
+        platform: audioUrl ? '播客 (RSS)' : 'RSS 订阅',
+        icon: audioUrl ? '🎙️' : '📰'
+    };
+}
+
 export async function handleLinkParse(request, env, db, userId) {
     const linkLimit = await checkRateLimitShared(db, `link:${userId}`, 40, 10 * 60 * 1000);
     if (!linkLimit.ok) return rateLimitedResponse(linkLimit.retryAfter);
@@ -153,6 +224,7 @@ export async function handleLinkParse(request, env, db, userId) {
     let title = '';
     let description = '';
     let cover = '';
+    let audioUrl = '';
     let platformName = '';
     let platformIcon = '🔗';
     let siteName = '';
@@ -164,6 +236,34 @@ export async function handleLinkParse(request, env, db, userId) {
     else if (hostname.includes('github.com')) { platformName = 'GitHub'; platformIcon = '🐙'; siteName = 'GitHub'; }
     else if (hostname.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🎙️'; siteName = '小宇宙'; }
 
+    // Apple Podcasts URL 自动反查底层原生 RSS
+    const appleMatch = rawUrl.match(/podcasts\.apple\.com\/(?:([^/]+)\/)?podcast\/(?:[^/]+\/)?id(\d+)/i);
+    if (appleMatch) {
+        const country = (appleMatch[1] && appleMatch[1].length === 2) ? appleMatch[1] : 'cn';
+        const podcastId = appleMatch[2];
+        try {
+            const lookupRes = await fetchWithTimeout(`https://itunes.apple.com/lookup?id=${podcastId}&country=${country}&entity=podcast`, {
+                headers: { 'User-Agent': 'Mozilla/5.0' }
+            });
+            if (lookupRes && lookupRes.ok) {
+                const itunesData = await lookupRes.json();
+                const pod = itunesData?.results?.[0];
+                if (pod) {
+                    siteName = `${pod.collectionName || pod.trackName || 'Apple 播客'} · 播客`;
+                    cover = pod.artworkUrl600 || pod.artworkUrl100 || '';
+                    platformName = '播客 (Apple)';
+                    platformIcon = '🎙️';
+                    if (pod.feedUrl && isSafeFetchUrl(pod.feedUrl)) {
+                        currentUrl = pod.feedUrl;
+                    } else {
+                        title = pod.collectionName || pod.trackName || '';
+                        description = pod.primaryGenreName ? `分类：${pod.primaryGenreName}` : '';
+                    }
+                }
+            }
+        } catch {}
+    }
+
     try {
         let hop = 0;
         let finalResponse = null;
@@ -171,7 +271,7 @@ export async function handleLinkParse(request, env, db, userId) {
             finalResponse = await fetchWithTimeout(currentUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-                    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                    'Accept': 'text/html,application/xhtml+xml,application/xml,application/rss+xml;q=0.9,*/*;q=0.8',
                     'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
                 },
                 redirect: 'manual'
@@ -191,8 +291,20 @@ export async function handleLinkParse(request, env, db, userId) {
         // 限长读取：防止恶意站点用超大响应体撑爆 Worker 内存
         const html = finalResponse && finalResponse.ok ? await readTextCapped(finalResponse, 512 * 1024) : '';
 
-        // 1. Xiaoyuzhou special parsing
-        if (hostname.includes('xiaoyuzhoufm.com') && html) {
+        // 1. 原生 RSS / Atom 播客源嗅探与解析
+        const rssData = parseRssOrAtom(html);
+        if (rssData && (rssData.title || rssData.audioUrl)) {
+            title = rssData.title || title;
+            description = rssData.description || description;
+            cover = rssData.cover || cover;
+            audioUrl = rssData.audioUrl || '';
+            platformName = rssData.platform || platformName;
+            platformIcon = rssData.icon || platformIcon;
+            siteName = rssData.siteName || siteName;
+        }
+
+        // 2. Xiaoyuzhou special parsing
+        if (!title && hostname.includes('xiaoyuzhoufm.com') && html) {
             const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
             if (nextDataMatch) {
                 try {
@@ -203,12 +315,13 @@ export async function handleLinkParse(request, env, db, userId) {
                         description = ep.description || '';
                         cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || '';
                         siteName = ep.podcast?.title ? `${ep.podcast.title} · 小宇宙` : '小宇宙';
+                        if (ep.media?.source?.url) audioUrl = ep.media.source.url;
                     }
                 } catch {}
             }
         }
 
-        // 2. Priority OG title / twitter title / <title>
+        // 3. Priority OG title / twitter title / <title>
         if (!title && html) {
             const ogTitleMatch = html.match(/<meta[^>]*property=["']og:title["'][^>]*content=["']([^"']+)["']/i) ||
                                  html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:title["']/i);
@@ -216,7 +329,7 @@ export async function handleLinkParse(request, env, db, userId) {
             title = ogTitleMatch ? ogTitleMatch[1].trim() : (titleTagMatch ? titleTagMatch[1].trim() : '');
         }
 
-        // 3. Cover image extraction
+        // 4. Cover image extraction
         if (!cover && html) {
             const ogImageMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i) ||
                                  html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
@@ -225,7 +338,7 @@ export async function handleLinkParse(request, env, db, userId) {
         if (cover && cover.startsWith('http://')) cover = cover.replace(/^http:\/\//i, 'https://');
         else if (cover && cover.startsWith('//')) cover = 'https:' + cover;
 
-        // 4. Description extraction
+        // 5. Description extraction
         if (!description && html) {
             const ogDescMatch = html.match(/<meta[^>]*property=["']og:description["'][^>]*content=["']([^"']+)["']/i) ||
                                 html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([^"']+)["']/i);
@@ -236,7 +349,7 @@ export async function handleLinkParse(request, env, db, userId) {
         title = decodeEntities(title);
         description = decodeEntities(description);
 
-        // 5. 服务端外链兜底：页面自身未给出标题/封面时，交由后端调用 Microlink
+        // 6. 服务端外链兜底：页面自身未给出标题/封面时，交由后端调用 Microlink
         // 隐私开关：LINK_ENRICH_MICROLINK=false 时完全不把用户链接送往第三方
         const microlinkEnabled = !env || env.LINK_ENRICH_MICROLINK !== 'false';
         if (microlinkEnabled && (!title || title === hostname) && !cover) {
@@ -252,9 +365,9 @@ export async function handleLinkParse(request, env, db, userId) {
             title = hostname;
         }
 
-        return jsonResponse({ url: rawUrl, title, description, cover, platform: platformName, icon: platformIcon, siteName }, 200);
+        return jsonResponse({ url: rawUrl, title, description, cover, platform: platformName, icon: platformIcon, siteName, audioUrl }, 200);
     } catch {
-        return jsonResponse({ url: rawUrl, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName }, 200);
+        return jsonResponse({ url: rawUrl, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName, audioUrl: '' }, 200);
     }
 }
 

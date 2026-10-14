@@ -76,6 +76,7 @@ function renderFeeds() {
             let title = meta?.title || (feed.summary && !feed.summary.startsWith('{') ? feed.summary : '');
             let description = meta?.description || '';
             let coverUrl = meta?.cover || feed.media_url || '';
+            let audioUrl = meta?.audioUrl || meta?.audio_url || '';
             let platformName = meta?.platform || '';
             let platformIcon = meta?.icon || '';
 
@@ -91,7 +92,8 @@ function renderFeeds() {
                 try {
                     const u = new URL(targetUrl);
                     const host = u.hostname;
-                    if (host.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🪐'; }
+                    if (targetUrl.match(/\.(?:xml|rss)(?:\?.*)?$/i) || targetUrl.includes('/feed') || targetUrl.includes('/rss')) { platformName = '播客 (RSS)'; platformIcon = '🎙️'; }
+                    else if (host.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🪐'; }
                     else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) { platformName = '小红书'; platformIcon = '📕'; }
                     else if (host.includes('bilibili.com') || host.includes('b23.tv')) { platformName = 'Bilibili'; platformIcon = '📺'; }
                     else if (host.includes('weixin.qq.com')) { platformName = '微信文章'; platformIcon = '💬'; }
@@ -112,25 +114,41 @@ function renderFeeds() {
                 }
             }
 
-            linkHtml = `
-                <a href="${escapeHtml(targetUrl)}" target="_blank" class="rich-link-card">
-                    <div class="rich-link-main">
-                        <div class="rich-link-info">
-                            <div class="rich-link-title">${escapeHtml(title)}</div>
-                            ${description ? `<div class="rich-link-desc">${escapeHtml(description)}</div>` : ''}
-                        </div>
-                        ${coverUrl ? `<img src="${escapeHtml(resolveAssetUrl(coverUrl))}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" loading="lazy" decoding="async" data-img-hide-on-error="hide">` : ''}
-                    </div>
-                    <div class="rich-link-footer">
-                        <span class="rich-platform-pill">
-                            <span class="platform-icon">${escapeHtml(platformIcon)}</span>
-                            <span class="platform-name">${escapeHtml(platformName)}</span>
-                            <span class="platform-divider">|</span>
-                            <span class="platform-action">链接速览</span>
-                            <svg class="platform-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+            const actionText = audioUrl ? '播客原链' : '链接速览';
+            const audioHtml = audioUrl ? `
+                <div class="rich-link-audio-wrap">
+                    <div class="rich-link-audio-header">
+                        <span class="rich-link-audio-badge">
+                            <span class="audio-badge-dot"></span>
+                            <span>节目音频试听</span>
                         </span>
                     </div>
-                </a>
+                    <audio controls preload="none" src="${escapeHtml(resolveAssetUrl(audioUrl))}" class="rich-link-audio-player"></audio>
+                </div>
+            ` : '';
+
+            linkHtml = `
+                <div class="rich-link-card">
+                    <a href="${escapeHtml(targetUrl)}" target="_blank" rel="noopener noreferrer" class="rich-link-header-link">
+                        <div class="rich-link-main">
+                            <div class="rich-link-info">
+                                <div class="rich-link-title">${escapeHtml(title)}</div>
+                                ${description ? `<div class="rich-link-desc">${escapeHtml(description)}</div>` : ''}
+                            </div>
+                            ${coverUrl ? `<img src="${escapeHtml(resolveAssetUrl(coverUrl))}" class="rich-link-cover" referrerpolicy="no-referrer" alt="" loading="lazy" decoding="async" data-img-hide-on-error="hide">` : ''}
+                        </div>
+                        <div class="rich-link-footer">
+                            <span class="rich-platform-pill">
+                                <span class="platform-icon">${escapeHtml(platformIcon)}</span>
+                                <span class="platform-name">${escapeHtml(platformName)}</span>
+                                <span class="platform-divider">|</span>
+                                <span class="platform-action">${escapeHtml(actionText)}</span>
+                                <svg class="platform-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
+                            </span>
+                        </div>
+                    </a>
+                    ${audioHtml}
+                </div>
             `;
         }
 
@@ -196,8 +214,8 @@ function renderFeeds() {
             }).then(parseRes => {
                 if (parseRes) {
                     // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
-                    // Only update if we ACTUALLY got a useful title or cover
-                    if (parseRes.cover || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
+                    // Only update if we ACTUALLY got a useful title, cover or audio
+                    if (parseRes.cover || parseRes.audioUrl || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
                         feed.summary = JSON.stringify(parseRes);
                         if (parseRes.cover) feed.media_url = parseRes.cover;
                         feed.updated_at = getEast8Time();
