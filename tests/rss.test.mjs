@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRssOrAtom, matchEpisodeAudioFromRss } from '../workers/src/garden-media.js';
+import { parseRssOrAtom, matchEpisodeAudioFromRss } from '../workers/src/link-enrich.js';
 
 test('RSS Podcast - parseRssOrAtom extracts channel, latest episode, artwork and audio enclosure', () => {
     const podcastRss = `<?xml version="1.0" encoding="UTF-8"?>
