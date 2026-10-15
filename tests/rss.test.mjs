@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRssOrAtom } from '../workers/src/garden-media.js';
+import { parseRssOrAtom, matchEpisodeAudioFromRss } from '../workers/src/garden-media.js';
 
 test('RSS Podcast - parseRssOrAtom extracts channel, latest episode, artwork and audio enclosure', () => {
     const podcastRss = `<?xml version="1.0" encoding="UTF-8"?>
@@ -82,4 +82,37 @@ test('RSS Guard - parseRssOrAtom rejects non-XML HTML content gracefully', () =>
     assert.equal(parseRssOrAtom(html), null);
     assert.equal(parseRssOrAtom(''), null);
     assert.equal(parseRssOrAtom(null), null);
+});
+
+test('RSS Match - matchEpisodeAudioFromRss finds audio by title or episode number', () => {
+    const rssFeed = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>谐星聊天会</title>
+    <item>
+      <title><![CDATA[vol.10 学习英语使我快乐]]></title>
+      <enclosure url="http://example.com/audio10.mp3" type="audio/mpeg"/>
+    </item>
+    <item>
+      <title>第11期 告别拖延症</title>
+      <enclosure url="https://example.com/audio11.mp3" type="audio/mpeg"/>
+    </item>
+  </channel>
+</rss>`;
+
+    // 1. Exact / Substring match
+    const audio10 = matchEpisodeAudioFromRss(rssFeed, 'vol.10 学习英语使我快乐');
+    assert.equal(audio10, 'http://example.com/audio10.mp3');
+
+    // 2. Normalized match with punctuation / spacing differences
+    const audioNorm = matchEpisodeAudioFromRss(rssFeed, '【谐星聊天会】学习英语使我快乐！');
+    assert.equal(audioNorm, 'http://example.com/audio10.mp3');
+
+    // 3. Vol/Ep number pattern fallback match
+    const audio11 = matchEpisodeAudioFromRss(rssFeed, 'vol.11 战胜拖延');
+    assert.equal(audio11, 'https://example.com/audio11.mp3');
+
+    // 4. Missing episode returns empty string
+    const missing = matchEpisodeAudioFromRss(rssFeed, 'vol.99 不存在的单集');
+    assert.equal(missing, '');
 });

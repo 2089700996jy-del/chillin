@@ -80,11 +80,15 @@ function renderFeeds() {
             let platformName = meta?.platform || '';
             let platformIcon = meta?.icon || '';
 
-            if (!title || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(title.trim())) {
-                try {
-                    title = new URL(targetUrl).hostname;
-                } catch {
-                    title = targetUrl;
+            if (!title || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(title.trim()) || title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com') {
+                if (targetUrl.includes('xiaoyuzhoufm.com')) {
+                    title = '小宇宙播客单集';
+                } else {
+                    try {
+                        title = new URL(targetUrl).hostname;
+                    } catch {
+                        title = targetUrl;
+                    }
                 }
             }
 
@@ -108,8 +112,10 @@ function renderFeeds() {
             }
 
             // Auto enrich unparsed links or plain hostnames (e.g. historical posts)
-            if (extracted && (!meta || !meta.cover || title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com')) {
-                if (!feed._enriching) {
+            const isUnresolvedXyz = targetUrl.includes('xiaoyuzhoufm.com') && (title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com' || title === '小宇宙播客单集' || !meta?.cover);
+            const isUnresolvedPodcast = (targetUrl.includes('/feed') || targetUrl.includes('/rss') || targetUrl.includes('.xml') || targetUrl.includes('podcasts.apple.com')) && !audioUrl;
+            if (extracted && (!meta || isUnresolvedXyz || isUnresolvedPodcast)) {
+                if (!feed._enriching && !feed._enrichFailed) {
                     pendingEnrichFeeds.push({ feed, url: extracted.normalized });
                 }
             }
@@ -210,7 +216,7 @@ function renderFeeds() {
             feed._enriching = true;
             apiRequest('/api/link/parse', {
                 method: 'POST',
-                body: JSON.stringify({ url })
+                body: JSON.stringify({ url, hint: feed.content || '' })
             }).then(parseRes => {
                 if (parseRes) {
                     // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
@@ -223,10 +229,17 @@ function renderFeeds() {
                         saveFeedsDatabase();
                         renderFeeds();
                         apiSyncFeed(feed, 'PUT');
+                    } else {
+                        feed._enrichFailed = true;
                     }
+                } else {
+                    feed._enrichFailed = true;
                 }
                 feed._enriching = false;
-            }).catch(() => { feed._enriching = false; });
+            }).catch(() => {
+                feed._enrichFailed = true;
+                feed._enriching = false;
+            });
         });
     }
 }
@@ -305,7 +318,7 @@ async function sendFeed() {
         try {
             const parseRes = await apiRequest('/api/link/parse', {
                 method: 'POST',
-                body: JSON.stringify({ url: extracted.normalized })
+                body: JSON.stringify({ url: extracted.normalized, hint: content })
             });
             if (parseRes) {
                 // 兜底解析由 Worker /api/link/parse 内部完成（CSP 不允许浏览器直连第三方）
