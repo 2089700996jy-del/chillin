@@ -10,8 +10,8 @@
    * 在拦截 `/js/` 目录下的 ES 模块请求时，**离线状态下严禁将请求回退到 `/index.html`**；
    * 浏览器将 HTML 网页内容作为 JS 解析会立即抛出 `Uncaught SyntaxError: Unexpected token '<'`，造成应用离线彻底瘫痪；
    * 离线时对于模块请求，必须严格从本地 Cache 匹配已缓存的 JS 脚本。
-2. **全量核心模块预缓存 (Pre-cache All 20 Modules)**：
-   * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 20 个核心模块路径（`actions`, `api`, `auth`, `bookmarks`, `config`, `echo-ai`, `feeds`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `ui`, `upload`, `utils`, `version`, `weeklies`）；
+2. **全量核心模块预缓存 (Pre-cache All 26 Modules)**：
+   * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 26 个核心模块路径（`actions`, `api`, `auth`, `backup`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `evergreen-topics`, `feeds`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `trusted-types`, `ui`, `upload`, `utils`, `version`, `weeklies`, `wikilinks`）；
    * 安装期（`install` 事件）必须使用 `Promise.allSettled` 进行静默容错缓存，防止单个非致命资源加载失败导致整个 Service Worker 拒绝激活。
 
 ---

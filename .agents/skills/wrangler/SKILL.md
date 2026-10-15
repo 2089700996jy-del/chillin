@@ -9,7 +9,7 @@ Your knowledge of Wrangler CLI flags, config fields, and subcommands may be outd
 
 > **Live-API default:** for account inspection/mutation, the Code Mode MCP
 > tools (`mcp__cloudflare-api__search` → `mcp__cloudflare-api__execute`) are
-> the default; see the `cloudflare` skill's `references/api/codemode-mcp.md`.
+> the default. 该 Code Mode MCP 的完整参考未随本仓库保留。
 > Use wrangler for local tooling: `wrangler dev`, `wrangler deploy`,
 > `wrangler types`, `wrangler check`, and config/template work.
 

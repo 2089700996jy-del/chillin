@@ -2,7 +2,6 @@
 node_modules/
 /*.bat
 *.mp3
-*.txt
 *.apk
 
 # 本地密钥文件（示例 .dev.vars.example 需要入库）
