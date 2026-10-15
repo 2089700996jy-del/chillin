@@ -115,8 +115,9 @@ function renderFeeds() {
                 }
             }
 
-            // 历史遗留的未解析链接（含只解析出占位标题的条目）自动补解析
-            if (extracted && isUnresolvedLinkMeta(meta, targetUrl)) {
+            // 未解析的链接：自动补解析（失败 5 分钟后重试），同时提供手动补全入口
+            const linkNeedsManual = !!(extracted && isUnresolvedLinkMeta(meta, targetUrl));
+            if (linkNeedsManual) {
                 const lastFailedAt = Number(feed._enrichFailedAt || 0);
                 const recentlyFailed = lastFailedAt > 0 && (Date.now() - lastFailedAt) < ENRICH_RETRY_AFTER_MS;
                 if (!feed._enriching && !recentlyFailed) {
@@ -144,6 +145,22 @@ function renderFeeds() {
                             </span>
                         </div>
                     </a>
+                    ${feed._manualEditing ? `
+                        <div class="rich-link-manual">
+                            <input type="text" class="rich-link-manual-input" data-manual-title="${escapeHtml(String(feed.id))}" placeholder="标题（必填）" value="${escapeHtml((meta && meta.title) || '')}" maxlength="120">
+                            <input type="url" class="rich-link-manual-input" data-manual-cover="${escapeHtml(String(feed.id))}" placeholder="封面图片 URL（可选）" value="${escapeHtml((meta && meta.cover) || '')}" maxlength="500">
+                            <div class="rich-link-manual-actions">
+                                <button type="button" class="rich-link-manual-cancel" data-feed-id="${escapeHtml(String(feed.id))}">取消</button>
+                                <button type="button" class="rich-link-manual-save" data-feed-id="${escapeHtml(String(feed.id))}">保存</button>
+                            </div>
+                            <div class="rich-link-manual-hint">云端抓取被目标站拒绝（如小宇宙），手动补全后会同步到所有设备。</div>
+                        </div>
+                    ` : (linkNeedsManual ? `
+                        <div class="rich-link-manual-bar">
+                            <span class="rich-link-manual-tip">标题未解析</span>
+                            <button type="button" class="rich-link-manual-btn" data-feed-id="${escapeHtml(String(feed.id))}">填写标题</button>
+                        </div>
+                    ` : '')}
                 </div>
             `;
         }
@@ -199,6 +216,25 @@ function renderFeeds() {
         });
         container.appendChild(more);
     }
+
+    /** 手动补全外链标题/封面：写入 summary → 本地落盘 → 推送 D1（所有设备可见） */
+    function saveManualLinkMeta(feed, title, cover) {
+        if (!feed) return;
+        let meta = {};
+        try { if (feed.summary && feed.summary.trim().startsWith('{')) meta = JSON.parse(feed.summary); } catch {}
+        meta = { ...meta, title, cover: cover || meta.cover || '', manual: true, resolved: true };
+        feed.summary = JSON.stringify(meta);
+        if (cover) feed.media_url = cover;
+        feed.updated_at = getEast8Time();
+        feed._dirty = true;
+        delete feed._manualEditing;
+        delete feed._enrichFailedAt;
+        saveFeedsDatabase();
+        renderFeeds();
+        apiSyncFeed(feed, 'PUT');
+        showToast('已保存标题并同步到云端', 'success');
+    }
+    window.saveManualLinkMeta = saveManualLinkMeta;
 
     // Async auto enrichment for historical unparsed links
     if (pendingEnrichFeeds.length > 0) {
@@ -406,6 +442,39 @@ if (feedsStreamContainer) {
             e.preventDefault();
             e.stopPropagation();
             window.deleteFeed(deleteBtn.dataset.feedId);
+            return;
+        }
+
+        const manualBtn = e.target.closest('.rich-link-manual-btn');
+        if (manualBtn && manualBtn.dataset.feedId) {
+            e.preventDefault();
+            e.stopPropagation();
+            const feed = state.feedsDatabase.find(f => String(f.id) === String(manualBtn.dataset.feedId));
+            if (feed) { feed._manualEditing = true; renderFeeds(); }
+            return;
+        }
+
+        const manualCancel = e.target.closest('.rich-link-manual-cancel');
+        if (manualCancel && manualCancel.dataset.feedId) {
+            e.preventDefault();
+            e.stopPropagation();
+            const feed = state.feedsDatabase.find(f => String(f.id) === String(manualCancel.dataset.feedId));
+            if (feed) { delete feed._manualEditing; renderFeeds(); }
+            return;
+        }
+
+        const manualSave = e.target.closest('.rich-link-manual-save');
+        if (manualSave && manualSave.dataset.feedId) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = String(manualSave.dataset.feedId);
+            const feed = state.feedsDatabase.find(f => String(f.id) === id);
+            const titleEl = feedsStreamContainer.querySelector('[data-manual-title="' + id + '"]');
+            const coverEl = feedsStreamContainer.querySelector('[data-manual-cover="' + id + '"]');
+            const title = (titleEl && titleEl.value ? titleEl.value : '').trim();
+            if (!title) { showToast('请先填写标题', 'warn'); if (titleEl) titleEl.focus(); return; }
+            window.saveManualLinkMeta(feed, title, (coverEl && coverEl.value ? coverEl.value : '').trim());
+            return;
         }
     });
 }

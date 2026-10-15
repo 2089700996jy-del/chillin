@@ -85,3 +85,13 @@ test('Link parse - isUnresolvedLinkMeta 决定何时该补解析', () => {
     assert.equal(isUnresolvedLinkMeta({ title: '某篇文章标题' }, 'https://example.com/a'), false);
     assert.equal(isUnresolvedLinkMeta({ title: '' }, 'https://example.com/a'), true);
 });
+
+test('Link parse - 手动补全的元数据视为已解析且不再自动抓取', () => {
+    const manual = { title: '我手填的标题', cover: 'https://img.example/a.jpg', manual: true, resolved: false };
+    assert.equal(isResolvedLinkMeta(manual), true, '手填过的条目必须算成功，否则会被补解析覆盖');
+    assert.equal(isUnresolvedLinkMeta(manual, 'https://www.xiaoyuzhoufm.com/episode/x'), false, '手填过就不该再抓');
+
+    // 手填但没有标题：不算成功（前端保存时会拦住），同时也无需再抓
+    assert.equal(isResolvedLinkMeta({ manual: true, title: '   ' }), false);
+    assert.equal(isUnresolvedLinkMeta({ manual: true, title: '' }, 'https://x/y'), false);
+});

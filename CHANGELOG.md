@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T12:49:07.218Z · 提交数：311
+> 生成时间：2026-10-15T13:03:06.380Z · 提交数：312
 
 ## 2026-10-15
 
 ### 🐛 缺陷修复
 
+- **media**: harden xiaoyuzhou link parsing and never give up after one failed enrich
 - **media**: support podcast rss auto-discovery audio player and resilient link parsing
 
 ### ♻️ 重构

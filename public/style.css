@@ -9602,3 +9602,67 @@ body.dark-reader-body .k-directory-arrow {
 
 
 
+
+/* ── 外链解析失败时的手动补全（目标站按 IP 拒绝云端抓取时的兜底）── */
+.rich-link-manual-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(120, 120, 128, 0.22);
+}
+.rich-link-manual-tip {
+  font-size: 12px;
+  color: var(--text-color-light, rgba(60, 60, 67, 0.65));
+}
+.rich-link-manual-btn,
+.rich-link-manual-save,
+.rich-link-manual-cancel {
+  font: inherit;
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.rich-link-manual-btn,
+.rich-link-manual-save { color: var(--accent-color, #0066CC); font-weight: 600; }
+.rich-link-manual-cancel { color: var(--text-color-light, rgba(60, 60, 67, 0.65)); }
+.rich-link-manual-btn:focus-visible,
+.rich-link-manual-save:focus-visible,
+.rich-link-manual-cancel:focus-visible { outline: 2px solid var(--focus-ring-color, #0066CC); outline-offset: 2px; border-radius: 6px; }
+.rich-link-manual {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed rgba(120, 120, 128, 0.22);
+}
+.rich-link-manual-input {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 14px;
+  padding: 9px 12px;
+  border: 1px solid rgba(120, 120, 128, 0.24);
+  border-radius: var(--radius-sm, 10px);
+  background: var(--widget-bg, rgba(120, 120, 128, 0.08));
+  color: var(--text-color, #1A1A1A);
+}
+.rich-link-manual-input:focus {
+  outline: none;
+  border-color: var(--accent-color, #0066CC);
+}
+.rich-link-manual-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+}
+.rich-link-manual-hint {
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-color-light, rgba(60, 60, 67, 0.55));
+}

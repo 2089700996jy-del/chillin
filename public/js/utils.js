@@ -272,6 +272,8 @@ const LINK_META_PLACEHOLDERS = new Set(['www.xiaoyuzhoufm.com', 'xiaoyuzhoufm.co
  */
 export function isResolvedLinkMeta(meta) {
     if (!meta || typeof meta !== 'object') return false;
+    // 用户手动补全过的条目：永远算已解析（否则补解析会把手填标题覆盖掉）
+    if (meta.manual === true) return !!(typeof meta.title === 'string' && meta.title.trim());
     if (meta.resolved === false) return false;
     const title = typeof meta.title === 'string' ? meta.title.trim() : '';
     const hasRealTitle = !!title && !LINK_META_PLACEHOLDERS.has(title) && title !== meta.url;
@@ -281,6 +283,7 @@ export function isResolvedLinkMeta(meta) {
 /** 判断已存的外链元数据是否还需要（重新）解析。 */
 export function isUnresolvedLinkMeta(meta, targetUrl) {
     if (!meta || typeof meta !== 'object') return true;
+    if (meta.manual === true) return false;   // 手填过就不再抓取
     const title = typeof meta.title === 'string' ? meta.title.trim() : '';
     const isPlaceholder = !title || LINK_META_PLACEHOLDERS.has(title) || title === targetUrl;
     // 小宇宙：缺封面同样视为未解析（历史上有很多只解析出标题、没有封面的条目）
