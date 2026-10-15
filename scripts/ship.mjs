@@ -30,9 +30,44 @@ function run(label, command) {
     execSync(command, { stdio: 'inherit' });
 }
 
+/**
+ * 远端 D1 迁移前置检查。
+ *
+ * 背景：migrations/0019_reader_progress.sql 曾入库 12 天却从未应用，而依赖它的
+ * 接口已经随 Worker 上线，线上长期报 "no such table"（本地测试因为会执行全部
+ * 迁移，永远测不出来）。"迁移必须早于 Worker 部署"这条纪律得由机器来守。
+ *
+ * 行为：只有在"确定存在待应用迁移"时才中断发布；无法判定（离线 / 缺少凭据 /
+ * 输出格式变化）时仅告警放行，避免网络抖动卡死发布流程。
+ */
+function checkRemoteMigrations() {
+    let out;
+    try {
+        out = execSync('npx wrangler d1 migrations list DB --remote 2>&1', { encoding: 'utf8' });
+    } catch (err) {
+        console.warn('\n⚠ 无法检查远端 D1 迁移（离线或缺少凭据），跳过此项：' + (err && err.message ? err.message : err));
+        return;
+    }
+    const clean = out.replace(/\x1b\[[0-9;]*m/g, '');
+    if (/No migrations to apply/i.test(clean)) {
+        console.log('\n✔ 远端 D1 迁移已是最新');
+        return;
+    }
+    const pending = [...new Set([...clean.matchAll(/(\d{4}_[a-z0-9_]+\.sql)/gi)].map((m) => m[1]))];
+    if (pending.length === 0) {
+        console.warn('\n⚠ 未能解析远端迁移状态输出，跳过此项检查。');
+        return;
+    }
+    console.error('\n✖ 远端 D1 仍有未应用的迁移，已阻止发布：');
+    for (const file of pending) console.error('   - ' + file);
+    console.error('\n  请先执行：npx wrangler d1 migrations apply DB --remote\n');
+    process.exit(1);
+}
+
 try {
     run('单元测试（必须 0 失败）', 'npm test');
     run('边缘预打包演练（必须 Exit 0）', 'npx wrangler deploy --dry-run');
+    checkRemoteMigrations();
 
     if (dry) {
         console.log('\n[dry] 门禁通过，未做任何提交。');

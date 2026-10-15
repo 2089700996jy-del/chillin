@@ -23,7 +23,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：Cloudflare D1（SQLite），18 个迁移（0001–0018），全部查询参数化绑定
+* **数据**：Cloudflare D1（SQLite），19 个迁移（0001–0019），全部查询参数化绑定
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -41,7 +41,7 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
 workers/src/        security / auth / garden / rag / llm / audit
-migrations/         D1 迁移 0001–0018（含会话令牌哈希与元数据、共享限流、审计保留索引）
+migrations/         D1 迁移 0001–0019（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
@@ -123,10 +123,12 @@ npm run backup -- --keep 30   # 自定义保留份数
 提交前必须全部通过（详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md)）：
 
 ```bash
-npm test                        # 单测 + 集成测试（当前 35 个用例），必须 0 失败
+npm test                        # 单测 + 集成测试（当前 79 个用例），必须 0 失败
 npx wrangler deploy --dry-run   # 边缘预打包演练，必须 Exit Code 0
-npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 版本联动 → 校验提交信息 → 提交推送
+npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校验 → 版本联动 → 校验提交信息 → 提交推送
 ```
+
+> `npm run ship` 还会**校验远端 D1 迁移**：只要 `migrations/` 里存在未应用的迁移就直接中断发布。这一步必须有，因为本地测试会用 `fake-d1` 执行**全部**迁移，永远测不出「迁移没应用」这种漂移（`0019_reader_progress.sql` 曾因此漏应用 12 天，线上接口一直报 `no such table`）。离线或缺少凭据时仅告警放行，不会卡死发布。
 
 ### 测试布局
 

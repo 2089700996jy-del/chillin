@@ -1,9 +1,23 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-14T11:51:26.582Z · 提交数：307
+> 生成时间：2026-10-15T12:40:56.537Z · 提交数：310
+
+## 2026-10-15
+
+### 🐛 缺陷修复
+
+- **media**: support podcast rss auto-discovery audio player and resilient link parsing
+
+### ♻️ 重构
+
+- **feeds**: remove audio preview player from link cards
 
 ## 2026-10-14
+
+### ✨ 新功能
+
+- **feeds**: 支持原生播客 RSS/Atom 解析与卡片内音频试听组件
 
 ### 🐛 缺陷修复
 

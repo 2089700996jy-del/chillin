@@ -76,7 +76,6 @@ function renderFeeds() {
             let title = meta?.title || (feed.summary && !feed.summary.startsWith('{') ? feed.summary : '');
             let description = meta?.description || '';
             let coverUrl = meta?.cover || feed.media_url || '';
-            let audioUrl = meta?.audioUrl || meta?.audio_url || '';
             let platformName = meta?.platform || '';
             let platformIcon = meta?.icon || '';
 

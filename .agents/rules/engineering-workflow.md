@@ -76,3 +76,5 @@ npx wrangler deploy --dry-run
 * `style(...)`: 不影响代码逻辑的样式或格式变动
 
 > 推荐直接用 [`npm run ship`](../../scripts/ship.mjs) 代替手工流程：它会先跑单测与预打包演练，再做版本联动，并强制校验提交信息格式（`--push` 可一并推送）。
+>
+> 它还会**校验远端 D1 迁移是否全部应用**：本地测试通过 `fake-d1` 执行**全部**迁移，因此「迁移漏应用」这类漂移在本地永远测不出来——`0019_reader_progress.sql` 曾因此漏应用 12 天，而依赖它的接口已随 Worker 上线，线上持续报 `no such table`。发现未应用迁移时 `ship` 直接中断并给出 `wrangler d1 migrations apply DB --remote`。
