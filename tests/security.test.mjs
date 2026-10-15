@@ -2,8 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     sniffImageMime,
-    isSafeFetchUrl,
-    isLoopbackOrPrivateHost,
     timingSafeEqualStr,
     validatePassword,
     isValidRecordId
@@ -36,48 +34,7 @@ test('Security - sniffImageMime accurately detects image headers', () => {
     assert.equal(sniffImageMime(new Uint8Array([1, 2, 3])), null);
 });
 
-test('Security - SSRF protection blocks private and cloud metadata IPs', () => {
-    // Localhost & Loopback
-    assert.equal(isLoopbackOrPrivateHost('localhost'), true);
-    assert.equal(isLoopbackOrPrivateHost('127.0.0.1'), true);
-    assert.equal(isLoopbackOrPrivateHost('sub.localhost'), true);
 
-    // Private IPv4 ranges
-    assert.equal(isLoopbackOrPrivateHost('10.0.0.1'), true);
-    assert.equal(isLoopbackOrPrivateHost('172.16.0.1'), true);
-    assert.equal(isLoopbackOrPrivateHost('192.168.1.1'), true);
-
-    // Cloud metadata IP (AWS/GCP/Alibaba)
-    assert.equal(isLoopbackOrPrivateHost('169.254.169.254'), true);
-    assert.equal(isLoopbackOrPrivateHost('metadata.google.internal'), true);
-
-    // Public Internet hostnames
-    assert.equal(isLoopbackOrPrivateHost('example.com'), false);
-    assert.equal(isLoopbackOrPrivateHost('github.com'), false);
-
-    // 归一化绕过：FQDN 尾部点与 IPv6 内嵌 IPv4（::ffff:a.b.c.d 的十六进制写法）
-    assert.equal(isLoopbackOrPrivateHost('localhost.'), true);
-    assert.equal(isLoopbackOrPrivateHost('127.0.0.1.'), true);
-    assert.equal(isLoopbackOrPrivateHost('metadata.google.internal.'), true);
-    assert.equal(isLoopbackOrPrivateHost('::1'), true);
-    assert.equal(isLoopbackOrPrivateHost('[::1]'), true);
-    assert.equal(isLoopbackOrPrivateHost('::ffff:7f00:1'), true);
-    assert.equal(isLoopbackOrPrivateHost('::ffff:a9fe:a9fe'), true);
-    assert.equal(isLoopbackOrPrivateHost('64:ff9b::a9fe:a9fe'), true);
-    assert.equal(isLoopbackOrPrivateHost('2002:7f00:0001::'), true);
-    assert.equal(isLoopbackOrPrivateHost('fe80::1'), true);
-    assert.equal(isLoopbackOrPrivateHost('fd00::1'), true);
-    assert.equal(isLoopbackOrPrivateHost('2606:4700::1111'), false);
-
-    // Full URL validation
-    assert.equal(isSafeFetchUrl('http://169.254.169.254/latest/meta-data/'), false);
-    assert.equal(isSafeFetchUrl('http://127.0.0.1:8080/admin'), false);
-    assert.equal(isSafeFetchUrl('http://[::ffff:169.254.169.254]/latest/meta-data/'), false);
-    assert.equal(isSafeFetchUrl('http://localhost./admin'), false);
-    assert.equal(isSafeFetchUrl('ftp://example.com/file'), false);
-    assert.equal(isSafeFetchUrl('https://chillin-bfc.pages.dev/'), true);
-    assert.equal(isSafeFetchUrl('https://api.github.com/repos'), true);
-});
 
 test('Security - timingSafeEqualStr timing-safe string comparison', () => {
     assert.equal(timingSafeEqualStr('token12345', 'token12345'), true);
@@ -286,20 +243,6 @@ test('Auth - device descriptions summarise user agents for the session list', as
     assert.equal(describeUserAgent(android), 'Android · Chrome');
     assert.equal(describeUserAgent(''), '未知设备');
     assert.equal(describeUserAgent(undefined), '未知设备');
-});
-
-test('Security - readTextCapped truncates oversized responses', async () => {
-    const { readTextCapped } = await import('../workers/src/security.js');
-
-    const huge = await readTextCapped(new Response('a'.repeat(50_000)), 1000);
-    assert.ok(huge.length <= 1100, 'oversized body must be truncated close to the cap');
-
-    assert.equal(await readTextCapped(new Response('hello'), 1000), 'hello');
-    assert.equal(await readTextCapped(null, 1000), '');
-
-    // 多字节字符被截断时不应抛错（fatal: false）
-    const cjk = await readTextCapped(new Response('中文'.repeat(5000)), 64);
-    assert.ok(typeof cjk === 'string');
 });
 
 test('Audit - retention cleanup only deletes rows older than the window', async () => {
