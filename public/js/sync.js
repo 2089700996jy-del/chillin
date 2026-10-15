@@ -719,18 +719,23 @@ export async function checkAndMergeGuestData() {
     const guestFeeds = JSON.parse(localStorage.getItem('default_gardenFeeds')) || [];
     const guestPrompts = JSON.parse(localStorage.getItem('default_gardenPrompts')) || [];
 
-    const hasGuestData = guestData.length > 0 && !(guestData.length === 1 && guestData[0].id === 1);
-    const hasGuestNotes = guestNotes.length > 0 && !guestNotes.every(n => n.id === 101 || n.id === 102);
-    const hasGuestBookmarks = guestBookmarks.length > 0 && !guestBookmarks.every(b => b.id === 201 || b.id === 202 || b.id === 203);
-    const hasGuestFeeds = guestFeeds.length > 0 && !(guestFeeds.length === 1 && guestFeeds[0].id === 1);
-    const hasGuestPrompts = guestPrompts.length > 0 && !guestPrompts.every(p => [301, 302, 303, 304].includes(Number(p.id)));
+    const filterRealItems = (list, defaultIds) =>
+        (Array.isArray(list) ? list : []).filter(item => item && item.id != null && !defaultIds.includes(Number(item.id)));
 
-    if (hasGuestData || hasGuestNotes || hasGuestBookmarks || hasGuestFeeds || hasGuestPrompts) {
+    const realGuestData = filterRealItems(guestData, [1]);
+    const realGuestNotes = filterRealItems(guestNotes, [101, 102]);
+    const realGuestBookmarks = filterRealItems(guestBookmarks, [201, 202, 203]);
+    const realGuestFeeds = filterRealItems(guestFeeds, [1]);
+    const realGuestPrompts = filterRealItems(guestPrompts, [301, 302, 303, 304]);
+
+    const totalRealGuestCount = realGuestData.length + realGuestNotes.length + realGuestBookmarks.length + realGuestFeeds.length + realGuestPrompts.length;
+
+    if (totalRealGuestCount > 0) {
         if (await confirmDialog('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记/提示词）。是否将这些数据导入并同步到您当前的账号中？')) {
             try {
                 const userKey = getLocalKey('gardenData');
                 let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];
-                userDatabase = [...userDatabase, ...guestData].filter((item, index, self) =>
+                userDatabase = [...userDatabase, ...realGuestData].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
                 localStorage.setItem(userKey, JSON.stringify(userDatabase));
@@ -738,7 +743,7 @@ export async function checkAndMergeGuestData() {
 
                 const userNotesKey = getLocalKey('gardenNotes');
                 let userNotesDatabase = JSON.parse(localStorage.getItem(userNotesKey)) || [];
-                userNotesDatabase = [...userNotesDatabase, ...guestNotes].filter((item, index, self) =>
+                userNotesDatabase = [...userNotesDatabase, ...realGuestNotes].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
                 localStorage.setItem(userNotesKey, JSON.stringify(userNotesDatabase));
@@ -746,7 +751,7 @@ export async function checkAndMergeGuestData() {
 
                 const userBMKey = getLocalKey('gardenBookmarks');
                 let userBMDatabase = JSON.parse(localStorage.getItem(userBMKey)) || [];
-                userBMDatabase = [...userBMDatabase, ...guestBookmarks].filter((item, index, self) =>
+                userBMDatabase = [...userBMDatabase, ...realGuestBookmarks].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
                 localStorage.setItem(userBMKey, JSON.stringify(userBMDatabase));
@@ -754,7 +759,7 @@ export async function checkAndMergeGuestData() {
 
                 const userFeedsKey = getLocalKey('gardenFeeds');
                 let userFeedsDatabase = JSON.parse(localStorage.getItem(userFeedsKey)) || [];
-                userFeedsDatabase = [...userFeedsDatabase, ...guestFeeds].filter((item, index, self) =>
+                userFeedsDatabase = [...userFeedsDatabase, ...realGuestFeeds].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
                 localStorage.setItem(userFeedsKey, JSON.stringify(userFeedsDatabase));
@@ -762,20 +767,27 @@ export async function checkAndMergeGuestData() {
 
                 const userPromptsKey = getLocalKey('gardenPrompts');
                 let userPromptsDatabase = JSON.parse(localStorage.getItem(userPromptsKey)) || [];
-                userPromptsDatabase = [...userPromptsDatabase, ...guestPrompts].filter((item, index, self) =>
+                userPromptsDatabase = [...userPromptsDatabase, ...realGuestPrompts].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
                 localStorage.setItem(userPromptsKey, JSON.stringify(userPromptsDatabase));
                 state.promptsDatabase = userPromptsDatabase;
 
+                // 同步持久化至 IndexedDB，避免仅存 localStorage 导致超限或丢失
+                saveDatabase();
+                saveNotesDatabase();
+                saveBookmarksDatabase();
+                saveFeedsDatabase();
+                savePromptsDatabase();
+
                 await apiRequest('/api/sync/batch', {
                     method: 'POST',
                     body: JSON.stringify({
-                        weeklies: guestData,
-                        notes: guestNotes,
-                        bookmarks: guestBookmarks,
-                        feeds: guestFeeds,
-                        prompts: guestPrompts
+                        weeklies: realGuestData,
+                        notes: realGuestNotes,
+                        bookmarks: realGuestBookmarks,
+                        feeds: realGuestFeeds,
+                        prompts: realGuestPrompts
                     })
                 });
 

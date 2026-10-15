@@ -26,7 +26,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { countWords, isValidTopic, getItemWordCount, aggregateTopics, openTopicsDirectorySheet, openTopicDetailSheet } = await import('../public/js/evergreen-topics.js');
+const { countWords, isValidTopic, getItemWordCount, aggregateTopics, openTopicsDirectorySheet, openTopicDetailSheet, parseTopicDateToTs } = await import('../public/js/evergreen-topics.js');
 const { state } = await import('../public/js/state.js');
 
 test('Evergreen Topics - countWords accurately counts mixed Chinese characters and English words', () => {
@@ -128,3 +128,28 @@ test('Evergreen Topics - Directory Sheet & Back navigation lifecycle', () => {
         globalThis.document.getElementById = originalGetElementById;
     }
 });
+
+test('Evergreen Topics - parseTopicDateToTs correctly parses Chinese date formats', () => {
+    const ts = parseTopicDateToTs('2023年10月23日');
+    assert.equal(isNaN(ts), false, 'Chinese date must not return NaN');
+    const d = new Date(ts);
+    assert.equal(d.getFullYear(), 2023);
+    assert.equal(d.getMonth(), 9); // October is month 9 (0-indexed)
+    assert.equal(d.getDate(), 23);
+});
+
+test('Evergreen Topics - aggregateTopics correctly calculates timespanDays with Chinese dates', () => {
+    state.feedsDatabase = [];
+    state.notesDatabase = [
+        { id: 401, title: '早期笔记 [[哲学思考]]', content: '内容一', date: '2023年10月01日' },
+        { id: 402, title: '近期笔记 [[哲学思考]]', content: '内容二', date: '2023年10月11日' }
+    ];
+    state.database = [];
+
+    const topics = aggregateTopics();
+    const topic = topics.find(t => t.name === '哲学思考');
+    assert.ok(topic, 'Topic "哲学思考" should exist');
+    assert.equal(topic.totalCount, 2);
+    assert.equal(topic.timespanDays, 10, 'Timespan should be 10 days between Oct 1 and Oct 11');
+});
+

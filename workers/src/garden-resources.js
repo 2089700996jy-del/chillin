@@ -331,6 +331,3 @@ export async function handlePostReaderProgress(request, db, userId) {
 
     return jsonResponse({ success: true, book_key: bookKey, chapter_index: chapterIndex, scroll_percentage: scrollPercentage }, 200);
 }
-
-
-// ── Aggregated Sync Pull (NEW: 1 RTT replaces 5 sequential pulls) ──

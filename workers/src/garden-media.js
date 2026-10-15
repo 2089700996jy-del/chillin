@@ -422,7 +422,7 @@ export async function handleLinkParse(request, env, db, userId) {
                 const loc = finalResponse.headers.get('location');
                 if (!loc) break;
                 const nextUrl = new URL(loc, currentUrl).toString();
-                if (!isSafeFetchUrl(nextUrl)) return jsonResponse({ error: '重定向到非法地址' }, 403);
+                if (!isSafeFetchUrl(nextUrl) || isBlockedLinkUrl(nextUrl)) return jsonResponse({ error: '重定向到非法或违规地址' }, 403);
                 currentUrl = nextUrl;
                 hop++;
                 continue;
@@ -485,5 +485,3 @@ export async function handleLinkParse(request, env, db, userId) {
         return jsonResponse({ url: rawUrl, title: hostname, description: '', cover: '', platform: platformName, icon: platformIcon, siteName: platformName, audioUrl: '' }, 200);
     }
 }
-
-// ── Weeklies Handlers ──

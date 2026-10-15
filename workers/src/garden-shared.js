@@ -155,5 +155,3 @@ export async function ensureSoftDeleteSchema(db) {
     }
     softDeleteSchemaReady = true;
 }
-
-// ── File Upload & View ──

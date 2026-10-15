@@ -5,6 +5,20 @@ import { setHtml } from './trusted-types.js';
 import { apiRequest } from './api.js';
 import { state } from './state.js';
 
+/**
+ * 文本解码：优先严格尝试 UTF-8，遇到非法字节时平滑降级至 GBK
+ */
+export function decodeBuffer(buf) {
+    try {
+        return new TextDecoder('utf-8', { fatal: true }).decode(buf);
+    } catch (_) {}
+    try {
+        const text = new TextDecoder('gbk').decode(buf);
+        if ((text.match(/[\u4e00-\u9fa5]/g) || []).length > 0) return text;
+    } catch (_) {}
+    return new TextDecoder('utf-8', { fatal: false }).decode(buf);
+}
+
 export function initReader() {
 // ── IndexedDB ──
 const DB_NAME = 'chillin_reader_db';
@@ -206,15 +220,6 @@ function extractChapterContent(text, ch) {
     // Clean up leading/trailing whitespace but preserve paragraph structure
     content = content.replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, '');
     return content;
-}
-
-function decodeBuffer(buf) {
-    try {
-        const text = new TextDecoder('gbk').decode(buf);
-        if ((text.match(/[一-鿿]/g) || []).length > 50) return text;
-    } catch(e) {}
-    try { return new TextDecoder('utf-8').decode(buf); }
-    catch(e) { return new TextDecoder('utf-8', { fatal: false }).decode(buf); }
 }
 
 // ── Import ──

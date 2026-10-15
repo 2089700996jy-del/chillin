@@ -100,6 +100,21 @@ export function formatWordsText(words) {
 }
 
 /**
+ * 健壮的日期字符串转时间戳（支持 YYYY-MM-DD, YYYY年M月D日, ISO 等各种格式）
+ */
+export function parseTopicDateToTs(str) {
+    if (!str) return NaN;
+    const s = String(str).trim();
+    if (!s) return NaN;
+    const cn = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
+    if (cn) {
+        return new Date(`${cn[1]}-${String(cn[2]).padStart(2, '0')}-${String(cn[3]).padStart(2, '0')}T00:00:00+08:00`).getTime();
+    }
+    const iso = s.includes('T') ? s : s.replace(' ', 'T');
+    return new Date(iso).getTime();
+}
+
+/**
  * 聚合全库有效主题，计算真实篇数、精准字数与跨度
  * @returns {Array<Object>} 排序后的专栏主题列表
  */
@@ -149,7 +164,7 @@ export function aggregateTopics() {
 
         if (matchedTopicKeys.size === 0) return;
         const feedWords = getItemWordCount(feed, 'feed');
-        const ts = feed.created_at ? new Date(feed.created_at.replace(' ', 'T')).getTime() : Date.now();
+        const ts = feed.created_at ? parseTopicDateToTs(feed.created_at) : Date.now();
 
         matchedTopicKeys.forEach(k => {
             const entry = topicMap.get(k);
@@ -191,7 +206,7 @@ export function aggregateTopics() {
 
         if (matchedTopicKeys.size === 0) return;
         const noteWords = getItemWordCount(note, 'note');
-        const ts = note.date ? new Date(note.date.replace(' ', 'T')).getTime() : Date.now();
+        const ts = note.date ? parseTopicDateToTs(note.date) : Date.now();
 
         matchedTopicKeys.forEach(k => {
             const entry = topicMap.get(k);
@@ -220,7 +235,7 @@ export function aggregateTopics() {
 
         if (matchedTopicKeys.size === 0) return;
         const weeklyWords = getItemWordCount(weekly, 'weekly');
-        const ts = weekly.date ? new Date(weekly.date.replace(' ', 'T')).getTime() : Date.now();
+        const ts = weekly.date ? parseTopicDateToTs(weekly.date) : Date.now();
 
         matchedTopicKeys.forEach(k => {
             const entry = topicMap.get(k);
