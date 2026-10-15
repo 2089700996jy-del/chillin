@@ -710,6 +710,16 @@ export function apiSyncFeed(item, method) {
     return apiSyncResource('/api/feeds', item, method);
 }
 
+export function filterRealGuestItems(list, defaultIds) {
+    return (Array.isArray(list) ? list : []).filter(item => {
+        if (!item || item.id == null) return false;
+        if (defaultIds.includes(Number(item.id))) {
+            return Boolean(item._dirty || item.updated_at);
+        }
+        return true;
+    });
+}
+
 export async function checkAndMergeGuestData() {
     if (!state.authUser) return;
 
@@ -719,14 +729,11 @@ export async function checkAndMergeGuestData() {
     const guestFeeds = JSON.parse(localStorage.getItem('default_gardenFeeds')) || [];
     const guestPrompts = JSON.parse(localStorage.getItem('default_gardenPrompts')) || [];
 
-    const filterRealItems = (list, defaultIds) =>
-        (Array.isArray(list) ? list : []).filter(item => item && item.id != null && !defaultIds.includes(Number(item.id)));
-
-    const realGuestData = filterRealItems(guestData, [1]);
-    const realGuestNotes = filterRealItems(guestNotes, [101, 102]);
-    const realGuestBookmarks = filterRealItems(guestBookmarks, [201, 202, 203]);
-    const realGuestFeeds = filterRealItems(guestFeeds, [1]);
-    const realGuestPrompts = filterRealItems(guestPrompts, [301, 302, 303, 304]);
+    const realGuestData = filterRealGuestItems(guestData, [1]);
+    const realGuestNotes = filterRealGuestItems(guestNotes, [101, 102]);
+    const realGuestBookmarks = filterRealGuestItems(guestBookmarks, [201, 202, 203]);
+    const realGuestFeeds = filterRealGuestItems(guestFeeds, [1]);
+    const realGuestPrompts = filterRealGuestItems(guestPrompts, [301, 302, 303, 304]);
 
     const totalRealGuestCount = realGuestData.length + realGuestNotes.length + realGuestBookmarks.length + realGuestFeeds.length + realGuestPrompts.length;
 

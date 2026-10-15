@@ -4,7 +4,7 @@
  * Strictly adheres to Konsta iOS HIG: calm editorial typography, accurate bilingual word count,
  * zero AI chatbot/dashboard aesthetic.
  */
-import { escapeHtml, showToast } from './utils.js';
+import { escapeHtml, showToast, parseIsoDate } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import { setHtml } from './trusted-types.js';
@@ -106,12 +106,15 @@ export function parseTopicDateToTs(str) {
     if (!str) return NaN;
     const s = String(str).trim();
     if (!s) return NaN;
-    const cn = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日/);
-    if (cn) {
-        return new Date(`${cn[1]}-${String(cn[2]).padStart(2, '0')}-${String(cn[3]).padStart(2, '0')}T00:00:00+08:00`).getTime();
+    if (s.includes('T') || s.includes(':')) {
+        const d = new Date(s.includes('T') ? s : s.replace(' ', 'T'));
+        if (!isNaN(d.getTime())) return d.getTime();
     }
-    const iso = s.includes('T') ? s : s.replace(' ', 'T');
-    return new Date(iso).getTime();
+    const ymd = parseIsoDate(s);
+    if (ymd) {
+        return new Date(`${ymd}T00:00:00+08:00`).getTime();
+    }
+    return new Date(s).getTime();
 }
 
 /**

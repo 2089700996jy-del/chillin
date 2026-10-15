@@ -222,4 +222,20 @@ test('Daily Spark - 04:00 AM day rollover shifts late-night entries into previou
     assert.equal((prevIdx + 1) % 36, newIdx);
 });
 
+test('Sync - filterRealGuestItems filters unedited mock placeholders and preserves edited or new items', async () => {
+    const { filterRealGuestItems } = await import('../public/js/sync.js');
+    const guestNotes = [
+        { id: 101, title: '下周购物清单', content: '默认占位内容' }, // 未修改模板
+        { id: 102, title: '零碎灵感（已编辑）', content: '我的新灵感', _dirty: true }, // 编辑过的模板
+        { id: 1760000000000, title: '新建的真实笔记', content: '自己的内容' } // 用户新创建项
+    ];
+
+    const filtered = filterRealGuestItems(guestNotes, [101, 102]);
+    assert.equal(filtered.length, 2, 'Should keep edited mock item and new item, filtering out unedited mock item');
+    assert.equal(filtered.some(i => i.id === 101), false, 'Unedited note 101 should be filtered out');
+    assert.equal(filtered.some(i => i.id === 102), true, 'Edited note 102 with _dirty should be preserved');
+    assert.equal(filtered.some(i => i.id === 1760000000000), true, 'User created item should be preserved');
+});
+
+
 

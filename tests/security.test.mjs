@@ -406,3 +406,16 @@ test('Security - setHtml uses the Trusted Types policy, and degrades without it'
     assert.doesNotThrow(() => legacy.setHtml(el2, undefined));
     assert.equal(el2.innerHTML, '');
 });
+
+test('Security - urlBase64ToUint8Array handles valid VAPID keys and invalid inputs gracefully', async () => {
+    const { urlBase64ToUint8Array } = await import('../public/js/utils.js');
+    assert.equal(urlBase64ToUint8Array('').length, 0);
+    assert.equal(urlBase64ToUint8Array(null).length, 0);
+    assert.equal(urlBase64ToUint8Array(undefined).length, 0);
+
+    const validKey = 'BBj8FZZ57_GfEm-HGPo9pXRA5jsd4FAzu-3bQJC7KjAoGp3TWlDGFt5D22JadZ6t5bw9u6NDNsy4Vgny9v3r2e0';
+    const arr = urlBase64ToUint8Array(validKey);
+    assert.ok(arr instanceof Uint8Array);
+    assert.ok(arr.length > 0);
+});
+

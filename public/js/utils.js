@@ -57,9 +57,11 @@ export function showToast(msg, type = 'info') {
 }
 
 export function urlBase64ToUint8Array(base64String) {
-    const padding = '='.repeat((4 - base64String.length % 4) % 4);
-    const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
-    const rawData = window.atob(base64);
+    if (!base64String || typeof base64String !== 'string') return new Uint8Array(0);
+    const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const atobFn = typeof window !== 'undefined' && window.atob ? window.atob.bind(window) : atob;
+    const rawData = atobFn(base64);
     const outputArray = new Uint8Array(rawData.length);
     for (let i = 0; i < rawData.length; ++i) {
         outputArray[i] = rawData.charCodeAt(i);
