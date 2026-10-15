@@ -63,6 +63,15 @@
 
 ## 近期已完成（摘要）
 
+### 外链解析功能移除、SSRF 工具清理与文档同步（v2.5.95 → v2.5.98）
+
+1. **外链补解析可靠性修复（v2.5.95）**：失败不再「一次失败就永久放弃」（`_enriching`/`_enrichFailed` 不再随 feed 落盘，失败改为带时间戳的 `_enrichFailedAt` + 5 分钟冷却）；裸域名/假标题等占位值不再被当作「解析成功」写库；单次渲染最多补解析 3 条，保护 `/api/link/parse` 的 40 次 / 10 分钟限流。
+2. **小宇宙专用解析管道下线（v2.5.96）**：删除 `resolveXiaoyuzhou()` 与其平台标签分支。实测该站点对 Cloudflare 出口直接返回 403（362ms，非超时），Jina / Microlink 兜底长期 429，专用管道无法稳定工作。
+3. **外链解析功能整体移除（v2.5.97）**：Worker 端删除 `handleLinkParse` / `parseRssOrAtom` / `matchEpisodeAudioFromRss` / `fetchMicrolinkPreview` 与 `/api/link/parse` 路由（`garden-media.js` 379 → 95 行、`api.js` 270 → 263 行）；前端删除自动补解析与「提交时解析」（按钮文案改「发送中…」）；`wrangler.toml` 移除 `LINK_ENRICH_MICROLINK`；测试 88 → 80。**含链接的随手记只显示链接卡片**，历史条目已存的元数据照常渲染。
+4. **SSRF 工具清理（v2.5.98）**：整体删除 `workers/src/security-ssrf.js`（207 行）——审计显示其中 12 个导出业务侧引用为 0、仅测试在用（`isSafeFetchUrl` / `isLoopbackOrPrivateHost` / 14 组私网 CIDR 判定 / IPv6 内嵌 IPv4 解析 / `readTextCapped` / `fetchWithTimeout` / 违规域名黑名单）；`security.js` 门面去掉再导出，删除对应 2 个用例（80 → 78）；`.agents/rules/security.md` 第 3 节转为**废止说明**（将来若重新引入服务端出站抓取，必须从 git 历史恢复整套校验）。
+5. **架构报告同步（v2.5.98）**：`docs/Chillin数字花园_产品全景与工程架构分析报告.md` 的报告版本与在线基准更新为 **v2.5.98 / `chillin-v145`**，测试小节改为 **12 套件 / 78 用例**（补齐 `reader`），安全模块分治描述去掉 SSRF 模块并注明移除原因。
+6. **顺带修复的部署漂移**：发现后端提交领先线上部署 1 小时 50 分（外链重定向的违规域名校验未生效），已补部署；`npm run ship` 现已在发布前校验**远端 D1 迁移是否全部应用**（此前 `0019` 曾漏应用 12 天）。
+
 ### 工程化与体验收尾（v2.5.44 → v2.5.45）
 **A 工程基础设施**
 1. 新增 CI 门禁（`.github/workflows/ci.yml`，浅克隆）：每次 push/PR 跑 `npm test` + `wrangler deploy --dry-run`。
@@ -75,7 +84,7 @@
 6. DOMPurify 自托管到 `vendor/`（字节与官方 3.1.7 一致并有校验测试），CSP 不再放行任何第三方脚本域。
 7. CSP 追加 `object-src 'none'` / `frame-src 'none'` / `upgrade-insecure-requests`，清理无用的字体域。
 8. 会话滑动续期 + 令牌轮换 + 登录设备列表（migration 0017，`/api/auth/refresh|sessions`，新增「账号与安全」面板）。
-9. 外链解析响应体限长（页面 512KB / Microlink 128KB）+ `LINK_ENRICH_MICROLINK` 隐私开关。
+9. 外链解析响应体限长（页面 512KB / Microlink 128KB）+ `LINK_ENRICH_MICROLINK` 隐私开关。**（v2.5.97 已随功能整体移除）**
 
 **C 体验与无障碍**
 10. 全部原生 `confirm/alert` 替换为应用内弹窗与 toast；弹层补 `role=dialog`/`aria-modal`、焦点陷阱、Esc 关闭、焦点归还、跳转链接与 `:focus-visible` 兜底。
