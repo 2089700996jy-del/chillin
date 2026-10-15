@@ -274,10 +274,6 @@ export async function resolveXiaoyuzhou(rawUrl, titleHint = '', env = null) {
 
     // 5. 末位兜底：直连与 Jina 都失败时，交给 Microlink（受 LINK_ENRICH_MICROLINK 开关约束）
     const microlinkEnabled = !env || env.LINK_ENRICH_MICROLINK !== 'false';
-    // 直连被目标站按 IP 拒绝（小宇宙对 Cloudflare 出口返回 403）时告诉前端，
-    // 便于卡片提示"目标站拒绝云端抓取，可手动补全"
-    const blocked = direct.status === 403 && !title;
-
     if (!title && microlinkEnabled) {
         const enriched = await fetchMicrolinkPreview(rawUrl);
         if (enriched) {
@@ -299,7 +295,6 @@ export async function resolveXiaoyuzhou(rawUrl, titleHint = '', env = null) {
         platform: audioUrl ? '小宇宙 (RSS)' : '小宇宙',
         icon: '🎙️',
         // 只有拿到真实标题才算解析成功；占位标题让前端知道"可以稍后重试"
-        resolved: !!title,
-        blocked
+        resolved: !!title
     };
 }

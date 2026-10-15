@@ -1,9 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T13:03:06.380Z · 提交数：312
+> 生成时间：2026-10-15T13:07:15.084Z · 提交数：313
 
 ## 2026-10-15
+
+### ✨ 新功能
+
+- **feeds**: let users complete unresolved link titles by hand
 
 ### 🐛 缺陷修复
 
