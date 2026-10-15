@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast, isResolvedLinkMeta, isUnresolvedLinkMeta } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -11,11 +11,6 @@ import {
     saveFeedsDatabase,
 } from './api.js';
 import { setHtml } from './trusted-types.js';
-
-// 解析失败后多久允许再试（避免一次失败就永久放弃，也避免每次渲染都打接口）
-const ENRICH_RETRY_AFTER_MS = 5 * 60 * 1000;
-// 单次渲染最多触发几个外链解析，防止把 /api/link/parse 的共享限流（40 次 / 10 分钟）打满
-const MAX_ENRICH_PER_PASS = 3;
 
 export function initFeeds() {
 // 1. Render Feeds Stream (随手记流)
@@ -115,11 +110,10 @@ function renderFeeds() {
                 }
             }
 
-            // 历史遗留的未解析链接（含只解析出占位标题的条目）自动补解析
-            if (extracted && isUnresolvedLinkMeta(meta, targetUrl)) {
-                const lastFailedAt = Number(feed._enrichFailedAt || 0);
-                const recentlyFailed = lastFailedAt > 0 && (Date.now() - lastFailedAt) < ENRICH_RETRY_AFTER_MS;
-                if (!feed._enriching && !recentlyFailed) {
+            // Auto enrich unparsed links or plain hostnames (e.g. historical posts)
+            const isUnresolvedXyz = targetUrl.includes('xiaoyuzhoufm.com') && (title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com' || title === '小宇宙播客单集' || !meta?.cover);
+            if (extracted && (!meta || isUnresolvedXyz)) {
+                if (!feed._enriching && !feed._enrichFailed) {
                     pendingEnrichFeeds.push({ feed, url: extracted.normalized });
                 }
             }
@@ -202,32 +196,32 @@ function renderFeeds() {
 
     // Async auto enrichment for historical unparsed links
     if (pendingEnrichFeeds.length > 0) {
-        // 限流保护：一次渲染只补解析少量条目（其余留给后续渲染/下次进入）
-        pendingEnrichFeeds.slice(0, MAX_ENRICH_PER_PASS).forEach(({ feed, url }) => {
+        pendingEnrichFeeds.forEach(({ feed, url }) => {
             feed._enriching = true;
             apiRequest('/api/link/parse', {
                 method: 'POST',
                 body: JSON.stringify({ url, hint: feed.content || '' })
             }).then(parseRes => {
-                // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
-                // 只有拿到真实标题/封面才算成功——占位标题不许写库，否则卡片会永久停在占位状态
-                if (isResolvedLinkMeta(parseRes)) {
-                    feed.summary = JSON.stringify(parseRes);
-                    if (parseRes.cover) feed.media_url = parseRes.cover;
-                    feed.updated_at = getEast8Time();
-                    feed._dirty = true;
-                    delete feed._enrichFailedAt;
-                    saveFeedsDatabase();
-                    renderFeeds();
-                    apiSyncFeed(feed, 'PUT');
+                if (parseRes) {
+                    // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
+                    // Only update if we ACTUALLY got a useful title or cover
+                    if (parseRes.cover || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
+                        feed.summary = JSON.stringify(parseRes);
+                        if (parseRes.cover) feed.media_url = parseRes.cover;
+                        feed.updated_at = getEast8Time();
+                        feed._dirty = true;
+                        saveFeedsDatabase();
+                        renderFeeds();
+                        apiSyncFeed(feed, 'PUT');
+                    } else {
+                        feed._enrichFailed = true;
+                    }
                 } else {
-                    // 记录失败时间：5 分钟内不再重试，之后自动再试（不写库、不覆盖旧结果）
-                    feed._enrichFailedAt = Date.now();
-                    saveFeedsDatabase();
+                    feed._enrichFailed = true;
                 }
                 feed._enriching = false;
             }).catch(() => {
-                feed._enrichFailedAt = Date.now();
+                feed._enrichFailed = true;
                 feed._enriching = false;
             });
         });

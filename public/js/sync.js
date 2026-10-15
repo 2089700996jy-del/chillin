@@ -401,13 +401,6 @@ export async function hydrateFromIndexedDb() {
             if (state.promptsDatabase.length !== beforeLen) hasNewData = true;
         }
         if (Array.isArray(idbFeeds) && idbFeeds.length > 0) {
-            // 一次性兼容：旧版本会把内存态 _enriching 一起写进 IndexedDB，
-            // 导致该条目的外链补解析被永久阻止 —— 载入时直接剔除。
-            for (const feed of idbFeeds) {
-                if (!feed || typeof feed !== 'object') continue;
-                delete feed._enriching;
-                delete feed._enrichFailed;
-            }
             const beforeLen = state.feedsDatabase.length;
             state.feedsDatabase = mergeDataLists(state.feedsDatabase, idbFeeds);
             if (state.feedsDatabase.length !== beforeLen) hasNewData = true;
@@ -651,19 +644,7 @@ export function savePromptsDatabase() {
     idbSet(getLocalKey('gardenPrompts'), state.promptsDatabase);
 }
 export function saveFeedsDatabase() {
-    // 不要把内存态的临时标记写进 IndexedDB：
-    // _enriching 若被持久化（例如解析途中关掉页面），会让该条目永远不再尝试补解析。
-    // _dirty 必须保留（Delta Push 依赖它），_enrichFailedAt 是带时间戳的、会自动过期，保留。
-    const feeds = state.feedsDatabase || [];
-    const sanitized = feeds.map((feed) => {
-        if (!feed || typeof feed !== 'object') return feed;
-        if (feed._enriching === undefined && feed._enrichFailed === undefined) return feed;
-        const copy = { ...feed };
-        delete copy._enriching;      // 处理中标记：绝不该落盘
-        delete copy._enrichFailed;   // 旧版遗留的布尔失败标记（已被带时间戳的 _enrichFailedAt 取代）
-        return copy;
-    });
-    idbSet(getLocalKey('gardenFeeds'), sanitized);
+    idbSet(getLocalKey('gardenFeeds'), state.feedsDatabase);
 }
 
 function markSyncedItem(item, pushedUpdatedAt) {

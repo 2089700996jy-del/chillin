@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T13:07:15.084Z · 提交数：313
+> 生成时间：2026-10-15T13:10:17.336Z · 提交数：314
 
 ## 2026-10-15
 
@@ -21,6 +21,10 @@
 ### 🔧 杂务
 
 - **repo**: remove dead audioUrl binding and block releases on unapplied D1 migrations
+
+### ⏪ 回滚
+
+- **feeds**: remove the manual link-title completion UI
 
 ## 2026-10-14
 

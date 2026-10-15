@@ -260,30 +260,3 @@ export function isSyncingNow() {
     return typeof document !== 'undefined' && document.body.classList.contains('is-syncing');
 }
 
-
-/** 外链解析结果中的"占位值"：出现它们就说明并没有真正解析成功 */
-const LINK_META_PLACEHOLDERS = new Set(['www.xiaoyuzhoufm.com', 'xiaoyuzhoufm.com', '小宇宙播客单集']);
-
-/**
- * 判断一次外链解析是否算「真解析成功」。
- *
- * 背景：Worker 在直连/兜底全部失败时仍会返回占位标题（例如「小宇宙播客单集」）。
- * 若前端把它当成成功，坏数据就会被写进本地库并同步到 D1，卡片将永久停在占位状态。
- */
-export function isResolvedLinkMeta(meta) {
-    if (!meta || typeof meta !== 'object') return false;
-    if (meta.resolved === false) return false;
-    const title = typeof meta.title === 'string' ? meta.title.trim() : '';
-    const hasRealTitle = !!title && !LINK_META_PLACEHOLDERS.has(title) && title !== meta.url;
-    return hasRealTitle || !!meta.cover;
-}
-
-/** 判断已存的外链元数据是否还需要（重新）解析。 */
-export function isUnresolvedLinkMeta(meta, targetUrl) {
-    if (!meta || typeof meta !== 'object') return true;
-    const title = typeof meta.title === 'string' ? meta.title.trim() : '';
-    const isPlaceholder = !title || LINK_META_PLACEHOLDERS.has(title) || title === targetUrl;
-    // 小宇宙：缺封面同样视为未解析（历史上有很多只解析出标题、没有封面的条目）
-    if (String(targetUrl || '').includes('xiaoyuzhoufm.com')) return isPlaceholder || !meta.cover;
-    return isPlaceholder;
-}
