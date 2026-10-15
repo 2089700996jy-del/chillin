@@ -123,25 +123,23 @@ test('Link meta - 占位标题与未解析结果不会被当作解析成功', ()
     assert.equal(isResolvedLinkMeta({}), false);
     // Worker 明确说没解析成功时，即使带了字段也不算
     assert.equal(isResolvedLinkMeta({ resolved: false, title: '看着像标题', cover: 'https://img' }), false);
-    // 占位标题：历史上就是这样把假标题写进数据库的
-    assert.equal(isResolvedLinkMeta({ title: 'www.xiaoyuzhoufm.com' }), false);
-    assert.equal(isResolvedLinkMeta({ title: 'xiaoyuzhoufm.com' }), false);
-    assert.equal(isResolvedLinkMeta({ title: '小宇宙播客单集' }), false);
+    // 解析彻底失败时回退成的裸域名：历史上就是这样把假标题写进数据库的
+    assert.equal(isResolvedLinkMeta({ title: 'example.com' }), false);
+    assert.equal(isResolvedLinkMeta({ title: 'www.example.com' }), false);
     // 标题就是 URL 本身
     assert.equal(isResolvedLinkMeta({ title: 'https://example.com/a', url: 'https://example.com/a' }), false);
     // 真实标题 / 仅有封面都算成功
-    assert.equal(isResolvedLinkMeta({ title: 'vol.10 学习英语使我快乐' }), true);
-    assert.equal(isResolvedLinkMeta({ title: '', cover: 'https://image.xyzcdn.net/a.jpg' }), true);
+    assert.equal(isResolvedLinkMeta({ title: '一篇有意义的文章' }), true);
+    assert.equal(isResolvedLinkMeta({ title: '', cover: 'https://cdn.example.com/a.jpg' }), true);
 });
 
 test('Link meta - 未解析判定决定何时该补解析', () => {
-    const xyz = 'https://www.xiaoyuzhoufm.com/episode/5e280fa7418a84a0461f91a8';
-    assert.equal(isUnresolvedLinkMeta(null, xyz), true);
-    assert.equal(isUnresolvedLinkMeta({ title: '小宇宙播客单集' }, xyz), true);
-    // 小宇宙：只有标题没有封面也继续补解析
-    assert.equal(isUnresolvedLinkMeta({ title: 'vol.10 学习英语使我快乐' }, xyz), true);
-    assert.equal(isUnresolvedLinkMeta({ title: 'vol.10 学习英语使我快乐', cover: 'https://img' }, xyz), false);
-    // 通用链接：标题正常就不再反复请求
-    assert.equal(isUnresolvedLinkMeta({ title: '某篇文章标题' }, 'https://example.com/a'), false);
-    assert.equal(isUnresolvedLinkMeta({ title: '' }, 'https://example.com/a'), true);
+    const link = 'https://example.com/a';
+    assert.equal(isUnresolvedLinkMeta(null, link), true);
+    assert.equal(isUnresolvedLinkMeta({ title: '' }, link), true);
+    // 回退成裸域名 / 标题就是 URL 本身 → 仍需补解析
+    assert.equal(isUnresolvedLinkMeta({ title: 'example.com' }, link), true);
+    assert.equal(isUnresolvedLinkMeta({ title: 'https://example.com/a' }, link), true);
+    // 标题正常就不再反复请求
+    assert.equal(isUnresolvedLinkMeta({ title: '一篇有意义的文章', cover: 'https://img' }, link), false);
 });

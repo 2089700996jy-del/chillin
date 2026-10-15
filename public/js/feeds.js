@@ -83,15 +83,11 @@ function renderFeeds() {
             let platformName = meta?.platform || '';
             let platformIcon = meta?.icon || '';
 
-            if (!title || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(title.trim()) || title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com') {
-                if (targetUrl.includes('xiaoyuzhoufm.com')) {
-                    title = '小宇宙播客单集';
-                } else {
-                    try {
-                        title = new URL(targetUrl).hostname;
-                    } catch {
-                        title = targetUrl;
-                    }
+            if (!title || /^(403|404|500|Forbidden|Access Denied|Error)/i.test(title.trim())) {
+                try {
+                    title = new URL(targetUrl).hostname;
+                } catch {
+                    title = targetUrl;
                 }
             }
 
@@ -100,7 +96,6 @@ function renderFeeds() {
                     const u = new URL(targetUrl);
                     const host = u.hostname;
                     if (targetUrl.match(/\.(?:xml|rss)(?:\?.*)?$/i) || targetUrl.includes('/feed') || targetUrl.includes('/rss')) { platformName = '播客 (RSS)'; platformIcon = '🎙️'; }
-                    else if (host.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🪐'; }
                     else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) { platformName = '小红书'; platformIcon = '📕'; }
                     else if (host.includes('bilibili.com') || host.includes('b23.tv')) { platformName = 'Bilibili'; platformIcon = '📺'; }
                     else if (host.includes('weixin.qq.com')) { platformName = '微信文章'; platformIcon = '💬'; }

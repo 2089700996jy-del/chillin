@@ -177,7 +177,7 @@ test('Daily Spark - getEligibleMemories filters memories older than threshold', 
         { id: 999, title: '5天前的深思', content: '关于生活的节奏', date: oldDate, is_deleted: 0 }
     ];
     state.feedsDatabase = [
-        { id: 888, content: 'https://www.xiaoyuzhoufm.com/episode/6a78715ac40', created_at: oldDate, is_deleted: 0 },
+        { id: 888, content: 'https://www.bilibili.com/video/BV1xx411c7mD', created_at: oldDate, is_deleted: 0 },
         { id: 777, content: '今天在海边散步，看到夕阳把云朵染成了粉紫色，非常治愈。', created_at: oldDate, is_deleted: 0 }
     ];
     const memories = getEligibleMemories();
@@ -187,9 +187,9 @@ test('Daily Spark - getEligibleMemories filters memories older than threshold', 
 
     const podcastFeed = memories.find(m => m.id === 888);
     assert.ok(podcastFeed);
-    // 应该智能识别为小宇宙播客，而不是截断成前24字符的残缺字符串 'https://www.xiaoyuzhoufm'
-    assert.equal(podcastFeed.title, '🪐 小宇宙播客');
-    assert.notEqual(podcastFeed.title, 'https://www.xiaoyuzhoufm');
+    // 应该智能识别为平台标签，而不是截断成残缺的 URL 前缀
+    assert.equal(podcastFeed.title, '📺 Bilibili 视频');
+    assert.notEqual(podcastFeed.title, 'https://www.bilibili.com');
 
     const textFeed = memories.find(m => m.id === 777);
     assert.ok(textFeed);

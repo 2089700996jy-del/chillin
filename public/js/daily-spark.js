@@ -286,8 +286,7 @@ export function getEligibleMemories() {
                 if (urlMatch) {
                     try {
                         const host = new URL(urlMatch[0]).hostname.toLowerCase();
-                        if (host.includes('xiaoyuzhoufm.com')) feedTitle = '🪐 小宇宙播客';
-                        else if (host.includes('bilibili.com') || host.includes('b23.tv')) feedTitle = '📺 Bilibili 视频';
+                        if (host.includes('bilibili.com') || host.includes('b23.tv')) feedTitle = '📺 Bilibili 视频';
                         else if (host.includes('xiaohongshu.com') || host.includes('xhslink.com')) feedTitle = '📕 小红书笔记';
                         else if (host.includes('music.163.com')) feedTitle = '🎵 网易云音乐';
                         else if (host.includes('zhihu.com')) feedTitle = '💡 知乎';

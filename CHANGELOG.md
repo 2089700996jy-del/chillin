@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T15:21:05.176Z · 提交数：321
+> 生成时间：2026-10-15T15:25:41.509Z · 提交数：322
 
 ## 2026-10-15
 
@@ -11,6 +11,7 @@
 
 ### 🐛 缺陷修复
 
+- **feeds**: stop enrichment from giving up forever and from storing placeholder titles
 - **sync**: preserve edited guest mock items and harden date parsing and vapid conversion
 - **core**: resolve reader utf8 mojibake, evergreen topic dates, and guest sync data pollution
 - **media**: harden xiaoyuzhou link parsing and never give up after one failed enrich

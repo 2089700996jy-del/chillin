@@ -231,107 +231,6 @@ export function matchEpisodeAudioFromRss(xml, episodeTitle) {
     return '';
 }
 
-export async function resolveXiaoyuzhou(rawUrl, titleHint = '') {
-    let title = '', description = '', cover = '', audioUrl = '', podcastTitle = '';
-
-    // 1. Direct fetch attempt (Next.js SSR data)
-    try {
-        const directRes = await fetchWithTimeout(rawUrl, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'
-            },
-            timeout: 3000
-        });
-        if (directRes && directRes.ok) {
-            const html = await readTextCapped(directRes, 512 * 1024);
-            const nextDataMatch = html.match(/<script id="__NEXT_DATA__" type="application\/json">([\s\S]*?)<\/script>/);
-            if (nextDataMatch) {
-                const ep = JSON.parse(nextDataMatch[1])?.props?.pageProps?.episode;
-                if (ep) {
-                    title = ep.title || '';
-                    description = ep.description || '';
-                    cover = ep.image?.picUrl || ep.image?.thumbnailUrl || ep.image?.middlePicUrl || ep.podcast?.image?.picUrl || '';
-                    podcastTitle = ep.podcast?.title || '';
-                    if (ep.media?.source?.url) audioUrl = ep.media.source.url;
-                }
-            }
-        }
-    } catch {}
-
-    // 2. Jina AI Reader fallback when direct fetch fails/is blocked
-    if (!title) {
-        try {
-            const jinaRes = await fetchWithTimeout(`https://r.jina.ai/${rawUrl}`, {
-                headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 6000
-            });
-            if (jinaRes && jinaRes.ok) {
-                const jinaText = await readTextCapped(jinaRes, 128 * 1024);
-                const titleMatch = jinaText.match(/Title:\s*([^\n\r]+)/i);
-                if (titleMatch && titleMatch[1]) title = titleMatch[1].trim();
-                const epImgMatch = jinaText.match(/!\[Image\s*1:[^\]]*\]\((https:\/\/image\.xyzcdn\.net\/[^)@\s]+)/i) ||
-                                   jinaText.match(/!\[[^\]]*\]\((https:\/\/image\.xyzcdn\.net\/[^)@\s]+)/i);
-                if (epImgMatch && epImgMatch[1]) cover = epImgMatch[1].trim();
-                const podImgMatch = jinaText.match(/!\[Image\s*2:\s*([^\]]+)\]/i);
-                if (podImgMatch && podImgMatch[1]) podcastTitle = podImgMatch[1].trim();
-                const descMatch = jinaText.match(/Markdown Content:[\s\S]*?\n\n([\s\S]*?)(?:展开Show Notes|参与现场录制|$)/i);
-                if (descMatch && descMatch[1]) {
-                    description = descMatch[1].replace(/!\[[^\]]*\]\([^)]*\)|\[[^\]]*\]\([^)]*\)|[·\d]+(?:分钟|年前|小时前)/g, '').replace(/^[\d\s·]+/, '').replace(/\s+/g, ' ').trim();
-                }
-            }
-        } catch {}
-    }
-
-    // 3. Title hint fallback (if user entered 【播客名】 or 《播客名》)
-    if (!podcastTitle && titleHint) {
-        const hintPodMatch = titleHint.match(/[【《]([^】》]+)[】》]/);
-        if (hintPodMatch) podcastTitle = hintPodMatch[1].trim();
-    }
-
-    // 4. Apple Podcasts Native RSS Discovery (Apple iTunes API -> Native RSS -> Audio enclosure)
-    if (podcastTitle && (!audioUrl || !cover)) {
-        try {
-            const itunesRes = await fetchWithTimeout(
-                `https://itunes.apple.com/search?term=${encodeURIComponent(podcastTitle)}&entity=podcast&country=cn&limit=1`,
-                { headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 3500 }
-            );
-            if (itunesRes && itunesRes.ok) {
-                const pod = (await itunesRes.json())?.results?.[0];
-                if (pod) {
-                    if (!cover && pod.artworkUrl600) cover = pod.artworkUrl600;
-                    if (!title && pod.collectionName) title = `${pod.collectionName} 播客单集`;
-                    if (pod.feedUrl && isSafeFetchUrl(pod.feedUrl)) {
-                        try {
-                            const feedRes = await fetchWithTimeout(pod.feedUrl, {
-                                headers: { 'User-Agent': 'Mozilla/5.0' }, timeout: 4000
-                            });
-                            if (feedRes && feedRes.ok) {
-                                const feedXml = await readTextCapped(feedRes, 512 * 1024);
-                                const matchedAudio = matchEpisodeAudioFromRss(feedXml, title || podcastTitle);
-                                if (matchedAudio) audioUrl = matchedAudio;
-                            }
-                        } catch {}
-                    }
-                }
-            }
-        } catch {}
-    }
-
-    if (cover) cover = cover.replace(/^http:\/\//i, 'https://').replace(/^\/\//, 'https://');
-    if (audioUrl) audioUrl = audioUrl.replace(/^http:\/\//i, 'https://');
-
-    return {
-        title: title || (podcastTitle ? `${podcastTitle} 播客单集` : '小宇宙播客单集'),
-        description: (description || '').slice(0, 240),
-        cover,
-        audioUrl,
-        siteName: podcastTitle ? `${podcastTitle} · 小宇宙` : '小宇宙',
-        platform: audioUrl ? '小宇宙 (RSS)' : '小宇宙',
-        icon: '🎙️'
-    };
-}
-
 export async function handleLinkParse(request, env, db, userId) {
     const linkLimit = await checkRateLimitShared(db, `link:${userId}`, 40, 10 * 60 * 1000);
     if (!linkLimit.ok) return rateLimitedResponse(linkLimit.retryAfter);
@@ -343,7 +242,6 @@ export async function handleLinkParse(request, env, db, userId) {
         return jsonResponse({ error: '请求格式错误' }, 400);
     }
     const rawUrl = (body && typeof body.url === 'string') ? body.url.trim() : '';
-    const titleHint = (body && typeof body.hint === 'string') ? body.hint.trim() : '';
     if (!rawUrl || !/^https?:\/\//i.test(rawUrl)) {
         return jsonResponse({ error: '仅支持 http/https 链接' }, 400);
     }
@@ -360,13 +258,6 @@ export async function handleLinkParse(request, env, db, userId) {
     if (hostname.includes('bilibili.com')) { platformName = '哔哩哔哩'; platformIcon = '📺'; siteName = '哔哩哔哩'; }
     else if (hostname.includes('zhihu.com')) { platformName = '知乎'; platformIcon = '💡'; siteName = '知乎'; }
     else if (hostname.includes('github.com')) { platformName = 'GitHub'; platformIcon = '🐙'; siteName = 'GitHub'; }
-    else if (hostname.includes('xiaoyuzhoufm.com')) { platformName = '小宇宙'; platformIcon = '🎙️'; siteName = '小宇宙'; }
-
-    // 小宇宙专用解析管道（直连 + Jina 兜底 + Apple 播客原生 RSS 桥接）
-    if (hostname.includes('xiaoyuzhoufm.com')) {
-        const xyzData = await resolveXiaoyuzhou(rawUrl, titleHint);
-        return jsonResponse({ url: rawUrl, ...(xyzData || {}) }, 200);
-    }
 
     // Apple Podcasts URL 自动反查底层原生 RSS
     const appleMatch = rawUrl.match(/podcasts\.apple\.com\/(?:([^/]+)\/)?podcast\/(?:[^/]+\/)?id(\d+)/i);
