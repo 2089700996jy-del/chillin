@@ -262,3 +262,29 @@ export function isSyncingNow() {
     return typeof document !== 'undefined' && document.body.classList.contains('is-syncing');
 }
 
+
+/** 外链解析结果中的“占位值”：出现它们就说明并没有真正解析成功 */
+const LINK_META_PLACEHOLDERS = new Set(['www.xiaoyuzhoufm.com', 'xiaoyuzhoufm.com', '小宇宙播客单集']);
+
+/**
+ * 判断一次外链解析是否算「解析成功」。
+ * Worker/前端在完全解析失败时仍会返回占位标题，若不过滤就会把占位值写库并同步到所有设备，
+ * 卡片从此永久停在“小宇宙播客单集”这类假标题上。
+ */
+export function isResolvedLinkMeta(meta) {
+    if (!meta || typeof meta !== 'object') return false;
+    if (meta.resolved === false) return false;
+    const title = typeof meta.title === 'string' ? meta.title.trim() : '';
+    const hasRealTitle = !!title && !LINK_META_PLACEHOLDERS.has(title) && title !== meta.url;
+    return hasRealTitle || !!meta.cover;
+}
+
+/** 判断已存的外链元数据是否还需要（重新）解析。 */
+export function isUnresolvedLinkMeta(meta, targetUrl) {
+    if (!meta || typeof meta !== 'object') return true;
+    const title = typeof meta.title === 'string' ? meta.title.trim() : '';
+    const isPlaceholder = !title || LINK_META_PLACEHOLDERS.has(title) || title === targetUrl;
+    // 小宇宙类站点解析成功率低：缺封面同样视为未解析（历史上有大量只拿到标题、没有封面的条目）
+    if (String(targetUrl || '').includes('xiaoyuzhoufm.com')) return isPlaceholder || !meta.cover;
+    return isPlaceholder;
+}

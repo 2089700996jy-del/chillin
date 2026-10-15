@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T13:10:17.336Z · 提交数：314
+> 生成时间：2026-10-15T15:21:05.176Z · 提交数：321
 
 ## 2026-10-15
 
@@ -11,6 +11,8 @@
 
 ### 🐛 缺陷修复
 
+- **sync**: preserve edited guest mock items and harden date parsing and vapid conversion
+- **core**: resolve reader utf8 mojibake, evergreen topic dates, and guest sync data pollution
 - **media**: harden xiaoyuzhou link parsing and never give up after one failed enrich
 - **media**: support podcast rss auto-discovery audio player and resilient link parsing
 
@@ -20,11 +22,19 @@
 
 ### 🔧 杂务
 
+- **skills**: retain r2 and core cloudflare references while pruning enterprise bloat
+- **skills**: vendor conservative-code-edits, function-testing and the Cloudflare skill pack
 - **repo**: remove dead audioUrl binding and block releases on unapplied D1 migrations
 
 ### ⏪ 回滚
 
+- **media**: roll the xiaoyuzhou link enrichment work back to v2.5.90
 - **feeds**: remove the manual link-title completion UI
+
+### 📎 其他
+
+- Reapply "chore(skills): vendor conservative-code-edits, function-testing and the Cloudflare skill pack"
+- Revert "chore(skills): vendor conservative-code-edits, function-testing and the Cloudflare skill pack"
 
 ## 2026-10-14
 

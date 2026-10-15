@@ -239,3 +239,19 @@ test('Sync - filterRealGuestItems filters unedited mock placeholders and preserv
 
 
 
+
+test('Storage - 落盘时剔除 _enriching/_enrichFailed，避免外链补解析永久卡死', async () => {
+    const { sanitizeFeedForStorage } = await import('../public/js/sync.js');
+
+    const dirty = { id: 1, content: 'x', _enriching: true, _enrichFailed: true, _dirty: true };
+    const clean = sanitizeFeedForStorage(dirty);
+    assert.equal(clean._enriching, undefined, '_enriching 不能落盘：解析途中关页面会让该条目永久不再补解析');
+    assert.equal(clean._enrichFailed, undefined, '旧版布尔失败标记不应继续留存');
+    assert.equal(clean._dirty, true, '_dirty 必须保留：Delta Push 依赖它');
+    assert.equal(dirty._enriching, true, '不应修改原对象（避免影响正在进行的请求）');
+
+    const untouched = { id: 2, content: 'y' };
+    assert.equal(sanitizeFeedForStorage(untouched), untouched, '无标记的对象应原样返回，避免无谓拷贝');
+    assert.equal(sanitizeFeedForStorage(null), null);
+    assert.equal(sanitizeFeedForStorage(undefined), undefined);
+});

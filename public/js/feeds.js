@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast, isResolvedLinkMeta, isUnresolvedLinkMeta } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -28,6 +28,10 @@ function extractUrlFromText(text) {
 
 // 分页渲染：首屏 100 条，点击「加载更多」再追加 100 条（不再硬截断）
 const FEEDS_PAGE_SIZE = 100;
+// 外链补解析失败后多久允许重试（避免“失败一次就永久放弃”，也避免反复打接口）
+const ENRICH_RETRY_AFTER_MS = 5 * 60 * 1000;
+// 单次渲染最多补解析几个链接：/api/link/parse 限流为 40 次 / 10 分钟，必须做限流保护
+const MAX_ENRICH_PER_PASS = 3;
 let feedsVisibleCount = FEEDS_PAGE_SIZE;
 
 function renderFeeds() {
@@ -110,10 +114,11 @@ function renderFeeds() {
                 }
             }
 
-            // Auto enrich unparsed links or plain hostnames (e.g. historical posts)
-            const isUnresolvedXyz = targetUrl.includes('xiaoyuzhoufm.com') && (title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com' || title === '小宇宙播客单集' || !meta?.cover);
-            if (extracted && (!meta || isUnresolvedXyz)) {
-                if (!feed._enriching && !feed._enrichFailed) {
+            // 未解析的链接（含只解析出占位标题的条目）自动补解析；失败后冷却 5 分钟再试
+            if (extracted && isUnresolvedLinkMeta(meta, targetUrl)) {
+                const lastFailedAt = Number(feed._enrichFailedAt || 0);
+                const recentlyFailed = lastFailedAt > 0 && (Date.now() - lastFailedAt) < ENRICH_RETRY_AFTER_MS;
+                if (!feed._enriching && !recentlyFailed) {
                     pendingEnrichFeeds.push({ feed, url: extracted.normalized });
                 }
             }
@@ -196,32 +201,31 @@ function renderFeeds() {
 
     // Async auto enrichment for historical unparsed links
     if (pendingEnrichFeeds.length > 0) {
-        pendingEnrichFeeds.forEach(({ feed, url }) => {
+        // 限流保护：一次渲染最多补解析少量条目，其余留给后续渲染（避免把 40 次/10 分钟的配额打满）
+        pendingEnrichFeeds.slice(0, MAX_ENRICH_PER_PASS).forEach(({ feed, url }) => {
             feed._enriching = true;
             apiRequest('/api/link/parse', {
                 method: 'POST',
                 body: JSON.stringify({ url, hint: feed.content || '' })
             }).then(parseRes => {
-                if (parseRes) {
-                    // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
-                    // Only update if we ACTUALLY got a useful title or cover
-                    if (parseRes.cover || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
-                        feed.summary = JSON.stringify(parseRes);
-                        if (parseRes.cover) feed.media_url = parseRes.cover;
-                        feed.updated_at = getEast8Time();
-                        feed._dirty = true;
-                        saveFeedsDatabase();
-                        renderFeeds();
-                        apiSyncFeed(feed, 'PUT');
-                    } else {
-                        feed._enrichFailed = true;
-                    }
+                // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
+                // 只有拿到真实标题/封面才算成功：占位标题一律不写库，否则卡片会永久停在占位状态
+                if (isResolvedLinkMeta(parseRes)) {
+                    feed.summary = JSON.stringify(parseRes);
+                    if (parseRes.cover) feed.media_url = parseRes.cover;
+                    feed.updated_at = getEast8Time();
+                    feed._dirty = true;
+                    delete feed._enrichFailedAt;
+                    saveFeedsDatabase();
+                    renderFeeds();
+                    apiSyncFeed(feed, 'PUT');
                 } else {
-                    feed._enrichFailed = true;
+                    // 记录失败时刻（内存态，不落盘）：5 分钟内不再重试，之后自动再试
+                    feed._enrichFailedAt = Date.now();
                 }
                 feed._enriching = false;
             }).catch(() => {
-                feed._enrichFailed = true;
+                feed._enrichFailedAt = Date.now();
                 feed._enriching = false;
             });
         });
