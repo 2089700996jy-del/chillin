@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast, isResolvedLinkMeta, isUnresolvedLinkMeta } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -28,10 +28,6 @@ function extractUrlFromText(text) {
 
 // 分页渲染：首屏 100 条，点击「加载更多」再追加 100 条（不再硬截断）
 const FEEDS_PAGE_SIZE = 100;
-// 外链补解析失败后多久允许重试（避免“失败一次就永久放弃”，也避免反复打接口）
-const ENRICH_RETRY_AFTER_MS = 5 * 60 * 1000;
-// 单次渲染最多补解析几个链接：/api/link/parse 限流为 40 次 / 10 分钟，必须做限流保护
-const MAX_ENRICH_PER_PASS = 3;
 let feedsVisibleCount = FEEDS_PAGE_SIZE;
 
 function renderFeeds() {
@@ -55,8 +51,6 @@ function renderFeeds() {
         `);
         return;
     }
-
-    const pendingEnrichFeeds = [];
 
     setHtml(container, displayFeeds.map(feed => {
         const tags = feed.tags || [];
@@ -106,15 +100,6 @@ function renderFeeds() {
                 } catch {
                     platformName = '网络链接';
                     platformIcon = '🌐';
-                }
-            }
-
-            // 未解析的链接（含只解析出占位标题的条目）自动补解析；失败后冷却 5 分钟再试
-            if (extracted && isUnresolvedLinkMeta(meta, targetUrl)) {
-                const lastFailedAt = Number(feed._enrichFailedAt || 0);
-                const recentlyFailed = lastFailedAt > 0 && (Date.now() - lastFailedAt) < ENRICH_RETRY_AFTER_MS;
-                if (!feed._enriching && !recentlyFailed) {
-                    pendingEnrichFeeds.push({ feed, url: extracted.normalized });
                 }
             }
 
@@ -193,38 +178,6 @@ function renderFeeds() {
         });
         container.appendChild(more);
     }
-
-    // Async auto enrichment for historical unparsed links
-    if (pendingEnrichFeeds.length > 0) {
-        // 限流保护：一次渲染最多补解析少量条目，其余留给后续渲染（避免把 40 次/10 分钟的配额打满）
-        pendingEnrichFeeds.slice(0, MAX_ENRICH_PER_PASS).forEach(({ feed, url }) => {
-            feed._enriching = true;
-            apiRequest('/api/link/parse', {
-                method: 'POST',
-                body: JSON.stringify({ url, hint: feed.content || '' })
-            }).then(parseRes => {
-                // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
-                // 只有拿到真实标题/封面才算成功：占位标题一律不写库，否则卡片会永久停在占位状态
-                if (isResolvedLinkMeta(parseRes)) {
-                    feed.summary = JSON.stringify(parseRes);
-                    if (parseRes.cover) feed.media_url = parseRes.cover;
-                    feed.updated_at = getEast8Time();
-                    feed._dirty = true;
-                    delete feed._enrichFailedAt;
-                    saveFeedsDatabase();
-                    renderFeeds();
-                    apiSyncFeed(feed, 'PUT');
-                } else {
-                    // 记录失败时刻（内存态，不落盘）：5 分钟内不再重试，之后自动再试
-                    feed._enrichFailedAt = Date.now();
-                }
-                feed._enriching = false;
-            }).catch(() => {
-                feed._enrichFailedAt = Date.now();
-                feed._enriching = false;
-            });
-        });
-    }
 }
 
 // 2. Add Feed Handler
@@ -288,27 +241,15 @@ async function sendFeed() {
     if (!content && !mediaUrl) return;
 
     btnSendFeed.disabled = true;
-    btnSendFeed.innerText = '解析中...';
+    btnSendFeed.innerText = '发送中...';
 
-    let summary = null;
+    const summary = null;
     let type = mediaUrl ? 'image' : 'text';
-    let parsedCover = '';
 
-    // Check if content contains a URL (supports https:// and www. domain URLs)
+    // 含链接的随手记直接按链接卡片展示：不再解析标题/封面（第三方抓取长期不可用）
     const extracted = extractUrlFromText(content);
     if (extracted) {
         type = 'link';
-        try {
-            const parseRes = await apiRequest('/api/link/parse', {
-                method: 'POST',
-                body: JSON.stringify({ url: extracted.normalized, hint: content })
-            });
-            if (parseRes) {
-                // 兜底解析由 Worker /api/link/parse 内部完成（CSP 不允许浏览器直连第三方）
-                summary = JSON.stringify(parseRes);
-                if (parseRes.cover) parsedCover = parseRes.cover;
-            }
-        } catch {}
     } else if (mediaUrl) {
         type = 'image';
     }
@@ -319,7 +260,7 @@ async function sendFeed() {
         id: Date.now(),
         content: content || '分享了图片/链接',
         type,
-        media_url: mediaUrl || parsedCover || null,
+        media_url: mediaUrl || null,
         summary,
         tags: extractedTags,
         created_at: getEast8Time().slice(0, 16)

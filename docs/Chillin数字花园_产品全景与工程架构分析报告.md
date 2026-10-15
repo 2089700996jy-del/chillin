@@ -40,7 +40,7 @@
     /____________________\
 ```
 
-* **零摩擦捕获 (Zero-Friction Capture)**：随手记 1 秒内完成记录，支持富链接自动解析（OpenGraph/Favicon）与图片多图预览，无排版心理负担。
+* **零摩擦捕获 (Zero-Friction Capture)**：随手记 1 秒内完成记录，支持链接卡片与图片多图预览；**v2.5.97 起不再解析外链标题/封面**（第三方抓取对 Cloudflare 出口长期不可用，故整体移除该能力），无排版心理负担。
 * **常青生长与知识网络 (Evergreen Network)**：引入数字花园三阶生命周期（萌芽/生根/常青），支持 `[[双向维基链接]]` 与反向引用（Backlinks）上下文高亮反查，让碎片记录自发生长为知识森林。
 * **绝对自主与备份守卫 (Data Sovereignty & Guard)**：存储引擎升级至 IndexedDB 异步大容量接管，彻底突破 5MB 限制；内置一键打包全量 ZIP 备份与定时备份守卫提醒，真正做到数据永不丢失、随时可带走。
 * **去 AI 感的 Apple HIG 质感 (De-AI Craftsmanship)**：全站落地 Konsta iOS / Apple HIG 规范，自然纸感暖灰底色（`#F8F9FA`）、全矢量精巧 SVG、半屏抽屉（Bottom Sheet）与细致微动效，洗尽 AI 模板的浮躁廉价感。
@@ -65,7 +65,7 @@ mindmap
   root((Chillin 数字花园 v2.5.81))
     随手记 Feeds
       极速时间流
-      外链卡片解析 (OpenGraph)
+      链接卡片（仅展示，不解析）
       全屏手势图片灯箱 (Lightbox)
       连续打卡徽章与活跃热力图
       折叠/展开记忆回响胶囊

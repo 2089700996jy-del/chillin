@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-15。供后续会话快速接续。当前前端/Worker：**v2.5.96**（推送后以 `public/js/version.js` 为准）。
+> 更新时间：2026-10-15。供后续会话快速接续。当前前端/Worker：**v2.5.97**（推送后以 `public/js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -8,6 +8,7 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
+- **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0014`，远端已对齐）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
@@ -52,7 +53,7 @@
 | `workers/src/security.js` | 安全核心：PBKDF2、魔数嗅探、SSRF 14组 CIDR 校验、限流、时序比较 |
 | `workers/src/auth.js` | 认证会话：注册、登录、登出、用户信息、Web Push 订阅 |
 | `workers/src/garden-shared.js` | 行格式化、归属校验、软删墓碑查询与惰性 schema 守卫 |
-| `workers/src/garden-media.js` | 图片上传、鉴权文件读取、外链解析（含 Microlink 兜底与限长） |
+| `workers/src/garden-media.js` | 图片上传、鉴权文件读取 |
 | `workers/src/garden-resources.js` | 周记/笔记/收藏/提示词/随手记 的 CRUD 与软删 |
 | `workers/src/garden-sync.js` | 聚合拉取 `/api/sync/pull`、脏数据批量推送、热力图 |
 | `workers/src/garden-echo.js` | AI 回响卡片、周期回顾、Web Push 通知、UGC 审计入口 |

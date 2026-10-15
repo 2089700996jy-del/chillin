@@ -156,9 +156,8 @@ npm run bump:minor
 
 * **密码**：PBKDF2-SHA256，10 万次迭代 + 每用户 16 字节随机盐
 * **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
-* **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 外链解析 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
-* **输入与出站**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探、外链解析 SSRF 防护（含 IPv6 映射 / NAT64 / 6to4）
-* **出站限长与隐私**：外链解析响应体按 512KB 截断（Microlink 兜底 128KB），并可用 `LINK_ENRICH_MICROLINK=false` 彻底关闭第三方兜底
+* **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
+* **输入**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探
 * **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`_headers`](_headers) 与 `workers/src/security.js`
 * **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`public/js/trusted-types.js`](public/js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；CSP **已强制启用** `require-trusted-types-for 'script'`，绕过 `setHtml()` 的赋值会被浏览器直接拒绝
 

@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T15:25:41.509Z · 提交数：322
+> 生成时间：2026-10-15T15:32:24.753Z · 提交数：324
 
 ## 2026-10-15
 
@@ -19,10 +19,12 @@
 
 ### ♻️ 重构
 
+- **media**: remove the xiaoyuzhou-specific link parsing pipeline
 - **feeds**: remove audio preview player from link cards
 
 ### 🔧 杂务
 
+- **repo**: prune dead skill references, drop the over-broad *.txt ignore and sync the 26-module docs
 - **skills**: retain r2 and core cloudflare references while pruning enterprise bloat
 - **skills**: vendor conservative-code-edits, function-testing and the Cloudflare skill pack
 - **repo**: remove dead audioUrl binding and block releases on unapplied D1 migrations

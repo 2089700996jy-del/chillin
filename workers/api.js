@@ -35,7 +35,6 @@ import { ensureSoftDeleteSchema } from './src/garden-shared.js';
 import {
     handleUpload,
     handleFileView,
-    handleLinkParse
 } from './src/garden-media.js';
 
 import {
@@ -77,7 +76,7 @@ import {
 } from './src/garden-echo.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.96';
+const APP_VERSION = '2.5.97';
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
@@ -123,12 +122,6 @@ async function router(path, method, request, env, ctx) {
     if (path.startsWith('/api/file/') && method === 'GET') {
         const fileId = path.replace('/api/file/', '');
         return handleFileView(fileId, request, db, authenticate);
-    }
-
-    if (path === '/api/link/parse' && method === 'POST') {
-        const linkUserId = await authenticate(request, db);
-        if (!linkUserId) return jsonResponse({ error: '未登录或登录已过期' }, 401);
-        return handleLinkParse(request, env, db, linkUserId);
     }
 
     // ==================== 鉴权闸门（以下路由全量要求登录） ====================
