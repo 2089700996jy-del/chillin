@@ -113,25 +113,11 @@ function renderFeeds() {
 
             // Auto enrich unparsed links or plain hostnames (e.g. historical posts)
             const isUnresolvedXyz = targetUrl.includes('xiaoyuzhoufm.com') && (title === 'www.xiaoyuzhoufm.com' || title === 'xiaoyuzhoufm.com' || title === '小宇宙播客单集' || !meta?.cover);
-            const isUnresolvedPodcast = (targetUrl.includes('/feed') || targetUrl.includes('/rss') || targetUrl.includes('.xml') || targetUrl.includes('podcasts.apple.com')) && !audioUrl;
-            if (extracted && (!meta || isUnresolvedXyz || isUnresolvedPodcast)) {
+            if (extracted && (!meta || isUnresolvedXyz)) {
                 if (!feed._enriching && !feed._enrichFailed) {
                     pendingEnrichFeeds.push({ feed, url: extracted.normalized });
                 }
             }
-
-            const actionText = audioUrl ? '播客原链' : '链接速览';
-            const audioHtml = audioUrl ? `
-                <div class="rich-link-audio-wrap">
-                    <div class="rich-link-audio-header">
-                        <span class="rich-link-audio-badge">
-                            <span class="audio-badge-dot"></span>
-                            <span>节目音频试听</span>
-                        </span>
-                    </div>
-                    <audio controls preload="none" src="${escapeHtml(resolveAssetUrl(audioUrl))}" class="rich-link-audio-player"></audio>
-                </div>
-            ` : '';
 
             linkHtml = `
                 <div class="rich-link-card">
@@ -148,12 +134,11 @@ function renderFeeds() {
                                 <span class="platform-icon">${escapeHtml(platformIcon)}</span>
                                 <span class="platform-name">${escapeHtml(platformName)}</span>
                                 <span class="platform-divider">|</span>
-                                <span class="platform-action">${escapeHtml(actionText)}</span>
+                                <span class="platform-action">链接速览</span>
                                 <svg class="platform-arrow" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
                             </span>
                         </div>
                     </a>
-                    ${audioHtml}
                 </div>
             `;
         }
@@ -220,8 +205,8 @@ function renderFeeds() {
             }).then(parseRes => {
                 if (parseRes) {
                     // 外链兜底解析已收敛到 Worker（浏览器直连第三方会被 CSP connect-src 拦截）
-                    // Only update if we ACTUALLY got a useful title, cover or audio
-                    if (parseRes.cover || parseRes.audioUrl || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
+                    // Only update if we ACTUALLY got a useful title or cover
+                    if (parseRes.cover || (parseRes.title && parseRes.title !== 'www.xiaoyuzhoufm.com' && parseRes.title !== parseRes.url)) {
                         feed.summary = JSON.stringify(parseRes);
                         if (parseRes.cover) feed.media_url = parseRes.cover;
                         feed.updated_at = getEast8Time();
