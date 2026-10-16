@@ -1,6 +1,6 @@
 # Chillin 数字花园
 
-> 一个**零构建**的个人「数字花园」：把随手记、周记、笔记、收藏、提示词、TXT 阅读与 AI 记忆回响收在一处，数据存在自己的 Cloudflare D1 里。
+> 一个**零构建**的个人「数字花园」：把随手记、周记、笔记、收藏、提示词、TXT 阅读与 AI 记忆回响收在一处，结构化数据存在自己的 Cloudflare D1 里，图片与书库文件存在 Cloudflare R2 里。
 
 * 线上前端（Cloudflare Pages）：<https://chillin-bfc.pages.dev>
 * 线上后端（Cloudflare Worker）：<https://chillin-api.2089700996jy.workers.dev>
@@ -41,7 +41,7 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
 workers/src/        security / auth / garden / rag / llm / audit
-migrations/         D1 迁移 0001–0019（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步）
+migrations/         D1 迁移 0001–0021（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步、图片元数据/R2 搬迁、阅读器云端书库）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
@@ -68,6 +68,9 @@ npx wrangler dev
 ## 部署
 
 ```bash
+# 0) R2 对象存储（首次部署必须：图片二进制、阅读器书籍正文与备份快照都放这里）
+npx wrangler r2 bucket create chillin-media
+
 # 1) 远端数据库迁移
 npx wrangler d1 migrations apply DB --remote
 
@@ -83,6 +86,14 @@ git push origin main
 ```
 
 `wrangler.toml` 中 `ALLOW_REGISTRATION = "false"` 表示**注册默认关闭**（个人实例）；需要开放注册时改为 `"true"`。
+
+> **升级顺序**：R2 建桶 → D1 迁移 → `npx wrangler deploy` → 推送前端。把二进制搬出 D1 是一次性维护动作，可随时执行（未搬迁的历史行仍从 D1 BLOB 读取，无需停机）：
+
+```bash
+node scripts/migrate-files-to-r2.mjs --dry-run    # 预演：列出待搬迁图片与目标对象键
+node scripts/migrate-files-to-r2.mjs             # 实际搬迁并回填 r2_key/size
+node scripts/migrate-files-to-r2.mjs --clear-data # 确认无误后清空 D1 里的 BLOB，彻底瘦身
+```
 
 ### Pages 项目设置（远端状态，不在本仓库里）
 
@@ -103,11 +114,13 @@ git push origin main
 D1 是唯一的数据源，建议每天导出一次快照（脚本见 [scripts/backup-d1.mjs](scripts/backup-d1.mjs)）：
 
 ```bash
-npm run backup                # 导出远端库 → backups/chillin-d1-<UTC>.sql.gz（默认保留最近 14 份）
-npm run backup -- --keep 30   # 自定义保留份数
+npm run backup                # 导出远端库 → backups/chillin-d1-<UTC>.sql.gz（本地保留 14 份 + 上传 R2 一份）
+npm run backup -- --keep 30   # 自定义本地保留份数
+npm run backup -- --no-r2     # 只做本地快照，不上传 R2
 ```
 
 * `backups/` 已写入 `.gitignore`，**绝不会被提交**（快照内含密码哈希与全部内容）。
+* 云端副本存在 R2 的 `backups/` 前缀下，由 Worker 每小时定时任务清理：**最新 3 份永久保留**，其余超过 30 天自动删除；桶名可用 `CHILLIN_R2_BUCKET` 覆盖。上传失败（未登录/桶不存在）只告警，不影响本地快照。
 * 计划任务示例（Windows）：
   `schtasks /create /tn "Chillin D1 Backup" /tr "cmd /c cd /d E:\Chillin && npm run backup" /sc daily /st 03:30`
 * 恢复：`npx wrangler d1 execute DB --remote --file backups/chillin-d1-<时间戳>.sql`（文件含建表语句，执行前请确认目标库）。
@@ -134,7 +147,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 
 | 文件 | 覆盖范围 |
 | :--- | :--- |
-| [`tests/security.test.mjs`](tests/security.test.mjs) | 密码/令牌哈希、CSP 哈希与第三方域、共享限流与降级、SSRF（IPv4/IPv6/NAT64/6to4）、代理 IP 取信、响应限长 |
+| [`tests/security.test.mjs`](tests/security.test.mjs) | 密码/令牌哈希、CSP 哈希与第三方域、共享限流与降级、代理 IP 取信、响应限长 |
 | [`tests/sync.test.mjs`](tests/sync.test.mjs) | 时间格式解析、LWW 合并、脏数据选择与 id 补全 |
 | [`tests/rag.test.mjs`](tests/rag.test.mjs) | 分词、停用词、时间范围解析、打分 |
 | [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
@@ -142,8 +155,11 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开 |
 | [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、热力图（真实 SQLite） |
 | [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出（真实 SQLite） |
+| [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
+| [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象 |
+| [`tests/router.test.mjs`](tests/router.test.mjs) | 网关级接线：书库 CRUD、图片上传与令牌下发、未知子路径 404（走真实会话 Cookie） |
 
-> 后两个文件用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
+> 标注「真实 SQLite」的用例用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
 
 发布时用脚本联动 6 处版本号（`package.json`、`public/version.json`、`public/js/version.js`、`public/sw.js`、`public/index.html`、`workers/api.js`），**不要手改单个文件**：
 

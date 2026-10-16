@@ -21,7 +21,7 @@
 
 ## 2. 后端 Worker 模块化架构
 
-后端运行在 **Cloudflare Workers (ESM)** 平台，入口由 `wrangler.toml` 指定为 `workers/api.js`，数据库为 **Cloudflare D1 (SQLite)**。
+后端运行在 **Cloudflare Workers (ESM)** 平台，入口由 `wrangler.toml` 指定为 `workers/api.js`，数据库为 **Cloudflare D1 (SQLite)**，对象存储为 **Cloudflare R2**（绑定 `MEDIA` → 桶 `chillin-media`：图片二进制、阅读器书籍正文、D1 备份快照；D1 只保存元数据）。
 
 ### 2.1 网关调度入口严格瘦身
 * **入口仅限调度**：[`workers/api.js`](file:///d:/7/chillin/workers/api.js) 仅作为路由网关、CORS 预检、鉴权闸门和定时 Cron 调度触发器；
@@ -32,9 +32,12 @@
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
-| [`workers/src/security.js`](file:///d:/7/chillin/workers/src/security.js) | 安全核心防线 | PBKDF2 强哈希、时序安全比对、图片二进制魔数嗅探、SSRF 14组 CIDR 校验、限流器。 |
+| [`workers/src/security.js`](file:///d:/7/chillin/workers/src/security.js) | 安全核心防线 | PBKDF2 强哈希、时序安全比对、图片二进制魔数嗅探、限流器（服务端出站抓取与 SSRF 校验已于 v2.5.97 随外链解析功能移除）。 |
 | [`workers/src/auth.js`](file:///d:/7/chillin/workers/src/auth.js) | 账号鉴权与会话 | 注册、登录、登出、Session 校验与签发、Web Push 订阅。 |
-| [`workers/src/garden.js`](file:///d:/7/chillin/workers/src/garden.js) | 数字花园资产领域 | 周记、笔记、随手记、收藏、提示词 CRUD、聚合增量拉取 `/api/sync/pull`、批量推送。 |
+| [`workers/src/garden-resources.js`](file:///d:/7/chillin/workers/src/garden-resources.js) | 数字花园资产领域 | 周记、笔记、随手记、收藏、提示词 CRUD 与软删、阅读进度。 |
+| [`workers/src/garden-sync.js`](file:///d:/7/chillin/workers/src/garden-sync.js) | 增量同步与统计 | 聚合增量拉取 `/api/sync/pull`、批量脏数据推送、热力图、备份邮件。 |
+| [`workers/src/garden-media.js`](file:///d:/7/chillin/workers/src/garden-media.js) | 媒体存储领域 | 图片上传（二进制写 R2，D1 只存元数据）、带访问令牌与 Range 的下发、R2 备份快照保留策略。 |
+| [`workers/src/garden-books.js`](file:///d:/7/chillin/workers/src/garden-books.js) | 阅读器云书库 | 书籍正文存 R2、书目元数据 CRUD、跨设备下载与软删墓碑。 |
 | [`workers/src/rag.js`](file:///d:/7/chillin/workers/src/rag.js) | 记忆回响 RAG 引擎 | 自然语言时间提取、停用词过滤、分词、多轮上下文继承、全资产多特征加权打分。 |
 | [`workers/src/llm.js`](file:///d:/7/chillin/workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式 SSE 协议、敏感词合规审查。 |
 | [`workers/src/audit.js`](file:///d:/7/chillin/workers/src/audit.js) | 自动化安全与审计 | 定时 Cron UGC 违规扫描与隔离区备份、过期 Session 自动清理。 |

@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-16T00:34:12.582Z · 提交数：327
+> 生成时间：2026-10-16T14:44:11.028Z · 提交数：328
+
+## 2026-10-16
+
+### 🐛 缺陷修复
+
+- **sync**: close cursor gaps and refresh memory candidates
 
 ## 2026-10-15
 

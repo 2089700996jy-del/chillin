@@ -35,7 +35,15 @@ import { ensureSoftDeleteSchema } from './src/garden-shared.js';
 import {
     handleUpload,
     handleFileView,
+    pruneOldBackups,
 } from './src/garden-media.js';
+
+import {
+    handleListReaderBooks,
+    handlePutReaderBook,
+    handleGetReaderBook,
+    handleDeleteReaderBook,
+} from './src/garden-books.js';
 
 import {
     handleGetWeeklies,
@@ -76,7 +84,7 @@ import {
 } from './src/garden-echo.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.99';
+const APP_VERSION = '2.5.100';
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
@@ -121,7 +129,7 @@ async function router(path, method, request, env, ctx) {
 
     if (path.startsWith('/api/file/') && method === 'GET') {
         const fileId = path.replace('/api/file/', '');
-        return handleFileView(fileId, request, db, authenticate);
+        return handleFileView(fileId, request, env, db, authenticate);
     }
 
     // ==================== 鉴权闸门（以下路由全量要求登录） ====================
@@ -132,7 +140,7 @@ async function router(path, method, request, env, ctx) {
     await ensureSoftDeleteSchema(db);
 
     // ── 账号与文件 ──
-    if (path === '/api/upload' && method === 'POST') return handleUpload(request, db, userId);
+    if (path === '/api/upload' && method === 'POST') return handleUpload(request, env, db, userId);
     if (path === '/api/auth/logout' && method === 'POST') return handleLogout(request, db);
     if (path === '/api/auth/logout-all' && method === 'POST') return handleLogoutAll(request, db, userId);
     if (path === '/api/auth/refresh' && method === 'POST') return handleRefreshSession(request, env, db, userId);
@@ -177,6 +185,13 @@ async function router(path, method, request, env, ctx) {
     // ── 阅读器进度 (Reader Progress) ──
     if (path === '/api/reader/progress' && method === 'GET') return handleGetReaderProgress(db, userId);
     if (path === '/api/reader/progress' && method === 'POST') return handlePostReaderProgress(request, db, userId);
+
+    // ── 阅读器书库云同步 (Reader Books) ── 正文存 R2，D1 只存书目
+    if (path === '/api/reader/books' && method === 'GET') return handleListReaderBooks(db, userId);
+    if (path === '/api/reader/books' && method === 'POST') return handlePutReaderBook(request, env, db, userId);
+    const readerBookMatch = path.match(/^\/api\/reader\/books\/(.+)$/);
+    if (readerBookMatch && method === 'GET') return handleGetReaderBook(readerBookMatch[1], env, db, userId);
+    if (readerBookMatch && method === 'DELETE') return handleDeleteReaderBook(readerBookMatch[1], env, db, userId);
 
     // ── 增量同步与批处理 (Sync) ──
     if (path === '/api/sync/pull' && method === 'GET') return handleSyncPull(url, db, userId);
@@ -252,6 +267,12 @@ export default {
             console.log(`[rate-limit] scheduled cleanup: removed=${pruned}`);
         } catch (err) {
             console.error('[rate-limit] scheduled cleanup failed:', err);
+        }
+        try {
+            const pruned = await pruneOldBackups(env);
+            console.log(`[r2] backup retention: scanned=${pruned.scanned} deleted=${pruned.deleted}`);
+        } catch (err) {
+            console.error('[r2] backup retention failed:', err);
         }
         try {
             const audits = await cleanupAuditLogs(env.DB);

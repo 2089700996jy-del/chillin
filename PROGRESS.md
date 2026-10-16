@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-16。供后续会话快速接续。当前前端/Worker：**v2.5.99**（推送后以 `public/js/version.js` 为准）。
+> 更新时间：2026-10-16。供后续会话快速接续。当前前端/Worker：**v2.5.100**（Worker 已部署、D1 迁移 0020/0021 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,8 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0019`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0021`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
 - 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `public/js/version.js`、`public/version.json`、Worker、`public/sw.js`、`public/index.html`
@@ -53,7 +54,8 @@
 | `workers/src/security.js` | 安全核心：PBKDF2、魔数嗅探、限流、时序比较；服务端出站抓取已移除，若重引入须恢复 SSRF 校验 |
 | `workers/src/auth.js` | 认证会话：注册、登录、登出、用户信息、Web Push 订阅 |
 | `workers/src/garden-shared.js` | 行格式化、归属校验、软删墓碑查询与惰性 schema 守卫 |
-| `workers/src/garden-media.js` | 图片上传、鉴权文件读取 |
+| `workers/src/garden-media.js` | 图片上传（二进制入 R2，D1 只存元数据）、带令牌与 Range 的下发、R2 备份快照保留策略 |
+| `workers/src/garden-books.js` | 阅读器云端书库：TXT 正文入 R2、书目元数据、跨设备下载与软删墓碑 |
 | `workers/src/garden-resources.js` | 周记/笔记/收藏/提示词/随手记 的 CRUD 与软删 |
 | `workers/src/garden-sync.js` | 聚合拉取 `/api/sync/pull`、脏数据批量推送、热力图 |
 | `workers/src/garden-echo.js` | AI 回响卡片、周期回顾、Web Push 通知、UGC 审计入口 |
@@ -62,6 +64,31 @@
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
 
 ## 近期已完成（摘要）
+
+### Cloudflare R2 接入：图片迁出 D1、备份上云与阅读器云端书库（v2.5.99 → v2.5.100）
+
+**P0 图片二进制迁往 R2**
+1. `wrangler.toml` 新增 `[[r2_buckets]]` 绑定 `MEDIA` → 桶 `chillin-media`；部署前必须先 `npx wrangler r2 bucket create chillin-media`，否则上传接口会退化为 D1 写入。
+2. `migrations/0020_files_r2_metadata.sql`：重建 `files` 表——`data` 改为可空，新增 `r2_key` / `size`，重建用户索引并新增 `r2_key` 索引（迁移脚本据此筛选待搬运行）。
+3. `garden-media.js`：`handleUpload(request, env, db, userId)` 先把二进制 `put` 到 `uploads/<userId>/<id>`，D1 只写元数据；未绑定 R2 时回退旧的 D1 BLOB 写入。`handleFileView(fileId, request, env, db, authenticate)` 优先读 R2，支持 **Range → 206 + Content-Range** 与 `ETag`；`r2_key` 为空的历史行继续走 D1 BLOB，因此迁移可随时进行、无需停机。
+4. `scripts/migrate-files-to-r2.mjs`：一次性存量搬迁（远端 `hex(data)` → `r2 object put` → 回填 `r2_key/size`），幂等可重跑，支持 `--dry-run` 预演，确认无误后加 `--clear-data` 清空 D1 BLOB 真正给库瘦身。
+
+**P1 备份快照进 R2**
+5. `scripts/backup-d1.mjs` 默认把 `backups/chillin-d1-<UTC>.sql.gz` 一并上传到 R2（`--no-r2` 可关闭；上传失败只告警，本地快照依然有效）。
+6. 过期快照由 Worker 每小时定时任务 `pruneOldBackups()` 清理：最新 3 份永不删除，其余超过 30 天的删除——从此「本机磁盘坏了」不再等于数据丢失。
+
+**P2 阅读器云端书库**
+7. `migrations/0021_reader_books.sql`：`reader_books(user_id, book_key, title, author, total_chapters, size, r2_key, is_deleted, updated_at)`，`UNIQUE(user_id, book_key)` + 用户维度索引。
+8. `workers/src/garden-books.js`（新模块）：`GET/POST /api/reader/books`、`GET/DELETE /api/reader/books/<bookKey>`；正文存 `books/<userId>/<sha256(bookKey)>.txt`（避免中文书名直接进对象键），D1 存书目；删除写软删墓碑并回收 R2 对象，按 `user_id` 严格隔离。
+9. `js/reader.js`：导入时后台把正文推到云端；书架先画本地、再后台补云端书目，本地没有的书显示为 ☁️「点击下载到本机」卡片，点开即下载落库并直接进入阅读；本地删除同步删云端。离线/未登录时云端部分静默为空，不影响本地阅读。
+10. 质量门禁：新增 `tests/fake-r2.mjs` 内存 R2 适配器与 `media`（9 例）、`books`（5 例）、`router`（3 例，网关级接线：真实会话 Cookie 走 `/api/reader/books` CRUD 与 `/api/upload` → `/api/file/<id>?t=` 全链路）用例，覆盖 R2 读写、Range/206、令牌拒绝、D1 兼容回退、无绑定兜底写入、备份保留策略、跨用户越权与路由接线；**15 套件 / 98 用例**（本次新增 17 例）；`workers/api.js` 284 行（红线 300）。
+
+**上线实录（2026-10-16 当天）**
+11. **线上验收**：`/api/health` 与 `/api/app-version` 均为 v2.5.100；`wrangler deploy` 版本 ID `03bc4890`（`env.MEDIA` 绑定生效）；存量 **21 张 / 4.7 MB** 图片搬迁完成，逐张复验 HTTP **200** 且 `size_download` 与 D1 记录逐字节一致，`Range: bytes=0-99` 返回 **206 + `Content-Range: bytes 0-99/146738`** + `ETag`；`npm run backup` 实测把 5.16 MB 快照上传到 R2 `backups/`（P1 端到端通过）。D1 里的 BLOB **暂时保留**，确认无误后可用 `node scripts/migrate-files-to-r2.mjs --clear-data` 释放。
+12. **三个只在真实环境暴露的坑**（都已在代码里修掉）：
+    - **`r2 object put` 遇本地代理必失败**：`HTTP_PROXY=127.0.0.1:7897` 会让 R2 传输端点（`*.r2.cloudflarestorage.com`）报 `fetch failed`，需给子进程补 `NO_PROXY=.r2.cloudflarestorage.com,cloudflarestorage.com`（`backup-d1.mjs` 与 `migrate-files-to-r2.mjs` 已内置）。
+    - **Windows 参数拆词**：`execFileSync('npx', args, { shell: true })` 会按空格把 SQL 再拆一遍，迁移脚本改为逐参数加引号；另加 3 次重试，避免几分钟的迁移被一次网络抖动打断（也因此支持中断后续跑）。
+    - **R2 整对象读取也回传 `range` 元信息**：原实现据此把普通 GET 标成 `206 Partial Content`（线上实测发现），现改为**只有客户端发了 `Range` 才走 206**；`tests/fake-r2.mjs` 同步改为回传 range 元信息，让该行为被回归用例守住。
 
 ### 外链解析功能移除、SSRF 工具清理与文档同步（v2.5.95 → v2.5.98）
 
@@ -152,9 +179,12 @@
 
 ```bat
 cd chillin
-npx wrangler d1 migrations list chillin-db --remote
+npx wrangler login                           :: 凭据过期时先登录（非交互环境无法自动刷新）
+npx wrangler r2 bucket create chillin-media  :: 首次部署 R2 绑定前必须先建桶
+npx wrangler d1 migrations apply DB --remote :: 先迁移再部署（0020/0021 是新接口的 schema 前提）
 npx wrangler deploy
-git push origin main
+node scripts/migrate-files-to-r2.mjs --dry-run :: 存量图片搬迁预演；确认后去掉 --dry-run，全部成功可加 --clear-data
+git push origin main                         :: 触发 Pages 构建（前端后于 Worker 上线）
 ```
 
 Secrets（勿进仓）：`LLM_API_KEY`、`VAPID_PRIVATE_KEY` 等。

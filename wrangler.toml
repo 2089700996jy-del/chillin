@@ -4,6 +4,12 @@ main = "workers/api.js"
 compatibility_date = "2026-10-01"
 compatibility_flags = ["nodejs_compat"]
 
+# R2 对象存储 — 图片二进制与 D1 备份快照的存放地（D1 只保留元数据）
+# 部署前需先创建桶：npx wrangler r2 bucket create chillin-media
+[[r2_buckets]]
+binding = "MEDIA"
+bucket_name = "chillin-media"
+
 # D1 数据库 — 部署后需要把 database_id 替换为实际值
 [[d1_databases]]
 binding = "DB"

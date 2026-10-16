@@ -2,7 +2,7 @@
 import { escapeHtml, showToast, confirmDialog } from './utils.js';
 import { actions } from './actions.js';
 import { setHtml } from './trusted-types.js';
-import { apiRequest } from './api.js';
+import { apiRequest, fetchWithFallback } from './api.js';
 import { state } from './state.js';
 
 /**
@@ -223,6 +223,43 @@ function extractChapterContent(text, ch) {
 }
 
 // ── Import ──
+/** 把正文切章后写入本地 IndexedDB（文件导入与云端下载共用同一套落库逻辑） */
+async function saveBookToLocalDB(text, meta, onProgress) {
+    const chapters = parseChapters(text);
+    if (!chapters.length) { showToast('未检测到章节！', 'warn'); return null; }
+
+    const totalChapters = chapters.length;
+    const bookId = 'book_' + Date.now();
+    // 云端下发时沿用原指纹，保证同一本书在各设备上的 bookKey 完全一致
+    const bookKey = meta.bookKey || computeBookKey({ title: meta.title, totalChapters });
+    await rdbPut('books', {
+        id: bookId, bookKey: bookKey, title: meta.title, author: meta.author,
+        fileName: meta.fileName, totalChapters: totalChapters,
+        groupCount: Math.ceil(totalChapters / 200), createdAt: Date.now()
+    });
+
+    const BATCH = 80;
+    for (let i = 0; i < chapters.length; i += BATCH) {
+        if (onProgress) onProgress(i, chapters.length);
+        const batch = chapters.slice(i, i + BATCH);
+        const tx = (await openReaderDB()).transaction('chapters', 'readwrite');
+        const store = tx.objectStore('chapters');
+        for (let j = 0; j < batch.length; j++) {
+            const ch = batch[j];
+            store.put({
+                id: bookId + '_' + (i + j),
+                bookId: bookId, index: i + j,
+                title: ch.title,
+                content: extractChapterContent(text, ch),
+                groupIndex: ch.groupIndex
+            });
+        }
+        await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+    }
+
+    return { id: bookId, bookKey: bookKey, title: meta.title, author: meta.author, totalChapters: totalChapters };
+}
+
 async function importBook(file) {
     const progressEl = document.getElementById('import-progress');
     const progressText = document.getElementById('import-progress-text');
@@ -233,8 +270,6 @@ async function importBook(file) {
         progressText.textContent = '正在解码文本...';
         const text = decodeBuffer(buf);
         progressText.textContent = '正在解析章节...';
-        const chapters = parseChapters(text);
-        if (!chapters.length) { showToast('未检测到章节！', 'warn'); progressEl.style.display = 'none'; return; }
 
         let bookTitle = file.name.replace(/\.\w+$/, '');
         let bookAuthor = '未知作者';
@@ -254,38 +289,19 @@ async function importBook(file) {
             }
         }
 
-        const bookId = 'book_' + Date.now();
-        const totalChapters = chapters.length;
-        const bookKey = computeBookKey({ title: bookTitle, totalChapters });
         progressText.textContent = '正在保存书籍信息...';
-        await rdbPut('books', {
-            id: bookId, bookKey: bookKey, title: bookTitle, author: bookAuthor,
-            fileName: file.name, totalChapters: totalChapters,
-            groupCount: Math.ceil(totalChapters / 200), createdAt: Date.now()
+        const book = await saveBookToLocalDB(text, { title: bookTitle, author: bookAuthor, fileName: file.name }, (i, total) => {
+            progressText.textContent = '正在保存章节 ' + (i + 1) + '/' + total + '...';
         });
+        if (!book) { progressEl.style.display = 'none'; return; }
 
-        const BATCH = 80;
-        for (let i = 0; i < chapters.length; i += BATCH) {
-            progressText.textContent = '正在保存章节 ' + (i + 1) + '/' + chapters.length + '...';
-            const batch = chapters.slice(i, i + BATCH);
-            const tx = (await openReaderDB()).transaction('chapters', 'readwrite');
-            const store = tx.objectStore('chapters');
-            for (let j = 0; j < batch.length; j++) {
-                const ch = batch[j];
-                store.put({
-                    id: bookId + '_' + (i + j),
-                    bookId: bookId, index: i + j,
-                    title: ch.title,
-                    content: extractChapterContent(text, ch),
-                    groupIndex: ch.groupIndex
-                });
-            }
-            await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
-        }
+        progressText.textContent = '正在同步到云端...';
+        // 云端同步失败不影响本地阅读，仅记录日志
+        uploadBookToCloud(book, text).catch((err) => console.warn('[reader] book upload failed', err));
 
         progressEl.style.display = 'none';
         renderBookshelf();
-        showToast('✅ 导入完成！书名：' + bookTitle + '，共 ' + chapters.length + ' 章', 'success');
+        showToast('✅ 导入完成！书名：' + book.title + '，共 ' + book.totalChapters + ' 章', 'success');
     } catch (err) {
         console.error('Import failed:', err);
         progressEl.style.display = 'none';
@@ -293,20 +309,112 @@ async function importBook(file) {
     }
 }
 
-// ── Bookshelf ──
-async function renderBookshelf() {
-    const grid = document.getElementById('bookshelf-grid');
-    const empty = document.getElementById('empty-bookshelf');
+// ── Bookshelf（本地 + 云端） ──
+// 云端书目缓存：本地没有的书先以「云端卡片」出现，点开时才按需下载正文
+let cloudBooks = [];
+
+/** 拉取云端书目（未登录或离线时返回空，不影响本地书架） */
+async function fetchCloudBooks() {
+    if (!state.authToken && !state.cookieSession) { cloudBooks = []; return cloudBooks; }
+    try {
+        const list = await apiRequest('/api/reader/books');
+        cloudBooks = Array.isArray(list) ? list : [];
+    } catch (err) {
+        console.warn('[reader] fetch cloud books failed', err);
+        cloudBooks = [];
+    }
+    return cloudBooks;
+}
+
+/** 把本地导入的正文推到 R2，换设备也能接着读同一本书 */
+async function uploadBookToCloud(book, text) {
+    if (!state.authToken && !state.cookieSession) return false;
+    const params = new URLSearchParams({
+        key: book.bookKey,
+        title: book.title,
+        author: book.author || '',
+        chapters: String(book.totalChapters || 0)
+    });
+    // 正文用纯文本直传，避免 JSON 转义带来的体积膨胀；大文件放宽超时
+    await apiRequest('/api/reader/books?' + params.toString(), {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: text,
+        timeout: 120000
+    });
+    return true;
+}
+
+/** 删除云端书目（本地删除时同步调用，失败只记日志） */
+async function deleteBookFromCloud(bookKey) {
+    // 先乐观地把它移出缓存，删除后书架不会闪现旧卡片
+    cloudBooks = cloudBooks.filter(b => b.book_key !== bookKey);
+    if (!state.authToken && !state.cookieSession) return;
+    try {
+        await apiRequest('/api/reader/books/' + encodeURIComponent(bookKey), { method: 'DELETE' });
+    } catch (err) {
+        console.warn('[reader] cloud book delete failed', err);
+    }
+}
+
+/** 云端独有的书：点开时下载正文 → 落到本地 → 直接进入阅读 */
+async function downloadBookFromCloud(bookKey) {
+    const meta = cloudBooks.find(b => b.book_key === bookKey);
+    if (!meta) { showToast('云端书目已失效，请刷新后重试', 'warn'); return; }
+    const progressEl = document.getElementById('import-progress');
+    const progressText = document.getElementById('import-progress-text');
+    progressEl.style.display = 'block';
+    progressText.textContent = '正在从云端下载《' + meta.title + '》...';
+    try {
+        const res = await fetchWithFallback('/api/reader/books/' + encodeURIComponent(bookKey), {
+            method: 'GET',
+            headers: {
+                Accept: 'text/plain',
+                ...(state.authToken ? { Authorization: 'Bearer ' + state.authToken } : {})
+            }
+        });
+        if (!res.ok) throw new Error('下载失败 (' + res.status + ')');
+        const text = await res.text();
+        const book = await saveBookToLocalDB(text, {
+            title: meta.title,
+            author: meta.author || '未知作者',
+            fileName: meta.title + '.txt',
+            bookKey: bookKey
+        }, (i, total) => { progressText.textContent = '正在保存章节 ' + (i + 1) + '/' + total + '...'; });
+        progressEl.style.display = 'none';
+        if (!book) return;
+        await renderBookshelf();
+        window.openReaderBook(book.id);
+        showToast('☁️ 已下载《' + meta.title + '》', 'success');
+    } catch (err) {
+        progressEl.style.display = 'none';
+        showToast('云端下载失败：' + err.message, 'error');
+    }
+}
+
+/** 删除云端书籍（云端卡片上的 ✕） */
+async function deleteCloudBook(encodedKey) {
+    const bookKey = decodeURIComponent(encodedKey);
+    const meta = cloudBooks.find(b => b.book_key === bookKey);
+    if (!(await confirmDialog('确定从云端删除《' + ((meta && meta.title) || '这本书') + '》吗？'))) return;
+    await deleteBookFromCloud(bookKey);
+    showToast('已从云端删除', 'success');
+    renderBookshelf();
+}
+
+/** 纯渲染：本地书目 + 云端独有的书目 */
+function paintBookshelf(grid, empty, books) {
     const progress = loadReaderProgress();
-    let books = [];
-    try { books = await rdbGetAll('books'); } catch(e) { books = []; }
-    if (!books.length) { setHtml(grid, ''); empty.style.display = 'block'; return; }
+    const localKeys = new Set(books.map(b => b.bookKey || computeBookKey(b)));
+    const cloudOnly = cloudBooks.filter(cb => !localKeys.has(cb.book_key));
+    if (!books.length && !cloudOnly.length) { setHtml(grid, ''); empty.style.display = 'block'; return; }
     empty.style.display = 'none';
     books.sort((a, b) => {
         const pa = progress[a.id], pb = progress[b.id];
         return (pb ? pb.timestamp : 0) - (pa ? pa.timestamp : 0) || b.createdAt - a.createdAt;
     });
-    setHtml(grid, books.map(b => {
+
+    const localCards = books.map(b => {
         const prog = progress[b.id];
         const pct = prog && b.totalChapters ? Math.round((prog.chapterIdx / b.totalChapters) * 100) : 0;
         const lastRead = prog ? '看到第' + (prog.chapterIdx + 1) + '章' : '未开始阅读';
@@ -317,22 +425,47 @@ async function renderBookshelf() {
             '<div class="book-card-author">' + escapeHtml(b.author) + '</div>' +
             '<div class="book-card-progress"><div class="book-card-progress-bar" style="width:' + pct + '%"></div></div>' +
             '<div class="book-card-meta"><span>' + lastRead + '</span><span>' + b.totalChapters + '章</span></div></div>';
-    }).join(''));
+    });
+    const cloudCards = cloudOnly.map(cb => {
+        const encodedKey = encodeURIComponent(cb.book_key);
+        return '<div class="book-card" data-bookid="cloud:' + encodedKey + '">' +
+            '<span class="book-card-delete" data-delete-cloud="' + encodedKey + '">✕</span>' +
+            '<span class="book-card-icon">☁️</span>' +
+            '<div class="book-card-title" title="' + escapeHtml(cb.title || '') + '">' + escapeHtml(cb.title || '') + '</div>' +
+            '<div class="book-card-author">' + escapeHtml(cb.author || '未知作者') + ' · 云端书库</div>' +
+            '<div class="book-card-progress"><div class="book-card-progress-bar" style="width:0%"></div></div>' +
+            '<div class="book-card-meta"><span>点击下载到本机</span><span>' + (cb.total_chapters || 0) + '章</span></div></div>';
+    });
+    setHtml(grid, localCards.concat(cloudCards).join(''));
 
     // Attach event listeners
     grid.querySelectorAll('.book-card').forEach(card => {
         card.addEventListener('click', function(e) {
             if (e.target.closest('.book-card-delete')) return;
-            openReaderBook(this.dataset.bookid);
+            const bookId = this.dataset.bookid || '';
+            // 云端卡片：先把正文下载到本机再打开
+            if (bookId.indexOf('cloud:') === 0) { downloadBookFromCloud(decodeURIComponent(bookId.slice(6))); return; }
+            window.openReaderBook(bookId);
         });
     });
     grid.querySelectorAll('.book-card-delete').forEach(btn => {
         btn.addEventListener('click', function(e) {
             e.preventDefault();
             e.stopPropagation();
-            deleteReaderBook(this.dataset.delete);
+            if (this.dataset.deleteCloud) { deleteCloudBook(this.dataset.deleteCloud); return; }
+            window.deleteReaderBook(this.dataset.delete);
         });
     });
+}
+
+async function renderBookshelf() {
+    const grid = document.getElementById('bookshelf-grid');
+    const empty = document.getElementById('empty-bookshelf');
+    let books = [];
+    try { books = await rdbGetAll('books'); } catch(e) { books = []; }
+    // 先画本地书架，再后台补云端书目：离线或网络慢时首屏依然即时
+    paintBookshelf(grid, empty, books);
+    fetchCloudBooks().then(() => paintBookshelf(grid, empty, books));
 }
 
 // ── Open/Close Reader ──
@@ -622,10 +755,13 @@ document.getElementById('sidebar-chapter-list')?.addEventListener('click', (e) =
 });
 window.deleteReaderBook = async function(bookId) {
     if (!(await confirmDialog('确定删除这本书吗？'))) return;
+    const book = await rdbGet('books', bookId);
     const chapters = await rdbGetAll('chapters');
     for (const ch of chapters) { if (ch.bookId === bookId) await rdbDelete('chapters', ch.id); }
     await rdbDelete('books', bookId);
     deleteReaderProgress(bookId);
+    // 本地删掉后同步删云端副本，避免下次刷新又变回「云端卡片」
+    if (book) await deleteBookFromCloud(book.bookKey || computeBookKey(book));
     renderBookshelf();
 };
 
