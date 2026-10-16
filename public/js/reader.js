@@ -19,6 +19,26 @@ export function decodeBuffer(buf) {
     return new TextDecoder('utf-8', { fatal: false }).decode(buf);
 }
 
+/**
+ * 把本机已存的章节重组成一份可用于补传的正文。
+ *
+ * 背景：导入时原文没有被保留（只存了切好章的正文），所以早年导入的书要补传到云端，
+ * 只能按「章名 + 该章正文」拼回去。每章开头保留章名行，保证换设备下载后仍能被
+ * 阅读器识别成同样多的章节。
+ */
+export function rebuildBookText(chapters) {
+    if (!Array.isArray(chapters) || !chapters.length) return '';
+    return chapters
+        .slice()
+        .sort((a, b) => (a.index || 0) - (b.index || 0))
+        .map((ch) => {
+            const title = ch && ch.title ? String(ch.title) : '';
+            const body = ch && ch.content ? String(ch.content) : '';
+            return title ? title + '\n' + body : body;
+        })
+        .join('\n');
+}
+
 export function initReader() {
 // ── IndexedDB ──
 const DB_NAME = 'chillin_reader_db';
@@ -366,18 +386,60 @@ async function importBook(file) {
 // ── Bookshelf（本地 + 云端） ──
 // 云端书目缓存：本地没有的书先以「云端卡片」出现，点开时才按需下载正文
 let cloudBooks = [];
+// 只有「确实拉到过云端书目」才允许做本机补传判断——否则离线时 cloudBooks=[] 会被误判成「一本都没上云」
+let cloudBooksSynced = false;
 
 /** 拉取云端书目（未登录或离线时返回空，不影响本地书架） */
 async function fetchCloudBooks() {
-    if (!state.authToken && !state.cookieSession) { cloudBooks = []; return cloudBooks; }
+    if (!state.authToken && !state.cookieSession) { cloudBooks = []; cloudBooksSynced = false; return cloudBooks; }
     try {
         const list = await apiRequest('/api/reader/books');
         cloudBooks = Array.isArray(list) ? list : [];
+        cloudBooksSynced = true;
     } catch (err) {
         console.warn('[reader] fetch cloud books failed', err);
         cloudBooks = [];
+        cloudBooksSynced = false;
     }
     return cloudBooks;
+}
+
+// ── 本机书架补传：早年导入（或导入时上传失败）的书只有本机副本，这里把它们补推到云端 ──
+const BACKFILL_MAX_PER_SESSION = 3;   // 每次会话最多补传几本，避免一次性把大文件全推上去
+let backfillDone = 0;
+
+async function backfillLocalBooks(localBooks) {
+    if (!cloudBooksSynced || !localBooks.length || backfillDone >= BACKFILL_MAX_PER_SESSION) return;
+    const cloudKeys = new Set(cloudBooks.map((b) => b.book_key));
+    const pending = localBooks.filter((b) => {
+        const key = b.bookKey || computeBookKey(b);
+        return key && !cloudKeys.has(key);
+    });
+    if (!pending.length) return;
+
+    let uploaded = 0;
+    for (const book of pending) {
+        if (backfillDone + uploaded >= BACKFILL_MAX_PER_SESSION) break;
+        try {
+            const chapters = (await rdbGetAll('chapters')).filter((c) => c.bookId === book.id);
+            if (!chapters.length) continue;
+            const text = rebuildBookText(chapters);
+            if (!text.trim()) continue;
+            console.log('[reader] backfill local book → cloud:', book.title, chapters.length, 'chapters');
+            await uploadBookToCloud(book, text);
+            uploaded++;
+            // 记进云端缓存：同一轮渲染里不会再被当成「缺书」
+            cloudBooks.push({ book_key: book.bookKey || computeBookKey(book), title: book.title, author: book.author, total_chapters: book.totalChapters || chapters.length });
+        } catch (err) {
+            // 补传失败（多半是离线/超时）：本轮停止、书留在下次再试
+            console.warn('[reader] backfill failed, will retry later', err);
+            break;
+        }
+    }
+    if (uploaded) {
+        backfillDone += uploaded;
+        showToast('☁️ 已把 ' + uploaded + ' 本本机书补传到云端', 'success');
+    }
 }
 
 /** 把本地导入的正文推到 R2，换设备也能接着读同一本书 */
@@ -519,7 +581,11 @@ async function renderBookshelf() {
     try { books = await rdbGetAll('books'); } catch(e) { books = []; }
     // 先画本地书架，再后台补云端书目：离线或网络慢时首屏依然即时
     paintBookshelf(grid, empty, books);
-    fetchCloudBooks().then(() => paintBookshelf(grid, empty, books));
+    fetchCloudBooks().then(() => {
+        paintBookshelf(grid, empty, books);
+        // 拉取成功才判断「哪些本机书还没上云」，并把它们补传（每次会话限量）
+        backfillLocalBooks(books);
+    });
 }
 
 // ── Open/Close Reader ──

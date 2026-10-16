@@ -26,7 +26,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { decodeBuffer } = await import('../public/js/reader.js');
+const { decodeBuffer, rebuildBookText } = await import('../public/js/reader.js');
 
 test('Reader - decodeBuffer prioritizes UTF-8 and avoids GBK mojibake on Chinese text', () => {
     const originalText = '这是一个标准 UTF-8 编码的中文长篇小说章节测试。时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。';
@@ -124,4 +124,21 @@ integration('Reader progress - 参数校验、百分比夹紧与跨用户隔离'
     assert.equal(clamped.scroll_percentage, 100, '超过 100 必须夹到 100');
 
     assert.deepEqual(await (await handleGetReaderProgress(db, 10)).json(), [], '不能读到别人的进度');
+});
+test('Reader - rebuildBookText 按章节顺序重组正文并保留章名行', () => {
+    const chapters = [
+        { index: 1, title: '第2章 乙', content: '正文乙' },
+        { index: 0, title: '第1章 甲', content: '正文甲' },
+    ];
+    const text = rebuildBookText(chapters);
+    assert.equal(text, '第1章 甲\n正文甲\n第2章 乙\n正文乙', '必须按 index 排序后再拼接');
+    // 章名行必须保留：补传到云端、换设备下载后仍要能被重新识别成同样多的章节
+    assert.equal((text.match(/^第\d+章/gm) || []).length, 2);
+});
+
+test('Reader - rebuildBookText 容忍缺字段、乱序与空输入', () => {
+    assert.equal(rebuildBookText([]), '');
+    assert.equal(rebuildBookText(null), '');
+    assert.equal(rebuildBookText([{ index: 0, content: '无标题正文' }]), '无标题正文');
+    assert.equal((rebuildBookText([{ title: '第1章' }, { title: '第2章' }]) || '').trim(), '第1章\n\n第2章', '正文缺失时不能抛错');
 });

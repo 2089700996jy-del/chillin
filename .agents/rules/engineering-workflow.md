@@ -34,7 +34,7 @@
 | **路由接线 / 新增接口** | [`tests/router.test.mjs`](file:///d:/7/chillin/tests/router.test.mjs) | 走真实 `workers/api.js` 路由表与真实会话 Cookie，验证 CRUD、上传与令牌下发、未知子路径 404。 |
 | **备份与恢复** | [`tests/backup.test.mjs`](file:///d:/7/chillin/tests/backup.test.mjs) | crc32、ZIP 结构、备份打包内容、Resend 邮件降级、备份守卫状态机。 |
 | **常青主题 / 知识聚合** | [`tests/evergreen.test.mjs`](file:///d:/7/chillin/tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、中文日期与时间跨度解析、目录页生命周期。 |
-| **TXT 阅读器与进度同步** | [`tests/reader.test.mjs`](file:///d:/7/chillin/tests/reader.test.mjs) | UTF-8 优先解码、GBK 兜底（中文不出现乱码）、阅读进度写入保护（更旧写入被拒绝）、百分比夹紧与跨用户隔离。 |
+| **TXT 阅读器与进度同步** | [`tests/reader.test.mjs`](file:///d:/7/chillin/tests/reader.test.mjs) | UTF-8 优先解码、GBK 兜底（中文不出现乱码）、阅读进度写入保护（更旧写入被拒绝）、百分比夹紧与跨用户隔离、`rebuildBookText` 按 index 重组正文并保留章名行（本机书架补传用）。 |
 | **双向链接 / Markdown 渲染** | [`tests/wikilinks.test.mjs`](file:///d:/7/chillin/tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防御、反向链接与摘要高亮、Markdown 图片 / 链接渲染。 |
 
 ---

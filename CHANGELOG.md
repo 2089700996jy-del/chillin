@@ -1,9 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-16T16:21:27.693Z · 提交数：334
+> 生成时间：2026-10-16T16:51:10.430Z · 提交数：335
 
 ## 2026-10-17
+
+### ✨ 新功能
+
+- **reader**: two-way progress merge, offline queue and timestamp-guarded writes
 
 ### 📝 文档
 
