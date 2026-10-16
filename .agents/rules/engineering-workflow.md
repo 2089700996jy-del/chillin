@@ -20,7 +20,7 @@
 
 | 修改范围 | 对应测试文件 | 必须覆盖的验证项 |
 | :--- | :--- | :--- |
-| **密码/鉴权/安全防线** | [`tests/security.test.mjs`](file:///d:/7/chillin/tests/security.test.mjs) | 密码强哈希复杂度、恒定时间比较防时序攻击、图片魔数嗅探、SSRF 14组保留 CIDR 拦截阻断。 |
+| **密码/鉴权/安全防线** | [`tests/security.test.mjs`](file:///d:/7/chillin/tests/security.test.mjs) | 密码强哈希复杂度、恒定时间比较防时序攻击、令牌哈希、CSP 哈希与第三方域策略、共享限流与降级、代理 IP 取信、Trusted Types 收口（服务端出站抓取与 SSRF 校验已于 v2.5.97 随外链解析功能移除）。 |
 | **数据同步/冲突合并** | [`tests/sync.test.mjs`](file:///d:/7/chillin/tests/sync.test.mjs) | 时间戳多格式解析 (`toUpdatedTs`)、双向数据合并、Last-Write-Wins 规则生效验证。 |
 | **AI 记忆回响 (RAG)** | [`tests/rag.test.mjs`](file:///d:/7/chillin/tests/rag.test.mjs) | 停用词准确过滤、自然语言时间范围解析、全表多特征检索加权打分准确率。 |
 | **搜索与命令面板** | [`tests/search.test.mjs`](file:///d:/7/chillin/tests/search.test.mjs) | 关键词命中高亮 (`<mark>`)、大小写不敏感匹配、特殊符号转义与 XSS 防御测试。 |
@@ -28,6 +28,14 @@
 | **领域 CRUD / 同步 / 审计** | [`tests/garden.test.mjs`](file:///d:/7/chillin/tests/garden.test.mjs) | 资源 CRUD、跨用户归属隔离、软删墓碑不可复活、批量增量推送、热力图按用户聚合（基于 `node:sqlite` 真实执行 migrations）。 |
 | **会话与鉴权** | [`tests/auth.test.mjs`](file:///d:/7/chillin/tests/auth.test.mjs) | 会话令牌只存哈希、刷新时轮换、设备列表标记当前会话、单设备吊销与全端退出只影响本账号。 |
 | **架构红线 / 网关瘦身** | [`tests/architecture.test.mjs`](file:///d:/7/chillin/tests/architecture.test.mjs) | `workers/api.js` 300 行红线、各子域模块被路由引用、网关内不得出现 SQL 与 LLM 供应商细节、`/api/health` 必须为公开路由。 |
+| **文档与代码一致性** | [`tests/docs.test.mjs`](file:///d:/7/chillin/tests/docs.test.mjs) | README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、`architecture.md` 模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致（见 §5）。 |
+| **媒体存储 / 图片上传与下发** | [`tests/media.test.mjs`](file:///d:/7/chillin/tests/media.test.mjs) | 图片字节入 R2、`Range` → 206 与 `Content-Range`、访问令牌拒绝、历史 D1 BLOB 兼容、未绑定 R2 时的兜底写入、备份快照保留策略。 |
+| **阅读器云书库** | [`tests/books.test.mjs`](file:///d:/7/chillin/tests/books.test.mjs) | 书目元数据与 R2 正文一致、跨用户隔离、同指纹 upsert 不重复、软删回收对象。 |
+| **路由接线 / 新增接口** | [`tests/router.test.mjs`](file:///d:/7/chillin/tests/router.test.mjs) | 走真实 `workers/api.js` 路由表与真实会话 Cookie，验证 CRUD、上传与令牌下发、未知子路径 404。 |
+| **备份与恢复** | [`tests/backup.test.mjs`](file:///d:/7/chillin/tests/backup.test.mjs) | crc32、ZIP 结构、备份打包内容、Resend 邮件降级、备份守卫状态机。 |
+| **常青主题 / 知识聚合** | [`tests/evergreen.test.mjs`](file:///d:/7/chillin/tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、中文日期与时间跨度解析、目录页生命周期。 |
+| **TXT 阅读器** | [`tests/reader.test.mjs`](file:///d:/7/chillin/tests/reader.test.mjs) | UTF-8 优先解码、GBK 兜底（中文不出现乱码）。 |
+| **双向链接 / Markdown 渲染** | [`tests/wikilinks.test.mjs`](file:///d:/7/chillin/tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防御、反向链接与摘要高亮、Markdown 图片 / 链接渲染。 |
 
 ---
 
@@ -70,6 +78,38 @@ npx wrangler deploy --dry-run
 * `feat(...)`: 新功能或新业务模块（例如 `feat(rag): add prompt retrieval`）
 * `fix(...)`: 修复缺陷或崩溃（例如 `fix(sw): prevent offline fallback to index.html`）
 * `perf(...)`: 性能提升（例如 `perf(sync): single rtt aggregated pull`）
+
+---
+
+## 5. 文档同步硬性要求 (Docs Stay In Sync)
+
+**任何一次代码改动，必须在同一个提交里同步受影响的文档。** 文档漂移等同缺陷：README 曾长期写着「外链自动抓取标题 / 封面」「D1 是唯一的数据源」「19 个迁移」，而这些在代码里早已不存在——这种漂移只能靠机器守住。
+
+### 5.1 改动 ↔ 文档对照表
+
+| 你改了什么 | 必须同批更新 |
+| :--- | :--- |
+| 新增 / 删除 / 重命名 `workers/src/*.js`、`public/js/*.js` 模块 | [`README.md`](../../README.md)（目录结构与模块数）、[`architecture.md`](architecture.md) 领域模块表、本文件 §1.1 覆盖矩阵 |
+| 新增数据库迁移 | [`README.md`](../../README.md)（迁移范围 0001–00XX）、[`architecture.md`](architecture.md) §3 迁移一致性 |
+| 新增 / 删除测试套件 | [`README.md`](../../README.md) 测试布局表、架构报告里的套件与用例数 |
+| 新增 / 移除用户可见功能、接口或存储方案 | [`README.md`](../../README.md) 功能一览与技术栈、[`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](../../docs/Chillin数字花园_产品全景与工程架构分析报告.md) |
+| 版本号变化（每次发布） | [`PROGRESS.md`](../../PROGRESS.md) 版本头与进展记录、架构报告的报告版本与在线基准（6 处锚点由 `npm run bump` 自动联动，**严禁手改单个文件**） |
+| 安全边界变化（CSP / 限流 / 口令策略 / 令牌） | [`security.md`](security.md)、[`public/_headers`](../../public/_headers) 注释、[`README.md`](../../README.md) 安全要点 |
+
+### 5.2 机器校验（不靠自觉）
+
+[`tests/docs.test.mjs`](file:///d:/7/chillin/tests/docs.test.mjs) 把「数字类事实」钉死，`npm test` 会直接卡住漂移：
+
+* `README.md` 里的 `js/` 模块数、`workers/src/` 模块数、迁移范围 `0001–00XX`、测试布局表行数，**必须等于磁盘上的真实数量**；
+* `architecture.md` 的模块表**必须覆盖 `workers/src/` 下的每一个文件**；
+* `package.json` / `PROGRESS.md` / `public/js/version.js` / `public/sw.js` / 架构报告的版本号**必须完全一致**。
+
+报错时请**按失败信息更新文档**，而不是去改断言里的数字。
+
+### 5.3 例外
+
+* `CHANGELOG.md` 由 `npm run changelog` 从 git 历史生成，**不要手改**；历史条目里的旧功能名（如 Microlink、小宇宙）是当时的事实，保持原样；
+* `.agents/skills/` 下的第三方技能包自带文档，不纳入本要求。
 * `refactor(...)`: 代码重构（例如 `refactor(worker): modularize into workers/src`）
 * `docs(...)`: 文档、报告或开发规约变更（例如 `docs: update rules`）
 * `test(...)`: 增加或更新自动化测试用例（例如 `test(search): add highlight xss tests`）

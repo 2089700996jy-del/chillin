@@ -263,10 +263,10 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `ai.js` / `rag.js` / `llm.js`：下沉独立 AI 路由，流式 SSE、多轮继承与 RAG 打分算法；
 * `audit.js`：定时 Cron 自动化内容违规扫描、隔离区备份与审计日志 180 天生命周期清理。
 
-#### ⑤ 原生自动化测试套件 (12 套件 / 78 用例)
+#### ⑤ 原生自动化测试套件 (16 套件 / 105 用例)
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
-* **15 个测试套件**覆盖全栈业务与安全红线：`architecture`、`auth`、`backup`、`books`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
-* **98 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线等；
+* **16 个测试套件**覆盖全栈业务、安全红线与文档一致性：`architecture`、`auth`、`backup`、`books`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
+* **105 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、文档与代码一致性门禁等；
 * **测试全量执行耗时 < 450ms**，保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通。
 
 ---

@@ -143,6 +143,8 @@ npx wrangler deploy --dry-run   # 边缘预打包演练，必须 Exit Code 0
 npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校验 → 版本联动 → 校验提交信息 → 提交推送
 ```
 
+> **文档同步是硬性要求**：改代码必须在同一提交里更新受影响的 README / `PROGRESS.md` / 架构报告 / `.agents/rules/`，其中的「数字类事实」由 [`tests/docs.test.mjs`](tests/docs.test.mjs) 机器校验（对不上直接红灯），详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md) §5。
+
 > `npm run ship` 还会**校验远端 D1 迁移**：只要 `migrations/` 里存在未应用的迁移就直接中断发布。这一步必须有，因为本地测试会用 `fake-d1` 执行**全部**迁移，永远测不出「迁移没应用」这种漂移（`0019_reader_progress.sql` 曾因此漏应用 12 天，线上接口一直报 `no such table`）。离线或缺少凭据时仅告警放行，不会卡死发布。
 
 ### 测试布局
@@ -164,6 +166,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
 | [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码：UTF-8 优先、GBK 兜底（中文不出现乱码） |
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
+| [`tests/docs.test.mjs`](tests/docs.test.mjs) | **文档一致性门禁**：README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、架构规约模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致 |
 
 > 标注「真实 SQLite」的用例用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
 
