@@ -17,7 +17,7 @@
 | 📖 阅读器 | 本地 TXT 导入自动分章（GBK / UTF-8）、章节树、进度记忆、三档主题 |
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
-| 📶 PWA | 20 个模块离线预缓存、断网降级、重连自动补偿同步、版本热更新通知 |
+| 📶 PWA | 27 个前端 ES 模块离线预缓存、断网降级、重连自动补偿同步、版本热更新通知 |
 
 ## 技术栈
 
@@ -36,7 +36,7 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏）
   sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
   manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
-  js/               21 个 ES 模块（auth / sync / feeds / … / trusted-types）
+  js/               27 个 ES 模块（auth / sync / feeds / … / trusted-types）
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
@@ -123,7 +123,7 @@ npm run backup -- --keep 30   # 自定义保留份数
 提交前必须全部通过（详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md)）：
 
 ```bash
-npm test                        # 单测 + 集成测试（当前 79 个用例），必须 0 失败
+npm test                        # 单测 + 集成测试，必须 0 失败
 npx wrangler deploy --dry-run   # 边缘预打包演练，必须 Exit Code 0
 npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校验 → 版本联动 → 校验提交信息 → 提交推送
 ```

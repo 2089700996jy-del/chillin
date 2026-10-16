@@ -139,6 +139,17 @@ export function toUpdatedTs(value) {
     return Number.isFinite(t) ? t : 0;
 }
 
+/**
+ * Overlap the saved cursor by one second so writes sharing D1's second-precision
+ * timestamp are returned again; mergeDataLists safely deduplicates those rows.
+ */
+export function getIncrementalSyncCursor(value) {
+    const timestamp = toUpdatedTs(value);
+    if (!timestamp) return value;
+    const east8 = new Date(timestamp - 1000 + 8 * 60 * 60 * 1000);
+    const pad = (part) => String(part).padStart(2, '0');
+    return `${east8.getUTCFullYear()}-${pad(east8.getUTCMonth() + 1)}-${pad(east8.getUTCDate())} ${pad(east8.getUTCHours())}:${pad(east8.getUTCMinutes())}:${pad(east8.getUTCSeconds())}`;
+}
 export function stampLocalUpdate(item) {
     if (!item || typeof item !== 'object') return item;
     item.updated_at = getEast8Time();
@@ -499,7 +510,7 @@ export async function syncFromApi() {
             const pullParams = new URLSearchParams();
             pullSpecs.forEach(spec => {
                 const cursor = getSyncCursor(spec.resource);
-                if (cursor) pullParams.set(`since_${spec.resource}`, cursor);
+                if (cursor) pullParams.set(`since_${spec.resource}`, getIncrementalSyncCursor(cursor));
             });
             const pullQuery = pullParams.toString();
             aggregatedData = await apiRequest(`/api/sync/pull${pullQuery ? '?' + pullQuery : ''}`);
@@ -529,7 +540,7 @@ export async function syncFromApi() {
             await Promise.all(pullSpecs.map(async (spec) => {
                 try {
                     const lastSync = getSyncCursor(spec.resource);
-                    const url = lastSync ? `${spec.path}?since=${encodeURIComponent(lastSync)}` : spec.path;
+                    const url = lastSync ? `${spec.path}?since=${encodeURIComponent(getIncrementalSyncCursor(lastSync))}` : spec.path;
                     const apiData = await apiRequest(url);
                     if (!Array.isArray(apiData)) return;
                     const { merged, needsUpload } = processApiSyncResult(spec.getList(), apiData, !!lastSync);

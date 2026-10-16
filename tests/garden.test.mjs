@@ -92,6 +92,26 @@ integration('Garden sync - pull returns rows, batch push applies deltas and tomb
     assert.equal(final.weeklies.filter((w) => w.id === 3001 && !w.is_deleted).length, 0);
 });
 
+integration('Garden sync - overlapping cursor recovers rows with the same second timestamp', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const sharedTs = '2026-10-16 12:00:05';
+    await db.prepare(`INSERT INTO quick_feeds (id, user_id, content, type, created_at, updated_at, is_deleted)
+        VALUES (1, 1, 'first row', 'text', ?1, ?1, 0)`).bind(sharedTs).run();
+
+    const initial = await (await handleSyncPull(new URL('https://x/api/sync/pull'), db, 1)).json();
+    assert.equal(initial.feeds.length, 1);
+    const cursor = initial.feeds[0].updated_at;
+
+    await db.prepare(`INSERT INTO quick_feeds (id, user_id, content, type, created_at, updated_at, is_deleted)
+        VALUES (2, 1, 'late row with matching timestamp', 'text', ?1, ?1, 0)`).bind(sharedTs).run();
+    const strictAfter = await (await handleSyncPull(new URL(`https://x/api/sync/pull?since_feeds=${encodeURIComponent(cursor)}`), db, 1)).json();
+    assert.equal(strictAfter.feeds.length, 0, 'strictly-greater query misses a late row tied at the cursor');
+
+    const overlapCursor = '2026-10-16 12:00:04';
+    const recovered = await (await handleSyncPull(new URL(`https://x/api/sync/pull?since_feeds=${encodeURIComponent(overlapCursor)}`), db, 1)).json();
+    assert.equal(recovered.feeds.length, 2, 'one-second overlap returns the tied rows for client-side merge');
+});
 integration('Garden sync - batch pushes > 100 statements safely with D1 chunking', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

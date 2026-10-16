@@ -8,6 +8,8 @@ import {
     scoreMemoryChunk
 } from '../workers/src/rag.js';
 import { formatPrompt } from '../workers/src/garden-shared.js';
+import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
+import { retrieveGardenMemories } from '../workers/src/rag.js';
 
 test('RAG - tokenizeQuery extracts keywords and filters stopwords', () => {
     const tokens = tokenizeQuery('请问关于代码重构和深色模式有哪些想法呢？');
@@ -58,6 +60,21 @@ test('RAG - parseDateToYmd and extractItemDate correctly normalize all date form
     assert.equal(extractItemDate({ created_at: '2026-10-06 15:30:00' }), '2026-10-06');
 });
 
+const integration = sqliteAvailable ? test : test.skip;
+integration('RAG - recently edited older records stay in the bounded candidate window', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    for (let id = 1; id <= 61; id += 1) {
+        const content = id === 1 ? '代码重构的关键想法' : `普通记录 ${id}`;
+        const updated = id === 1 ? '2026-10-16 12:00:00' : `2026-09-${String(30 - Math.floor(id / 3)).padStart(2, '0')} 12:00:00`;
+        await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+            VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6, 0)`)
+            .bind(id, `笔记 ${id}`, content, updated.slice(0, 10), updated, updated).run();
+    }
+
+    const result = await retrieveGardenMemories(db, 1, '代码重构');
+    assert.ok(result.sources.some((source) => source.type === '笔记' && source.id === 1));
+});
 test('RAG - scoreMemoryChunk accurately ranks matching garden chunks', () => {
     const promptItem = {
         type: '提示词',

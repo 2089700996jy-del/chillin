@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-15T15:37:54.669Z · 提交数：325
+> 生成时间：2026-10-16T00:34:12.582Z · 提交数：327
 
 ## 2026-10-15
 
@@ -19,9 +19,14 @@
 
 ### ♻️ 重构
 
+- **security**: delete the SSRF helpers that only tests still used
 - drop the outbound link enrichment feature end to end
 - **media**: remove the xiaoyuzhou-specific link parsing pipeline
 - **feeds**: remove audio preview player from link cards
+
+### 📝 文档
+
+- **progress**: record the link-enrichment removal, the SSRF cleanup and the report sync
 
 ### 🔧 杂务
 

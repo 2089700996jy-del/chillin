@@ -25,7 +25,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { mergeDataLists, toUpdatedTs, makePushedTimestampMap, clearPushedDirtyFlags } = await import('../public/js/sync.js');
+const { mergeDataLists, toUpdatedTs, getIncrementalSyncCursor, makePushedTimestampMap, clearPushedDirtyFlags } = await import('../public/js/sync.js');
 
 test('Sync - toUpdatedTs converts various date formats accurately', () => {
     const tsIso = toUpdatedTs('2026-09-23T10:00:00+08:00');
@@ -38,6 +38,12 @@ test('Sync - toUpdatedTs converts various date formats accurately', () => {
     assert.equal(tsInvalid, 0);
 });
 
+test('Sync - incremental cursor overlaps one second to catch same-second writes', () => {
+    const cursor = '2026-10-16 12:00:05';
+    const overlap = getIncrementalSyncCursor(cursor);
+    assert.equal(toUpdatedTs(overlap), toUpdatedTs(cursor) - 1000);
+    assert.equal(getIncrementalSyncCursor('invalid'), 'invalid');
+});
 test('Sync - mergeDataLists applies Last-Write-Wins and merges unique items', () => {
     const local = [
         { id: 1, title: '本地新周记', updated_at: '2026-09-23 12:00:00', _dirty: true },

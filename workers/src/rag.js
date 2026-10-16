@@ -259,11 +259,11 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
 
     // 并行拉取全域记忆资产（含随手记、笔记、周记、收藏以及新增的提示词库）
     const [feedsRes, notesRes, weekliesRes, bookmarksRes, promptsRes] = await Promise.all([
-        db.prepare('SELECT id, content, created_at, updated_at, tags FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 100').bind(userId).all(),
-        db.prepare('SELECT id, title, content, date, created_at, updated_at FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all(),
-        db.prepare('SELECT id, title, summary, content, date, created_at, updated_at FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all(),
-        db.prepare('SELECT id, title, description, url, created_at, updated_at FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all(),
-        db.prepare('SELECT id, title, project, scene, content, description, tags, created_at, updated_at FROM prompts WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 60').bind(userId).all()
+        db.prepare('SELECT id, content, created_at, updated_at, tags FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 100').bind(userId).all(),
+        db.prepare('SELECT id, title, content, date, created_at, updated_at FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all(),
+        db.prepare('SELECT id, title, summary, content, date, created_at, updated_at FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all(),
+        db.prepare('SELECT id, title, description, url, created_at, updated_at FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all(),
+        db.prepare('SELECT id, title, project, scene, content, description, tags, created_at, updated_at FROM prompts WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all()
     ]);
 
     const corpus = [];

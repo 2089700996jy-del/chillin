@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-15。供后续会话快速接续。当前前端/Worker：**v2.5.98**（推送后以 `public/js/version.js` 为准）。
+> 更新时间：2026-10-16。供后续会话快速接续。当前前端/Worker：**v2.5.99**（推送后以 `public/js/version.js` 为准）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0014`，远端已对齐）
+- 数据库：Cloudflare D1（`migrations/0001`–`0019`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
 - 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `public/js/version.js`、`public/version.json`、Worker、`public/sw.js`、`public/index.html`
@@ -50,7 +50,7 @@
 | 文件 | 职责 |
 |------|------|
 | `workers/api.js` | 调度入口：网关路由、CORS 预检、鉴权闸门、定时任务调度 |
-| `workers/src/security.js` | 安全核心：PBKDF2、魔数嗅探、SSRF 14组 CIDR 校验、限流、时序比较 |
+| `workers/src/security.js` | 安全核心：PBKDF2、魔数嗅探、限流、时序比较；服务端出站抓取已移除，若重引入须恢复 SSRF 校验 |
 | `workers/src/auth.js` | 认证会话：注册、登录、登出、用户信息、Web Push 订阅 |
 | `workers/src/garden-shared.js` | 行格式化、归属校验、软删墓碑查询与惰性 schema 守卫 |
 | `workers/src/garden-media.js` | 图片上传、鉴权文件读取 |
@@ -124,7 +124,7 @@
 ### 离线PWA健壮性、Cmd+K命令面板与媒体体验优化
 1. **Service Worker 离线白屏致命缺陷修复**：
    - 升级 Service Worker 缓存版本至 `chillin-v72`；
-   - 预缓存包含全部 20 个业务子模块（`actions`, `api`, `auth`, `search` 等）；
+   - 预缓存包含 `public/js/` 下全部核心模块（当前 27 个；由 `tests/sw.test.mjs` 自动核对）；
    - 修复当用户断网时，抓取 `/js/*.js` 错误回退到 `/index.html` 导致浏览器抛出 `Uncaught SyntaxError: Unexpected token '<'` 的白屏问题；离线严格匹配已缓存 JS 模块。
 2. **搜索中心升级为现代 Cmd+K 命令面板 (Command Palette)**：
    - 支持快捷指令库：默认或输入 `>` 展示「呼叫 AI 回响」、「快速写随手记」、「新建笔记」、「撰写周记」、「新建提示词」、「新增收藏」、「立即云同步」等高频操作；
