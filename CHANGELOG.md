@@ -1,13 +1,30 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-16T14:44:11.028Z · 提交数：328
+> 生成时间：2026-10-16T16:21:27.693Z · 提交数：334
+
+## 2026-10-17
+
+### 📝 文档
+
+- **progress**: record the docs-consistency gate and the rule completion round
+- **rules**: make doc sync a machine-checked rule and complete the module matrix
+- **readme**: fix the broken _headers link and complete the test-suite table
+- **readme**: align the feature list, module counts, storage model and log prefixes with the R2 architecture
 
 ## 2026-10-16
+
+### ✨ 新功能
+
+- **storage**: move image blobs and reader books to R2 with D1 metadata
 
 ### 🐛 缺陷修复
 
 - **sync**: close cursor gaps and refresh memory candidates
+
+### 📝 文档
+
+- **progress**: record the browser-level R2 upload and cloud-bookshelf verification
 
 ## 2026-10-15
 

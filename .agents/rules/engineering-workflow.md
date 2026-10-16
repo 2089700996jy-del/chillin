@@ -30,11 +30,11 @@
 | **架构红线 / 网关瘦身** | [`tests/architecture.test.mjs`](file:///d:/7/chillin/tests/architecture.test.mjs) | `workers/api.js` 300 行红线、各子域模块被路由引用、网关内不得出现 SQL 与 LLM 供应商细节、`/api/health` 必须为公开路由。 |
 | **文档与代码一致性** | [`tests/docs.test.mjs`](file:///d:/7/chillin/tests/docs.test.mjs) | README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、`architecture.md` 模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致（见 §5）。 |
 | **媒体存储 / 图片上传与下发** | [`tests/media.test.mjs`](file:///d:/7/chillin/tests/media.test.mjs) | 图片字节入 R2、`Range` → 206 与 `Content-Range`、访问令牌拒绝、历史 D1 BLOB 兼容、未绑定 R2 时的兜底写入、备份快照保留策略。 |
-| **阅读器云书库** | [`tests/books.test.mjs`](file:///d:/7/chillin/tests/books.test.mjs) | 书目元数据与 R2 正文一致、跨用户隔离、同指纹 upsert 不重复、软删回收对象。 |
+| **阅读器云书库** | [`tests/books.test.mjs`](file:///d:/7/chillin/tests/books.test.mjs) | 书目元数据与 R2 正文一致、跨用户隔离、同指纹 upsert 不重复、软删回收对象、删书连带清理阅读进度。 |
 | **路由接线 / 新增接口** | [`tests/router.test.mjs`](file:///d:/7/chillin/tests/router.test.mjs) | 走真实 `workers/api.js` 路由表与真实会话 Cookie，验证 CRUD、上传与令牌下发、未知子路径 404。 |
 | **备份与恢复** | [`tests/backup.test.mjs`](file:///d:/7/chillin/tests/backup.test.mjs) | crc32、ZIP 结构、备份打包内容、Resend 邮件降级、备份守卫状态机。 |
 | **常青主题 / 知识聚合** | [`tests/evergreen.test.mjs`](file:///d:/7/chillin/tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、中文日期与时间跨度解析、目录页生命周期。 |
-| **TXT 阅读器** | [`tests/reader.test.mjs`](file:///d:/7/chillin/tests/reader.test.mjs) | UTF-8 优先解码、GBK 兜底（中文不出现乱码）。 |
+| **TXT 阅读器与进度同步** | [`tests/reader.test.mjs`](file:///d:/7/chillin/tests/reader.test.mjs) | UTF-8 优先解码、GBK 兜底（中文不出现乱码）、阅读进度写入保护（更旧写入被拒绝）、百分比夹紧与跨用户隔离。 |
 | **双向链接 / Markdown 渲染** | [`tests/wikilinks.test.mjs`](file:///d:/7/chillin/tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防御、反向链接与摘要高亮、Markdown 图片 / 链接渲染。 |
 
 ---

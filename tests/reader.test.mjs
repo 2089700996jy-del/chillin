@@ -47,3 +47,81 @@ test('Reader - decodeBuffer falls back to GBK for legacy encoded files', () => {
     const decoded = decodeBuffer(gbkBuffer);
     assert.ok(decoded.includes('中文') || decoded.includes('测试'), `GBK text should be decoded properly, got: ${decoded}`);
 });
+// ── 阅读进度接口（P4 写入保护） ──
+import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
+
+const { handleGetReaderProgress, handlePostReaderProgress } = await import('../workers/src/garden-resources.js');
+const integration = sqliteAvailable ? test : test.skip;
+
+const progressPost = (body) => new Request('https://x/api/reader/progress', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+});
+
+integration('Reader progress - 写入后可读回，且保留 client_ts', async () => {
+    const db = createTestDb();
+    await seedUser(db, 9);
+
+    const res = await handlePostReaderProgress(progressPost({
+        book_key: '测试书::3', book_title: '测试书', chapter_index: 5, chapter_title: '第五章', scroll_percentage: 42, client_ts: 1000
+    }), db, 9);
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).applied, true);
+
+    const list = await (await handleGetReaderProgress(db, 9)).json();
+    assert.equal(list.length, 1);
+    assert.equal(list[0].chapter_index, 5);
+    assert.equal(list[0].client_ts, 1000);
+});
+
+integration('Reader progress - 更旧的写入被拒绝，不会把进度拉回（P4）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 9);
+    await handlePostReaderProgress(progressPost({
+        book_key: '测试书::3', book_title: '测试书', chapter_index: 120, scroll_percentage: 80, client_ts: 2000
+    }), db, 9);
+
+    // 落后设备（client_ts 更小）的写入必须被拒：这正是以前会把进度拉回旧位置的场景
+    const stale = await (await handlePostReaderProgress(progressPost({
+        book_key: '测试书::3', book_title: '测试书', chapter_index: 3, scroll_percentage: 0, client_ts: 1000
+    }), db, 9)).json();
+    assert.equal(stale.applied, false, '更旧的写入必须被拒绝');
+    assert.equal((await (await handleGetReaderProgress(db, 9)).json())[0].chapter_index, 120);
+
+    // 同一时间戳仍允许写入（>= 语义，保证同一次进度重推不会互相阻塞）
+    const same = await (await handlePostReaderProgress(progressPost({
+        book_key: '测试书::3', book_title: '测试书', chapter_index: 121, scroll_percentage: 0, client_ts: 2000
+    }), db, 9)).json();
+    assert.equal(same.applied, true);
+});
+
+integration('Reader progress - 未带 client_ts 的旧前端仍可写入（回落到服务端时间）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 9);
+    await handlePostReaderProgress(progressPost({
+        book_key: '测试书::3', book_title: '测试书', chapter_index: 10, scroll_percentage: 0, client_ts: 5000
+    }), db, 9);
+
+    const legacy = await (await handlePostReaderProgress(progressPost({
+        book_key: '测试书::3', book_title: '测试书', chapter_index: 11, scroll_percentage: 3
+    }), db, 9)).json();
+    assert.equal(legacy.applied, true, '未升级的客户端不能写不进去');
+    assert.ok(legacy.client_ts > 5000, '应回落到服务端当前时间戳');
+});
+
+integration('Reader progress - 参数校验、百分比夹紧与跨用户隔离', async () => {
+    const db = createTestDb();
+    await seedUser(db, 9);
+    await seedUser(db, 10);
+
+    assert.equal((await handlePostReaderProgress(progressPost({ book_key: '', book_title: '书' }), db, 9)).status, 400);
+    assert.equal((await handlePostReaderProgress(progressPost({ book_key: '书::1' }), db, 9)).status, 400);
+
+    const clamped = await (await handlePostReaderProgress(progressPost({
+        book_key: '书::1', book_title: '书', chapter_index: 0, scroll_percentage: 250, client_ts: 1
+    }), db, 9)).json();
+    assert.equal(clamped.scroll_percentage, 100, '超过 100 必须夹到 100');
+
+    assert.deepEqual(await (await handleGetReaderProgress(db, 10)).json(), [], '不能读到别人的进度');
+});

@@ -132,24 +132,78 @@ function saveReaderSettings(s) {
     localStorage.setItem('reader_settings', JSON.stringify(s));
 }
 
-async function syncReaderProgressToCloud(book, chapterIdx, scrollPct, chapterTitle) {
+/** 云端进度行的写入时间（毫秒）：新行用 client_ts，历史行退化解析东八区的 updated_at */
+function cloudProgressTs(row) {
+    const ts = Number(row && row.client_ts);
+    if (Number.isFinite(ts) && ts > 0) return ts;
+    const m = String((row && row.updated_at) || '').match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+    if (!m) return 0;
+    return Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4] - 8, +m[5], +m[6]);
+}
+
+// ── P2 离线补推队列：推送失败先落 localStorage，联网 / 打开书 / 下次成功推送时补推 ──
+const PROGRESS_QUEUE_KEY = 'reader_progress_queue';
+
+function loadProgressQueue() {
+    try { return JSON.parse(localStorage.getItem(PROGRESS_QUEUE_KEY) || '{}') || {}; } catch (_) { return {}; }
+}
+function saveProgressQueue(queue) {
+    try { localStorage.setItem(PROGRESS_QUEUE_KEY, JSON.stringify(queue)); } catch (_) { /* 配额满则放弃排队，进度仍在本机 */ }
+}
+/** 同一本书只留最新一条，避免补推时把更旧的进度写回云端 */
+function queueProgress(payload) {
+    const queue = loadProgressQueue();
+    const prev = queue[payload.book_key];
+    if (!prev || Number(payload.client_ts) >= Number(prev.client_ts || 0)) {
+        queue[payload.book_key] = payload;
+        saveProgressQueue(queue);
+    }
+}
+function dropQueuedProgress(bookKey) {
+    const queue = loadProgressQueue();
+    if (queue[bookKey]) { delete queue[bookKey]; saveProgressQueue(queue); }
+}
+
+/** 发一次进度；服务端返回 applied:false 表示比云端旧、被写入保护拒绝，同样算处理完毕（不再重试） */
+async function pushProgress(payload) {
+    return await apiRequest('/api/reader/progress', { method: 'POST', body: JSON.stringify(payload) });
+}
+
+async function syncReaderProgressToCloud(book, chapterIdx, scrollPct, chapterTitle, ts) {
     if (!book || (!state.authToken && !state.cookieSession)) return;
     const bookKey = book.bookKey || computeBookKey(book);
+    const payload = {
+        book_key: bookKey,
+        book_title: book.title,
+        chapter_index: chapterIdx,
+        chapter_title: chapterTitle || '',
+        scroll_percentage: scrollPct,
+        // P4：带上本地时间戳，服务端据此拒绝过期写入（历史行 client_ts=0，本次必然通过）
+        client_ts: Number(ts) || Date.now()
+    };
     try {
-        await apiRequest('/api/reader/progress', {
-            method: 'POST',
-            body: JSON.stringify({
-                book_key: bookKey,
-                book_title: book.title,
-                chapter_index: chapterIdx,
-                chapter_title: chapterTitle || '',
-                scroll_percentage: scrollPct
-            })
-        });
+        await pushProgress(payload);
+        dropQueuedProgress(bookKey);
         const statusEl = document.getElementById('reader-sync-status-text');
         if (statusEl) statusEl.textContent = '已同步至云端 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
     } catch (err) {
-        console.warn('[reader] progress sync failed', err);
+        queueProgress(payload);
+        console.warn('[reader] progress sync failed, queued for retry', err);
+    }
+}
+
+/** 补推积压进度（联网 / 打开书 / 成功推送后调用）；离线时试一条就停，避免连环失败 */
+async function flushQueuedProgress() {
+    if (!state.authToken && !state.cookieSession) return;
+    const pending = Object.values(loadProgressQueue()).sort((a, b) => Number(a.client_ts || 0) - Number(b.client_ts || 0));
+    for (const payload of pending.slice(0, 5)) {
+        try {
+            await pushProgress(payload);
+            dropQueuedProgress(payload.book_key);
+        } catch (err) {
+            console.warn('[reader] queued progress still failing', err);
+            break;
+        }
     }
 }
 
@@ -161,7 +215,7 @@ function scheduleCloudProgressSync() {
         const area = document.getElementById('reader-content-area');
         const pct = area.scrollHeight > area.clientHeight
             ? Math.round((area.scrollTop / (area.scrollHeight - area.clientHeight)) * 100) : 0;
-        syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '');
+        syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '', Date.now());
     }, 2500);
 }
 
@@ -500,11 +554,28 @@ window.openReaderBook = async function(bookId) {
             .then(list => {
                 if (!Array.isArray(list) || !currentBookId || currentBookId !== bookId) return;
                 const cloud = list.find(p => p.book_key === bookKey);
-                if (!cloud) return;
-                const local = loadReaderProgress()[bookId] || { chapterIdx: 0, scrollPct: 0 };
-                const isCloudAhead = cloud.chapter_index > local.chapterIdx
+                if (!cloud) {
+                    // 云端还没有这本书：把本机进度推上去（老设备首次联网也能补齐）
+                    const firstLocal = loadReaderProgress()[bookId] || {};
+                    if (firstLocal.timestamp) syncReaderProgressToCloud(currentBook, firstLocal.chapterIdx || 0, firstLocal.scrollPct || 0, '', firstLocal.timestamp);
+                    return;
+                }
+                const local = loadReaderProgress()[bookId] || { chapterIdx: 0, scrollPct: 0, timestamp: 0 };
+                const localTs = Number(local.timestamp || 0);
+                const remoteTs = cloudProgressTs(cloud);
+                const remoteAhead = cloud.chapter_index > local.chapterIdx
                     || (cloud.chapter_index === local.chapterIdx && cloud.scroll_percentage > (local.scrollPct || 0) + 5);
-                if (isCloudAhead && cloud.chapter_index < chapterMetas.length) {
+                const localAhead = local.chapterIdx > cloud.chapter_index
+                    || (local.chapterIdx === cloud.chapter_index && (local.scrollPct || 0) > cloud.scroll_percentage + 5);
+
+                // 本地更新且本地更靠前 → 回推一次，让云端追上（P4 保证不会被更旧的写入覆盖）
+                if (localAhead && localTs > remoteTs) {
+                    syncReaderProgressToCloud(currentBook, local.chapterIdx, local.scrollPct || 0, '', localTs);
+                }
+
+                // 云端更新（或老数据没有时间戳 client_ts=0）且位置更靠前 → 采纳云端，绝不把读者往回带
+                const acceptCloud = remoteAhead && (remoteTs === 0 || remoteTs >= localTs);
+                if (acceptCloud && cloud.chapter_index < chapterMetas.length) {
                     showToast(`已从云端同步最新进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage}%)`, 'info');
                     loadChapterContent(cloud.chapter_index).then(() => {
                         const contentEl = document.getElementById('reader-content-area');
@@ -516,6 +587,7 @@ window.openReaderBook = async function(bookId) {
                     });
                 }
             })
+            .then(() => flushQueuedProgress())
             .catch(err => console.warn('[reader] fetch cloud progress failed', err));
     }
 };
@@ -534,8 +606,9 @@ function clearReaderSession() {
         const area = document.getElementById('reader-content-area');
         const pct = (area && area.scrollHeight > area.clientHeight)
             ? Math.round((area.scrollTop / (area.scrollHeight - area.clientHeight)) * 100) : 0;
-        saveReaderProgress(currentBookId, { chapterIdx: currentChapterIdx, scrollPct: pct, timestamp: Date.now() });
-        syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '');
+        const leaveTs = Date.now();
+        saveReaderProgress(currentBookId, { chapterIdx: currentChapterIdx, scrollPct: pct, timestamp: leaveTs });
+        syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '', leaveTs);
     }
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
     document.documentElement.classList.remove('in-reader-book');
@@ -761,7 +834,11 @@ window.deleteReaderBook = async function(bookId) {
     await rdbDelete('books', bookId);
     deleteReaderProgress(bookId);
     // 本地删掉后同步删云端副本，避免下次刷新又变回「云端卡片」
-    if (book) await deleteBookFromCloud(book.bookKey || computeBookKey(book));
+    if (book) {
+        const cloudKey = book.bookKey || computeBookKey(book);
+        dropQueuedProgress(cloudKey);   // 队列里若还压着这本书的进度，别在删完之后补推回去
+        await deleteBookFromCloud(cloudKey);
+    }
     renderBookshelf();
 };
 
@@ -899,6 +976,9 @@ document.addEventListener('touchmove', (e) => {
         return;
     }
 }, { passive: false });
+
+    // P2：网络恢复后自动补推断网期间积压的阅读进度
+    window.addEventListener('online', () => { flushQueuedProgress(); });
 
     actions.renderBookshelf = renderBookshelf;
     actions.clearReaderSession = clearReaderSession;

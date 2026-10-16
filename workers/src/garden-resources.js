@@ -302,7 +302,7 @@ export async function handleDeleteFeed(id, db, userId) {
 
 export async function handleGetReaderProgress(db, userId) {
     const res = await db.prepare(
-        'SELECT book_key, book_title, chapter_index, chapter_title, scroll_percentage, updated_at FROM reader_progress WHERE user_id = ?1 ORDER BY updated_at DESC'
+        'SELECT book_key, book_title, chapter_index, chapter_title, scroll_percentage, client_ts, updated_at FROM reader_progress WHERE user_id = ?1 ORDER BY updated_at DESC'
     ).bind(userId).all();
     return jsonResponse(res.results || [], 200);
 }
@@ -318,16 +318,32 @@ export async function handlePostReaderProgress(request, db, userId) {
     const chapterTitle = String(body.chapter_title || body.chapterTitle || '');
     const scrollPercentage = Math.min(100, Math.max(0, Math.round(Number(body.scroll_percentage ?? body.scrollPct ?? 0))));
 
-    await db.prepare(
-        `INSERT INTO reader_progress (user_id, book_key, book_title, chapter_index, chapter_title, scroll_percentage, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))
+    // P4 写入保护：客户端带上本地时间戳 client_ts；没带（未升级的旧前端）就按服务器当前时间算，
+    // 保持「后到者胜」的老行为，避免旧设备完全写不进来。
+    const rawTs = Number(body.client_ts ?? body.clientTs);
+    const clientTs = Number.isSafeInteger(rawTs) && rawTs > 0 ? rawTs : Date.now();
+
+    const result = await db.prepare(
+        `INSERT INTO reader_progress (user_id, book_key, book_title, chapter_index, chapter_title, scroll_percentage, client_ts, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'))
          ON CONFLICT(user_id, book_key) DO UPDATE SET
             book_title = excluded.book_title,
             chapter_index = excluded.chapter_index,
             chapter_title = excluded.chapter_title,
             scroll_percentage = excluded.scroll_percentage,
-            updated_at = datetime('now', '+8 hours')`
-    ).bind(userId, bookKey, bookTitle, chapterIndex, chapterTitle, scrollPercentage).run();
+            client_ts = excluded.client_ts,
+            updated_at = datetime('now', '+8 hours')
+         WHERE excluded.client_ts >= reader_progress.client_ts`
+    ).bind(userId, bookKey, bookTitle, chapterIndex, chapterTitle, scrollPercentage, clientTs).run();
 
-    return jsonResponse({ success: true, book_key: bookKey, chapter_index: chapterIndex, scroll_percentage: scrollPercentage }, 200);
+    // changes = 0 说明本次写入比库里那条更旧、被保护规则拒绝（离线队列补推旧进度时会命中）
+    const applied = Number((result && result.meta && result.meta.changes) || 0) > 0;
+    return jsonResponse({
+        success: true,
+        applied,
+        book_key: bookKey,
+        chapter_index: chapterIndex,
+        scroll_percentage: scrollPercentage,
+        client_ts: clientTs
+    }, 200);
 }

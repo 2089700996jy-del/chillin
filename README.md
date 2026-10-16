@@ -14,7 +14,7 @@
 | 📝 笔记 | 长文撰写、草稿自动暂存与崩溃恢复、批注讨论流 |
 | 🔖 收藏 | 网页 / 图片卡片，一键回跳原站 |
 | 🧩 提示词库 | `{{变量}}` 模板参数化、填参预览、一键复制或直发 AI |
-| 📖 阅读器 | TXT 导入自动分章（GBK / UTF-8）、章节树、进度记忆、三档主题；**云端书库**（v2.5.100）：正文存 R2，换设备打开书架即可下载续读 |
+| 📖 阅读器 | TXT 导入自动分章（GBK / UTF-8）、章节树、三档主题；**云端书库**（v2.5.100）：正文存 R2，换设备打开书架即可下载续读；**进度双向同步**（v2.5.101）：打开时双向合并、断网进度排队补推、服务端按时间戳拒绝过期写入 |
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
 | 📶 PWA | 全部前端模块（26 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知 |
@@ -23,7 +23,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：**Cloudflare D1**（SQLite，21 个迁移 0001–0021，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
+* **数据**：**Cloudflare D1**（SQLite，22 个迁移 0001–0022，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -43,7 +43,7 @@ workers/api.js      网关路由、CORS、鉴权闸门、定时任务
 workers/src/        14 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
                     garden-echo / rag / llm / ai / audit）
-migrations/         D1 迁移 0001–0021（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步、图片元数据/R2 搬迁、阅读器云端书库）
+migrations/         D1 迁移 0001–0022（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
@@ -160,11 +160,11 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、热力图（真实 SQLite） |
 | [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出（真实 SQLite） |
 | [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
-| [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象 |
+| [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象、删书连带清进度 |
 | [`tests/router.test.mjs`](tests/router.test.mjs) | 网关级接线：书库 CRUD、图片上传与令牌下发、未知子路径 404（走真实会话 Cookie） |
 | [`tests/backup.test.mjs`](tests/backup.test.mjs) | crc32 校验、ZIP 结构、备份打包内容、Resend 邮件降级、备份守卫状态机 |
 | [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
-| [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码：UTF-8 优先、GBK 兜底（中文不出现乱码） |
+| [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码（UTF-8 优先、GBK 兜底）、阅读进度写入保护（更旧写入被拒）、百分比夹紧与跨用户隔离 |
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
 | [`tests/docs.test.mjs`](tests/docs.test.mjs) | **文档一致性门禁**：README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、架构规约模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致 |
 

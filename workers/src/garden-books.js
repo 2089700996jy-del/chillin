@@ -95,6 +95,11 @@ export async function handleDeleteReaderBook(rawKey, env, db, userId) {
         `UPDATE reader_books SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE user_id = ?1 AND book_key = ?2`
     ).bind(userId, bookKey).run();
 
+    // P3：书删了，阅读进度留在库里没有意义（且下次重新导入会拿着旧进度"复活"）
+    const progress = await db.prepare(
+        'DELETE FROM reader_progress WHERE user_id = ?1 AND book_key = ?2'
+    ).bind(userId, bookKey).run();
+
     if (env && env.MEDIA && row.r2_key) {
         try {
             await env.MEDIA.delete(row.r2_key);
@@ -103,5 +108,5 @@ export async function handleDeleteReaderBook(rawKey, env, db, userId) {
             console.warn('[reader-books] r2 delete failed', err);
         }
     }
-    return jsonResponse({ ok: true, deleted: 1 });
+    return jsonResponse({ ok: true, deleted: 1, progress_deleted: Number((progress && progress.meta && progress.meta.changes) || 0) });
 }

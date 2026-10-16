@@ -95,3 +95,18 @@ test('Reader books - empty payload and missing R2 binding are rejected', { skip:
     assert.equal((await handlePutReaderBook(putRequest(BOOK_TEXT), {}, db, 3)).status, 503);
     assert.equal(r2.store.size, 0);
 });
+test('Reader books - 删除书籍时一并清掉云端阅读进度（P3）', { skip: !sqliteAvailable }, async () => {
+    const db = createTestDb();
+    await seedUser(db, 3);
+    const r2 = new FakeR2();
+    await handlePutReaderBook(putRequest(BOOK_TEXT), { MEDIA: r2 }, db, 3);
+    await db.prepare('INSERT INTO reader_progress (user_id, book_key, book_title, chapter_index, scroll_percentage, client_ts) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
+        .bind(3, BOOK_KEY, '测试小说', 2, 50, 1000).run();
+
+    const res = await handleDeleteReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 3);
+    assert.equal(res.status, 200);
+    assert.equal((await res.json()).progress_deleted, 1, '应连带删除该书的阅读进度');
+
+    const left = await db.prepare('SELECT COUNT(*) AS n FROM reader_progress WHERE user_id = ?1').bind(3).first();
+    assert.equal(left.n, 0, '书删了，进度不该留在库里');
+});
