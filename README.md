@@ -160,6 +160,10 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
 | [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象 |
 | [`tests/router.test.mjs`](tests/router.test.mjs) | 网关级接线：书库 CRUD、图片上传与令牌下发、未知子路径 404（走真实会话 Cookie） |
+| [`tests/backup.test.mjs`](tests/backup.test.mjs) | crc32 校验、ZIP 结构、备份打包内容、Resend 邮件降级、备份守卫状态机 |
+| [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
+| [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码：UTF-8 优先、GBK 兜底（中文不出现乱码） |
+| [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
 
 > 标注「真实 SQLite」的用例用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
 
@@ -176,7 +180,7 @@ npm run bump:minor
 * **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
 * **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
 * **输入**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探
-* **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`_headers`](_headers) 与 `workers/src/security.js`
+* **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`public/_headers`](public/_headers) 与 `workers/src/security.js`
 * **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`public/js/trusted-types.js`](public/js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；CSP **已强制启用** `require-trusted-types-for 'script'`，绕过 `setHtml()` 的赋值会被浏览器直接拒绝
 
 ## 开发规约
