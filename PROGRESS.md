@@ -95,6 +95,13 @@
     - **测试数据已清理**：`files` 回到 21 行、`reader_books`/`reader_progress` 归 0，无残留。
     - 踩坑备注：造测试书素材时用 PowerShell 拼中文字符串会踩 `"第$c章"` → `$c章` 被当成变量名的坑（生成出 `第 测试章节1`），**中文测试素材请用 Node 或编辑器生成**。
 
+14. **文档一致性机器门禁与规约补全（v2.5.100 维护轮）**：
+    - 新增 [`tests/docs.test.mjs`](tests/docs.test.mjs)（7 例）：把 README 的模块数 / 迁移范围 / 测试套件数、[`architecture.md`](.agents/rules/architecture.md) 的模块覆盖，以及 `package.json` ↔ `PROGRESS.md` ↔ `version.js` ↔ `sw.js` ↔ 架构报告的版本号一致性全部钉成断言——**文档漂移从此直接让 `npm test` 红灯**（本轮就是它先抓出「报告写 15 个套件、实际 16」）。
+    - [`engineering-workflow.md`](.agents/rules/engineering-workflow.md) 新增 **§5 文档同步硬性要求**：给出「改什么 → 必须同批更新哪些文档」的对照表与机器校验说明；§1.1 测试覆盖矩阵从 8 条补全到 16 条（含 media / books / router / backup / evergreen / reader / wikilinks / docs）。
+    - [`architecture.md`](.agents/rules/architecture.md) 领域模块表从 9 行补全为 **14 行**：此前缺 `garden-shared` / `garden-echo` / `ai` / `security-network` / `security-crypto`，且仍挂着早已不存在的 `garden.js`。
+    - [`AGENTS.md`](AGENTS.md) 索引行同步（14 个领域模块、R2 存储边界、文档同步硬性要求），并清掉两处「SSRF 14 组拦截」陈旧表述。
+    - README 顺带修复：[`_headers`](public/_headers) 坏链（该文件在 `public/` 下）、测试布局表补全 4 个套件、弹层数 4 → 10。
+
 ### 外链解析功能移除、SSRF 工具清理与文档同步（v2.5.95 → v2.5.98）
 
 1. **外链补解析可靠性修复（v2.5.95）**：失败不再「一次失败就永久放弃」（`_enriching`/`_enrichFailed` 不再随 feed 落盘，失败改为带时间戳的 `_enrichFailedAt` + 5 分钟冷却）；裸域名/假标题等占位值不再被当作「解析成功」写库；单次渲染最多补解析 3 条，保护 `/api/link/parse` 的 40 次 / 10 分钟限流。
