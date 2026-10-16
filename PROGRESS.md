@@ -89,6 +89,11 @@
     - **`r2 object put` 遇本地代理必失败**：`HTTP_PROXY=127.0.0.1:7897` 会让 R2 传输端点（`*.r2.cloudflarestorage.com`）报 `fetch failed`，需给子进程补 `NO_PROXY=.r2.cloudflarestorage.com,cloudflarestorage.com`（`backup-d1.mjs` 与 `migrate-files-to-r2.mjs` 已内置）。
     - **Windows 参数拆词**：`execFileSync('npx', args, { shell: true })` 会按空格把 SQL 再拆一遍，迁移脚本改为逐参数加引号；另加 3 次重试，避免几分钟的迁移被一次网络抖动打断（也因此支持中断后续跑）。
     - **R2 整对象读取也回传 `range` 元信息**：原实现据此把普通 GET 标成 `206 Partial Content`（线上实测发现），现改为**只有客户端发了 `Range` 才走 206**；`tests/fake-r2.mjs` 同步改为回传 range 元信息，让该行为被回归用例守住。
+13. **浏览器端实测（真实账号登录 + 本机 Chrome CDP 驱动，2026-10-16）**：
+    - **图片写路径**：经前端全局上传器真实上传一张 webp → D1 新行 `r2_key` 有值且 `data IS NULL`（size 135616，客户端压缩后）；**R2 对象 / Worker 响应 / 浏览器渲染三方哈希一致**（`9B532A96…DBF50C`），浏览器内 `naturalWidth=1201` 正常渲染。
+    - **云端书库**：真实导入 3 章 TXT → 自动推送 R2（`books/1/<sha256>.txt`）；清空本机 IndexedDB 模拟「换设备」后，书架出现 ☁️「点击下载到本机」卡片，点击即下载入本地书架并直接进入阅读（分页 1/3、正文正确）。删除书目会回收 R2 对象（已用 `r2 object get` 确认测试对象不存在）。
+    - **测试数据已清理**：`files` 回到 21 行、`reader_books`/`reader_progress` 归 0，无残留。
+    - 踩坑备注：造测试书素材时用 PowerShell 拼中文字符串会踩 `"第$c章"` → `$c章` 被当成变量名的坑（生成出 `第 测试章节1`），**中文测试素材请用 Node 或编辑器生成**。
 
 ### 外链解析功能移除、SSRF 工具清理与文档同步（v2.5.95 → v2.5.98）
 
