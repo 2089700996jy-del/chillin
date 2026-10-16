@@ -156,7 +156,7 @@
 ### 离线PWA健壮性、Cmd+K命令面板与媒体体验优化
 1. **Service Worker 离线白屏致命缺陷修复**：
    - 升级 Service Worker 缓存版本至 `chillin-v72`；
-   - 预缓存包含 `public/js/` 下全部核心模块（当前 27 个；由 `tests/sw.test.mjs` 自动核对）；
+   - 预缓存包含 `public/js/` 下全部核心模块（当前 26 个；另有 `app.js` / `style.css` / `vendor/dompurify.min.js`，由 `tests/sw.test.mjs` 自动核对）；
    - 修复当用户断网时，抓取 `/js/*.js` 错误回退到 `/index.html` 导致浏览器抛出 `Uncaught SyntaxError: Unexpected token '<'` 的白屏问题；离线严格匹配已缓存 JS 模块。
 2. **搜索中心升级为现代 Cmd+K 命令面板 (Command Palette)**：
    - 支持快捷指令库：默认或输入 `>` 展示「呼叫 AI 回响」、「快速写随手记」、「新建笔记」、「撰写周记」、「新建提示词」、「新增收藏」、「立即云同步」等高频操作；

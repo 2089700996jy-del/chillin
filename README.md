@@ -9,21 +9,21 @@
 
 | 模块 | 你能做什么 |
 | :--- | :--- |
-| 🫧 随手记 | 1 秒记录想法；外链自动抓取标题 / 封面 / 平台徽标；全屏图片灯箱；连续记录徽章与贡献热力图 |
+| 🫧 随手记 | 1 秒记录想法；**含链接的随手记只渲染链接卡片**（v2.5.97 起不再抓取标题 / 封面 / 平台徽标）；支持图片附件；全屏图片灯箱；连续记录徽章与贡献热力图 |
 | 📓 周记 | 模块化卡片（烟火日常、音乐影音微件）、时序追加批注 |
 | 📝 笔记 | 长文撰写、草稿自动暂存与崩溃恢复、批注讨论流 |
 | 🔖 收藏 | 网页 / 图片卡片，一键回跳原站 |
 | 🧩 提示词库 | `{{变量}}` 模板参数化、填参预览、一键复制或直发 AI |
-| 📖 阅读器 | 本地 TXT 导入自动分章（GBK / UTF-8）、章节树、进度记忆、三档主题 |
+| 📖 阅读器 | TXT 导入自动分章（GBK / UTF-8）、章节树、进度记忆、三档主题；**云端书库**（v2.5.100）：正文存 R2，换设备打开书架即可下载续读 |
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
-| 📶 PWA | 27 个前端 ES 模块离线预缓存、断网降级、重连自动补偿同步、版本热更新通知 |
+| 📶 PWA | 全部前端模块（26 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知 |
 
 ## 技术栈
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：Cloudflare D1（SQLite），19 个迁移（0001–0019），全部查询参数化绑定
+* **数据**：**Cloudflare D1**（SQLite，21 个迁移 0001–0021，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -31,16 +31,18 @@
 
 ```
 public/             Cloudflare Pages 的**发布目录**（build output directory，仓库其余内容不会被发布）
-  index.html        单页容器（11 个视图 + 4 个弹层）
+  index.html        单页容器（11 个视图 + 10 个弹层）
   app.js            启动装配：模块初始化、会话恢复、在线/离线
   style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏）
   sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
   manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
-  js/               27 个 ES 模块（auth / sync / feeds / … / trusted-types）
+  js/               26 个 ES 模块（auth / sync / feeds / … / trusted-types）
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        security / auth / garden / rag / llm / audit
+workers/src/        14 个领域模块（security / security-network / security-crypto / auth /
+                    garden-shared / garden-resources / garden-sync / garden-media / garden-books /
+                    garden-echo / rag / llm / ai / audit）
 migrations/         D1 迁移 0001–0021（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步、图片元数据/R2 搬迁、阅读器云端书库）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
@@ -111,7 +113,7 @@ node scripts/migrate-files-to-r2.mjs --clear-data # 确认无误后清空 D1 里
 
 ## 数据备份与恢复
 
-D1 是唯一的数据源，建议每天导出一次快照（脚本见 [scripts/backup-d1.mjs](scripts/backup-d1.mjs)）：
+数据现在分布在两处：**D1 存结构化数据**，**R2 存图片二进制 / 书籍正文 / 备份快照**（D1 里的图片 BLOB 迁移后即可用 `--clear-data` 清空）。建议每天导出一次快照（脚本见 [scripts/backup-d1.mjs](scripts/backup-d1.mjs)）：
 
 ```bash
 npm run backup                # 导出远端库 → backups/chillin-d1-<UTC>.sql.gz（本地保留 14 份 + 上传 R2 一份）
@@ -129,7 +131,7 @@ npm run backup -- --no-r2     # 只做本地快照，不上传 R2
 
 * `GET /api/health` —— 返回 `{ ok, version, time }`；数据库探测失败时返回 503，可直接接 Uptime 监控；
 * `npx wrangler tail` —— 实时查看线上 Worker 日志；
-* 关键日志前缀：`[audit]`（违规扫描）、`[session]`（过期清理）、`[rate-limit]`（共享计数降级）、`[health]`（DB 探测失败）、`[upload]`。
+* 关键日志前缀：`[audit]`（违规扫描）、`[session]`（过期清理）、`[rate-limit]`（共享计数降级）、`[health]`（DB 探测失败）、`[upload]`、`[r2]`（备份快照保留清理）、`[reader-books]`（书库对象回收失败）。
 
 ## 质量门禁
 
