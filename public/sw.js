@@ -1,6 +1,6 @@
 // Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
-const CACHE_NAME = 'chillin-v150';
-const APP_V = '2.5.103';
+const CACHE_NAME = 'chillin-v151';
+const APP_V = '2.5.104';
 const ASSETS = [
     '/',
     '/index.html',
@@ -75,52 +75,45 @@ self.addEventListener('fetch', (e) => {
     if (url.origin !== self.location.origin) return;      // 只处理同源
     if (url.pathname.startsWith('/api/') || url.pathname === '/version.json') return; // API 与版本探活直接穿透网络，绝不缓存
 
+    /**
+     * 先写缓存、再返回响应。
+     *
+     * 以前是「拿到网络响应就 return，缓存写入丢到后台」——SW 随时可能被浏览器回收，
+     * 后台那次 put 可能来不及完成，用户下次离线就发现这一版没被缓存住。现在把写入
+     * 放进 respondWith 的 promise 里 await：响应到达页面时，缓存已经落盘。
+     * 写入失败（配额满等）只吞掉异常，绝不影响这次请求本身。
+     */
+    const networkThenCache = async (fallback) => {
+        try {
+            const res = await fetch(e.request);
+            if (res && res.status === 200) {
+                try {
+                    const cache = await caches.open(CACHE_NAME);
+                    await cache.put(e.request, res.clone());
+                } catch (_) { /* 缓存写不进去也不能影响本次响应 */ }
+            }
+            return res;
+        } catch (_) {
+            return (await fallback()) || Response.error();
+        }
+    };
+
     // 1. ES modules / app shell JS:
     // 离线时决不能降级到 /index.html（会触发 Uncaught SyntaxError: Unexpected token '<' 导致整站崩溃）
     const isModuleJs = url.pathname.startsWith('/js/') || url.pathname.endsWith('/app.js') || url.pathname === '/app.js';
     if (isModuleJs) {
-        e.respondWith(
-            fetch(e.request)
-                .then((res) => {
-                    if (res && res.status === 200) {
-                        const clone = res.clone();
-                        caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
-                    }
-                    return res;
-                })
-                .catch(() => caches.match(e.request, { ignoreSearch: true }))
-        );
+        e.respondWith(networkThenCache(() => caches.match(e.request, { ignoreSearch: true })));
         return;
     }
 
     // 2. 页面导航请求（离线时回退到 /index.html 单页容器）
     if (e.request.mode === 'navigate') {
-        e.respondWith(
-            fetch(e.request)
-                .then((res) => {
-                    if (res && res.status === 200) {
-                        const clone = res.clone();
-                        caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
-                    }
-                    return res;
-                })
-                .catch(() => caches.match('/index.html'))
-        );
+        e.respondWith(networkThenCache(() => caches.match('/index.html')));
         return;
     }
 
     // 3. 静态资源（CSS, 图片, 图标等）
-    e.respondWith(
-        fetch(e.request)
-            .then((res) => {
-                if (res && res.status === 200) {
-                    const clone = res.clone();
-                    caches.open(CACHE_NAME).then((c) => c.put(e.request, clone));
-                }
-                return res;
-            })
-            .catch(() => caches.match(e.request, { ignoreSearch: true }))
-    );
+    e.respondWith(networkThenCache(() => caches.match(e.request, { ignoreSearch: true })));
 });
 
 // 处理推送通知

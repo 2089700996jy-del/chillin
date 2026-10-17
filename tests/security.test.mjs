@@ -5,7 +5,8 @@ import {
     timingSafeEqualStr,
     validatePassword,
     isValidRecordId,
-    readTextCapped
+    readTextCapped,
+    readJsonCapped
 } from '../workers/src/security.js';
 
 test('Security - sniffImageMime accurately detects image headers', () => {
@@ -393,4 +394,19 @@ test('Security - readTextCapped 在读取过程中限长，不把超大体读完
     assert.equal(streamingRes.ok, false);
     assert.equal(streamingRes.tooLarge, true);
     assert.ok(pulled < 100, '超限后应停止继续拉取，实际拉了 ' + pulled + ' 次');
+});
+test('Security - readJsonCapped 限长并区分 413 / 400', async () => {
+    const okRes = await readJsonCapped(new Request('https://x', { method: 'POST', body: JSON.stringify({ a: 1 }) }), 1024);
+    assert.equal(okRes.ok, true);
+    assert.equal(okRes.value.a, 1);
+
+    // 声明长度超限：直接 413，不解析
+    const stream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{"a":1}')); c.close(); } });
+    const tooLarge = await readJsonCapped(new Request('https://x', { method: 'POST', body: stream, duplex: 'half', headers: { 'Content-Length': '999999' } }), 1024);
+    assert.equal(tooLarge.ok, false);
+    assert.equal(tooLarge.status, 413);
+
+    const bad = await readJsonCapped(new Request('https://x', { method: 'POST', body: 'not json' }), 1024);
+    assert.equal(bad.ok, false);
+    assert.equal(bad.status, 400);
 });

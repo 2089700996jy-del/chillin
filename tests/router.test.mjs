@@ -94,3 +94,13 @@ integration('Router - unknown reader-book sub-paths stay 404', async () => {
     assert.equal((await call(db, r2, '/api/reader/books/', { token })).status, 404);
     assert.equal((await call(db, r2, '/api/reader/books-x', { token })).status, 404);
 });
+integration('Router - 网关对声明超大的请求直接 413（不进路由、不读体）', async () => {
+    const db = createTestDb();
+    const stream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{}')); c.close(); } });
+    const req = new Request('https://x/api/auth/login', {
+        method: 'POST', body: stream, duplex: 'half',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': String(30 * 1024 * 1024) }
+    });
+    const res = await api.fetch(req, { ...env, DB: db }, {});
+    assert.equal(res.status, 413);
+});

@@ -5,7 +5,8 @@
 import {
     jsonResponse,
     isValidRecordId,
-    readTextCapped
+    readTextCapped,
+    readJsonCapped
 } from './security.js';
 import {
     extractTagsFromContent,
@@ -261,15 +262,17 @@ export async function handleHeatmap(db, userId) {
 
 // ── 全量数据备份邮件直发 (Resend API) ──
 
+// 备份邮件带着 base64 的全量 ZIP，上限放宽到 12MB，但仍要有硬顶
+const MAX_BACKUP_BODY_BYTES = 12 * 1024 * 1024;
+
 export async function handleBackupEmail(request, env, userId) {
     if (!userId) return jsonResponse({ error: 'Unauthorized' }, 401);
 
-    let body;
-    try {
-        body = await request.json();
-    } catch (_) {
-        return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    const parsed = await readJsonCapped(request, MAX_BACKUP_BODY_BYTES);
+    if (!parsed.ok) {
+        return jsonResponse({ error: parsed.status === 413 ? '备份文件过大，最大支持 12MB' : 'Invalid JSON body' }, parsed.status);
     }
+    const body = parsed.value;
 
     const { email, filename, zipBase64 } = body || {};
     if (!email || typeof email !== 'string' || !email.includes('@') || email.length > 254) {

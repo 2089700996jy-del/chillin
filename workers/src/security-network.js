@@ -229,6 +229,31 @@ export async function readTextCapped(request, maxBytes) {
     return { ok: true, text: new TextDecoder('utf-8').decode(merged), bytes: total };
 }
 
+/**
+ * 读取 JSON 请求体并限长。
+ * 返回 { ok: true, value } 或 { ok: false, status, error }，调用方直接回 jsonResponse。
+ * 与 readTextCapped 一样，超限在读取过程中就中止，不会先把超大 JSON 读进内存。
+ */
+export async function readJsonCapped(request, maxBytes) {
+    const raw = await readTextCapped(request, maxBytes);
+    if (!raw.ok) return { ok: false, status: 413, error: '请求内容过大' };
+    try {
+        return { ok: true, value: JSON.parse(raw.text || '{}') };
+    } catch (_) {
+        return { ok: false, status: 400, error: '请求格式错误' };
+    }
+}
+
+/**
+ * 网关级兜底：声明长度就超限的请求直接拒绝，连路由都不进。
+ * 各处理器仍有各自更细的上限；这一层是为了「新加的入口忘了设上限」时也不至于被撑爆。
+ */
+export function oversizedRequestResponse(request, maxBytes) {
+    const declared = Number(request.headers.get('Content-Length') || 0);
+    if (declared > maxBytes) return jsonResponse({ error: '请求体过大' }, 413);
+    return null;
+}
+
 export function sniffImageMime(bytes) {
     if (!bytes || bytes.length < 12) return null;
     // JPEG

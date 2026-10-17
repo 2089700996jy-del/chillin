@@ -102,3 +102,12 @@ integration('Auth - logout-all revokes every session of the account only', async
     assert.equal(remaining.length, 1);
     assert.equal(remaining[0].token, await tokenHash(b.token));
 });
+integration('Auth - 注册请求体超过 8KB 上限时返回 413', async () => {
+    const db = createTestDb();
+    const req = new Request('https://x/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'x'.repeat(9000), password: 'y' })
+    });
+    assert.equal((await handleRegister(req, env, db)).status, 413);
+});

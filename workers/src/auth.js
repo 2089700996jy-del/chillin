@@ -3,6 +3,7 @@
  */
 import {
     jsonResponse,
+    readJsonCapped,
     checkRateLimitShared,
     rateLimitedResponse,
     getClientIp,
@@ -108,6 +109,9 @@ export async function authenticate(request, db) {
     return session ? session.user_id : null;
 }
 
+/** 账号类请求体都很小（用户名 + 密码），8KB 足够，超了直接拒绝 */
+const MAX_AUTH_BODY_BYTES = 8 * 1024;
+
 export async function handleRegister(request, env, db) {
     const regLimit = await checkRateLimitShared(db, `register:${getClientIp(request, env)}`, 5, 60 * 60 * 1000);
     if (!regLimit.ok) return rateLimitedResponse(regLimit.retryAfter);
@@ -116,7 +120,9 @@ export async function handleRegister(request, env, db) {
         return jsonResponse({ error: '注册功能已关闭，请联系管理员。' }, 403);
     }
 
-    const { username, password } = await request.json();
+    const parsed = await readJsonCapped(request, MAX_AUTH_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const { username, password } = parsed.value;
     if (!username || username.length < 3 || username.length > 32) {
         return jsonResponse({ error: '账号长度需为 3–32 位' }, 400);
     }
@@ -153,12 +159,9 @@ export async function handleLogin(request, env, db) {
         return rateLimitedResponse(loginLimit.retryAfter, '登录过于频繁，请稍后再试');
     }
 
-    let body;
-    try {
-        body = await request.json();
-    } catch {
-        return jsonResponse({ error: '请求格式错误，请重试' }, 400);
-    }
+    const parsed = await readJsonCapped(request, MAX_AUTH_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.status === 413 ? parsed.error : '请求格式错误，请重试' }, parsed.status);
+    const body = parsed.value;
     const username = body && typeof body.username === 'string' ? body.username.trim() : '';
     const password = body && typeof body.password === 'string' ? body.password : '';
     if (!username || !password) return jsonResponse({ error: '请输入账号和密码' }, 400);
@@ -323,7 +326,9 @@ export async function handlePushSubscribe(request, db) {
         return jsonResponse({ error: '无效或过期的会话' }, 401);
     }
 
-    const sub = await request.json();
+    const parsed = await readJsonCapped(request, MAX_AUTH_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const sub = parsed.value;
     if (!sub || !sub.endpoint || !sub.keys || !sub.keys.p256dh || !sub.keys.auth) {
         return jsonResponse({ error: '订阅数据不完整' }, 400);
     }

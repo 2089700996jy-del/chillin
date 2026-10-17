@@ -4,7 +4,8 @@ import {
     applySecurityHeaders,
     withCors,
     jsonResponse,
-    cleanupRateLimits
+    cleanupRateLimits,
+    oversizedRequestResponse
 } from './src/security.js';
 
 import {
@@ -84,7 +85,10 @@ import {
 } from './src/garden-echo.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.103';
+const APP_VERSION = '2.5.104';
+
+/** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
+const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
 
 async function router(path, method, request, env, ctx) {
     const db = env.DB;
@@ -239,6 +243,10 @@ export default {
             }
             return new Response(null, { status: 204, headers });
         }
+
+        // 声明长度明显超限：不进路由、不读请求体，直接拒绝
+        const tooLarge = oversizedRequestResponse(request, MAX_REQUEST_BYTES);
+        if (tooLarge) return withCors(tooLarge, request);
 
         try {
             return withCors(await router(path, method, request, env, ctx), request);

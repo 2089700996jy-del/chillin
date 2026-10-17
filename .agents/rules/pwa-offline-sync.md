@@ -13,6 +13,10 @@
 2. **全量核心模块预缓存 (Pre-cache All 26 Modules)**：
    * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 26 个核心模块路径（`actions`, `api`, `auth`, `backup`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `evergreen-topics`, `feeds`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `trusted-types`, `ui`, `upload`, `utils`, `version`, `weeklies`, `wikilinks`）；
    * 安装期（`install` 事件）必须使用 `Promise.allSettled` 进行静默容错缓存，防止单个非致命资源加载失败导致整个 Service Worker 拒绝激活。
+3. **运行时缓存必须「先写缓存、再返回响应」**：
+   * 网络优先的分支（模块 JS / 导航 / 静态资源）严禁把 `cache.put()` 丢到后台 fire-and-forget——SW 随时可能被浏览器回收，后台那次写入可能来不及完成，用户下次离线就发现这一版没被缓存住；
+   * 正确写法：把 `await cache.put(request, res.clone())` 放进 `respondWith` 的 promise 里，**响应到达页面时缓存已经落盘**；写入失败（配额满等）只吞异常，绝不影响当次响应；
+   * 守卫用例：`tests/sw.test.mjs` 会校验模块分支仍带 `ignoreSearch` 且绝不回退 `/index.html`，导航分支仍回退 `/index.html`。
 
 ---
 

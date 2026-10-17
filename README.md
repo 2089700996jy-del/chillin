@@ -182,7 +182,7 @@ npm run bump:minor
 * **密码**：PBKDF2-SHA256，10 万次迭代 + 每用户 16 字节随机盐
 * **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
 * **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
-* **输入**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探；**请求体一律先限长再读取**（书籍上传 20MB、批量同步 4MB + 每种资源 200 条 + 单条 200KB、AI 问答 256KB + 问题 ≤4000 字 + 历史 ≤20 条，超限直接 413/400，不会把超大请求先读进内存）
+* **输入**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探；**所有 JSON 入口都经 `readJsonCapped` 限长**（书籍 20MB、备份邮件 12MB、批量同步 4MB + 每种资源 200 条 + 单条 200KB、资源 CRUD 512KB、阅读进度 8KB、账号接口 8KB、AI 问答 256KB + 问题 ≤4000 字 + 历史 ≤20 条），网关另有一道 **21MB 声明长度兜底**（新入口忘了设上限也不会被撑爆）——超限在**读取过程中**就中止，不会先把超大请求读进内存
 * **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`public/_headers`](public/_headers) 与 `workers/src/security.js`
 * **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`public/js/trusted-types.js`](public/js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；CSP **已强制启用** `require-trusted-types-for 'script'`，绕过 `setHtml()` 的赋值会被浏览器直接拒绝
 

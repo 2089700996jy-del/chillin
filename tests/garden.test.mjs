@@ -270,3 +270,13 @@ integration('Sync batch - 非法 JSON 与非对象载荷返回 400', async () =>
     assert.equal((await handleSyncBatch(bad, db, 1)).status, 400);
     assert.equal((await handleSyncBatch(jsonRequest('https://x/api/sync/batch', [1, 2, 3]), db, 1)).status, 400);
 });
+integration('CRUD - 请求体超过 512KB 时返回 413（不再直接 request.json()）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const req = new Request('https://x/api/weeklies', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'x'.repeat(600 * 1024) })
+    });
+    assert.equal((await handlePostWeekly(req, db, 1)).status, 413);
+});

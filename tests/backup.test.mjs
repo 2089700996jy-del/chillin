@@ -241,3 +241,12 @@ test('Backup Guard - computeBackupGuardStatus handles all states accurately', ()
     assert.equal(sOverdue.badgeText, '建议备份');
     assert.equal(sOverdue.daysSince, 20);
 });
+test('Backup - 备份邮件请求体超过 12MB 上限时返回 413', async () => {
+    const stream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{}')); c.close(); } });
+    const req = new Request('https://x/api/backup/email', {
+        method: 'POST', body: stream, duplex: 'half',
+        headers: { 'Content-Type': 'application/json', 'Content-Length': '99999999' }
+    });
+    const res = await handleBackupEmail(req, { RESEND_API_KEY: 'test' }, 1);
+    assert.equal(res.status, 413);
+});

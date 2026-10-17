@@ -4,6 +4,7 @@
  */
 import {
     jsonResponse,
+    readJsonCapped,
     isValidRecordId
 } from './security.js';
 import {
@@ -17,6 +18,11 @@ import {
     isSoftDeletedRecord
 } from './garden-shared.js';
 
+// 资源 CRUD 的请求体上限：正常一份周记（含批注）远小于此
+const MAX_CRUD_BODY_BYTES = 512 * 1024;
+// 阅读进度只是几个数字与短标题，给个很小的上限
+const MAX_PROGRESS_BODY_BYTES = 8 * 1024;
+
 export async function handleGetWeeklies(url, db, userId) {
     const since = url.searchParams.get('since');
     let result;
@@ -29,7 +35,9 @@ export async function handleGetWeeklies(url, db, userId) {
 }
 
 export async function handlePostWeekly(request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'weeklies', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     if (body.id && await isSoftDeletedRecord(db, 'weeklies', body.id, userId)) {
@@ -54,7 +62,9 @@ export async function handlePostWeekly(request, db, userId) {
 }
 
 export async function handlePutWeekly(id, request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     const weeklyData = body.weeklyData ? JSON.stringify(body.weeklyData) : null;
     const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
     await db.prepare(
@@ -85,7 +95,9 @@ export async function handleGetNotes(url, db, userId) {
 }
 
 export async function handlePostNote(request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'notes', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     if (body.id && await isSoftDeletedRecord(db, 'notes', body.id, userId)) {
@@ -109,7 +121,9 @@ export async function handlePostNote(request, db, userId) {
 }
 
 export async function handlePutNote(id, request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     const annotations = body.annotations ? JSON.stringify(body.annotations) : '[]';
     await db.prepare(
         `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now', '+8 hours') WHERE id=?5 AND user_id=?6 AND IFNULL(is_deleted, 0) = 0`
@@ -138,7 +152,9 @@ export async function handleGetBookmarks(url, db, userId) {
 }
 
 export async function handlePostBookmark(request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'bookmarks', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     if (body.id && await isSoftDeletedRecord(db, 'bookmarks', body.id, userId)) {
@@ -196,7 +212,9 @@ export async function handleGetPrompts(url, db, userId) {
 }
 
 export async function handlePostPrompt(request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'prompts', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     if (body.id && await isSoftDeletedRecord(db, 'prompts', body.id, userId)) {
@@ -247,7 +265,9 @@ export async function handleGetFeeds(url, db, userId) {
 }
 
 export async function handlePostFeed(request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     if (body.id != null && !isValidRecordId(body.id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
     if (!(await isOwnedRecord(db, 'quick_feeds', body.id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     if (body.id && await isSoftDeletedRecord(db, 'quick_feeds', body.id, userId)) {
@@ -278,7 +298,9 @@ export async function handlePostFeed(request, db, userId) {
 }
 
 export async function handlePutFeed(id, request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     const content = body.content || '';
     const type = body.type || 'text';
     const mediaUrl = body.media_url || body.mediaUrl || null;
@@ -308,7 +330,9 @@ export async function handleGetReaderProgress(db, userId) {
 }
 
 export async function handlePostReaderProgress(request, db, userId) {
-    const body = await request.json();
+    const parsed = await readJsonCapped(request, MAX_PROGRESS_BODY_BYTES);
+    if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+    const body = parsed.value;
     const bookKey = (body.book_key || body.bookKey || '').trim();
     const bookTitle = (body.book_title || body.bookTitle || '').trim();
     if (!bookKey || !bookTitle) {
