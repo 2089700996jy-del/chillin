@@ -369,13 +369,32 @@ async function importBook(file) {
         });
         if (!book) { progressEl.style.display = 'none'; return; }
 
-        progressText.textContent = '正在同步到云端...';
-        // 云端同步失败不影响本地阅读，仅记录日志
-        uploadBookToCloud(book, text).catch((err) => console.warn('[reader] book upload failed', err));
+        // 云端同步要等结果再给结论：失败时不能报「导入完成」，否则用户会以为书已经备份好了
+        const canSync = Boolean(state.authToken || state.cookieSession);
+        let syncState = 'skipped';   // skipped | ok | failed
+        if (canSync) {
+            progressText.textContent = '正在同步到云端...';
+            try {
+                await uploadBookToCloud(book, text);
+                syncState = 'ok';
+            } catch (err) {
+                console.warn('[reader] book upload failed', err);
+                syncState = 'failed';
+            }
+        }
 
         progressEl.style.display = 'none';
         renderBookshelf();
-        showToast('✅ 导入完成！书名：' + book.title + '，共 ' + book.totalChapters + ' 章', 'success');
+        const importedSummary = book.title + '（' + book.totalChapters + ' 章）';
+        if (syncState === 'ok') {
+            showToast('✅ 导入完成，已同步到云端：' + importedSummary, 'success');
+        } else if (syncState === 'failed') {
+            // 本机已经能读；失败的书会被书架补传逻辑自动重试，这里顺手立刻再试一次
+            showToast('⚠️ 已导入本机，但云端同步失败；打开书架会自动重试', 'warn');
+            backfillLocalBooks([book]);
+        } else {
+            showToast('✅ 已完成本机导入：' + importedSummary + '（未登录，暂不云同步）', 'success');
+        }
     } catch (err) {
         console.error('Import failed:', err);
         progressEl.style.display = 'none';
@@ -530,15 +549,18 @@ function paintBookshelf(grid, empty, books) {
         return (pb ? pb.timestamp : 0) - (pa ? pa.timestamp : 0) || b.createdAt - a.createdAt;
     });
 
+    // 只有确实拉到过云端书目时才敢断言「这本没上云」
+    const cloudKeys = new Set(cloudBooks.map((cb) => cb.book_key));
     const localCards = books.map(b => {
         const prog = progress[b.id];
         const pct = prog && b.totalChapters ? Math.round((prog.chapterIdx / b.totalChapters) * 100) : 0;
         const lastRead = prog ? '看到第' + (prog.chapterIdx + 1) + '章' : '未开始阅读';
+        const notSynced = cloudBooksSynced && !cloudKeys.has(b.bookKey || computeBookKey(b));
         return '<div class="book-card" data-bookid="' + b.id + '">' +
             '<span class="book-card-delete" data-delete="' + b.id + '">✕</span>' +
             '<span class="book-card-icon">📖</span>' +
             '<div class="book-card-title" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>' +
-            '<div class="book-card-author">' + escapeHtml(b.author) + '</div>' +
+            '<div class="book-card-author">' + escapeHtml(b.author) + (notSynced ? ' · 未上云' : '') + '</div>' +
             '<div class="book-card-progress"><div class="book-card-progress-bar" style="width:' + pct + '%"></div></div>' +
             '<div class="book-card-meta"><span>' + lastRead + '</span><span>' + b.totalChapters + '章</span></div></div>';
     });

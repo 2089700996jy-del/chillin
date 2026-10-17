@@ -4,7 +4,8 @@
  */
 import {
     jsonResponse,
-    isValidRecordId
+    isValidRecordId,
+    readTextCapped
 } from './security.js';
 import {
     extractTagsFromContent,
@@ -68,13 +69,43 @@ export async function handleSyncPull(url, db, userId) {
 
 // ── Batch Sync (Push) ──
 
+// 批量推送的防护上限：正常一份周记/笔记的增量远小于这些值
+const MAX_SYNC_BODY_BYTES = 4 * 1024 * 1024;   // 单次请求体 4MB
+const MAX_SYNC_RECORDS = 200;                  // 每种资源单次最多 200 条
+const MAX_SYNC_RECORD_CHARS = 200 * 1024;      // 单条记录序列化后 200KB
+
 export async function handleSyncBatch(request, db, userId) {
-    const body = await request.json();
-    const weeklies = body.weeklies || [];
-    const notes = body.notes || [];
-    const bookmarks = body.bookmarks || [];
-    const feeds = body.feeds || [];
-    const prompts = body.prompts || [];
+    // 先限长读取再解析：避免把超大 JSON 整个读进内存后再遍历
+    const raw = await readTextCapped(request, MAX_SYNC_BODY_BYTES);
+    if (!raw.ok) return jsonResponse({ error: '同步数据过大，请分批推送' }, 413);
+
+    let body;
+    try {
+        body = JSON.parse(raw.text || '{}');
+    } catch (_) {
+        return jsonResponse({ error: '请求格式错误' }, 400);
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        return jsonResponse({ error: '请求格式错误' }, 400);
+    }
+
+    const weeklies = Array.isArray(body.weeklies) ? body.weeklies : [];
+    const notes = Array.isArray(body.notes) ? body.notes : [];
+    const bookmarks = Array.isArray(body.bookmarks) ? body.bookmarks : [];
+    const feeds = Array.isArray(body.feeds) ? body.feeds : [];
+    const prompts = Array.isArray(body.prompts) ? body.prompts : [];
+
+    // 条数与单条体积上限：防住「一次推十万条」或「一条塞 100MB 正文」
+    for (const [name, items] of Object.entries({ weeklies, notes, bookmarks, feeds, prompts })) {
+        if (items.length > MAX_SYNC_RECORDS) {
+            return jsonResponse({ error: name + ' 单次最多 ' + MAX_SYNC_RECORDS + ' 条，请分批推送' }, 413);
+        }
+        for (const item of items) {
+            if (item && JSON.stringify(item).length > MAX_SYNC_RECORD_CHARS) {
+                return jsonResponse({ error: name + ' 中存在单条记录体积过大（上限 200KB）' }, 413);
+            }
+        }
+    }
 
     const statements = [];
 

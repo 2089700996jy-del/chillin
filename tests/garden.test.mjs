@@ -247,3 +247,26 @@ integration('Garden CRUD - autoincrement ID generation when ID is omitted', asyn
 });
 
 
+integration('Sync batch - 超过单种资源条数上限时拒绝（防超大请求）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const many = Array.from({ length: 201 }, (_, i) => ({ id: 'w' + i, title: 't' + i, content: 'c' }));
+    const res = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: many }), db, 1);
+    assert.equal(res.status, 413);
+});
+
+integration('Sync batch - 单条记录体积过大时拒绝', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const huge = { id: 'w1', title: 'big', content: 'x'.repeat(201 * 1024) };
+    const res = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [huge] }), db, 1);
+    assert.equal(res.status, 413);
+});
+
+integration('Sync batch - 非法 JSON 与非对象载荷返回 400', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const bad = new Request('https://x/api/sync/batch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: 'not json' });
+    assert.equal((await handleSyncBatch(bad, db, 1)).status, 400);
+    assert.equal((await handleSyncBatch(jsonRequest('https://x/api/sync/batch', [1, 2, 3]), db, 1)).status, 400);
+});

@@ -20,9 +20,9 @@
 
 | 修改范围 | 对应测试文件 | 必须覆盖的验证项 |
 | :--- | :--- | :--- |
-| **密码/鉴权/安全防线** | [`tests/security.test.mjs`](file:///d:/7/chillin/tests/security.test.mjs) | 密码强哈希复杂度、恒定时间比较防时序攻击、令牌哈希、CSP 哈希与第三方域策略、共享限流与降级、代理 IP 取信、Trusted Types 收口（服务端出站抓取与 SSRF 校验已于 v2.5.97 随外链解析功能移除）。 |
-| **数据同步/冲突合并** | [`tests/sync.test.mjs`](file:///d:/7/chillin/tests/sync.test.mjs) | 时间戳多格式解析 (`toUpdatedTs`)、双向数据合并、Last-Write-Wins 规则生效验证。 |
-| **AI 记忆回响 (RAG)** | [`tests/rag.test.mjs`](file:///d:/7/chillin/tests/rag.test.mjs) | 停用词准确过滤、自然语言时间范围解析、全表多特征检索加权打分准确率。 |
+| **密码/鉴权/安全防线** | [`tests/security.test.mjs`](file:///d:/7/chillin/tests/security.test.mjs) | 请求体限长（`readTextCapped` 在读取过程中就中止）、密码强哈希复杂度、恒定时间比较防时序攻击、令牌哈希、CSP 哈希与第三方域策略、共享限流与降级、代理 IP 取信、Trusted Types 收口（服务端出站抓取与 SSRF 校验已于 v2.5.97 随外链解析功能移除）。 |
+| **数据同步/冲突合并** | [`tests/sync.test.mjs`](file:///d:/7/chillin/tests/sync.test.mjs) | 时间戳多格式解析 (`toUpdatedTs`)、双向数据合并、Last-Write-Wins 规则生效验证；批量推送的条数/单条体积上限见 `tests/garden.test.mjs`。 |
+| **AI 记忆回响 (RAG)** | [`tests/rag.test.mjs`](file:///d:/7/chillin/tests/rag.test.mjs) | 停用词准确过滤、自然语言时间范围解析、全表多特征检索加权打分准确率、AI 问答输入上限（空/超长问题与非法 JSON 拦在模型调用之前）。 |
 | **搜索与命令面板** | [`tests/search.test.mjs`](file:///d:/7/chillin/tests/search.test.mjs) | 关键词命中高亮 (`<mark>`)、大小写不敏感匹配、特殊符号转义与 XSS 防御测试。 |
 | **PWA 离线缓存 / Service Worker** | [`tests/sw.test.mjs`](file:///d:/7/chillin/tests/sw.test.mjs) | 预缓存清单与 `public/js/*.js` 一一对应、清单资源与 manifest 图标必须存在、模块请求绝不回退 `index.html`。 |
 | **领域 CRUD / 同步 / 审计** | [`tests/garden.test.mjs`](file:///d:/7/chillin/tests/garden.test.mjs) | 资源 CRUD、跨用户归属隔离、软删墓碑不可复活、批量增量推送、热力图按用户聚合（基于 `node:sqlite` 真实执行 migrations）。 |

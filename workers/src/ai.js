@@ -8,7 +8,8 @@ import {
     jsonResponse,
     sseResponse,
     checkRateLimitShared,
-    rateLimitedResponse
+    rateLimitedResponse,
+    readTextCapped
 } from './security.js';
 import { retrieveGardenMemories, generateFallbackReply, east8NowParts, pad2 } from './rag.js';
 import { callCustomLlmStreamWithMessages, callCustomLlmWithMessages, moderateText } from './llm.js';
@@ -17,8 +18,36 @@ export async function handleAiChat(request, env, db, userId) {
     const aiLimit = await checkRateLimitShared(db, `ai:${userId}`, 30, 10 * 60 * 1000);
     if (!aiLimit.ok) return rateLimitedResponse(aiLimit.retryAfter);
 
-    const { question, stream, history } = await request.json();
-    if (!question) return jsonResponse({ error: '请输入问题' }, 400);
+    // 输入上限：问题 + 历史都是用户可控文本，先限长读取并做字段级裁剪
+    const MAX_AI_BODY_BYTES = 256 * 1024;
+    const MAX_QUESTION_CHARS = 4000;
+    const MAX_HISTORY_MESSAGES = 20;
+    const MAX_HISTORY_ITEM_CHARS = 2000;
+
+    const raw = await readTextCapped(request, MAX_AI_BODY_BYTES);
+    if (!raw.ok) return jsonResponse({ error: '请求内容过大' }, 413);
+
+    let payload;
+    try {
+        payload = JSON.parse(raw.text || '{}');
+    } catch (_) {
+        return jsonResponse({ error: '请求格式错误' }, 400);
+    }
+    if (!payload || typeof payload !== 'object') return jsonResponse({ error: '请求格式错误' }, 400);
+
+    const stream = payload.stream;
+    const question = String(payload.question || '');
+    if (!question.trim()) return jsonResponse({ error: '请输入问题' }, 400);
+    if (question.length > MAX_QUESTION_CHARS) {
+        return jsonResponse({ error: '问题过长，请控制在 ' + MAX_QUESTION_CHARS + ' 字以内' }, 400);
+    }
+    // 只保留最近若干条、并裁剪单条长度，避免历史被无限灌大
+    const history = Array.isArray(payload.history)
+        ? payload.history.slice(-MAX_HISTORY_MESSAGES).map((m) => ({
+            role: m && m.role === 'assistant' ? 'assistant' : 'user',
+            content: String((m && m.content) || '').slice(0, MAX_HISTORY_ITEM_CHARS)
+        }))
+        : [];
 
     const rag = await retrieveGardenMemories(db, userId, question, { history });
     const contextText = rag.contextText;

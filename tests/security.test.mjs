@@ -4,7 +4,8 @@ import {
     sniffImageMime,
     timingSafeEqualStr,
     validatePassword,
-    isValidRecordId
+    isValidRecordId,
+    readTextCapped
 } from '../workers/src/security.js';
 
 test('Security - sniffImageMime accurately detects image headers', () => {
@@ -362,3 +363,34 @@ test('Security - urlBase64ToUint8Array handles valid VAPID keys and invalid inpu
     assert.ok(arr.length > 0);
 });
 
+test('Security - readTextCapped 在读取过程中限长，不把超大体读完', async () => {
+    // 1) 正常小请求：读回原文与字节数
+    const okRes = await readTextCapped(new Request('https://x/api/t', { method: 'POST', body: 'hello' }), 1024);
+    assert.equal(okRes.ok, true);
+    assert.equal(okRes.text, 'hello');
+    assert.equal(okRes.bytes, 5);
+
+    // 2) 声明长度就超限：不读请求体，直接拒绝
+    const declaredStream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('abcdef')); c.close(); } });
+    const declared = new Request('https://x/api/t', {
+        method: 'POST', body: declaredStream, duplex: 'half', headers: { 'Content-Length': '999999' }
+    });
+    const declaredRes = await readTextCapped(declared, 1024);
+    assert.equal(declaredRes.ok, false);
+    assert.equal(declaredRes.tooLarge, true);
+
+    // 3) 分块流累计超限：必须在中途停止拉取，而不是读完整再判断
+    let pulled = 0;
+    const stream = new ReadableStream({
+        pull(controller) {
+            pulled++;
+            if (pulled > 100) { controller.close(); return; }
+            controller.enqueue(new TextEncoder().encode('y'.repeat(64)));
+        }
+    });
+    const streaming = new Request('https://x/api/t', { method: 'POST', body: stream, duplex: 'half' });
+    const streamingRes = await readTextCapped(streaming, 256);
+    assert.equal(streamingRes.ok, false);
+    assert.equal(streamingRes.tooLarge, true);
+    assert.ok(pulled < 100, '超限后应停止继续拉取，实际拉了 ' + pulled + ' 次');
+});

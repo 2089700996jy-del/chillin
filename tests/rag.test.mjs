@@ -10,6 +10,7 @@ import {
 import { formatPrompt } from '../workers/src/garden-shared.js';
 import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
 import { retrieveGardenMemories } from '../workers/src/rag.js';
+import { handleAiChat } from '../workers/src/ai.js';
 
 test('RAG - tokenizeQuery extracts keywords and filters stopwords', () => {
     const tokens = tokenizeQuery('请问关于代码重构和深色模式有哪些想法呢？');
@@ -112,4 +113,17 @@ test('RAG - scoreMemoryChunk accurately ranks matching garden chunks', () => {
     const timeRange = { label: '上周', start: '2026-10-05', end: '2026-10-11' };
     const scoreWeekly = scoreMemoryChunk(weeklyItem, tokenizeQuery('心情 规划'), timeRange);
     assert.ok(scoreWeekly > 0, 'Weekly item with Chinese date should match within timeRange');
+});
+integration('AI chat - 空问题 / 超长问题 / 非法 JSON 都被拦在模型调用之前', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const post = (body) => new Request('https://x/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: typeof body === 'string' ? body : JSON.stringify(body)
+    });
+
+    assert.equal((await handleAiChat(post({ question: '   ' }), {}, db, 1)).status, 400, '空问题应拒绝');
+    assert.equal((await handleAiChat(post({ question: 'x'.repeat(4001) }), {}, db, 1)).status, 400, '超过 4000 字应拒绝');
+    assert.equal((await handleAiChat(post('{bad json'), {}, db, 1)).status, 400, '非法 JSON 应拒绝');
 });

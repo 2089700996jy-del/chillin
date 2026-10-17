@@ -185,6 +185,50 @@ export function rateLimitedResponse(retryAfter, tip) {
     return new Response(res.body, { status: 429, headers });
 }
 
+/**
+ * 读取文本请求体并强制字节上限。
+ *
+ * 为什么需要：直接 `await request.text()` 会把整个体积先读进内存，之后再拿
+ * text.length 判断已经晚了——超大请求早就把内存吃掉了。这里先看 Content-Length
+ * 快速拒绝，再按流累计字节，超限立刻 cancel，从「读取过程」本身就设上限。
+ *
+ * 返回 { ok: true, text, bytes } 或 { ok: false, tooLarge: true, bytes }。
+ * 注：v2.5.98 曾删掉一个同名的 SSRF 辅助函数（当时无业务调用方）；这次按真实需求
+ * 重新引入，调用方为书籍上传、批量同步与 AI 问答。
+ */
+export async function readTextCapped(request, maxBytes) {
+    if (!Number.isFinite(maxBytes) || maxBytes <= 0) throw new TypeError('maxBytes must be a positive number');
+
+    const declared = Number(request.headers.get('Content-Length') || 0);
+    if (declared && declared > maxBytes) return { ok: false, tooLarge: true, bytes: declared };
+
+    // 没有可读流（空体或已被消费）：退化为一次性读取，仍按字节数判断
+    if (!request.body) {
+        const text = await request.text();
+        const bytes = new TextEncoder().encode(text).length;
+        return bytes > maxBytes ? { ok: false, tooLarge: true, bytes } : { ok: true, text, bytes };
+    }
+
+    const reader = request.body.getReader();
+    const chunks = [];
+    let total = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > maxBytes) {
+            // 立刻停止接收剩余字节，别把超大请求读完
+            try { await reader.cancel(); } catch (_) { /* 连接已断开 */ }
+            return { ok: false, tooLarge: true, bytes: total };
+        }
+        chunks.push(value);
+    }
+    const merged = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.byteLength; }
+    return { ok: true, text: new TextDecoder('utf-8').decode(merged), bytes: total };
+}
+
 export function sniffImageMime(bytes) {
     if (!bytes || bytes.length < 12) return null;
     // JPEG

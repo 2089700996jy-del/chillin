@@ -2,7 +2,7 @@
  * Garden Books Module
  * 阅读器书库云同步：TXT 正文存 R2，D1 只保存书目元数据，实现跨设备同一本书。
  */
-import { jsonResponse, applySecurityHeaders } from './security.js';
+import { jsonResponse, applySecurityHeaders, readTextCapped } from './security.js';
 
 const MAX_BOOK_SIZE = 20 * 1024 * 1024;
 
@@ -38,10 +38,15 @@ export async function handlePutReaderBook(request, env, db, userId) {
     const totalChapters = Math.max(0, Math.floor(Number(url.searchParams.get('chapters')) || 0));
     if (!bookKey || !title) return jsonResponse({ error: '缺少书名或书籍指纹' }, 400);
 
-    const text = await request.text();
+    // 先按声明长度快速拒绝，再在流式读取里硬性限长：不能等整本读进内存后才判断 20MB
+    if (Number(request.headers.get('Content-Length') || 0) > MAX_BOOK_SIZE) {
+        return jsonResponse({ error: '书籍过大，最大支持 20MB' }, 413);
+    }
+    const body = await readTextCapped(request, MAX_BOOK_SIZE);
+    if (!body.ok) return jsonResponse({ error: '书籍过大，最大支持 20MB' }, 413);
+    const text = body.text;
     if (!text.trim()) return jsonResponse({ error: '书籍内容为空' }, 400);
-    const size = new TextEncoder().encode(text).length;
-    if (size > MAX_BOOK_SIZE) return jsonResponse({ error: '书籍过大，最大支持 20MB' }, 413);
+    const size = body.bytes;
 
     const r2Key = await bookObjectKey(userId, bookKey);
     await env.MEDIA.put(r2Key, text, {

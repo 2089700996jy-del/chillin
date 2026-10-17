@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.102 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.103 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端 (v2.5.102，Service Worker `chillin-v149`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0020/0021 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端 (v2.5.103，Service Worker `chillin-v150`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0020/0021 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -263,10 +263,10 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `ai.js` / `rag.js` / `llm.js`：下沉独立 AI 路由，流式 SSE、多轮继承与 RAG 打分算法；
 * `audit.js`：定时 Cron 自动化内容违规扫描、隔离区备份与审计日志 180 天生命周期清理。
 
-#### ⑤ 原生自动化测试套件 (16 套件 / 112 用例)
+#### ⑤ 原生自动化测试套件 (16 套件 / 117 用例)
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
 * **16 个测试套件**覆盖全栈业务、安全红线与文档一致性：`architecture`、`auth`、`backup`、`books`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
-* **112 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、文档与代码一致性门禁等；
+* **117 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、请求体限长与批量上限、文档与代码一致性门禁等；
 * **测试全量执行耗时 < 450ms**，保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通。
 
 ---
