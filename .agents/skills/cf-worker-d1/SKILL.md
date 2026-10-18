@@ -24,21 +24,21 @@ description: Cloudflare Worker 边缘无服务器架构、D1 关系型数据库�
 
 | 领域模块 | 核心职责 | 依赖与资源 |
 | :--- | :--- | :--- |
-| [`security.js`](file:///e:/Chillin/workers/src/security.js) | CORS、CSP、安全响应头、速率限制（Rate Limit） | Web Crypto, D1 rate_limits 表 |
-| [`security-network.js`](file:///e:/Chillin/workers/src/security-network.js) | SSRF 私网 IP 拦截、二进制魔数嗅探、时序攻击防御 | 纯计算/无依赖 |
-| [`auth.js`](file:///e:/Chillin/workers/src/auth.js) | PBKDF2 鉴权、Cookie Session 轮转、推送订阅入库 | D1 users / sessions / push_subscriptions |
-| [`garden-resources.js`](file:///e:/Chillin/workers/src/garden-resources.js) | 周记 (Weeklies)、笔记 (Notes)、随手记 (Feeds)、书签、提示词 CRUD | D1 核心资源表 |
-| [`garden-sync.js`](file:///e:/Chillin/workers/src/garden-sync.js) | 批量差异增量拉取/推送、热力图统计、备份邮件直发 | D1 事务 `db.batch()`、Resend API |
-| [`garden-echo.js`](file:///e:/Chillin/workers/src/garden-echo.js) | AI 记忆回响生成、定时推送通知派发、内容合规审查 | Web Push VAPID、LLM API |
-| [`garden-media.js`](file:///e:/Chillin/workers/src/garden-media.js) | 图片安全上传、外链 Microlink 代理抓取与安全兜底 | 二进制流、Microlink API |
-| [`llm.js`](file:///e:/Chillin/workers/src/llm.js) | DeepSeek / Cloudflare AI 大模型通信与流式包装 | Fetch API, SSE |
+| [`security.js`](../../../workers/src/security.js) | CORS、CSP、安全响应头、速率限制（Rate Limit） | Web Crypto, D1 rate_limits 表 |
+| [`security-network.js`](../../../workers/src/security-network.js) | SSRF 私网 IP 拦截、二进制魔数嗅探、时序攻击防御 | 纯计算/无依赖 |
+| [`auth.js`](../../../workers/src/auth.js) | PBKDF2 鉴权、Cookie Session 轮转、推送订阅入库 | D1 users / sessions / push_subscriptions |
+| [`garden-resources.js`](../../../workers/src/garden-resources.js) | 周记 (Weeklies)、笔记 (Notes)、随手记 (Feeds)、书签、提示词 CRUD | D1 核心资源表 |
+| [`garden-sync.js`](../../../workers/src/garden-sync.js) | 批量差异增量拉取/推送、热力图统计、备份邮件直发 | D1 事务 `db.batch()`、Resend API |
+| [`garden-echo.js`](../../../workers/src/garden-echo.js) | AI 记忆回响生成、定时推送通知派发、内容合规审查 | Web Push VAPID、LLM API |
+| [`garden-media.js`](../../../workers/src/garden-media.js) | 图片安全上传、外链 Microlink 代理抓取与安全兜底 | 二进制流、Microlink API |
+| [`llm.js`](../../../workers/src/llm.js) | DeepSeek / Cloudflare AI 大模型通信与流式包装 | Fetch API, SSE |
 
 ---
 
 ## 2. Cloudflare D1 数据库与迁移标准
 
 ### 2.1 迁移文件命名与版本递增
-所有数据库 Schema 变更必须在 [`migrations/`](file:///e:/Chillin/migrations/) 目录下创建纯 SQL 文件：
+所有数据库 Schema 变更必须在 [`migrations/`](../../../migrations/) 目录下创建纯 SQL 文件：
 - **命名规范**：`00XX_feature_name.sql`（4 位数字前缀，严格顺序递增，如 `0020_xxx.sql`）。
 - **幂等性保障**：建表必须使用 `CREATE TABLE IF NOT EXISTS`，索引必须使用 `CREATE INDEX IF NOT EXISTS`。
 

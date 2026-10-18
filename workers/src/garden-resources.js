@@ -48,14 +48,15 @@ export async function handlePostWeekly(request, db, userId) {
     let row;
     if (body.id) {
         await db.prepare(
-            `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), 0)`
+            `INSERT INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
+             ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, summary=excluded.summary, date=excluded.date, cover=excluded.cover, weekly_data=excluded.weekly_data, content=excluded.content, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
         ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
         row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
     } else {
         row = await db.prepare(
-            `INSERT INTO weeklies (category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0) RETURNING *`
+            `INSERT INTO weeklies (category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0) RETURNING *`
         ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).first();
     }
     return jsonResponse(formatWeekly(row), 201);
@@ -107,14 +108,15 @@ export async function handlePostNote(request, db, userId) {
     let row;
     if (body.id) {
         await db.prepare(
-            `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0)`
+            `INSERT INTO notes (id, title, content, date, annotations, user_id, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
+             ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, date=excluded.date, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
         ).bind(body.id, body.title, body.content || '', body.date, annotations, userId).run();
         row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
     } else {
         row = await db.prepare(
-            `INSERT INTO notes (title, content, date, annotations, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours'), 0) RETURNING *`
+            `INSERT INTO notes (title, content, date, annotations, user_id, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0) RETURNING *`
         ).bind(body.title, body.content || '', body.date, annotations, userId).first();
     }
     return jsonResponse(formatNote(row), 201);
@@ -165,14 +167,15 @@ export async function handlePostBookmark(request, db, userId) {
     let row;
     if (body.id) {
         await db.prepare(
-            `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), 0)`
+            `INSERT INTO bookmarks (id, type, title, url, description, image, user_id, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
+             ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, url=excluded.url, description=excluded.description, image=excluded.image, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
         ).bind(body.id, body.type, body.title, body.url, description, image, userId).run();
         row = await db.prepare('SELECT * FROM bookmarks WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
     } else {
         row = await db.prepare(
-            `INSERT INTO bookmarks (type, title, url, description, image, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0) RETURNING *`
+            `INSERT INTO bookmarks (type, title, url, description, image, user_id, created_at, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0) RETURNING *`
         ).bind(body.type, body.title, body.url, description, image, userId).first();
     }
     return jsonResponse(formatBookmark(row), 201);
@@ -233,8 +236,9 @@ export async function handlePostPrompt(request, db, userId) {
     let row;
     if (body.id) {
         await db.prepare(
-            `INSERT OR REPLACE INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)`
+            `INSERT INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)
+             ON CONFLICT(id) DO UPDATE SET title=excluded.title, project=excluded.project, scene=excluded.scene, content=excluded.content, description=excluded.description, tags=excluded.tags, is_pinned=excluded.is_pinned, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
         ).bind(body.id, title, project, scene, content, description, tags, isPinned, userId).run();
         row = await db.prepare('SELECT * FROM prompts WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
     } else {

@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-17T03:18:05.249Z · 提交数：337
+> 生成时间：2026-10-18T13:24:40.606Z · 提交数：338
 
 ## 2026-10-17
 
@@ -12,6 +12,7 @@
 
 ### 🐛 缺陷修复
 
+- **security**: cap every JSON entry point and write the SW cache before responding
 - **api**: cap request bodies before parsing and report the real cloud sync result
 
 ### 📝 文档

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
+import { createTestDb, seedUser, sqliteSkip } from './fake-d1.mjs';
 import { FakeR2 } from './fake-r2.mjs';
 
 const { handleListReaderBooks, handlePutReaderBook, handleGetReaderBook, handleDeleteReaderBook } =
@@ -14,7 +14,7 @@ function putRequest(text, { key = BOOK_KEY, title = '测试小说', author = '�
     return new Request('https://chillin.test/api/reader/books?' + params.toString(), { method: 'POST', body: text });
 }
 
-test('Reader books - upload keeps the text in R2 and the metadata in D1', { skip: !sqliteAvailable }, async () => {
+test('Reader books - upload keeps the text in R2 and the metadata in D1', { skip: sqliteSkip }, async () => {
     const db = createTestDb();
     await seedUser(db, 3);
     const r2 = new FakeR2();
@@ -30,7 +30,7 @@ test('Reader books - upload keeps the text in R2 and the metadata in D1', { skip
     assert.equal(Buffer.from(r2.store.get(row.r2_key).bytes).toString('utf8'), BOOK_TEXT);
 });
 
-test('Reader books - list, download and delete round-trip', { skip: !sqliteAvailable }, async () => {
+test('Reader books - list, download and delete round-trip', { skip: sqliteSkip }, async () => {
     const db = createTestDb();
     await seedUser(db, 3);
     const r2 = new FakeR2();
@@ -55,7 +55,7 @@ test('Reader books - list, download and delete round-trip', { skip: !sqliteAvail
     assert.equal((await handleGetReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 3)).status, 404);
 });
 
-test('Reader books - one user can never read another user\'s book', { skip: !sqliteAvailable }, async () => {
+test('Reader books - one user can never read another user\'s book', { skip: sqliteSkip }, async () => {
     const db = createTestDb();
     await seedUser(db, 3);
     await seedUser(db, 4);
@@ -71,7 +71,7 @@ test('Reader books - one user can never read another user\'s book', { skip: !sql
     assert.equal(stillThere.length, 1);
 });
 
-test('Reader books - re-importing the same fingerprint updates instead of duplicating', { skip: !sqliteAvailable }, async () => {
+test('Reader books - re-importing the same fingerprint updates instead of duplicating', { skip: sqliteSkip }, async () => {
     const db = createTestDb();
     await seedUser(db, 3);
     const r2 = new FakeR2();
@@ -86,7 +86,7 @@ test('Reader books - re-importing the same fingerprint updates instead of duplic
     assert.equal(r2.store.size, 1);
 });
 
-test('Reader books - empty payload and missing R2 binding are rejected', { skip: !sqliteAvailable }, async () => {
+test('Reader books - empty payload and missing R2 binding are rejected', { skip: sqliteSkip }, async () => {
     const db = createTestDb();
     await seedUser(db, 3);
     const r2 = new FakeR2();
@@ -95,7 +95,7 @@ test('Reader books - empty payload and missing R2 binding are rejected', { skip:
     assert.equal((await handlePutReaderBook(putRequest(BOOK_TEXT), {}, db, 3)).status, 503);
     assert.equal(r2.store.size, 0);
 });
-test('Reader books - 删除书籍时一并清掉云端阅读进度（P3）', { skip: !sqliteAvailable }, async () => {
+test('Reader books - 删除书籍时一并清掉云端阅读进度（P3）', { skip: sqliteSkip }, async () => {
     const db = createTestDb();
     await seedUser(db, 3);
     const r2 = new FakeR2();

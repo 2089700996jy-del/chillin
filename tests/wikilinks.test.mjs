@@ -34,7 +34,7 @@ const {
     WIKILINK_REGEX
 } = await import('../public/js/wikilinks.js');
 
-const { markdownToHtml } = await import('../public/js/utils.js');
+const { markdownToHtml, extractImageMatches } = await import('../public/js/utils.js');
 const { state } = await import('../public/js/state.js');
 
 test('Wikilinks - parseWikilinksToHtml converts [[title]] into interactive pill', () => {
@@ -152,3 +152,15 @@ test('Markdown - markdownToHtml renders external markdown links', () => {
 });
 
 
+
+test('Markdown - extractImageMatches 同时抽取 Markdown 与 HTML 图片（notes/weeklies 共用）', () => {
+    const md = '前言 ![配图A](https://a/img.png) 中间 <img src="https://b/img.jpg" alt="x"> 结尾';
+    const matches = extractImageMatches(md);
+    assert.equal(matches.length, 2);
+    assert.deepEqual(matches[0], { raw: '![配图A](https://a/img.png)', alt: '配图A', url: 'https://a/img.png' });
+    assert.deepEqual(matches[1], { raw: '<img src="https://b/img.jpg" alt="x">', alt: '配图', url: 'https://b/img.jpg' });
+
+    assert.deepEqual(extractImageMatches('纯文字'), [], '没有图片时应返回空数组');
+    assert.deepEqual(extractImageMatches(''), [], '空输入不应抛错');
+    assert.equal(extractImageMatches('![](u.png)')[0].alt, '配图', '空 alt 用「配图」兜底');
+});

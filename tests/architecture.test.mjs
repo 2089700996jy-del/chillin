@@ -95,3 +95,50 @@ test('Architecture - frontend modules have valid imports and no undeclared funct
         }
     }
 });
+
+test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async () => {
+    // 背景：项目坚持零构建、直开，但此前没有任何体积约束——
+    // 加一个 30KB 的库只需一次提交，没人会注意到首次加载变慢。
+    // 预算按当前实测值留出余量；上调预算必须是一次有意识的改动（改这里并说明原因）。
+    const zlib = await import('node:zlib');
+    const gzipSize = async (p) => zlib.gzipSync(await fs.readFile(p)).length;
+
+    const BUDGET = {
+        jsTotalGzip: 160 * 1024,   // 当前实测 134.8 KB
+        cssTotalGzip: 48 * 1024,   // 当前实测 35.9 KB
+        singleFileGzip: 20 * 1024  // 当前最大是 public/js/reader.js 13.6 KB
+    };
+
+    const jsFiles = [];
+    const cssFiles = [];
+    const walk = async (dir) => {
+        for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
+            const p = path.join(dir, entry.name);
+            if (entry.isDirectory()) await walk(p);
+            else if (entry.name.endsWith('.js')) jsFiles.push(p);
+            else if (entry.name.endsWith('.css')) cssFiles.push(p);
+        }
+    };
+    await walk(path.join(root, 'public'));
+
+    const sizes = await Promise.all(jsFiles.map(async (p) => ({ p, g: await gzipSize(p) })));
+    const jsTotal = sizes.reduce((sum, x) => sum + x.g, 0);
+    const cssTotal = (await Promise.all(cssFiles.map((p) => gzipSize(p)))).reduce((sum, n) => sum + n, 0);
+    const kb = (n) => (n / 1024).toFixed(1) + ' KB';
+
+    assert.ok(
+        jsTotal <= BUDGET.jsTotalGzip,
+        `JS 合计 ${kb(jsTotal)} 越过预算 ${kb(BUDGET.jsTotalGzip)}——新体积请先确认值得，再同步上调预算`
+    );
+    assert.ok(
+        cssTotal <= BUDGET.cssTotalGzip,
+        `CSS 合计 ${kb(cssTotal)} 越过预算 ${kb(BUDGET.cssTotalGzip)}`
+    );
+    for (const { p, g } of sizes) {
+        const rel = path.relative(root, p).split(path.sep).join('/');
+        assert.ok(
+            g <= BUDGET.singleFileGzip,
+            `${rel} 单文件 ${kb(g)} 超过 ${kb(BUDGET.singleFileGzip)}——考虑拆分或懒加载`
+        );
+    }
+});

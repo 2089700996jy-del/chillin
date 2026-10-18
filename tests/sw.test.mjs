@@ -62,3 +62,61 @@ test('PWA - module requests never fall back to index.html (offline white-screen 
     // 导航分支仍然要回退 index.html（单页应用离线可用）
     assert.ok(sw.slice(end).includes("caches.match('/index.html')"), 'navigation requests should still fall back to index.html');
 });
+
+/** 把 _headers 解析成 path → { header: value } */
+function parseHeaders(source) {
+    const blocks = new Map();
+    let current = null;
+    for (const raw of source.split('\n')) {
+        const line = raw.trim();
+        if (!line || line.startsWith('#')) continue;
+        if (line.startsWith('/')) {
+            current = line;
+            blocks.set(current, new Map());
+            continue;
+        }
+        if (!current) continue;
+        const idx = line.indexOf(':');
+        if (idx === -1) continue;
+        blocks.get(current).set(line.slice(0, idx).trim().toLowerCase(), line.slice(idx + 1).trim());
+    }
+    return blocks;
+}
+
+test('PWA - _headers 的缓存策略维持「版本探测不缓存 / 静态资源带 ETag 复验」的分工', async () => {
+    // 背景：public/js/*.js 的文件名没有内容哈希。一旦有人给它加上
+    // Cache-Control: max-age=31536000, immutable，改完代码的用户会一年都拿到旧文件，
+    // 且 Service Worker 也救不回来；反过来把 //sw.js 缓存住则新版本永远推不出去。
+    const source = await fs.readFile(path.join(root, SITE, '_headers'), 'utf8');
+    const blocks = parseHeaders(source);
+    const cacheControl = (p) => (blocks.get(p) || new Map()).get('cache-control') || '';
+
+    for (const p of ['/sw.js', '/index.html', '/version.json', '/js/version.js']) {
+        assert.match(
+            cacheControl(p),
+            /no-store/,
+            p + ' 必须 no-store：它参与版本探测，被缓存住用户会一直停在旧版本'
+        );
+    }
+
+    for (const p of ['/style.css', '/app.js', '/js/*']) {
+        const value = cacheControl(p);
+        assert.match(value, /no-cache/, p + ' 必须带 no-cache 走 ETag 复验');
+        assert.doesNotMatch(
+            value,
+            /no-store/,
+            p + ' 不应 no-store：连 304 都不给，复访要把 435KB JS + 217KB CSS 全量重下'
+        );
+        assert.doesNotMatch(
+            value,
+            /max-age|immutable/,
+            p + ' 没有内容哈希，绝不能用 max-age/immutable，否则改完代码用户仍拿旧文件'
+        );
+    }
+
+    assert.equal(
+        (blocks.get('/js/*') || new Map()).get('cdn-cache-control'),
+        'no-store',
+        '边缘缓存也必须 no-store，避免 Pages CDN 与浏览器策略分叉'
+    );
+});

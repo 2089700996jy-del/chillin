@@ -16,7 +16,7 @@ description: Node 20+ 原生零依赖测试套件（node:test）、FakeD1 内存
 * 所有单元测试基于 Node.js 20+ 原生内置模块：
   - `import test from 'node:test'`
   - `import assert from 'node:assert/strict'`
-  - `import { DatabaseSync } from 'node:sqlite'`（通过 [`tests/fake-d1.mjs`](file:///e:/Chillin/tests/fake-d1.mjs)）
+  - `import { DatabaseSync } from 'node:sqlite'`（通过 [`tests/fake-d1.mjs`](../../../tests/fake-d1.mjs)）
 
 ### 1.2 毫秒级极速执行
 * 目前项目 68+ 项核心测试执行总耗时严格控制在 **400ms~600ms** 内。编写测试时必须优先使用轻量计算与内存模拟，禁止产生高延迟的外部 I/O 阻塞。

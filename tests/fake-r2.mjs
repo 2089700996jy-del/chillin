@@ -3,8 +3,10 @@
  * （put / get / delete / list，以及 handleFileView 依赖的 Range 分片读取）。
  */
 export class FakeR2 {
-    constructor() {
+    constructor(options = {}) {
         this.store = new Map();
+        // 真实 R2 list 单次最多 1000 个 key 并回传 cursor；pageLimit 让测试能逼出分页分支
+        this.pageLimit = Number.isInteger(options.pageLimit) && options.pageLimit > 0 ? options.pageLimit : 1000;
     }
 
     _bytes(value) {
@@ -62,9 +64,16 @@ export class FakeR2 {
 
     async list(options = {}) {
         const prefix = options.prefix || '';
-        const objects = [...this.store.entries()]
+        const limit = Number.isInteger(options.limit) && options.limit > 0 ? options.limit : this.pageLimit;
+        // 与真实 R2 一致：按 key 字典序升序返回
+        const all = [...this.store.entries()]
             .filter(([key]) => key.startsWith(prefix))
-            .map(([key, value]) => ({ key, size: value.bytes.length, uploaded: value.uploaded, httpEtag: `"${value.bytes.length}"` }));
-        return { objects, truncated: false };
+            .map(([key, value]) => ({ key, size: value.bytes.length, uploaded: value.uploaded, httpEtag: `"${value.bytes.length}"` }))
+            .sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+        const start = Number.isInteger(Number(options.cursor)) ? Number(options.cursor) : 0;
+        const page = all.slice(start, start + limit);
+        return start + page.length < all.length
+            ? { objects: page, truncated: true, cursor: String(start + page.length) }
+            : { objects: page, truncated: false };
     }
 }

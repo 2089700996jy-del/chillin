@@ -166,7 +166,10 @@ test('Security - CSP hashes cover every inline script and forbid unsafe-inline',
     const sources = ['public/index.html', ...(await fsMod.readdir(pathMod.join(root, 'public', 'js'))).filter((f) => f.endsWith('.js')).map((f) => pathMod.join('public', 'js', f)), 'public/app.js'];
     for (const rel of sources) {
         const text = await fsMod.readFile(pathMod.join(root, rel), 'utf8');
-        assert.ok(!/\son(click|error|load|change|input|submit)\s*=/i.test(text), `${rel} still contains an inline event handler attribute`);
+        // 只认「带引号值」的 HTML 属性写法：on*=("|')。否则 onOk / onProgress / onKeydown
+        // 这类回调变量名会被误判成内联处理器。
+        assert.ok(!/\son[a-z]+\s*=\s*["']/i.test(text), `${rel} still contains an inline event handler attribute`);
+        assert.ok(!/javascript:/i.test(text), `${rel} must not contain a javascript: URL`);
     }
 });
 
@@ -267,8 +270,8 @@ test('Audit - retention cleanup only deletes rows older than the window', async 
     assert.equal(calls.length, 2);
     for (const call of calls) {
         assert.match(call.sql, /DELETE FROM (audit_log|ugc_quarantine)/);
-        // 必须使用与写入一致的 SQLite 时间格式，且窗口参数化
-        assert.match(call.sql, /datetime\('now', \?1\)/);
+        // 必须使用与写入一致的 SQLite 时间格式（审计行按东八区写入，边界也要 +8 hours），且窗口参数化
+        assert.match(call.sql, /datetime\('now', '\+8 hours', \?1\)/);
         assert.equal(call.args[0], '-180 days');
     }
 
@@ -290,7 +293,7 @@ test('Security - every HTML sink goes through the Trusted Types choke point', as
         if (file === 'trusted-types.js') continue; // 唯一允许写 innerHTML 的地方
         const text = await fsMod.readFile(path.join(jsDir, file), 'utf8');
         const stripped = text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-        if (/\.innerHTML\s*=\s*/.test(stripped)) offenders.push(file);
+        if (/\.(inner|outer)HTML\s*=|insertAdjacentHTML\s*\(|document\.write\s*\(/.test(stripped)) offenders.push(file);
         if (/setHtml\(/.test(stripped) && !text.includes("from './trusted-types.js'")) {
             offenders.push(file + ' (uses setHtml without importing it)');
         }

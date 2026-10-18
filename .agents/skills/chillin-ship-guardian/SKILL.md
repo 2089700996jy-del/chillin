@@ -1,6 +1,6 @@
 ---
 name: chillin-ship-guardian
-description: Chillin 发布全流程质量门禁、六点版本号联动自检、Worker 网关行数合规、Conventional Commits 规范与一键发布部署助手。在发布版本、跑发布预演或提交生产代码时使用。
+description: Chillin 发布全流程质量门禁、八点版本号联动自检、Worker 网关行数合规、Conventional Commits 规范与一键发布部署助手。在发布版本、跑发布预演或提交生产代码时使用。
 ---
 
 # 发布质量自检与守卫流水线 (chillin-ship-guardian)
@@ -19,20 +19,22 @@ description: Chillin 发布全流程质量门禁、六点版本号联动自检�
 | **Gate 2: Worker 网关红线** | `workers/api.js` <= 300 行 | `tests/architecture.test.mjs` | 阻断发版 |
 | **Gate 3: SW 离线预缓存** | `public/js/` 全文件已在 `ASSETS` | `tests/sw.test.mjs` | 离线白屏崩溃 |
 | **Gate 4: 边缘打包预演** | 零语法/包体积超限错误 | `npx wrangler deploy --dry-run` | 边缘部署失败 |
-| **Gate 5: 版本号 6 点联动** | 保证多端与 SW 缓存版本一致 | `npm run bump` | 客户端旧缓存死锁 |
+| **Gate 5: 版本号 8 点联动** | 保证多端与 SW 缓存版本一致 | `npm run bump` | 客户端旧缓存死锁 |
 
 ---
 
-## 2. 六点版本号联动对齐 (6-Point Version Sync)
+## 2. 八点版本号联动对齐 (8-Point Version Sync)
 
-Chillin 采用严格的静态缓存版本控制，每次发布新版本必须保证以下 6 处版本号完全一致：
+Chillin 采用严格的静态缓存版本控制，每次发布新版本必须保证以下 8 处版本号完全一致（全部由 `npm run bump` 自动写入，**严禁手改单个文件**；[`tests/docs.test.mjs`](../../../tests/docs.test.mjs) 会实跑 `--dry-run` 校验覆盖范围）：
 
-1. [`package.json`](file:///e:/Chillin/package.json) 中的 `"version"`
-2. [`package-lock.json`](file:///e:/Chillin/package-lock.json) 中的 `"version"`
-3. [`public/js/version.js`](file:///e:/Chillin/public/js/version.js) 中的 `APP_VERSION`
-4. [`public/manifest.json`](file:///e:/Chillin/public/manifest.json) 中的 `"version"`
-5. [`public/sw.js`](file:///e:/Chillin/public/sw.js) 中的 `CACHE_VERSION = 'chillin-v${APP_VERSION}'`
-6. [`public/index.html`](file:///e:/Chillin/public/index.html) 或其他界面版本展示点
+1. [`package.json`](../../../package.json) 中的 `"version"`
+2. [`public/version.json`](../../../public/version.json) 中的版本号与发布时间戳
+3. [`public/js/version.js`](../../../public/js/version.js) 中的 `APP_VERSION`
+4. [`public/sw.js`](../../../public/sw.js) 中的 `APP_V` 与 `CACHE_NAME`（触发 SW 激活更新）
+5. [`public/index.html`](../../../public/index.html) 中的资源静态引入 hash 与右下角版本 Badge
+6. [`workers/api.js`](../../../workers/api.js) 中的 `APP_VERSION` 探测常量
+7. [`PROGRESS.md`](../../../PROGRESS.md) 的版本头与当前版本段落
+8. [架构报告](../../../docs/Chillin数字花园_产品全景与工程架构分析报告.md) 的报告版本、在线基准与 Service Worker 缓存版本
 
 ### 自动化版本递增工具：
 ```bash
@@ -74,7 +76,7 @@ npm test
 # 2. 运行边缘部署演练 (Exit Code 0)
 npx wrangler deploy --dry-run
 
-# 3. 执行自动化发布脚本 (自动递增版本、同步 6 点版本号、生成 Commit 并推送到 GitHub)
+# 3. 执行自动化发布脚本 (自动递增版本、同步 8 点版本号、生成 Commit 并推送到 GitHub)
 npm run ship -- --message "feat(scope): 功能描述" --bump patch --push
 
 # 4. 触发 Cloudflare Worker 生产环境部署

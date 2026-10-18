@@ -81,6 +81,43 @@ function resolveAssetUrlHelper(src) {
     return apiBase ? `${apiBase}/${src}` : `/${src}`;
 }
 
+/**
+ * 从 Markdown/HTML 混排文本里按出现顺序抽取图片，供编辑器下方的图链预览使用。
+ * notes.js 与 weeklies.js 曾各写一份逐字相同的解析循环，这里收敛为纯函数。
+ */
+export function extractImageMatches(text) {
+    const val = text || '';
+    const matches = [];
+    const mdImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let match;
+    while ((match = mdImgRegex.exec(val)) !== null) {
+        matches.push({ raw: match[0], alt: match[1] || '配图', url: match[2].trim() });
+    }
+    const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
+    while ((match = htmlImgRegex.exec(val)) !== null) {
+        matches.push({ raw: match[0], alt: '配图', url: match[1].trim() });
+    }
+    return matches;
+}
+
+/**
+ * 批注项（notes 的「批注」与 weeklies 的「追加说明」）的 DOM 片段。
+ * 两个模块此前各写了一份逐字相同的模板，只有删除回调的逻辑不同；
+ * 这里只收敛模板（输出逐字保持），交互仍在各自模块里。
+ */
+export function annotationItemHtml(ann) {
+    return `
+            <div class="annotation-dot"></div>
+            <div class="annotation-content-box">
+                <div class="annotation-meta">
+                    <span class="annotation-time">${escapeHtml(ann.date)}</span>
+                    <button type="button" class="btn-delete-annotation" data-id="${ann.id}">删除</button>
+                </div>
+                <div class="annotation-text">${escapeHtml(ann.content)}</div>
+            </div>
+        `;
+}
+
 /** Markdown → safe HTML (escape first, then light formatting). */
 export function markdownToHtml(text) {
     if (!text) return '';

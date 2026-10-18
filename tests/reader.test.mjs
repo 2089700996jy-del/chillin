@@ -48,10 +48,10 @@ test('Reader - decodeBuffer falls back to GBK for legacy encoded files', () => {
     assert.ok(decoded.includes('中文') || decoded.includes('测试'), `GBK text should be decoded properly, got: ${decoded}`);
 });
 // ── 阅读进度接口（P4 写入保护） ──
-import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
+import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 
 const { handleGetReaderProgress, handlePostReaderProgress } = await import('../workers/src/garden-resources.js');
-const integration = sqliteAvailable ? test : test.skip;
+const integration = sqliteTest;
 
 const progressPost = (body) => new Request('https://x/api/reader/progress', {
     method: 'POST',

@@ -145,6 +145,21 @@ write(
     }
 }
 
+// 架构报告：报告版本 + 在线基准里的 Service Worker 缓存号。
+// tests/docs.test.mjs 断言「报告版本 == package.json」，所以这里必须一起联动；
+// 原先漏写这一步，会让 bump 之后的 npm test 必红（ship 会在 bump 前先跑一次门禁，漂移就被带进提交）。
+{
+    const reportPath = 'docs/Chillin数字花园_产品全景与工程架构分析报告.md';
+    if (fs.existsSync(path.join(root, reportPath))) {
+        let d = read(reportPath);
+        const nextD = d
+            .replace(/(\*\*报告版本\*\*：v)[\d.]+/, `$1${next}`)
+            .replace(/(Service Worker `chillin-v)\d+(`)/, `$1${Number(cacheMatch[1]) + 1}$2`);
+        if (nextD !== d) write(reportPath, nextD);
+        else console.log('skip 架构报告 (no version anchor match)');
+    }
+}
+
 console.log('');
 console.log('Next:');
 console.log('  npx wrangler deploy');

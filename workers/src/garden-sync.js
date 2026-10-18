@@ -15,7 +15,8 @@ import {
     formatBookmark,
     formatPrompt,
     formatFeed,
-    fetchSoftDeletedIdSet
+    fetchSoftDeletedIdSet,
+    OWNED_TABLES
 } from './garden-shared.js';
 
 export const D1_BATCH_MAX_SIZE = 100;
@@ -111,6 +112,7 @@ export async function handleSyncBatch(request, db, userId) {
     const statements = [];
 
     const fetchOwnedSet = async (tableName, items) => {
+        if (!OWNED_TABLES.has(tableName)) throw new Error('fetchOwnedSet: unknown table ' + tableName);
         const ids = items.map(i => i.id).filter(id => id != null && id !== '' && isValidRecordId(id));
         if (ids.length === 0) return new Set();
         const allowed = new Set();
@@ -129,17 +131,23 @@ export async function handleSyncBatch(request, db, userId) {
         return allowed;
     };
 
-    const allowedWeeklies = await fetchOwnedSet('weeklies', weeklies);
-    const allowedNotes = await fetchOwnedSet('notes', notes);
-    const allowedBookmarks = await fetchOwnedSet('bookmarks', bookmarks);
-    const allowedFeeds = await fetchOwnedSet('quick_feeds', feeds);
-    const allowedPrompts = await fetchOwnedSet('prompts', prompts);
+    // 归属校验与墓碑校验并发执行：原来是 10 组串行 await（组内还按 80 个 id 再分块），
+    // 批量推送的 P95 全被往返次数拖住。分成两批并发，避免同时压 10 条查询。
+    const [allowedWeeklies, allowedNotes, allowedBookmarks, allowedFeeds, allowedPrompts] = await Promise.all([
+        fetchOwnedSet('weeklies', weeklies),
+        fetchOwnedSet('notes', notes),
+        fetchOwnedSet('bookmarks', bookmarks),
+        fetchOwnedSet('quick_feeds', feeds),
+        fetchOwnedSet('prompts', prompts)
+    ]);
 
-    const deletedWeeklies = await fetchSoftDeletedIdSet(db, 'weeklies', userId, weeklies);
-    const deletedNotes = await fetchSoftDeletedIdSet(db, 'notes', userId, notes);
-    const deletedBookmarks = await fetchSoftDeletedIdSet(db, 'bookmarks', userId, bookmarks);
-    const deletedFeeds = await fetchSoftDeletedIdSet(db, 'quick_feeds', userId, feeds);
-    const deletedPrompts = await fetchSoftDeletedIdSet(db, 'prompts', userId, prompts);
+    const [deletedWeeklies, deletedNotes, deletedBookmarks, deletedFeeds, deletedPrompts] = await Promise.all([
+        fetchSoftDeletedIdSet(db, 'weeklies', userId, weeklies),
+        fetchSoftDeletedIdSet(db, 'notes', userId, notes),
+        fetchSoftDeletedIdSet(db, 'bookmarks', userId, bookmarks),
+        fetchSoftDeletedIdSet(db, 'quick_feeds', userId, feeds),
+        fetchSoftDeletedIdSet(db, 'prompts', userId, prompts)
+    ]);
 
     for (const item of weeklies) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
@@ -150,8 +158,9 @@ export async function handleSyncBatch(request, db, userId) {
         const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
         statements.push(
             db.prepare(
-                `INSERT OR REPLACE INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, updated_at, is_deleted)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), 0)`
+                `INSERT INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
+                 ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, summary=excluded.summary, date=excluded.date, cover=excluded.cover, weekly_data=excluded.weekly_data, content=excluded.content, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
             ).bind(item.id, item.category, item.title, item.summary, item.date, item.cover || '', weeklyData, item.content || '', annotations, userId)
         );
     }
@@ -164,8 +173,9 @@ export async function handleSyncBatch(request, db, userId) {
         const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
         statements.push(
             db.prepare(
-                `INSERT OR REPLACE INTO notes (id, title, content, date, annotations, user_id, updated_at, is_deleted)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), 0)`
+                `INSERT INTO notes (id, title, content, date, annotations, user_id, created_at, updated_at, is_deleted)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
+                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, date=excluded.date, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
             ).bind(item.id, item.title, item.content || '', item.date, annotations, userId)
         );
     }
@@ -179,8 +189,9 @@ export async function handleSyncBatch(request, db, userId) {
         const description = item.desc || item.description || '';
         statements.push(
             db.prepare(
-                `INSERT OR REPLACE INTO bookmarks (id, type, title, url, description, image, user_id, updated_at, is_deleted)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), 0)`
+                `INSERT INTO bookmarks (id, type, title, url, description, image, user_id, created_at, updated_at, is_deleted)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
+                 ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, url=excluded.url, description=excluded.description, image=excluded.image, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
             ).bind(item.id, item.type, item.title, item.url, description, image, userId)
         );
     }
@@ -201,8 +212,9 @@ export async function handleSyncBatch(request, db, userId) {
         if (item.id) {
             statements.push(
                 db.prepare(
-                    `INSERT OR REPLACE INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'), 0)`
+                    `INSERT INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'), 0)
+                     ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id, content=excluded.content, type=excluded.type, media_url=excluded.media_url, summary=excluded.summary, tags=excluded.tags, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
                 ).bind(item.id, userId, content, type, mediaUrl, summary, tagsJson, item.created_at || null)
             );
         } else {
@@ -229,8 +241,9 @@ export async function handleSyncBatch(request, db, userId) {
         const isPinned = item.is_pinned ? 1 : 0;
         statements.push(
             db.prepare(
-                `INSERT OR REPLACE INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)`
+                `INSERT INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)
+                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, project=excluded.project, scene=excluded.scene, content=excluded.content, description=excluded.description, tags=excluded.tags, is_pinned=excluded.is_pinned, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
             ).bind(item.id, title, project, scene, content, description, tags, isPinned, userId)
         );
     }

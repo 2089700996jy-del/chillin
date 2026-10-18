@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestDb, sqliteAvailable } from './fake-d1.mjs';
+import { createTestDb, sqliteTest } from './fake-d1.mjs';
 import {
     handleRegister,
     handleLogin,
@@ -11,7 +11,7 @@ import {
     tokenHash,
 } from '../workers/src/auth.js';
 
-const integration = sqliteAvailable ? test : test.skip;
+const integration = sqliteTest;
 const env = { ALLOW_REGISTRATION: 'true', PROXY_SHARED_SECRET: 'test-secret' };
 
 const jsonRequest = (url, body) => new Request(url, {
@@ -37,6 +37,15 @@ integration('Auth - register stores a hashed session and login verifies PBKDF2',
     assert.notEqual(rows[0].token, account.token, 'the raw token must never be persisted');
     assert.equal(rows[0].token, await tokenHash(account.token));
     assert.ok(rows[0].last_seen_at, 'last_seen_at is recorded for the device list');
+
+    // 时间基准：新建账号的 created_at 必须落在东八区（曾依赖 SQLite 的 UTC 默认值）
+    const accountRow = await db.prepare(
+        "SELECT created_at, datetime('now', '+8 hours', '-2 minutes') AS lo, datetime('now', '+8 hours', '+2 minutes') AS hi FROM users WHERE id = ?1"
+    ).bind(account.userId).first();
+    assert.ok(
+        accountRow.created_at >= accountRow.lo && accountRow.created_at <= accountRow.hi,
+        'users.created_at 必须是东八区时间，实际为 ' + accountRow.created_at
+    );
 
     const login = await handleLogin(jsonRequest('https://x/api/auth/login', { username: 'tester', password: 'passw0rd1' }), env, db);
     assert.equal(login.status, 200);

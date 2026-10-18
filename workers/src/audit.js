@@ -25,8 +25,8 @@ export function ugcHasViolation(row, cols) {
  */
 export async function cleanupAuditLogs(db, keepDays = 180) {
     const window = `-${Math.max(1, Math.floor(keepDays))} days`;
-    const logs = await db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', ?1)").bind(window).run();
-    const quarantine = await db.prepare("DELETE FROM ugc_quarantine WHERE created_at < datetime('now', ?1)").bind(window).run();
+    const logs = await db.prepare("DELETE FROM audit_log WHERE created_at < datetime('now', '+8 hours', ?1)").bind(window).run();
+    const quarantine = await db.prepare("DELETE FROM ugc_quarantine WHERE created_at < datetime('now', '+8 hours', ?1)").bind(window).run();
     return {
         auditLogs: logs.meta?.changes || 0,
         quarantine: quarantine.meta?.changes || 0
@@ -43,9 +43,11 @@ export async function scanAndAudit(db, userId = null) {
     ];
 
     for (const t of tables) {
+        // 只扫「尚未隔离」的行：改成软删后行仍然存在，若不排除会被每轮扫描反复命中，
+        // 变成「每次都往 ugc_quarantine / audit_log 追加一条」的新循环。
         const rows = userId
-            ? await db.prepare(`SELECT * FROM ${t.name} WHERE user_id = ?1`).bind(userId).all()
-            : await db.prepare(`SELECT * FROM ${t.name}`).all();
+            ? await db.prepare(`SELECT * FROM ${t.name} WHERE user_id = ?1 AND IFNULL(is_deleted, 0) = 0`).bind(userId).all()
+            : await db.prepare(`SELECT * FROM ${t.name} WHERE IFNULL(is_deleted, 0) = 0`).all();
         for (const row of (rows.results || [])) {
             results.scanned++;
             if (ugcHasViolation(row, t.cols)) {
@@ -54,8 +56,8 @@ export async function scanAndAudit(db, userId = null) {
                 // 先写入隔离区，保留完整 payload，便于误报恢复
                 try {
                     await db.prepare(
-                        `INSERT INTO ugc_quarantine (table_name, record_id, user_id, payload, snippet, reason)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+                        `INSERT INTO ugc_quarantine (table_name, record_id, user_id, payload, snippet, reason, created_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))`
                     ).bind(
                         t.name,
                         String(row.id),
@@ -70,10 +72,13 @@ export async function scanAndAudit(db, userId = null) {
                     continue;
                 }
 
+                // 软删墓碑，绝不物理 DELETE：物理删掉的行在客户端下次 sync/batch 推送时会被判定为
+                // 「行不存在 → 允许写入」而后原样写回，下一轮 Cron 再删，形成「复活—删除」死循环。
+                // 置 is_deleted=1 并推进 updated_at，增量拉取即可把墓碑下发给各端。
                 if (userId) {
-                    await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1 AND user_id = ?2`).bind(row.id, userId).run();
+                    await db.prepare(`UPDATE ${t.name} SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2`).bind(row.id, userId).run();
                 } else {
-                    await db.prepare(`DELETE FROM ${t.name} WHERE id = ?1`).bind(row.id).run();
+                    await db.prepare(`UPDATE ${t.name} SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1`).bind(row.id).run();
                 }
                 await db.prepare(
                     `INSERT INTO audit_log (table_name, record_id, snippet, action, created_at) VALUES (?1, ?2, ?3, 'quarantined', datetime('now', '+8 hours'))`

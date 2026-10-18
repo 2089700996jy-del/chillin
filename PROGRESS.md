@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-17。供后续会话快速接续。当前前端/Worker：**v2.5.104**（Worker 已部署、D1 迁移 0020/0021 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-18。供后续会话快速接续。当前前端/Worker：**v2.5.105**（Worker 已部署、D1 迁移 0020/0021 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,11 +10,11 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0021`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0023`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
-- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 `public/js/version.js`、`public/version.json`、Worker、`public/sw.js`、`public/index.html`
+- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 **8 处**：`public/js/version.js`、`public/version.json`、`workers/api.js`、`public/sw.js`、`public/index.html`、`package.json`、`PROGRESS.md`、架构报告（`tests/docs.test.mjs` 实跑 `--dry-run` 校验覆盖范围）
 - 测试：`npm test` 原生零依赖单测套件（`node --test`）
 - 形态：Web / PWA（Pages）；已移除 Capacitor Android 工程
 
@@ -64,6 +64,61 @@
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
 
 ## 近期已完成（摘要）
+
+### 优化批次：P0–P3 清单落地（工作树内）
+
+**背景**：对项目做完整审阅后按 P0→P3 优先级落地，全程守住零构建 / 300 行网关 / SW 不降级三条底线。
+
+**P0 正确性与数据安全**
+1. **审计隔离改软删墓碑**（`workers/src/audit.js`）：原来 `DELETE FROM <table>` 物理删行，而同步写入门禁是「行不存在 ⇒ 允许写入」，客户端下次 `sync/batch` 会把本地副本原样写回，形成「隔离—复活—再隔离」死循环。改为 `is_deleted = 1` 并推进 `updated_at`；扫描先按 `IFNULL(is_deleted,0)=0` 过滤，墓碑随增量拉取下发。新增 2 个回归用例（重复扫描只隔离一次、墓碑对 `sync/pull` 可见）。
+2. **`INSERT OR REPLACE` → `ON CONFLICT(id) DO UPDATE`**（`garden-resources.js` 4 处、`garden-sync.js` 5 处）：REPLACE 是「删+插」，语句里没写 `created_at` 时每次编辑都会把创建时间重置为当前时刻。改为 UPSERT 且 `created_at` 不进 SET 列表，覆盖写保留原值。
+3. **时间基准统一到东八区**（迁移 `0023_created_at_cst.sql` + 写入路径 + 消费方）：`weeklies/notes/bookmarks` 的 `created_at` 一直走 SQLite 默认的 UTC，而 `updated_at` 与客户端 `toUpdatedTs` 全是 CST，同一行差 8 小时——热力图、周月回顾窗口（`garden-echo.js`）、RAG 日期打分、审计保留窗口都会把凌晨 0–8 点的记录算到前一天。处理：迁移把这三张表的存量 `created_at` 平移 +8h（`quick_feeds/prompts/reader_books` 本来就是 CST，不动）；三张表 INSERT 显式写入 `datetime('now','+8 hours')`；比较边界同步加 `+8 hours`。**迁移是否应用到远端由人工决定**（`npm run ship` 遇到未应用迁移会直接中断）。
+4. **PWA 自动刷新前检查未保存草稿**（`public/js/pwa-update.js`）：原来只判断 `document.activeElement` 是否为输入框，编辑器失焦（点开面板、切到批注）后会被误判成「没在编辑」并在 8 秒后自动刷新，草稿丢失。现在同时检查 `actions.hasUnsavedChanges()` / `actions.hasUnsavedNoteChanges()`，有草稿只留横幅等用户手动点。
+5. **收藏编辑器死字段清理**（`public/index.html` / `public/js/bookmarks.js`）：核实后收藏是**设计上的「仅新建」**（页面标题即「新增收藏」，全站无编辑入口），隐藏域 `edit-bookmark-id` 永不被回填，按死代码删除。
+
+**P1 性能**
+6. **`sync/batch` 前置校验并发化**（`garden-sync.js`）：原来 5 组归属校验 + 5 组墓碑校验串行 `await`（组内还按 80 个 id 分块），最坏十几次串行往返；改为两批 `Promise.all`。
+7. **惰性 schema 兜底批处理**（`garden-shared.js`）：与迁移 `0013` 等价的 10 条兜底 DDL 原来逐条串行 `run()`，拆成「ALTER 一批 + 幂等建索引一批」共 2 次 `batch`。
+8. **静态资源缓存策略**（`public/_headers`）：`/style.css`、`/app.js`、`/js/*` 由 `no-cache, no-store, must-revalidate` 改为 `no-cache, must-revalidate`——两者都不会拿到旧内容，但 `no-store` 连 304 都不给，复访要把 ~650KB 全量重下。`index.html` / `version.json` / `js/version.js` / `sw.js` 仍保留 `no-store`（版本探测路径）。
+
+**P2/P3 健壮性**
+9. **R2 备份清理分页**（`workers/src/garden-media.js`）：`pruneOldBackups` 只读 `list()` 第一页，而 R2 单页上限 1000 且按 key 字典序（备份名带日期前缀 → 最旧在最前），`keep: 3` 会保护最旧的几份。改为按 cursor 翻完所有页再按上传时间排序；`tests/fake-r2.mjs` 补 `cursor`/`limit` 语义并加回归用例。
+10. **本地存档读取收口**（`public/js/sync.js`）：20+ 处裸 `JSON.parse(localStorage...)` 换成 `readJsonValue()`（损坏/缺失返回 null，`Array.isArray` / `|| []` 语义不变），一个损坏的 key 不再中断整条离线同步链路。
+11. **`safeInit` 捕获 async 失败**（`public/app.js`）：原来只有同步 `try/catch`，而大多数 `init*` 是 async，初始化失败会变成 `unhandledrejection` 且不落日志。
+
+**第二批补充（工程一致性与 a11y）**
+
+12. **文档门禁扩面**（`tests/docs.test.mjs`）：新增两条门禁——① 架构报告正文对 `workers/api.js` 的「N 行内」承诺必须是当前真实行数的上界（原来写着 260 行、实际 293 行），正文明细的用例数必须等于小节标题；② PROGRESS 的迁移范围必须等于 `migrations/` 最新编号。此前只有 README 的模块/迁移数被机器校验，报告正文的数字全靠人眼。
+13. **可访问性**（`public/index.html` + 新增 `tests/a11y.test.mjs`）：补 35 处 `aria-label`（读屏用户此前听到的只是「编辑框」而不是「本周标题」；placeholder 不能替代可访问名称），并把三条规则固化成门禁：控件必须有可访问名称、无重复 id、`img` 必须有 `alt`。核实后 `h1` 虽有 10 个，但非活动视图是 `display:none`，读屏只会看到当前视图的标题，不算缺陷，故未改动。
+14. **备份恢复链路可用**（新增 `scripts/restore-d1.mjs` + `npm run restore`）：README 原来的恢复命令让用户执行 `backups/*.sql`，而 `backup-d1.mjs` 导出后就把裸 `.sql` 删了、只留 `.sql.gz`——文档里的命令必然找不到文件。新脚本自动解压、默认针对远端库且必须显式 `--yes`，文档门禁同时校验命令与脚本一致。
+15. **测试跳过不再静默**（`tests/fake-d1.mjs` + 8 个套件）：整批 SQL 集成用例在 Node < 22.5 上原来用裸 `test.skip` 跳过，CI 的 Node 20 腿只显示「skipped N」，看不出是环境问题还是用例写坏。收敛为 `sqliteTest` / `sqliteSkip`（跳过原因带上当前 Node 版本），并加守卫用例断言「跳过原因必须说明是运行环境」。
+16. **去重**（`public/js/utils.js`）：`notes.js` 与 `weeklies.js` 各写了一份逐字相同的 19 行图片解析循环，抽为纯函数 `extractImageMatches`（语义逐字保持）并补用例。审计显示两文件还有 1 处 12 行的批注 DOM 构建重复，但差异点涉及 state 源与保存函数，属交互逻辑重构，留待确认后再动。
+
+**第三批补充（链接、CSS、未覆盖模块）**
+
+17. **文档链接完整性**（54 处死链 + 新门禁）：README / 规约 / 技能文档里原来有 54 个 `file:///d:/7/chillin/...` 与 `file:///e:/Chillin/...` 绝对链接——换台机器或换个盘符就全部点不开，而评审时没人会去点。全部改成相对路径，并在 `tests/docs.test.mjs` 加门禁：自有文档不得出现 `file://`，所有本地链接必须能解析（代码块内的示例除外）。
+18. **CSS 卫生门禁**（新增 `tests/css.test.mjs`）：9600+ 行样式此前零测试覆盖。审下来的结论是**没有可安全删除的死代码**——16/16 `@keyframes` 都有引用、0 处重复声明、0 个空块、花括号平衡、7 个「引用了未定义」的变量全部带 fallback（`--reader-*` 由 JS 运行时注入）。那 10 个「未被 var() 引用」的自定义属性是 `:root` 里**有意预留**的令牌阶梯（注释已写明按模块逐步迁移），不是死代码，因此只加门禁不删样式：死动画、重复/空声明块、静默失效的 `var()`、`!important` 数量棘轮（当前 302，只许降）。后续专门复核「被同选择器后声明覆盖」的 58 处时发现多数是**刻意覆盖**（`height: 100vh` → `100dvh` 是渐进增强回落、`border: none` → 边框重置），盲删会在不支持 `dvh` 的浏览器上真回归——CSS 实降确认必须配浏览器视觉核对。
+19. **补上未覆盖模块的测试**（`garden-echo.js` / `llm.js`）：`handleAiReview` 此前无直接测试。新增两个零网络、确定性的用例：近期无记录时返回引导语（不空跑模型）、无 LLM 凭证时降级为「本地摘要」且窗口内记录必须被取到。顺带核实 P1 的「热力图缓存」不适用——热力图是客户端从聚合拉取的数据渲染的，不存在单独的热力图请求需要缓存。
+
+20. **补上合规控制的测试**（`tests/rag.test.mjs` +5）：内容审核是安全控制，但 `moderateText` 此前没有一行测试。新增：硬违规词拒绝且不回传原文、软广词打码而不误杀、空/正常文本不误伤、`env.MODERATION_POLITICAL_WORDS` 注入词表前后的行为、以及「无任何 LLM 凭证时安静返回空串让上层降级」的契约（全部零网络）。另加文档门禁：文档里提到的 `npm run <x>` 必须真实存在于 `package.json`——README 曾让人执行根本不存在的 `npm run restore`。
+
+21. **缓存策略门禁**（`tests/sw.test.mjs` +1）：`public/_headers` 注释写明了「版本探测路径不缓存、静态资源带 ETag 复验」的分工，但没有测试。`public/js/*.js` 的文件名没有内容哈希——一旦有人给它加上 `max-age=31536000, immutable`，改完代码的用户会一年拿到旧文件且 Service Worker 也救不回；把 `/sw.js` 缓存住则新版本永远推不出去。门禁现在同时钉住这两侧。
+22. **批注项模板去重 + 一处用户可见乱码**（`public/js/utils.js`）：notes 的「批注」与 weeklies 的「追加说明」各写了一份逐字相同的批注项模板（只有删除回调不同），收敛为纯函数 `annotationItemHtml`（输出逐字保持，交互仍留在各自模块），并补一条同时校验「删除按钮有可访问名称」与「内容被转义」的用例。顺带修掉 weeklies 里 `确定要删除这条批追记吗？` 的乱码文案（「批追记」不通顺，且与该页「追加说明」的用词不一致）。
+
+23. **内联路径门禁 + 修一处失效引用**：链接有专门门禁，但正文里反引号点名的 `workers/src/x.js` 没人管。巡检发现 `garden-rag-llm` 技能还指向 `public/js/echo.js`（实际文件是 `echo-ai.js`），已修正；新增门禁：README / AGENTS / 规约 / 技能文档里内联提到的仓库路径必须存在（PROGRESS 是变更日志、必须能记录已删除的文件，`docs/` 与 LICENSE 同理，故排除；排错指南里作为假设示例的 `public/js/foo.js` 进白名单）。顺带完成跨模块重复巡检：剩余重复全部集中在 notes/weeklies 的图片预览渲染里，收益约 20 行却要动渲染逻辑，按 `conservative-code-edits` 规约不做。
+
+24. **时间基准：修掉 5 处仍依赖 UTC 默认值的写入**（`workers/src/`）：0023 只搬迁了存量行，但 SQLite 的列默认值 `datetime('now')` 与 `CURRENT_TIMESTAMP` **都是 UTC**，还有 15 个列在用它。审计出的真实写入路径：`files`（上传，2 处）、`ugc_quarantine`（隔离区）、`users`（注册）、`push_subscriptions`（含 `ON CONFLICT ... = CURRENT_TIMESTAMP`）——这些行的时间会比其它记录早 8 小时。已全部改为显式 `datetime('now', '+8 hours')` 字面量（用字面量是为了不改绑定参数编号）；`notes/weeklies/bookmarks/quick_feeds` 等主链路此前已显式写 CST，无需改。并加三道防线：三条运行时断言（注册 / 上传 / 隔离区写入的 created_at 必须落在东八区窗口内，UTC 会直接越界失败）+ 一条迁移门禁（新增表不得再用 UTC 默认值，12 个历史表进白名单并注明「改默认值要重建表」）。该门禁已用注入探针验证会真失败，不是恒真。
+
+25. **多租户与注入面复核 + 表名 fail-closed**：沿用上一轮的方法把三处隐式约定过了一遍——① 查询用户表是否都带 `user_id`（5 处命中：2 处是「条件在下一行」的逐行扫描假阳性，`ugc_quarantine` 保留期清理与 `push_subscriptions` 按 endpoint 清理属系统级，`files` 令牌轮换前已有属主校验）→ 无需改；② 所有 UPDATE 是否推进 `updated_at`（4 处未推进，但都落在 sessions / users / files，**不参与客户端增量同步**，否则才是丢数据的 bug）；③ SQL 里的 `${table}` 插值共 2 个助手、9 个调用点全为字符串字面量。复核没发现漏洞，但标识符插值只能靠调用方自觉：已改为 **fail-closed**——`garden-shared.js` 导出 `OWNED_TABLES` 白名单，`isOwnedRecord` 与 `garden-sync.js` 的 `fetchOwnedSet` 对白名单外的表名直接抛错，并加用例证明 `notes WHERE 1=1 --` 这类表名会被拒绝、白名单内的表与「他人记录」判定照常工作。
+
+26. **XSS 注入面复核（结论：收口完整，且没加成重复门禁）**：扫 `public/js` 全部注入点——真实的 `innerHTML =` 只有 `trusted-types.js:40` 一处（唯一入口），109 处调用全走 `setHtml`；`index.html` 内联事件处理器 0 处、`javascript:` 0 处、其它 sink（`outerHTML`/`insertAdjacentHTML`/`document.write`）0 处。
+    过程比结论更有价值：我先写了两条新门禁，**用探针验证时发现两条都已存在**——`:281` 的 sink 门禁还额外检查「用了 setHtml 却没 import」，`:165` 已覆盖内联处理器——探针让「一条探针文件同时打红两条同名测试」直接暴露了重复。于是撤回自建的两条，改为对已有门禁**补缺**：① sink 正则扩展到 `outerHTML` / `insertAdjacentHTML` / `document.write`；② 内联处理器那条最初被我放宽成 `on[a-z]+`，结果被 `upload.js` 的 `typeof onProgress === 'function'` 打红——`onOk` / `onKeydown` / `onSelect` 这类**回调变量名**会被误判。最终改成只认「带引号值的 HTML 属性」`on*=(\"|')`，误报归零，并用探针确认真内联处理器仍会被抓住；同时补上 `javascript:` 检查。
+
+27. **灾难恢复链路实测 + 运维手册 + `backup --local` 对称性**：此前 `restore` 支持 `--local` 而 `backup` 只认 `--remote`（硬编码），「本地演练」只能做一半。已给 `backup` 补上 `--local`（本地快照不上传 R2、不参与远端保留策略），并跑通完整演练：建探针表 → `npm run backup -- --local --keep 999` → `DROP TABLE` 模拟丢失 → `npm run restore -- <快照> --local`（退出码 0）→ 读回 `"note": "drill-ok"`。**恢复链路是真的可用，不是「文档里存在」**。同时把 restore 的安全闸（缺文件参数、远端未加 `--yes` 都必须退出 1 且不执行任何命令）固化成门禁。沉淀文档：新增 `docs/备份恢复与迁移操作手册.md`，含风险分级、0023 专项与**有边界的回滚 SQL**——无脑 `-8 hours` 会把迁移之后新写入的 CST 行反向错位。
+
+28. **前端首屏体积预算门禁**：项目坚持零构建、直开，但此前**没有任何体积约束**——加一个 30KB 的库只需一次提交，没人会注意到首次加载变慢。实测现状：JS 合计 452.6 KB raw / **134.8 KB gzip**（29 个文件），CSS 212.8 KB raw / **35.9 KB gzip**，最大单文件是 `public/js/reader.js` 13.6 KB gzip。已在 `tests/architecture.test.mjs` 加入预算门禁（JS 合计 ≤ 160 KB、CSS ≤ 48 KB、单文件 ≤ 20 KB gzip），并按需留出余量。门禁用 30 KB 不可压缩探针验证过会真失败——且证明了单文件上限能独立生效（探针时总量 158.6 KB 仍未越线，是单文件断言把它抓住的）。同步写入 `.agents/rules/architecture.md` §1 与 README 测试布局表。
+
+**测试 122 → 158 用例（18 套件）**；README（迁移范围 0001–0023、测试布局表新增 a11y/css、版本联动 8 处）、PROGRESS、架构报告（正文行数/用例数纳入门禁）、`engineering-workflow.md`、`AGENTS.md` 与 `chillin-ship-guardian` 技能文档（6 点 → 8 点）同批更新。
 
 ### 请求体上限全覆盖与 Service Worker 缓存时序修正（v2.5.103 → v2.5.104）
 
@@ -229,7 +284,7 @@ git push origin main                         :: 触发 Pages 构建（前端后�
 
 Secrets（勿进仓）：`LLM_API_KEY`、`VAPID_PRIVATE_KEY` 等。
 
-弱网推送可用代理：`HTTP_PROXY` / `HTTPS_PROXY=http://127.0.0.1:7888`
+弱网推送可用代理：`HTTP_PROXY` / `HTTPS_PROXY=http://127.0.0.1:7897`（本机实际监听端口；旧文档写的 7888 已不再监听）
 
 ## 可选下一步
 

@@ -86,7 +86,7 @@ Worker 支持 **主备容灾与零门槛降级** 的双模 LLM 调用架构：
 
 ---
 
-## 4. 前端交互与流式打字机体验 (`public/js/echo.js`)
+## 4. 前端交互与流式打字机体验 (`public/js/echo-ai.js`)
 
 前端通过 SSE 流式读取后端接口响应：
 - 使用 `TextDecoder` 实时切片并挂载进 DOM；

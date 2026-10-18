@@ -1,6 +1,8 @@
 /** Notes list, editor, drafts, and annotations. */
 import {
     escapeHtml,
+    extractImageMatches,
+    annotationItemHtml,
     autoResizeTextarea,
     getChineseDate,
     getChineseDateTime,
@@ -35,26 +37,7 @@ export function initNotes() {
         const previewStrip = document.getElementById('edit-note-content-preview');
         if (!textarea || !previewStrip) return;
 
-        const val = textarea.value || '';
-        const imgMatches = [];
-        const mdImgRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
-        let match;
-        while ((match = mdImgRegex.exec(val)) !== null) {
-            imgMatches.push({
-                raw: match[0],
-                alt: match[1] || '配图',
-                url: match[2].trim()
-            });
-        }
-        const htmlImgRegex = /<img[^>]+src=["']([^"']+)["'][^>]*>/gi;
-        while ((match = htmlImgRegex.exec(val)) !== null) {
-            imgMatches.push({
-                raw: match[0],
-                alt: '配图',
-                url: match[1].trim()
-            });
-        }
-
+        const imgMatches = extractImageMatches(textarea.value);
         if (imgMatches.length === 0) {
             previewStrip.style.display = 'none';
             setHtml(previewStrip, '');
@@ -119,16 +102,7 @@ const renderAnnotationsList = () => {
     currentNoteAnnotations.forEach(ann => {
         const item = document.createElement('div');
         item.className = 'annotation-item';
-        setHtml(item, `
-            <div class="annotation-dot"></div>
-            <div class="annotation-content-box">
-                <div class="annotation-meta">
-                    <span class="annotation-time">${escapeHtml(ann.date)}</span>
-                    <button type="button" class="btn-delete-annotation" data-id="${ann.id}">删除</button>
-                </div>
-                <div class="annotation-text">${escapeHtml(ann.content)}</div>
-            </div>
-        `);
+        setHtml(item, annotationItemHtml(ann));
         
         item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
             if (await confirmDialog("确定要删除这条批注吗？")) {

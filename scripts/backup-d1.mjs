@@ -2,8 +2,9 @@
 /**
  * D1 备份导出。
  *
- * 用法：npm run backup [-- --keep 30] [--no-r2]
- *   - 调用 wrangler d1 export --remote 导出远端库存为 SQL
+ * 用法：npm run backup [-- --keep 30] [--no-r2] [--local]
+ *   - 默认调用 wrangler d1 export --remote 导出远端库存为 SQL；--local 改为导出本地 dev 库，
+ *     用于演练「备份 → 丢失 → 恢复」全链路（本地快照不会被推送到 R2）
  *   - gzip 压缩后存入 backups/（已在 .gitignore 中，绝不入库）
  *   - 默认保留最近 14 份快照，超出即清理
  *   - 同时把快照推到 R2（backups/ 前缀），本机磁盘损坏时仍可恢复；
@@ -28,6 +29,9 @@ const keep = keepFlag !== -1 && Number(argv[keepFlag + 1]) > 0 ? Number(argv[kee
 
 // R2 目标桶（可用 CHILLIN_R2_BUCKET 覆盖）；--no-r2 可只做本地备份
 const skipR2 = argv.includes('--no-r2');
+// --local：导出本地 dev 库，仅用于演练恢复流程
+const local = argv.includes('--local');
+const target = local ? '--local' : '--remote';
 const r2Bucket = process.env.CHILLIN_R2_BUCKET || 'chillin-media';
 
 const outDir = path.join(root, 'backups');
@@ -36,8 +40,8 @@ fs.mkdirSync(outDir, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const rawFile = path.join(outDir, `chillin-d1-${stamp}.sql`);
 
-console.log(`[backup] exporting ${binding} (remote) → ${path.relative(root, rawFile)}`);
-execFileSync('npx', ['wrangler', 'd1', 'export', binding, '--remote', '--output', rawFile], {
+console.log(`[backup] exporting ${binding} (${local ? 'local' : 'remote'}) → ${path.relative(root, rawFile)}`);
+execFileSync('npx', ['wrangler', 'd1', 'export', binding, target, '--output', rawFile], {
     stdio: 'inherit',
     shell: process.platform === 'win32'
 });
@@ -53,8 +57,8 @@ fs.writeFileSync(gzFile, zlib.gzipSync(sql, { level: 9 }));
 fs.unlinkSync(rawFile);
 console.log(`[backup] wrote ${path.relative(root, gzFile)} (${(fs.statSync(gzFile).size / 1024).toFixed(1)} KB)`);
 
-// 云端副本：R2 出网免费，备份这种小文件几乎零成本
-if (!skipR2) {
+// 云端副本：R2 出网免费，备份这种小文件几乎零成本（本地演练快照不上传）
+if (!skipR2 && !local) {
     const objectKey = `backups/${path.basename(gzFile)}`;
     try {
         // R2 传输端点走本地 HTTP 代理会 "fetch failed"，这里为子进程补一条 NO_PROXY

@@ -36,17 +36,20 @@
   Content-Type: application/json
   Cache-Control: no-cache
 
+# 静态资源用 no-cache（每次带 ETag 复验）而不是 no-store：两者都不会拿到旧内容，
+# 但 no-store 连 304 都不给，复访要把 435KB JS + 217KB CSS 全量重下。
+# index.html / version.json / js/version.js / sw.js 仍保留 no-store（版本探测路径）。
 /style.css
   Content-Type: text/css; charset=utf-8
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: no-cache, must-revalidate
   CDN-Cache-Control: no-store
 
 /app.js
   Content-Type: text/javascript; charset=utf-8
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: no-cache, must-revalidate
   CDN-Cache-Control: no-store
 
 /js/*
   Content-Type: text/javascript; charset=utf-8
-  Cache-Control: no-cache, no-store, must-revalidate
+  Cache-Control: no-cache, must-revalidate
   CDN-Cache-Control: no-store

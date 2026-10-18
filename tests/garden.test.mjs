@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
+import fs from 'node:fs';
+import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
     handlePostWeekly,
     handleGetWeeklies,
@@ -15,9 +16,11 @@ import {
     handlePostReaderProgress
 } from '../workers/src/garden-resources.js';
 import { handleSyncPull, handleSyncBatch, handleHeatmap } from '../workers/src/garden-sync.js';
+import { scanAndAudit } from '../workers/src/audit.js';
+import { isOwnedRecord } from '../workers/src/garden-shared.js';
 
 // node:sqlite 需要 Node >= 22.5；旧版本上这些集成用例跳过（CI 同时跑 20/22）
-const integration = sqliteAvailable ? test : test.skip;
+const integration = sqliteTest;
 
 const jsonRequest = (url, body, method = 'POST') => new Request(url, {
     method,
@@ -279,4 +282,200 @@ integration('CRUD - 请求体超过 512KB 时返回 413（不再直接 request.j
         body: JSON.stringify({ title: 'x'.repeat(600 * 1024) })
     });
     assert.equal((await handlePostWeekly(req, db, 1)).status, 413);
+});
+
+integration('Audit - 违规内容改软删墓碑，重复扫描不重复隔离（堵住「复活—删除」循环）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 命中 UGC_VIOLATION_RE 的笔记（关键词：加微信 / 刷单 / 兼职日结）
+    await db.prepare(
+        "INSERT INTO notes (id, title, content, date, user_id, updated_at) VALUES (9001, '正常标题', '加微信 刷单 兼职日结', '2026-10-01', 1, '2026-10-01 10:00:00')"
+    ).run();
+
+    const first = await scanAndAudit(db, 1);
+    assert.equal(first.quarantined, 1);
+
+    // 行必须仍然存在（墓碑），物理删除会让客户端下次 sync/batch 把它原样写回
+    const row = await db.prepare('SELECT is_deleted, updated_at FROM notes WHERE id = 9001').first();
+    assert.ok(row, '违规行应保留为墓碑，而不是被物理删除');
+    assert.equal(Number(row.is_deleted), 1, '违规行应打上软删标记');
+    assert.notEqual(row.updated_at, '2026-10-01 10:00:00', 'tombstone 必须推进 updated_at 才能被增量拉取下发');
+
+    // 重复扫描：已隔离的行不再被命中，隔离区与审计日志都不再增长
+    const second = await scanAndAudit(db, 1);
+    assert.equal(second.quarantined, 0, '已隔离的行不应被重复隔离');
+    assert.equal(Number((await db.prepare('SELECT COUNT(*) AS c FROM ugc_quarantine').first()).c), 1);
+    // 时间基准：隔离区记录的 created_at 必须落在东八区（曾依赖 SQLite 的 UTC 默认值）
+    const quarantined = await db.prepare(
+        "SELECT created_at, datetime('now', '+8 hours', '-2 minutes') AS lo, datetime('now', '+8 hours', '+2 minutes') AS hi FROM ugc_quarantine LIMIT 1"
+    ).first();
+    assert.ok(
+        quarantined.created_at >= quarantined.lo && quarantined.created_at <= quarantined.hi,
+        'ugc_quarantine.created_at 必须是东八区时间，实际为 ' + quarantined.created_at
+    );
+    assert.equal(Number((await db.prepare('SELECT COUNT(*) AS c FROM audit_log').first()).c), 1);
+
+    // 墓碑对增量同步可见：客户端据此移除本地副本
+    const pullUrl = new URL('https://x/api/sync/pull');
+    pullUrl.searchParams.set('since', '2026-09-30 00:00:00');
+    const pull = await (await handleSyncPull(pullUrl, db, 1)).json();
+    assert.ok(pull.notes.some((n) => n.id === 9001 && n.is_deleted === true), '增量拉取应下发墓碑');
+});
+
+test('TestInfra - 缺 node:sqlite 时集成用例带可读原因跳过（不静默消失）', async () => {
+    const { sqliteAvailable, sqliteSkip } = await import('./fake-d1.mjs');
+    if (sqliteAvailable) {
+        assert.equal(sqliteSkip, false, '有 node:sqlite 时不应跳过任何用例');
+    } else {
+        assert.match(String(sqliteSkip), /node:sqlite 需要 Node/, '跳过原因必须说明是运行环境问题，否则 CI 的 Node 20 腿全绿却说不清');
+    }
+});
+
+integration('Garden CRUD - 覆盖写保留 created_at（REPLACE → UPSERT 回归）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await handlePostWeekly(
+        jsonRequest('https://x/api/weeklies', { id: 2001, category: '生活', title: '老文章', summary: '', date: '2026-01-01' }),
+        db, 1
+    );
+    // 模拟历史数据：created_at 是一个很久以前的时间
+    await db.prepare("UPDATE weeklies SET created_at = '2020-01-01 00:00:00' WHERE id = 2001").run();
+
+    const again = await handlePostWeekly(
+        jsonRequest('https://x/api/weeklies', { id: 2001, category: '生活', title: '改了标题', summary: '', date: '2026-01-02' }),
+        db, 1
+    );
+    assert.equal(again.status, 201);
+
+    const row = await db.prepare('SELECT title, created_at FROM weeklies WHERE id = 2001').first();
+    assert.equal(row.title, '改了标题', '内容应被覆盖为最新值');
+    assert.equal(row.created_at, '2020-01-01 00:00:00', 'created_at 必须保留原值（INSERT OR REPLACE 会把它重置为当前时间）');
+});
+
+integration('Garden Sync - 重复推送保留 created_at（REPLACE → UPSERT 回归）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const push = (body) => handleSyncBatch(jsonRequest('https://x/api/sync/batch', body), db, 1);
+
+    await push({ feeds: [{ id: 3001, content: '第一条', created_at: '2019-05-05 08:00:00' }] });
+    assert.equal((await db.prepare('SELECT created_at FROM quick_feeds WHERE id = 3001').first()).created_at, '2019-05-05 08:00:00');
+
+    // 第二次推送不带 created_at：旧实现（REPLACE）会把它重置为当前时间
+    await push({ feeds: [{ id: 3001, content: '改过的内容' }] });
+    const after = await db.prepare('SELECT content, created_at FROM quick_feeds WHERE id = 3001').first();
+    assert.equal(after.content, '改过的内容', '内容应更新');
+    assert.equal(after.created_at, '2019-05-05 08:00:00', 'created_at 必须保留原值');
+});
+
+integration('Garden CRUD - 新建记录写入东八区 created_at（与 updated_at 同口径，不再走 UTC 默认值）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 不传 id：走 INSERT 分支，created_at 由 SQL 显式写入
+    await handlePostNote(jsonRequest('https://x/api/notes', { title: '口径一致性', content: '正文', date: '2026-10-18' }), db, 1);
+    const note = await db.prepare("SELECT created_at, updated_at FROM notes WHERE title = '口径一致性'").first();
+    // 同一语句里两个 datetime('now','+8 hours') 必然相等；若 created_at 退回 UTC 默认值，
+    // 它会比 updated_at 整整早 8 小时，这条断言就是回归哨兵。
+    assert.equal(note.created_at, note.updated_at, 'created_at 与 updated_at 必须同为东八区口径');
+});
+
+integration('Migration 0023 - 存量 weeklies/notes/bookmarks 的 UTC created_at 被平移为东八区', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 4001：API 直建路径的历史行——created_at 恰好比 updated_at 早 8 小时（UTC 默认值指纹）
+    await db.prepare(
+        "INSERT INTO weeklies (id, category, title, summary, date, user_id, created_at, updated_at) VALUES (4001, '生活', '历史周记', '', '2026-10-18', 1, '2026-10-17 18:00:00', '2026-10-18 02:00:00')"
+    ).run();
+    // 4002：sync/batch 推送路径的历史行——created_at 与 updated_at 本来就是同一 CST 口径。
+    // 远端实测 21 行里有 19 行属此类；盲移 +8 会把它们改错，这条断言就是防误伤的哨兵。
+    await db.prepare(
+        "INSERT INTO weeklies (id, category, title, summary, date, user_id, created_at, updated_at) VALUES (4002, '生活', '已对齐周记', '', '2026-10-18', 1, '2026-10-18 02:00:00', '2026-10-18 02:00:00')"
+    ).run();
+
+    // createTestDb 只在空库上跑过迁移，这里重放 0023 的语句以验证它对存量数据的语义
+    const sql = fs.readFileSync(new URL('../migrations/0023_created_at_cst.sql', import.meta.url), 'utf8');
+    const replay = () => {
+        for (const stmt of sql.split(';')) {
+            const trimmed = stmt.trim();
+            if (trimmed) db.db.exec(trimmed);
+        }
+    };
+    replay();
+
+    const row = await db.prepare('SELECT created_at, updated_at FROM weeklies WHERE id = 4001').first();
+    assert.equal(row.created_at, '2026-10-18 02:00:00', 'UTC created_at 应被平移为东八区');
+    assert.equal(row.updated_at, '2026-10-18 02:00:00', 'updated_at 不应被改动');
+
+    const aligned = await db.prepare('SELECT created_at FROM weeklies WHERE id = 4002').first();
+    assert.equal(aligned.created_at, '2026-10-18 02:00:00', '已是 CST 的行不得再 +8（远端 21 行里 19 行属此类）');
+
+    // 迁移应天然幂等：平移后 created_at == updated_at，重跑不再命中
+    replay();
+    const again = await db.prepare('SELECT created_at FROM weeklies WHERE id = 4001').first();
+    assert.equal(again.created_at, '2026-10-18 02:00:00', '重放迁移不得再次平移');
+});
+
+
+test('时间基准 - 迁移文件的 created_at/updated_at 默认值不得再引入 UTC', async () => {
+    // SQLite 的 datetime('now') 与 CURRENT_TIMESTAMP 都是 UTC，而本项目约定东八区。
+    // 0023 只搬迁了存量行，列默认值仍是 UTC（SQLite 改默认值必须重建表），
+    // 所以这里守住底线：新增的表不许再用 UTC 默认值；历史表进白名单（代码已显式写 CST）。
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const url = await import('node:url');
+    const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
+    const LEGACY_UTC_TABLES = new Set([
+        'audit_log', 'bookmarks', 'echo_cards', 'files', 'files_r2', 'notes',
+        'push_subscriptions', 'quick_feeds', 'reader_progress', 'ugc_quarantine', 'users', 'weeklies'
+    ]);
+    const isUtc = (def) => def.toUpperCase().includes('CURRENT_TIMESTAMP')
+        || (def.includes("datetime('now')") && !def.includes('+8 hours'));
+
+    const dir = path.join(root, 'migrations');
+    const offenders = [];
+    for (const name of fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
+        const sql = fs.readFileSync(path.join(dir, name), 'utf8');
+        let table = null;
+        for (const raw of sql.split('\n')) {
+            const line = raw.trim();
+            const upper = line.toUpperCase();
+            if (upper.startsWith('CREATE TABLE')) {
+                table = ((line.replace(/IF NOT EXISTS/i, '').split(/[\s(]+/)[2] || '')).replace(/["'\u0060]/g, '');
+            } else if (upper.startsWith('ALTER TABLE')) {
+                table = ((line.split(/[\s]+/)[2] || '')).replace(/["'\u0060]/g, '');
+            }
+            if (!table || !/^(created_at|updated_at)/i.test(line)) continue;
+            const at = upper.indexOf('DEFAULT');
+            if (at === -1) continue;
+            const def = line.slice(at + 7).replace(/,$/, '').trim();
+            if (isUtc(def) && !LEGACY_UTC_TABLES.has(table)) {
+                offenders.push(name + ' → ' + table + '.' + line.split(/[\s]+/)[0] + ' DEFAULT ' + def);
+            }
+        }
+    }
+    assert.equal(
+        offenders.length,
+        0,
+        '新迁移给时间列用了 UTC 默认值（datetime(\'now\') / CURRENT_TIMESTAMP 都是 UTC，本项目用 +8 hours）：\n' + offenders.join('\n')
+    );
+});
+
+test('Security - 表名助手对未知表名 fail-closed（SQL 标识符不能靠调用方自觉）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    for (const bad of ['weeklies; DROP TABLE users', 'sqlite_master', 'notes WHERE 1=1 --']) {
+        await assert.rejects(
+            () => isOwnedRecord(db, bad, 1, 1),
+            /unknown table/,
+            '表名必须走白名单；把请求里的字符串拼进 SQL 就是注入：' + bad
+        );
+    }
+
+    assert.equal(await isOwnedRecord(db, 'notes', null, 1), true, '白名单内的表照常工作（id 为空视为新建）');
+    const other = await db.prepare("INSERT INTO notes (id, title, content, date, user_id) VALUES (77, 't', 'c', '2026-10-18', 2)").run();
+    assert.equal(await isOwnedRecord(db, 'notes', 77, 1), false, '已存在的他人记录必须判为无权限');
 });

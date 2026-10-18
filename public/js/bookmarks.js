@@ -22,8 +22,7 @@ export function initBookmarks() {
     const bookmarkListContainer = document.getElementById('bookmark-list-container');
     const bookmarkEditorForm = document.getElementById('bookmark-editor-form');
     const btnCancelBookmark = document.getElementById('btn-cancel-bookmark');
-    const editBookmarkId = document.getElementById('edit-bookmark-id');
-    const editBookmarkType = document.getElementById('edit-bookmark-type');
+        const editBookmarkType = document.getElementById('edit-bookmark-type');
     const editBookmarkTitle = document.getElementById('edit-bookmark-title');
     const editBookmarkUrl = document.getElementById('edit-bookmark-url');
     const editBookmarkDesc = document.getElementById('edit-bookmark-desc');
@@ -146,7 +145,6 @@ const renderBookmarks = () => {
 
 const openBookmarkEditor = () => {
     bookmarkEditorForm.reset();
-    editBookmarkId.value = '';
     if (editBookmarkImage) editBookmarkImage.value = '';
     document.querySelectorAll('.cat-chip').forEach(c => c.classList.remove('active'));
     const firstChip = document.querySelector('.cat-chip[data-val="🌐 网站"]');

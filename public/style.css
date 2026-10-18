@@ -26,7 +26,10 @@
   --danger-color: var(--ios-red);
 
   /* ---- 尺寸 / 节奏令牌 ----
-     新代码一律使用变量；旧的散落字面量按模块逐步迁移（见 .agents/rules/ui-style.md）。 */
+     新代码一律使用变量；旧的散落字面量按模块逐步迁移（见 .agents/rules/ui-style.md）。
+     下面这批令牌当前可能还没有 var() 引用（--space-1/5/6、--radius-sm、--dur-fast/--dur-base、
+     --ease-spring、--card-shadow、--ios-label、--focus-ring-color 等），但它们是**有意预留**
+     的语义阶梯，不是死代码——不要按「未被引用」删除（tests/css.test.mjs 也只删真死代码）。 */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;

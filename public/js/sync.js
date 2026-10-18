@@ -51,19 +51,19 @@ function rescueAndConsolidateLocalData() {
             const key = localStorage.key(i);
             if (!key) continue;
             if (key.includes('gardenFeeds')) {
-                const items = JSON.parse(localStorage.getItem(key));
+                const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedFeeds.push(...items);
             } else if (key.includes('gardenNotes')) {
-                const items = JSON.parse(localStorage.getItem(key));
+                const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedNotes.push(...items);
             } else if (key.includes('gardenData')) {
-                const items = JSON.parse(localStorage.getItem(key));
+                const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedWeeklies.push(...items);
             } else if (key.includes('gardenBookmarks')) {
-                const items = JSON.parse(localStorage.getItem(key));
+                const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedBookmarks.push(...items);
             } else if (key.includes('gardenPrompts')) {
-                const items = JSON.parse(localStorage.getItem(key));
+                const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedPrompts.push(...items);
             }
         }
@@ -89,9 +89,23 @@ function rescueAndConsolidateLocalData() {
     };
 }
 
+/**
+ * 安全读取 localStorage 中的 JSON 值：存档被手工改坏或写入中断时返回 null，
+ * 由调用方决定降级。裸 JSON.parse 会让一个损坏的 key 抛异常，中断整条离线同步链路。
+ */
+export function readJsonValue(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        return raw == null ? null : JSON.parse(raw);
+    } catch (err) {
+        console.warn('[sync] 本地数据解析失败，按空值降级:', key);
+        return null;
+    }
+}
+
 function getSyncedIds() {
     try {
-        return JSON.parse(localStorage.getItem(getLocalKey('gardenSyncedIds'))) || [];
+        return readJsonValue(getLocalKey('gardenSyncedIds')) || [];
     } catch (e) { return []; }
 }
 
@@ -113,7 +127,7 @@ function addSyncedIds(ids) {
 
 function getDeletedIds() {
     try {
-        return JSON.parse(localStorage.getItem(getLocalKey('gardenDeletedIds'))) || [];
+        return readJsonValue(getLocalKey('gardenDeletedIds')) || [];
     } catch (e) { return []; }
 }
 
@@ -332,18 +346,18 @@ let pendingSyncRetryTimer = null;
 export function loadLocalData() {
     const rescued = rescueAndConsolidateLocalData();
 
-    const currentFeeds = JSON.parse(localStorage.getItem(getLocalKey('gardenFeeds'))) || [];
-    const currentNotes = JSON.parse(localStorage.getItem('gardenNotes')) || JSON.parse(localStorage.getItem(getLocalKey('gardenNotes'))) || [];
-    const currentData = JSON.parse(localStorage.getItem('gardenData')) || JSON.parse(localStorage.getItem(getLocalKey('gardenData'))) || [];
-    const currentBookmarks = JSON.parse(localStorage.getItem('gardenBookmarks')) || JSON.parse(localStorage.getItem(getLocalKey('gardenBookmarks'))) || [];
-    const currentPrompts = JSON.parse(localStorage.getItem(getLocalKey('gardenPrompts'))) || [];
+    const currentFeeds = readJsonValue(getLocalKey('gardenFeeds')) || [];
+    const currentNotes = readJsonValue('gardenNotes') || readJsonValue(getLocalKey('gardenNotes')) || [];
+    const currentData = readJsonValue('gardenData') || readJsonValue(getLocalKey('gardenData')) || [];
+    const currentBookmarks = readJsonValue('gardenBookmarks') || readJsonValue(getLocalKey('gardenBookmarks')) || [];
+    const currentPrompts = readJsonValue(getLocalKey('gardenPrompts')) || [];
 
     state.database = mergeDataLists(currentData, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
     state.notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES);
     state.bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS);
     state.promptsDatabase = mergeDataLists(currentPrompts, rescued.prompts.length > 0 ? rescued.prompts : DEFAULT_PROMPTS);
     state.feedsDatabase = mergeDataLists(currentFeeds, rescued.feeds.length > 0 ? rescued.feeds : DEFAULT_FEEDS);
-    state.echoCardsDatabase = JSON.parse(localStorage.getItem(getLocalKey('gardenEchoCards'))) || [];
+    state.echoCardsDatabase = readJsonValue(getLocalKey('gardenEchoCards')) || [];
 
     if (state.authUser) {
         saveDatabase();
@@ -734,11 +748,11 @@ export function filterRealGuestItems(list, defaultIds) {
 export async function checkAndMergeGuestData() {
     if (!state.authUser) return;
 
-    const guestData = JSON.parse(localStorage.getItem('default_gardenData')) || [];
-    const guestNotes = JSON.parse(localStorage.getItem('default_gardenNotes')) || [];
-    const guestBookmarks = JSON.parse(localStorage.getItem('default_gardenBookmarks')) || [];
-    const guestFeeds = JSON.parse(localStorage.getItem('default_gardenFeeds')) || [];
-    const guestPrompts = JSON.parse(localStorage.getItem('default_gardenPrompts')) || [];
+    const guestData = readJsonValue('default_gardenData') || [];
+    const guestNotes = readJsonValue('default_gardenNotes') || [];
+    const guestBookmarks = readJsonValue('default_gardenBookmarks') || [];
+    const guestFeeds = readJsonValue('default_gardenFeeds') || [];
+    const guestPrompts = readJsonValue('default_gardenPrompts') || [];
 
     const realGuestData = filterRealGuestItems(guestData, [1]);
     const realGuestNotes = filterRealGuestItems(guestNotes, [101, 102]);
@@ -752,7 +766,7 @@ export async function checkAndMergeGuestData() {
         if (await confirmDialog('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记/提示词）。是否将这些数据导入并同步到您当前的账号中？')) {
             try {
                 const userKey = getLocalKey('gardenData');
-                let userDatabase = JSON.parse(localStorage.getItem(userKey)) || [];
+                let userDatabase = readJsonValue(userKey) || [];
                 userDatabase = [...userDatabase, ...realGuestData].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
@@ -760,7 +774,7 @@ export async function checkAndMergeGuestData() {
                 state.database = userDatabase;
 
                 const userNotesKey = getLocalKey('gardenNotes');
-                let userNotesDatabase = JSON.parse(localStorage.getItem(userNotesKey)) || [];
+                let userNotesDatabase = readJsonValue(userNotesKey) || [];
                 userNotesDatabase = [...userNotesDatabase, ...realGuestNotes].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
@@ -768,7 +782,7 @@ export async function checkAndMergeGuestData() {
                 state.notesDatabase = userNotesDatabase;
 
                 const userBMKey = getLocalKey('gardenBookmarks');
-                let userBMDatabase = JSON.parse(localStorage.getItem(userBMKey)) || [];
+                let userBMDatabase = readJsonValue(userBMKey) || [];
                 userBMDatabase = [...userBMDatabase, ...realGuestBookmarks].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
@@ -776,7 +790,7 @@ export async function checkAndMergeGuestData() {
                 state.bookmarksDatabase = userBMDatabase;
 
                 const userFeedsKey = getLocalKey('gardenFeeds');
-                let userFeedsDatabase = JSON.parse(localStorage.getItem(userFeedsKey)) || [];
+                let userFeedsDatabase = readJsonValue(userFeedsKey) || [];
                 userFeedsDatabase = [...userFeedsDatabase, ...realGuestFeeds].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
@@ -784,7 +798,7 @@ export async function checkAndMergeGuestData() {
                 state.feedsDatabase = userFeedsDatabase;
 
                 const userPromptsKey = getLocalKey('gardenPrompts');
-                let userPromptsDatabase = JSON.parse(localStorage.getItem(userPromptsKey)) || [];
+                let userPromptsDatabase = readJsonValue(userPromptsKey) || [];
                 userPromptsDatabase = [...userPromptsDatabase, ...realGuestPrompts].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );

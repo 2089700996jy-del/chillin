@@ -44,7 +44,7 @@ description: PWA 离线运行引擎、Service Worker 缓存策略（核心模块
 * `public/sw.js` 的 `ASSETS` 静态资源清单必须完整登记全部核心脚本与静态清单：
   - 前端所有在 `public/js/` 目录下的 `.js` 文件均须包含（如 `actions`, `api`, `auth`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `feeds`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `ui`, `upload`, `utils`, `version`, `weeklies` 等）。
   - 项目根目录配置与资源：`/`, `/index.html`, `/manifest.json`, 核心 CSS 与透明图标。
-* **单测门禁保护**：自动化测试 [`tests/sw.test.mjs`](file:///e:/Chillin/tests/sw.test.mjs) 会对 `public/js/` 目录扫描，任何新增的 `.js` 模块未在 `sw.js` 的 `ASSETS` 中登记时，`npm test` 将立即失败阻断构建。
+* **单测门禁保护**：自动化测试 [`tests/sw.test.mjs`](../../../tests/sw.test.mjs) 会对 `public/js/` 目录扫描，任何新增的 `.js` 模块未在 `sw.js` 的 `ASSETS` 中登记时，`npm test` 将立即失败阻断构建。
 * **安装期容错**：`install` 事件中使用 `Promise.allSettled` 进行缓存入库，避免偶发单文件故障导致 SW 拒绝安装。
 
 ---

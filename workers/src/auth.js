@@ -135,7 +135,7 @@ export async function handleRegister(request, env, db) {
     }
 
     const hashedPassword = await hashPassword(password);
-    const insertResult = await db.prepare('INSERT INTO users (username, password_hash) VALUES (?1, ?2) RETURNING id')
+    const insertResult = await db.prepare("INSERT INTO users (username, password_hash, created_at) VALUES (?1, ?2, datetime('now', '+8 hours')) RETURNING id")
         .bind(username, hashedPassword).first();
 
     const userId = insertResult.id;
@@ -333,7 +333,7 @@ export async function handlePushSubscribe(request, db) {
         return jsonResponse({ error: '订阅数据不完整' }, 400);
     }
 
-    await db.prepare('INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth) VALUES (?1, ?2, ?3, ?4) ON CONFLICT(user_id, endpoint) DO UPDATE SET updated_at = CURRENT_TIMESTAMP')
+    await db.prepare("INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now', '+8 hours'), datetime('now', '+8 hours')) ON CONFLICT(user_id, endpoint) DO UPDATE SET updated_at = datetime('now', '+8 hours')")
         .bind(session.user_id, sub.endpoint, sub.keys.p256dh, sub.keys.auth)
         .run();
 

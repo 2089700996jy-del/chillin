@@ -63,11 +63,11 @@ export async function handleUpload(request, env, db, userId) {
             await env.MEDIA.put(r2Key, arrayBuffer, {
                 httpMetadata: { contentType: sniffed, cacheControl: 'private, max-age=86400' }
             });
-            await db.prepare('INSERT INTO files (id, mime_type, r2_key, size, access_token, user_id) VALUES (?1, ?2, ?3, ?4, ?5, ?6)')
+            await db.prepare("INSERT INTO files (id, mime_type, r2_key, size, access_token, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))")
                 .bind(id, sniffed, r2Key, arrayBuffer.byteLength, accessToken, userId).run();
         } else {
             // 兜底：尚未绑定 R2 的部署仍按老办法写 D1（0020 之后 data 列可空）
-            await db.prepare('INSERT INTO files (id, mime_type, data, access_token, user_id) VALUES (?1, ?2, ?3, ?4, ?5)')
+            await db.prepare("INSERT INTO files (id, mime_type, data, access_token, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours'))")
                 .bind(id, sniffed, new Uint8Array(arrayBuffer), accessToken, userId).run();
         }
 
@@ -155,10 +155,16 @@ export async function handleFileView(fileId, request, env, db, authenticate) {
  */
 export async function pruneOldBackups(env, { prefix = 'backups/', maxAgeMs = 30 * 24 * 60 * 60 * 1000, keep = 3 } = {}) {
     if (!env || !env.MEDIA) return { scanned: 0, deleted: 0 };
-    const listed = await env.MEDIA.list({ prefix });
-    const objects = (listed.objects || [])
-        .slice()
-        .sort((a, b) => new Date(b.uploaded).getTime() - new Date(a.uploaded).getTime());
+    // R2 list 单次最多回 1000 个 key，且按 key 字典序（备份名带日期前缀 → 最旧的在第一页）。
+    // 只读第一页会把 keep 用在最旧的几份上，必须翻完全部分页再按上传时间排序。
+    const objects = [];
+    let cursor;
+    do {
+        const listed = await env.MEDIA.list(cursor ? { prefix, cursor } : { prefix });
+        objects.push(...(listed.objects || []));
+        cursor = listed.truncated ? listed.cursor : undefined;
+    } while (cursor);
+    objects.sort((a, b) => new Date(b.uploaded).getTime() - new Date(a.uploaded).getTime());
 
     let deleted = 0;
     for (let i = 0; i < objects.length; i++) {

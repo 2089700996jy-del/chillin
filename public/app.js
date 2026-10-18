@@ -172,7 +172,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const safeInit = (name, fn) => {
         try {
-            fn();
+            const result = fn();
+            // 大多数 init* 是 async：同步 try/catch 抓不到 Promise rejection，
+            // 一个模块初始化失败会变成 unhandledrejection 且不落日志。
+            if (result && typeof result.then === 'function') {
+                result.catch((err) => console.error(`[init] ${name} failed`, err));
+            }
         } catch (err) {
             console.error(`[init] ${name} failed`, err);
         }

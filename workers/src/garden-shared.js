@@ -95,7 +95,15 @@ export function formatFeed(row) {
     };
 }
 
+/**
+ * 允许被插值进 SQL 的表名白名单。
+ * SQL 标识符不能用绑定参数，所以这里 fail-closed：未知表名直接抛错，
+ * 避免将来有人把请求里的字符串当表名传进来（那就是注入）。
+ */
+export const OWNED_TABLES = new Set(['weeklies', 'notes', 'bookmarks', 'prompts', 'quick_feeds']);
+
 export async function isOwnedRecord(db, table, id, userId) {
+    if (!OWNED_TABLES.has(table)) throw new Error('isOwnedRecord: unknown table ' + table);
     if (id == null || id === '') return true;
     const n = Number(id);
     if (!Number.isSafeInteger(n) || n <= 0) return false;
@@ -148,10 +156,14 @@ export async function ensureSoftDeleteSchema(db) {
         "CREATE INDEX IF NOT EXISTS idx_bookmarks_is_deleted ON bookmarks(is_deleted)",
         "CREATE INDEX IF NOT EXISTS idx_quick_feeds_is_deleted ON quick_feeds(is_deleted)"
     ];
-    for (const sql of stmts) {
-        try {
-            await db.prepare(sql).run();
-        } catch (_) {}
-    }
+    // 与 migrations/0013_soft_deletes.sql 等价，只是老库的兜底（已迁移的库上这些 ALTER 必然
+    // 报 duplicate column）。原来逐条串行 run() 要 10 次 D1 往返；拆成两批：
+    // ALTER 那批整体吞异常（本来就会失败），幂等的建索引单独一批。
+    try {
+        await db.batch(stmts.slice(0, 4).map((sql) => db.prepare(sql)));
+    } catch (_) {}
+    try {
+        await db.batch(stmts.slice(4).map((sql) => db.prepare(sql)));
+    } catch (_) {}
     softDeleteSchemaReady = true;
 }

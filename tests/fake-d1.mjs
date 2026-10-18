@@ -8,6 +8,7 @@
  * node:sqlite 需要 Node >= 22.5；更旧的 Node 上 sqliteAvailable 为 false，
  * 调用方应据此跳过（test.skip），CI 因此同时跑 Node 20 与 22。
  */
+import test from 'node:test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +21,18 @@ try {
 }
 
 export const sqliteAvailable = Boolean(DatabaseSync);
+
+/**
+ * 传给 node:test 的 skip 选项：可用时为 false，不可用时是一句可读的原因。
+ * 裸 true 会让 CI 的 Node 20 腿只显示「skipped N」，看不出是「本机 Node 太旧」
+ * 还是「用例写坏了」——38 条 SQL 集成用例会整批消失而无人察觉。
+ */
+export const sqliteSkip = sqliteAvailable
+    ? false
+    : `node:sqlite 需要 Node ≥ 22.5（当前 ${process.version}）`;
+
+/** SQLite 依赖型用例的统一入口：等价于 test(...)，缺 node:sqlite 时带原因跳过。 */
+export const sqliteTest = (name, fn) => test(name, { skip: sqliteSkip }, fn);
 
 class Statement {
     constructor(db, sql, args = []) {

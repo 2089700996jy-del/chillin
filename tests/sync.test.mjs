@@ -243,3 +243,21 @@ test('Sync - filterRealGuestItems filters unedited mock placeholders and preserv
     assert.equal(filtered.some(i => i.id === 1760000000000), true, 'User created item should be preserved');
 });
 
+test('Sync - 本地存档损坏时安全降级为空值（不再让裸 JSON.parse 中断离线同步）', async () => {
+    const { readJsonValue } = await import('../public/js/sync.js');
+    globalThis.localStorage = {
+        getItem(key) {
+            if (key === 'broken') return '{不是合法 JSON';
+            if (key === 'ok') return '[{"id":1}]';
+            return null;
+        }
+    };
+    try {
+        assert.equal(readJsonValue('broken'), null, '损坏的存档必须降级为 null 而不是抛异常');
+        assert.equal(readJsonValue('missing'), null, '缺失的 key 必须返回 null');
+        assert.deepEqual(readJsonValue('ok'), [{ id: 1 }], '合法存档应正常解析');
+    } finally {
+        delete globalThis.localStorage;
+    }
+});
+

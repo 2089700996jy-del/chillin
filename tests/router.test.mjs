@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createTestDb, sqliteAvailable } from './fake-d1.mjs';
+import { createTestDb, sqliteTest } from './fake-d1.mjs';
 import { FakeR2 } from './fake-r2.mjs';
 import { handleRegister } from '../workers/src/auth.js';
 import api from '../workers/api.js';
@@ -9,7 +9,7 @@ import api from '../workers/api.js';
  * 网关级集成用例：走真实的 workers/api.js 路由表 + 真实会话 Cookie，
  * 覆盖 R2 相关的路由接线（单元测试只验领域函数，接错路由它们测不出来）。
  */
-const integration = sqliteAvailable ? test : test.skip;
+const integration = sqliteTest;
 const env = { ALLOW_REGISTRATION: 'true', PROXY_SHARED_SECRET: 'test-secret' };
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d]);

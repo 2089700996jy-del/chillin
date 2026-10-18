@@ -8,9 +8,11 @@ import {
     scoreMemoryChunk
 } from '../workers/src/rag.js';
 import { formatPrompt } from '../workers/src/garden-shared.js';
-import { createTestDb, seedUser, sqliteAvailable } from './fake-d1.mjs';
+import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import { retrieveGardenMemories } from '../workers/src/rag.js';
 import { handleAiChat } from '../workers/src/ai.js';
+import { handleAiReview } from '../workers/src/garden-echo.js';
+import { moderateText, callCustomLlm, callCustomLlmWithMessages } from '../workers/src/llm.js';
 
 test('RAG - tokenizeQuery extracts keywords and filters stopwords', () => {
     const tokens = tokenizeQuery('请问关于代码重构和深色模式有哪些想法呢？');
@@ -61,7 +63,7 @@ test('RAG - parseDateToYmd and extractItemDate correctly normalize all date form
     assert.equal(extractItemDate({ created_at: '2026-10-06 15:30:00' }), '2026-10-06');
 });
 
-const integration = sqliteAvailable ? test : test.skip;
+const integration = sqliteTest;
 integration('RAG - recently edited older records stay in the bounded candidate window', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -126,4 +128,64 @@ integration('AI chat - 空问题 / 超长问题 / 非法 JSON 都被拦在模型
     assert.equal((await handleAiChat(post({ question: '   ' }), {}, db, 1)).status, 400, '空问题应拒绝');
     assert.equal((await handleAiChat(post({ question: 'x'.repeat(4001) }), {}, db, 1)).status, 400, '超过 4000 字应拒绝');
     assert.equal((await handleAiChat(post('{bad json'), {}, db, 1)).status, 400, '非法 JSON 应拒绝');
+});
+
+integration('Garden Echo - 近期没有记录时给出友好回复而不是空跑模型', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const res = await handleAiReview({}, db, 1);
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.match(body.reply, /这一周还没有新的记录/, '空窗口应直接返回引导语，不调用模型');
+});
+
+integration('Garden Echo - 无 LLM 凭证时降级为本地摘要（窗口内的记录必须被取到）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 造一条「本周」的记录：date 用东八区当天，created_at 也用东八区，
+    // 两者任一条命中窗口即可（garden-echo 的窗口条件是 OR）
+    await db.prepare(
+        "INSERT INTO notes (id, title, content, date, user_id, created_at, updated_at) " +
+        "VALUES (7001, '本周的笔记', '关于边缘计算的一点想法', date('now', '+8 hours'), 1, datetime('now', '+8 hours'), datetime('now', '+8 hours'))"
+    ).run();
+
+    const res = await handleAiReview({}, db, 1);
+
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.match(body.reply, /本周回顾（本地摘要）/, '没有 LLM 凭证时应降级为本地摘要而不是报错');
+    assert.match(body.reply, /本周的笔记/, '窗口内的记录必须出现在摘要里');
+});
+
+test('LLM 合规 - 硬违规词直接拒绝输出', () => {
+    const r = moderateText('这里包含赌博相关的内容', {});
+    assert.equal(r.ok, false, '硬违规词必须触发拒绝');
+    assert.equal(r.text, '', '拒绝时不得回传原文');
+});
+
+test('LLM 合规 - 软广词打码而不是整段拒绝', () => {
+    const r = moderateText('想赚钱就加微信详聊', {});
+    assert.equal(r.ok, true, '软广词不应误杀正常对话');
+    assert.doesNotMatch(r.text, /加微信/, '软广词必须被打码');
+    assert.match(r.text, /\*{4}/, '打码占位符应是 ****');
+});
+
+test('LLM 合规 - 空文本与正常文本都不误伤', () => {
+    assert.deepEqual(moderateText('', {}), { ok: true, text: '' });
+    const normal = '今天读了《人月神话》，想清楚了沟通成本这件事';
+    assert.deepEqual(moderateText(normal, {}), { ok: true, text: normal }, '正常内容必须原样通过');
+});
+
+test('LLM 合规 - 政治敏感词表由 env 注入，未配置时不误伤', () => {
+    const word = '中性示例词';
+    assert.equal(moderateText('包含' + word, {}).ok, true, '未配置词表时不应拦截');
+    assert.equal(moderateText('包含' + word, { MODERATION_POLITICAL_WORDS: word }).ok, false, '配置词表后必须拦截');
+});
+
+test('LLM - 没有任何凭证时安静返回空串（上层据此降级为本地摘要）', async () => {
+    assert.equal(await callCustomLlm({}, 'system', 'user'), '', '无凭证必须返回空串而不是抛错');
+    assert.equal(await callCustomLlmWithMessages({}, []), '');
 });

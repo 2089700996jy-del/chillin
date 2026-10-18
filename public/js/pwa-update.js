@@ -6,6 +6,7 @@ import { showToast, confirmDialog } from './utils.js';
 import { APP_VERSION, APP_BUILD_LABEL } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
 import { setHtml, getScriptUrl } from './trusted-types.js';
+import { actions } from './actions.js';
 
 let forceRefreshing = false;
 
@@ -141,13 +142,25 @@ export function initPwaUpdates() {
         if (msg) msg.textContent = message || '发现新版本，刷新即可体验';
         bannerShown = true;
 
+        // 是否有未保存草稿：周记 / 笔记各自的守卫在 actions 上晚绑定（见 actions.js）。
+        // 只靠 activeElement 判断是不够的——编辑器失焦后（点开面板、切到批注）焦点已不在
+        // INPUT/TEXTAREA 上，会被误判成「没在编辑」而把草稿刷掉。
+        const hasUnsavedDraft = () => {
+            try {
+                return Boolean(actions.hasUnsavedChanges?.() || actions.hasUnsavedNoteChanges?.());
+            } catch (_) {
+                return false;
+            }
+        };
+
         // Idle auto-refresh: only when not editing, after a short delay
         const typing = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
-        if (!typing) {
+        if (!typing && !hasUnsavedDraft()) {
             setTimeout(() => {
                 if (!reloading && !forceRefreshing && bannerShown && document.visibilityState === 'visible') {
                     const stillTyping = document.activeElement && /^(INPUT|TEXTAREA)$/.test(document.activeElement.tagName);
-                    if (!stillTyping) softReload(pendingReloadReason || '新版本已就绪，正在刷新…');
+                    // 8 秒内又产生了草稿就放弃自动刷新，只留横幅等用户自己点
+                    if (!stillTyping && !hasUnsavedDraft()) softReload(pendingReloadReason || '新版本已就绪，正在刷新…');
                 }
             }, 8000);
         }

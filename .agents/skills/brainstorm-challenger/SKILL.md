@@ -50,9 +50,9 @@ graph TD
 
 ### 维度三：技术实现代价 (Technical Architecture Cost)
 1. **Zero-Build 纯洁度**：是否需要引入第三方 npm 打包黑盒？（绝对禁止，必须原生 ESM）。
-2. **Worker 300 行红线**：修改后 [`workers/api.js`](file:///e:/Chillin/workers/api.js) 是否依然保持在 300 行以内？
+2. **Worker 300 行红线**：修改后 [`workers/api.js`](../../../workers/api.js) 是否依然保持在 300 行以内？
 3. **D1 数据迁移成本**：是否必须修改表结构？如果必须建表，是否考虑了软删除（`is_deleted`）、参数绑定防注入与 FakeD1 测试？
-4. **离线白屏防线**：新增 JS 文件后，[`public/sw.js`](file:///e:/Chillin/public/sw.js) 是否已全量登记？断网时能不能用？
+4. **离线白屏防线**：新增 JS 文件后，[`public/sw.js`](../../../public/sw.js) 是否已全量登记？断网时能不能用？
 
 ### 维度四：移动端单手交互与触感 (Mobile Ergonomics)
 1. **拇指法则**：核心交互按钮是否在单手容易点击的底部操作区？

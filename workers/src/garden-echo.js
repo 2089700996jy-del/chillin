@@ -129,9 +129,9 @@ export async function handleAiReview(env, db, userId) {
     if (!reviewLimit.ok) return rateLimitedResponse(reviewLimit.retryAfter);
 
     const [feeds, notes, weeklies] = await Promise.all([
-        db.prepare("SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND created_at >= datetime('now', '-7 days') ORDER BY id DESC LIMIT 30").bind(userId).all(),
-        db.prepare("SELECT title, content, date FROM notes WHERE user_id = ?1 AND is_deleted = 0 AND (created_at >= datetime('now', '-7 days') OR date >= datetime('now', '-7 days')) ORDER BY id DESC LIMIT 15").bind(userId).all(),
-        db.prepare("SELECT title, summary, date FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 AND (created_at >= datetime('now', '-7 days') OR date >= datetime('now', '-7 days')) ORDER BY id DESC LIMIT 5").bind(userId).all()
+        db.prepare("SELECT content, created_at FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND created_at >= datetime('now', '+8 hours', '-7 days') ORDER BY id DESC LIMIT 30").bind(userId).all(),
+        db.prepare("SELECT title, content, date FROM notes WHERE user_id = ?1 AND is_deleted = 0 AND (created_at >= datetime('now', '+8 hours', '-7 days') OR date >= datetime('now', '+8 hours', '-7 days')) ORDER BY id DESC LIMIT 15").bind(userId).all(),
+        db.prepare("SELECT title, summary, date FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 AND (created_at >= datetime('now', '+8 hours', '-7 days') OR date >= datetime('now', '+8 hours', '-7 days')) ORDER BY id DESC LIMIT 5").bind(userId).all()
     ]);
 
     const contextText = [

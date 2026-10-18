@@ -65,6 +65,13 @@ function checkRemoteMigrations() {
 }
 
 try {
+    // 先校验提交信息：格式不合法就立刻中断，避免白白改写 CHANGELOG / 版本号留下脏工作区
+    if (!message || !CONVENTIONAL.test(message)) {
+        console.error('\n✖ 必须提供符合 Conventional Commits 的 --message，例如：');
+        console.error('   npm run ship -- --message "fix(sync): 修复游标回退" --push');
+        process.exit(1);
+    }
+
     run('单元测试（必须 0 失败）', 'npm test');
     run('边缘预打包演练（必须 Exit 0）', 'npx wrangler deploy --dry-run');
     checkRemoteMigrations();
@@ -84,11 +91,9 @@ try {
     // CHANGELOG 由 git 历史生成，必须与提交一起更新，否则必然漂移
     run('重新生成 CHANGELOG', 'npm run changelog');
 
-    if (!message || !CONVENTIONAL.test(message)) {
-        console.error('\n✖ 必须提供符合 Conventional Commits 的 --message，例如：');
-        console.error('   npm run ship -- --message "fix(sync): 修复游标回退" --push');
-        process.exit(1);
-    }
+    // 版本联动会改写 package.json / 架构报告等锚点，必须再跑一次门禁：
+    // 否则「bump 之后文档版本对不上」的提交会被推上去，下一轮 CI 必红。
+    if (bump) run('版本联动后复测（必须 0 失败）', 'npm test');
 
     run('暂存改动', 'git add -A');
     const staged = execSync('git diff --cached --name-only').toString().trim();
@@ -98,7 +103,8 @@ try {
     }
     console.log(`\n  即将提交 ${staged.split('\n').length} 个文件`);
 
-    execSync(`git commit -m "${message.replace(/"/g, '\\"')}"`, { stdio: 'inherit' });
+    // 用 -F - 从 stdin 读提交信息：彻底避开 shell 插值（原写法只转义双引号，$() / 反引号仍会被执行）
+    execSync('git commit -F -', { input: message, stdio: ['pipe', 'inherit', 'inherit'] });
 
     if (push) {
         run('推送到 GitHub（会触发 Pages 构建）', 'git push origin main');
