@@ -54,6 +54,31 @@
    * 禁止使用原生 `confirm()` / `alert()`，一律改用 `utils.confirmDialog()` 与 `showToast()`；
    * 键盘焦点必须有可见样式（`:focus-visible` 已在样式末尾统一兜底，不要再新增 `outline: none`）；
    * **禁止直接写 `el.innerHTML`**：一律使用 [`public/js/trusted-types.js`](../../public/js/trusted-types.js) 的 `setHtml(el, html)`，测试会拦截任何绕过（Trusted Types 策略为 `chillin#html`）。
+4. **触控热区 (Touch Target) 44pt 底线**：
+   * 任何可点击元素的**实际可点区域**不得小于 44×44pt（Apple HIG 与 Konsta `h-11` 标准）；
+   * **热区 ≠ 视觉尺寸**：紧凑胶囊（`.btn-chip` / `.k-mood-chip` / `.prompt-chip` 等）视觉保持 `28px` 本身就是 Konsta 规范，热区必须另用 `::after` 撑到 44px：
+
+     ```css
+     .btn-chip,
+     .k-mood-chip {
+       height: 28px;          /* 视觉：Konsta 标准，不要为了热区把它改成 44px */
+       position: relative;    /* 热区锚点 */
+     }
+
+     .btn-chip::after,
+     .k-mood-chip::after {
+       content: '';
+       position: absolute;
+       left: 0;
+       right: 0;              /* 严禁横向外扩 */
+       top: -8px;
+       bottom: -8px;          /* 28 + 8 + 8 = 44px */
+     }
+     ```
+
+   * **热区严禁横向外扩**（必须 `left: 0; right: 0`）：同行 `gap` 通常只有 6~8px，横向一撑就会抢走邻居的点击；
+   * 纵向热区必须有容器空间，**两个真实踩过的坑**：`overflow-x: auto` 会连带裁剪纵向溢出，横向滚动行必须补 `padding: 8px 0`；`flex-wrap: wrap` 的容器必须把 `row-gap` 提到 `16px`，否则换行后上下两行热区重叠（320px 窄屏实测会换行）；
+   * 横向滚动的胶囊行必须补右缘渐隐 `mask-image`，否则被裁切的末位胶囊会让用户完全不知道它存在。
 
 ---
 
@@ -68,4 +93,4 @@
 | 动效 | `--dur-fast` 0.18s / `--dur-base` 0.28s / `--ease-spring` `cubic-bezier(0.16, 1, 0.3, 1)` |
 | 颜色 | `--ios-blue` / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 
-> 现状债务：`public/style.css` 约 6000 行、仍有 545 处 `!important`（多为 v2.5.30 之后叠加的覆写层）。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 8700 行、仍有 302 处 `!important`（多为 v2.5.30 之后叠加的覆写层）。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。

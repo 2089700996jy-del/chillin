@@ -3844,6 +3844,8 @@ body.keyboard-open .fab-btn {
   display: flex;
   align-items: center;
   gap: 8px;
+  /* 换行时两行各外扩 8px 的热区不会重叠 */
+  row-gap: 16px;
   flex-wrap: wrap;
 }
 
@@ -3852,8 +3854,10 @@ body.keyboard-open .fab-btn {
   align-items: center;
   justify-content: center;
   gap: 4px;
+  /* Konsta HIG：视觉 28px，热区由 ::after 撑到 44px */
   height: 28px;
   padding: 0 12px;
+  position: relative;
   border-radius: 9999px;
   font-size: 12.5px;
   font-weight: 500;
@@ -3864,6 +3868,15 @@ body.keyboard-open .fab-btn {
   transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.btn-chip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  bottom: -8px;
 }
 
 .btn-chip:hover {
@@ -8583,7 +8596,11 @@ body.dark-reader-body .storage-diag-footer {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding: 1px 0 2px;
+  /* 8 + 28 + 8 = 44px：为热区留高；overflow-x 会连带裁剪纵向溢出 */
+  padding: 8px 0;
+  /* Konsta 规范：右缘渐隐，提示仍可横向滑动（第 5 个状态此前完全看不到） */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent 100%);
 }
 
 .k-mood-scroll-row::-webkit-scrollbar {
@@ -8591,8 +8608,10 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip {
+  /* Konsta HIG：胶囊视觉保持 28px，热区由 ::after 撑到 44px */
   height: 28px;
   padding: 0 10px;
+  position: relative;
   border-radius: 9999px;
   display: inline-flex;
   align-items: center;
@@ -8607,6 +8626,15 @@ body.dark-reader-body .storage-diag-footer {
   flex-shrink: 0;
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
+}
+
+.k-mood-chip::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -8px;
+  bottom: -8px;
 }
 
 .k-mood-chip:hover {
