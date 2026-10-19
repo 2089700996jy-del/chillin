@@ -16,10 +16,19 @@ test('Architecture - the Worker gateway stays a thin router (300-line red line)'
     );
 
     // 网关只应编排，不应直接实现领域逻辑：确认各子域模块都被引用
-    for (const mod of ['security', 'auth', 'garden-shared', 'garden-media', 'garden-resources', 'garden-sync', 'garden-echo', 'ai', 'audit']) {
+    for (const mod of ['security', 'auth', 'garden-shared', 'garden-media', 'garden-resources', 'garden-sync', 'garden-echo', 'ai', 'bot-claw', 'maintenance']) {
         assert.ok(
             source.includes(`./src/${mod}.js`),
             `workers/api.js should route through ./src/${mod}.js`
+        );
+    }
+
+    // 编排层下沉后，定时任务的分发必须由 maintenance 统一引用各执行模块
+    const maintenance = await fs.readFile(path.join(root, 'workers', 'src', 'maintenance.js'), 'utf8');
+    for (const mod of ['audit', 'auth', 'security-network', 'garden-media', 'bot-claw']) {
+        assert.ok(
+            maintenance.includes(`./${mod}.js`),
+            `workers/src/maintenance.js should orchestrate ./src/${mod}.js`
         );
     }
 });

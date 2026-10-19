@@ -33,7 +33,7 @@
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
-（`workers/src/` 共 **14 个模块**：3 个安全原语、1 个鉴权、5 个花园业务域、1 个 AI 编排、1 个审计。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **17 个模块**：3 个安全原语、1 个鉴权、5 个花园业务域、1 个 AI 编排、1 个审计、1 个 Bot 指令大脑、1 个外部 IM 接入、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -51,6 +51,9 @@
 | [`workers/src/llm.js`](../../workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式与非流式包装、敏感词合规审查。 |
 | [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：RAG 召回 → 模型调用 → SSE 流式推送（从网关下沉而来）。 |
 | [`workers/src/audit.js`](../../workers/src/audit.js) | 自动化安全与审计 | 定时 Cron UGC 违规扫描与隔离区备份、违规规则集、审计日志保留清理。 |
+| [`workers/src/bot-commands.js`](../../workers/src/bot-commands.js) | Bot 指令大脑 | ClawBot 的消息分流层：帮助文案、`claimBotMessage` 幂等排重、文字/链接入随手记、「搜 X」检索记忆、「问 X」走 Echo AI（独立限流桶）。 |
+| [`workers/src/bot-claw.js`](../../workers/src/bot-claw.js) | 外部 IM 接入（微信 ClawBot / iLink 协议） | 扫码绑定生命周期（二维码 / 确认 / 解绑，令牌只落库不回传）、每分钟 Cron 长轮询拉消息、游标与幂等排重、经 iLink `sendmessage` 回发文本。 |
+| [`workers/src/maintenance.js`](../../workers/src/maintenance.js) | 定时任务编排 | 按 Cron 表达式分流：`* * * * *` 只跑 ClawBot 长轮询，`13 * * * *` 跑小时级维护（UGC 扫描、会话清理、限流清理、备份保留、审计保留）。 |
 
 ---
 

@@ -4,7 +4,6 @@ import {
     applySecurityHeaders,
     withCors,
     jsonResponse,
-    cleanupRateLimits,
     oversizedRequestResponse
 } from './src/security.js';
 
@@ -18,14 +17,8 @@ import {
     handleListSessions,
     handleRevokeSession,
     handleMe,
-    handlePushSubscribe,
-    cleanExpiredSessions
+    handlePushSubscribe
 } from './src/auth.js';
-
-import {
-    scanAndAudit,
-    cleanupAuditLogs
-} from './src/audit.js';
 
 import {
     handleAiChat
@@ -36,7 +29,6 @@ import { ensureSoftDeleteSchema } from './src/garden-shared.js';
 import {
     handleUpload,
     handleFileView,
-    pruneOldBackups,
 } from './src/garden-media.js';
 
 import {
@@ -83,9 +75,11 @@ import {
     handleAiReview,
     handleAuditScan
 } from './src/garden-echo.js';
+import { handleClawApi } from './src/bot-claw.js';
+import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.106';
+const APP_VERSION = '2.5.107';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -142,6 +136,9 @@ async function router(path, method, request, env, ctx) {
         return jsonResponse({ error: '未登录或登录已过期' }, 401);
     }
     await ensureSoftDeleteSchema(db);
+
+    // 微信 ClawBot（iLink）绑定与扫码：私人操作，挂在登录态之后
+    if (path.startsWith('/api/bot/claw')) return handleClawApi(request, env, url, db, userId);
 
     // ── 账号与文件 ──
     if (path === '/api/upload' && method === 'POST') return handleUpload(request, env, db, userId);
@@ -256,37 +253,9 @@ export default {
         }
     },
 
-    // 定时任务：每小时扫描 UGC 隔离违规内容；并清理过期 Session
+    // 定时任务：编排在 workers/src/maintenance.js —— 每分钟那条只跑 ClawBot 长轮询，
+    // 每小时那条才跑 UGC 扫描与各类清理，避免每分钟触发把小时任务带着跑 60 遍。
     async scheduled(event, env, ctx) {
-        try {
-            const result = await scanAndAudit(env.DB);
-            console.log(`[audit] scheduled scan: scanned=${result.scanned} quarantined=${result.quarantined}`);
-        } catch (err) {
-            console.error('[audit] scheduled scan failed:', err);
-        }
-        try {
-            const cleaned = await cleanExpiredSessions(env.DB);
-            console.log(`[session] scheduled cleanup: removed=${cleaned}`);
-        } catch (err) {
-            console.error('[session] scheduled cleanup failed:', err);
-        }
-        try {
-            const pruned = await cleanupRateLimits(env.DB);
-            console.log(`[rate-limit] scheduled cleanup: removed=${pruned}`);
-        } catch (err) {
-            console.error('[rate-limit] scheduled cleanup failed:', err);
-        }
-        try {
-            const pruned = await pruneOldBackups(env);
-            console.log(`[r2] backup retention: scanned=${pruned.scanned} deleted=${pruned.deleted}`);
-        } catch (err) {
-            console.error('[r2] backup retention failed:', err);
-        }
-        try {
-            const audits = await cleanupAuditLogs(env.DB);
-            console.log(`[audit] retention cleanup: logs=${audits.auditLogs} quarantine=${audits.quarantine}`);
-        } catch (err) {
-            console.error('[audit] retention cleanup failed:', err);
-        }
+        await runScheduled(env, event);
     }
 };

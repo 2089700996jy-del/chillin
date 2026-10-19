@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-18。供后续会话快速接续。当前前端/Worker：**v2.5.106**（Worker 已部署、D1 迁移 0020/0021 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-19。供后续会话快速接续。当前前端/Worker：**v2.5.107**（Worker 已部署、D1 迁移 0001–0024 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0023`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0024`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -62,8 +62,33 @@
 | `workers/src/rag.js` | 记忆检索：全表（含 prompts）索引、分词、多轮主题继承、打分 |
 | `workers/src/llm.js` | 模型集成：DeepSeek/Workers AI 调用、流式 SSE、内容合规审查 |
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
+| `workers/src/bot-commands.js` | Bot 指令大脑（ClawBot 专用）：幂等排重、文字/链接入随手记、「搜 X」检索记忆、「问 X」走 Echo AI 与独立限流 |
+| `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
+| `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 ClawBot（iLink 协议）接入（工作树内，未发布）
+
+**为什么换路线**：企业微信「智能机器人」在**个人微信（微信插件）里不可用**——插件沿用的是原企业号模型，只覆盖自建应用与小程序，机器人这个 2026 新实体不在其中（后台已成功关注插件、通讯录里却看不到机器人）。公众号 / 微信客服要 `access_token`，而自建应用调接口卡 60020「企业可信 IP」（要求调用方是本企业服务器 IP，Cloudflare Worker 无固定出口 IP）。腾讯官方开源仓库 `Tencent/openclaw-weixin`（MIT）的 `docs/protocol.md` 明确写着「供实现兼容后端的开发者使用」→ **按 iLink 协议自行实现后端是被官方预期的，不是逆向**。
+
+**Spike 三连（全部通过）**：① 本机扫码绑定成功，拿到 `ilink_bot_id` / `ilink_user_id` / `baseurl` / `bot_token`（二维码实测 40–60 秒过期，必须自动换新）；② `getupdates` 长轮询收到真实消息、用 `sendmessage` + `context_token` 回复**真机收到**；③ 部署 12 行临时探针 Worker（已删除）证明 **Cloudflare 边缘可直连 `ilinkai.weixin.qq.com`（约 1.2 秒拿到新二维码）**——不需要 OpenClaw、不需要常驻机器。
+
+**实现**：`workers/src/bot-claw.js`（iLink 传输层 + 扫码绑定生命周期 + 长轮询）、`workers/src/bot-commands.js`（配套的指令大脑：排重、随手记、检索、Echo AI、独立限流桶）、`workers/src/maintenance.js`（Cron 分流编排）、`migrations/0024_bot_claw.sql`（`bot_claw_accounts` 绑定表：`UNIQUE(user_id)`、`is_deleted`、`(user_id, is_deleted, id DESC)` 与 `(status, is_deleted)` 索引）。安全细节：传输层可注入 `fetchImpl` 以便离线单测；`bot_token` 只落库、`publicStatus` **绝不回传**；`baseurl` 只接受 https 主机名，防被篡改的库记录把请求带去别处；绑定前的积压消息按 `bound_at_ms - 60000` 丢弃；排重键由 `message_id` + `item_list[0].msg_id` + `client_id` 三段拼接（`message_id` 是 uint64，`JSON.parse` 会丢精度）。
+
+**Cron 分流**：`wrangler.toml` 的 triggers 变成两条 `["13 * * * *", "* * * * *"]`；`runScheduled(env, event)` 按 `event.cron` 分流——每分钟那条**只跑 ClawBot 长轮询**，不会把小时级维护（UGC 扫描 / 会话清理 / 限流清理 / 备份保留 / 审计保留）带着跑 60 遍。
+
+**网关**：`workers/api.js` **296 → 261 行**（红线 300）。把 `scanAndAudit`/`cleanExpiredSessions`/`cleanupRateLimits`/`pruneOldBackups`/`cleanupAuditLogs` 的调用与 import 全部下沉到 `workers/src/maintenance.js`，`scheduled()` 收缩成一行委派；新增 `if (path.startsWith('/api/bot/claw')) return handleClawApi(request, env, url, db, userId);`（在鉴权闸门**之后**，绑定状态与解绑需要登录态）。
+
+**测试**：新增 `tests/bot-claw.test.mjs` **19 用例**（7 纯单测 + 12 SQLite 集成，全部走注入的假 `fetch`，零网络；含「一次 cron 调用内持续拉取」的循环与预算断言）。测试总数 182 → **201 用例（20 套件）**。
+
+**企业微信路线清理（同批）**：个人微信路径已由 ClawBot 承担，企业微信「智能机器人」v1 的传输层与测试在 ship 前删除（`workers/src/bot-wechat.js`、`tests/bot-wechat.test.mjs`），公开回调路由与 `WECHAT_BOT_*` secrets 一并回收；删除后测试总数为 **177 用例（19 套件）**。
+
+**上线**：远端应用 `0024`（`Executed 4 commands`）→ 把已持有的 `bot_token` 直接种进 D1（**不需要重新扫码**，凭证仍然有效；只有解绑后重绑才要）→ 部署 Version ID `b7e9c683-7649-423e-8ab5-1e9c4f35ed9c`，triggers 两条 `["13 * * * *", "* * * * *"]`。
+
+**端到端实证**：cron 在每分钟 :27.8 触发（`scheduledTime` 实测 `:27.808`），23:39:27.8 那一轮 2.5 秒内就收到并回信，用户真实消息落进随手记（`quick_feeds.id = 1792080202251`、内容「今天挺开心」、`created_at 2026-10-19 23:39:30` CST），`bot_claw_accounts.last_error` 为空、游标持续推进。
+
+**延迟优化（响应从最坏约 60s 降到数秒）**：iLink `getupdates` 空闲时服务端约 18s 才返回，原先「一次 cron 只拉一轮」会让每分钟空转约 42s。改成**在一次 scheduled 调用内、55s 预算里持续循环拉取**（`POLL_RUN_BUDGET_MS`，多账号按 `slice` 分配，`options.budgetMs` 只给单测收紧预算），单条消息的延迟只剩「在途长轮询立刻返回 + 回复往返」；单条消息处理失败只记日志，不再连坐整分钟的收信。
 
 ### 优化批次：P0–P3 清单落地（工作树内）
 
@@ -118,7 +143,7 @@
 
 28. **前端首屏体积预算门禁**：项目坚持零构建、直开，但此前**没有任何体积约束**——加一个 30KB 的库只需一次提交，没人会注意到首次加载变慢。实测现状：JS 合计 452.6 KB raw / **134.8 KB gzip**（29 个文件），CSS 212.8 KB raw / **35.9 KB gzip**，最大单文件是 `public/js/reader.js` 13.6 KB gzip。已在 `tests/architecture.test.mjs` 加入预算门禁（JS 合计 ≤ 160 KB、CSS ≤ 48 KB、单文件 ≤ 20 KB gzip），并按需留出余量。门禁用 30 KB 不可压缩探针验证过会真失败——且证明了单文件上限能独立生效（探针时总量 158.6 KB 仍未越线，是单文件断言把它抓住的）。同步写入 `.agents/rules/architecture.md` §1 与 README 测试布局表。
 
-**测试 122 → 158 用例（18 套件）**；README（迁移范围 0001–0023、测试布局表新增 a11y/css、版本联动 8 处）、PROGRESS、架构报告（正文行数/用例数纳入门禁）、`engineering-workflow.md`、`AGENTS.md` 与 `chillin-ship-guardian` 技能文档（6 点 → 8 点）同批更新。
+**测试 122 → 182 用例（19 套件）**；README（迁移范围 0001–0023、测试布局表新增 a11y/css、版本联动 8 处）、PROGRESS、架构报告（正文行数/用例数纳入门禁）、`engineering-workflow.md`、`AGENTS.md` 与 `chillin-ship-guardian` 技能文档（6 点 → 8 点）同批更新。
 
 ### 请求体上限全覆盖与 Service Worker 缓存时序修正（v2.5.103 → v2.5.104）
 

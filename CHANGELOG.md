@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-19T11:56:26.264Z · 提交数：340
+> 生成时间：2026-10-19T16:07:27.451Z · 提交数：341
+
+## 2026-10-19
+
+### 📝 文档
+
+- reconcile the repo-slimming report, version anchors and the 0023 migration notes
 
 ## 2026-10-18
 

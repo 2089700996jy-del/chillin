@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.106 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.107 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端 (v2.5.106，Service Worker `chillin-v153`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0023 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端 (v2.5.106，Service Worker `chillin-v154`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0024 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -253,7 +253,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 
 #### ④ 后端微内核治理与安全纵深防御
 单体 `api.js` 完全解耦为微内核网关与专业职责子域：
-* `workers/api.js`：轻量调度入口，严格保持在 293 行内（由 `tests/docs.test.mjs` 对着磁盘校验），不含任何直接 SQL 操作；
+* `workers/api.js`：轻量调度入口，严格保持在 300 行内（由 `tests/docs.test.mjs` 对着磁盘校验），不含任何直接 SQL 操作；
 * `security.js` (门面) ➔ 分治为 `security-crypto.js`、`security-network.js`：
   - 动态盐 PBKDF2 强散列（10 万次迭代）、时序安全比较；
   - 跨实例共享限流计数（内存桶快速拒绝 + D1 原子计数）、CORS/响应头/MIME 嗅探与输入校验；
@@ -261,12 +261,14 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `auth.js`：会话令牌仅存 SHA-256 哈希、HttpOnly+SameSite Cookie 鉴权、刷新即轮换、设备登录会话列表；
 * `garden-shared.js` / `garden-media.js` / `garden-resources.js` / `garden-sync.js` / `garden-echo.js`：按资源与职责高度解耦的领域微模块；
 * `ai.js` / `rag.js` / `llm.js`：下沉独立 AI 路由，流式 SSE、多轮继承与 RAG 打分算法；
-* `audit.js`：定时 Cron 自动化内容违规扫描、隔离区备份与审计日志 180 天生命周期清理。
+* `audit.js`：定时 Cron 自动化内容违规扫描、隔离区备份与审计日志 180 天生命周期清理；
+* `bot-claw.js` / `bot-commands.js`：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等，以及配套的指令大脑（随手记 / 检索 / Echo AI）；
+* `maintenance.js`：按 Cron 表达式分流的定时任务编排——每分钟只跑 ClawBot 轮询，整点第 13 分才跑 UGC 扫描与各类清理。
 
-#### ⑤ 原生自动化测试套件 (18 套件 / 158 用例)
+#### ⑤ 原生自动化测试套件 (19 套件 / 177 用例)
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
-* **18 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`architecture`、`auth`、`backup`、`books`、`css`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
-* **158 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 先写缓存再返回**、文档与代码一致性门禁等；
+* **19 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`architecture`、`auth`、`backup`、`bot-claw`、`books`、`css`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
+* **177 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 先写缓存再返回**、文档与代码一致性门禁等；
 * **测试全量执行耗时 < 1s**，保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通。
 
 ---
