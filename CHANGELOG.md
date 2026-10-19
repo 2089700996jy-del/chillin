@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-18T14:24:47.114Z · 提交数：339
+> 生成时间：2026-10-19T11:56:26.264Z · 提交数：340
 
 ## 2026-10-18
 
 ### 🐛 缺陷修复
 
+- **ui**: give chips a 44pt touch area and record the HIG rule
 - **data**: unify created_at on CST and land the P0-P3 hardening batch
 
 ## 2026-10-17
