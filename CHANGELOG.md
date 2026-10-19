@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-19T16:07:27.451Z · 提交数：341
+> 生成时间：2026-10-19T16:17:38.503Z · 提交数：342
+
+## 2026-10-20
+
+### ✨ 新功能
+
+- **bot**: add the WeChat ClawBot iLink integration and drop the WeChat Work path
 
 ## 2026-10-19
 
