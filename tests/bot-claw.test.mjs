@@ -24,6 +24,7 @@ import {
     parseRememberCommand,
     parseForgetCommand,
     buildBotReply,
+    wantsEvidence,
     BOT_HELP_TEXT
 } from '../workers/src/bot-commands.js';
 import {
@@ -517,6 +518,32 @@ test('Bot - 帮助文案不再宣称「直接发文字存入随手记」', () =>
     assert.ok(!/直接发文字/.test(BOT_HELP_TEXT), '意图反转后帮助文案必须改写');
     assert.match(BOT_HELP_TEXT, /记录：/);
     assert.match(BOT_HELP_TEXT, /重置对话/);
+});
+
+test('Bot - 来源脚注按需触发：只有索要依据的问法才算', () => {
+    assert.equal(wantsEvidence('今天有点累'), false, '普通聊天不追问来源');
+    assert.equal(wantsEvidence('记录：今天读了半小时书'), false);
+    assert.equal(wantsEvidence('这个依据是什么'), true);
+    assert.equal(wantsEvidence('你怎么知道我上周在读那本书'), true);
+    assert.equal(wantsEvidence('说说来源'), true);
+    assert.equal(wantsEvidence(''), false);
+});
+
+integration('Bot - 默认聊天不附依据，追问来源时才带', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?1, 1, ?2, datetime('now','+8 hours'), datetime('now','+8 hours'), 0)"
+    ).bind(1799000000001, '上周在读《人类简史》，读到农业革命那一章，挺有意思').run();
+
+    const env = { AI: { run: async () => ({ response: '你上周在读《人类简史》。' }) } };
+
+    const plain = await buildBotReply(env, db, 1, '我还在读《人类简史》吗');
+    assert.equal(plain, '你上周在读《人类简史》。', '默认回复必须干净、不带依据脚注，实际：' + plain);
+
+    const asked = await buildBotReply(env, db, 1, '《人类简史》这个依据是什么');
+    assert.match(asked, /依据：/, '追问来源时必须给出处');
+    assert.match(asked, /\[随手记\]/);
 });
 
 integration('Bot - 显式「记录：…」才落随手记，闲聊只留对话上下文', async () => {

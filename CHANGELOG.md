@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T13:18:39.047Z · 提交数：348
+> 生成时间：2026-10-20T13:27:19.893Z · 提交数：349
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
+- **bot**: time follow-ups from the conversation
 - **bot**: let the companion follow up after a chat
 - **bot**: let the companion reach out on its own schedule
 - **bot**: expose the companion profile in-app with edit and forget

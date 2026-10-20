@@ -8,7 +8,7 @@
  *   1. **默认无副作用**——普通聊天只产生回复，绝不写库；写入只有确定性的显式指令一条路，
  *      宁可少记、不可错记。
  *   2. 三层记忆各司其职：当前对话（bot-memory）→ 个人档案（bot-memory）→ 花园事实（rag）。
- *   3. 脚注只在「真的动了数据」或「引用了花园证据」时出现。
+ *   3. 脚注只在「真的动了数据」或「用户主动索要依据」时出现——默认聊天保持干净。
  *   4. 聊天正文永不进日志（只记 id 与错误信息）。
  *
  * 指令（确定性正则，先垫一层）：
@@ -46,6 +46,7 @@ export const BOT_HELP_TEXT = [
     '- 「记住：内容」：写进「关于我」，以后都记得',
     '- 「搜 关键词」：翻花园里的历史记录',
     '- 「问 问题」：结合你的记忆回答',
+    '- 「依据是什么」：追问刚才那句话的来源',
     '- 「你记得我什么」：查看「关于我」档案',
     '- 「忘记 关键词」：从档案里删掉这一条',
     '- 「别主动找我 / 可以主动找我」：开关偶尔的主动关心',
@@ -68,6 +69,14 @@ const FORGET_RE = /^(?:忘记|忘掉|\/forget)[\s:：]*([\s\S]+)$/i;
 const OUTREACH_OFF_RE = /^(?:别主动找我|不要主动找我|先别主动找我|少主动找我|关掉主动关怀|关闭主动关怀|\/outreoff)$/;
 const OUTREACH_ON_RE = /^(?:可以主动找我|主动来找我|开启主动关怀|打开主动关怀|可以主动关心我|\/outreon)$/;
 const FORGET_ALL_RE = /^(?:忘记全部|清空档案|清空关于我|\/forgetall)$/i;
+/**
+ * 来源脚注按需附上：默认回复一律不带「依据：」，只有用户主动追问来源时才给。
+ * 判据是「问句里出现了索要来源的词」，纯关键词匹配，不做意图模型调用。
+ */
+const EVIDENCE_RE = /(依据|来源|出处|根据什么|凭什么|怎么知道|哪里知道|哪儿知道|哪看到的|哪来的|证据|原始记录|引用|source|references?)/i;
+export function wantsEvidence(text) {
+    return EVIDENCE_RE.test(String(text || ''));
+}
 const PROFILE_VIEW_RE = /^(?:你记得我什么|你记住了我什么|我的档案|查看档案|\/profile)$/i;
 const RESET_RE = /^(?:重置对话|清空对话|重置上下文|清空上下文|\/reset|\/clear)$/i;
 const HELP_RE = /^(?:帮助|help|\/help|\?|？)$/i;
@@ -162,7 +171,7 @@ export async function runAsk(env, db, userId, question) {
     const moderated = moderateText(answer, env);
     if (!moderated.ok) return '回答未通过内容安全检查，已拒绝输出。';
     const sources = memory.sources || [];
-    if (!sources.length) return moderated.text;
+    if (!sources.length || !wantsEvidence(question)) return moderated.text;
     return moderated.text + '\n\n---\n依据：'
         + sources.slice(0, 3).map(s => '[' + s.type + '] ' + (s.title || s.date)).join('、');
 }
@@ -211,7 +220,7 @@ async function runChat(env, db, userId, text, history) {
     }
     const moderated = moderateText(answer, env);
     if (!moderated.ok) return '这个话题我不太方便展开，我们换个轻松的聊？';
-    if (!sources.length) return moderated.text;
+    if (!sources.length || !wantsEvidence(text)) return moderated.text;
     return moderated.text + '\n\n---\n依据：'
         + sources.slice(0, 3).map(s => '[' + s.type + '] ' + (s.title || s.date)).join('、');
 }
