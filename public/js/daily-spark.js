@@ -355,7 +355,7 @@ export function renderSerendipityCard() {
 
     let quoteHtml = '';
     if (isUrlContent) {
-        quoteHtml = `<a href="${escapeHtml(rawSnippet)}" target="_blank" rel="noopener noreferrer" class="k-memory-link-quote" style="word-break: break-all; color: var(--ios-blue, #007aff); text-decoration: none;">🔗 ${escapeHtml(snippet)}</a>`;
+        quoteHtml = `<a href="${escapeHtml(rawSnippet)}" target="_blank" rel="noopener noreferrer" class="k-memory-link-quote" style="word-break: break-all; color: var(--link-color, var(--ios-blue)); text-decoration: none;">🔗 ${escapeHtml(snippet)}</a>`;
     } else {
         quoteHtml = `“${escapeHtml(snippet)}”`;
     }

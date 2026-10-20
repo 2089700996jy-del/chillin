@@ -100,10 +100,10 @@
 | 间距 | `--space-1` 4px / `--space-2` 8px / `--space-3` 12px / `--space-4` 16px / `--space-5` 24px / `--space-6` 32px |
 | 圆角 | `--radius-sm` 10px / `--radius-md` 14px / `--radius-lg` 18px / `--radius-pill` 999px / `--surface-radius` 26px（主表面） |
 | 动效 | `--dur-fast` 0.18s / `--dur-base` 0.28s / `--ease-spring` `cubic-bezier(0.16, 1, 0.3, 1)` |
-| 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
+| 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 约 9860 行、仍有 296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、41 条 `backdrop-filter` 声明、约 1220 处色值字面量（509 个 hex + 717 处数字 `rgba()`；v2.5.119 已把其中 131 处灰度收敛为分量令牌）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 9870 行、仍有 296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、41 条 `backdrop-filter` 声明、约 1210 处色值字面量（v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
 
 ## 主题令牌纪律（v2.5.119 起）
 
@@ -113,4 +113,5 @@
 - **五类主表面在深色层必须有令牌**：导航与底栏（`--nav-bg` / `--nav-glass` / `--nav-glass-scrolled` / `--nav-scrolled-bg`）、卡片（`--card-bg` / `--ios-card-bg`）、文字（`--text-color` / `--ios-label` / `--ios-secondary-label`）、输入框（`--input-bg` / `--input-bg-focus` / `--hairline`）、悬浮与选中（`--hover-bg` / `--segment-active-bg`）。
 - **分段控件的选中胶囊必须比轨道更亮**：深色下 `--segment-active-bg: rgba(255, 255, 255, 0.16)`，轨道是半透明白。曾出现「选中的比未选中的更暗」的实现缺陷。
 - **深色红色用 `--danger-color`**（深色层切到 `#FF453A`），不要再写 `#ff3b30` 字面量。
+- **禁止写死 Tailwind 色阶**：`#0f172a` / `#1e293b` / `#334155` / `#475569` / `#64748b` / `#94a3b8` 都是浅色专用灰，不跟随 `data-theme` 反转（v2.5.120 修掉的 `.rich-link-title` 就曾在深色卡片上隐形）。正文链接统一走 `--link-color`（亮 `var(--ios-blue)` / 深 `#0A84FF`）；**不要在 JS 模板里拼内联 `style="color:#007AFF"`**——内联样式优先于样式表，深色层覆盖不掉（`tests/css.test.mjs` 对以上两者都有门禁）。
 - **验证方法**：改动后必须用真浏览器读 `getComputedStyle` 逐元素核对（不要只看截图——归一化后的截图会让白字看起来发暗），并对浅色主题做逐像素 diff（`maxDiff` 必须为 0）证明零回归；`backups/` 里有采集页与 `_pngdiff.mjs` 可直接复用。

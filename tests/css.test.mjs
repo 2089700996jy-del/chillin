@@ -155,3 +155,15 @@ test('CSS - 灰度色值一律走 RGB 分量令牌（禁止再写回 rgba(60,60,
         assert.ok(!css.includes(literal), '请用 rgba(var(--label-rgb), α) / rgba(var(--neutral-rgb), α) 代替字面量 ' + literal + '（见 .agents/rules/ui-style.md 的主题令牌纪律）');
     }
 });
+test('CSS - 深色下会失明的旧 Tailwind 色阶不得回归，链接色走 --link-color', () => {
+    // 背景：v2.5.120 用户报「深色模式下的这些链接看不清」。根因是 .rich-link-title 写死 Tailwind slate
+    // #0f172a ≈ rgb(15,23,42)，在深色卡片 #1a1d23 上对比度约 1.02:1，等于隐形；同一族的 #64748b/#475569/#94a3b8
+    // 也都是浅色专用灰。它们不会跟随 data-theme 反转，必须换成令牌。
+    const slate = css.match(/#(?:0f172a|1e293b|334155|475569|64748b|94a3b8)\b/gi) || [];
+    assert.equal(slate.length, 0, '发现写死的 Tailwind slate 色阶 ' + slate.join(', ') + '——深色下会变成看不清的深字，请改用 var(--text-color) / var(--text-color-light) / rgba(var(--label-rgb), α) 分量令牌');
+    const dark = (css.match(/:root\[data-theme="dark"\]\s*\{[\s\S]*?\n\}/) || [''])[0];
+    assert.match(css, /--link-color:\s*var\(--ios-blue\)/, '亮色基线缺少 --link-color 令牌（正文链接的统一入口）');
+    assert.match(dark, /--link-color:\s*#0A84FF/, '深色层必须把链接色切成 #0A84FF（Apple 深色系统蓝），#007AFF 在深底上偏暗');
+    assert.match(css, /\.rich-link-title\s*\{[^}]*color:\s*var\(--text-color\)/, '链接速览卡标题必须用 var(--text-color)，不要再写死深色字');
+    assert.match(css, /\.feed-content-text a\s*\{[^}]*color:\s*var\(--link-color\)/, '随手记正文里的自动链接必须有 .feed-content-text a 规则（不要用 JS 内联 style，内联样式无法被深色层覆盖）');
+});

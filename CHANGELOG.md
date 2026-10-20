@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T15:23:32.948Z · 提交数：355
+> 生成时间：2026-10-20T15:36:42.598Z · 提交数：356
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
+- **ui**: add an app-level dark theme with a manual switch
 - **bot**: keep the companion's own outreach in chat memory
 - **bot**: attach record sources only when asked
 - **bot**: time follow-ups from the conversation

@@ -18,6 +18,7 @@
   --text-color: #1A1A1A;
   --text-color-light: var(--ios-secondary-label);
   --accent-color: var(--ios-blue);
+  --link-color: var(--ios-blue); /* 正文链接：亮色系统蓝，深色切 #0A84FF */
   --accent-gradient: var(--ios-blue);
   --font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display",
     "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
@@ -819,7 +820,7 @@ body.eyecare-reader-body #btn-back {
 }
 .card-date { 
   font-size: 12px; 
-  color: #94a3b8; 
+  color: var(--text-color-light); 
   font-family: var(--font-family); 
 }
 
@@ -905,7 +906,7 @@ body.eyecare-reader-body #btn-back {
   width: 48px; 
   height: 48px; 
   border-radius: 50%; 
-  background: #0f172a; 
+  background: var(--text-color); 
   display: flex; 
   justify-content: center; 
   align-items: center; 
@@ -919,7 +920,7 @@ body.eyecare-reader-body #btn-back {
   height: 12px; 
   border-radius: 50%; 
   background: var(--bg-color); 
-  border: 2px solid #334155; 
+  border: 2px solid rgba(var(--neutral-rgb), 0.35); 
 }
 @keyframes spin { 100% { transform: rotate(360deg); } }
 .widget-music-info { 
@@ -1002,7 +1003,7 @@ body.eyecare-reader-body #btn-back {
   text-align: center; 
   font-family: 'Comic Sans MS', cursive, sans-serif; 
   font-size: 15px; 
-  color: #475569; 
+  color: var(--text-color-light); 
   margin-top: 16px; 
 }
 
@@ -1679,7 +1680,7 @@ body.eyecare-reader-body #btn-back {
   margin: 14px 0;
 }
 .article-inline-link {
-  color: var(--accent-color, #007AFF);
+  color: var(--link-color);
   text-decoration: underline;
   text-underline-offset: 3px;
 }
@@ -4056,6 +4057,12 @@ body.keyboard-open .fab-btn {
   word-break: break-word;
 }
 
+.feed-content-text a {
+  color: var(--link-color);
+  text-decoration: none;
+  word-break: break-all;
+}
+
 .feed-media-preview {
   margin-top: 12px;
   border-radius: 10px;
@@ -4093,7 +4100,7 @@ body.keyboard-open .fab-btn {
 .rich-link-title {
   font-size: 16px;
   font-weight: 700;
-  color: #0f172a;
+  color: var(--text-color);
   line-height: 1.5;
   margin-bottom: 6px;
   display: -webkit-box;
@@ -4105,7 +4112,7 @@ body.keyboard-open .fab-btn {
 
 .rich-link-desc {
   font-size: 14px;
-  color: #64748b;
+  color: var(--text-color-light);
   line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -4136,9 +4143,9 @@ body.keyboard-open .fab-btn {
   gap: 4px;
   padding: 4px 10px;
   border-radius: 20px;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(var(--neutral-rgb), 0.12);
   font-size: 12px;
-  color: #64748b;
+  color: var(--text-color-light);
   font-weight: 500;
   transition: background 0.15s, color 0.15s;
 }
@@ -4154,7 +4161,7 @@ body.keyboard-open .fab-btn {
 }
 
 .platform-name {
-  color: #475569;
+  color: var(--text-color-light);
   font-weight: 500;
 }
 
@@ -4164,7 +4171,7 @@ body.keyboard-open .fab-btn {
 }
 
 .platform-action {
-  color: #64748b;
+  color: var(--text-color-light);
 }
 
 .platform-arrow {
@@ -9791,6 +9798,7 @@ body.dark-reader-body .k-directory-arrow {
   --segment-active-bg: rgba(255, 255, 255, 0.16);
   --tab-inactive: rgba(235, 235, 245, 0.5);
   --danger-color: #FF453A;
+  --link-color: #0A84FF;
   --glow-blue: rgba(0, 122, 255, 0.1);
   --glow-green: rgba(52, 199, 89, 0.07);
   --heat-1: rgba(52, 199, 89, 0.2);

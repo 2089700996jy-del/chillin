@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.119**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.120**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -69,6 +69,18 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 深色模式下的链接对比度修复（v2.5.120）
+
+**动机**（用户 m03226：真机深色截图里随手记那条网址「看不清」）。
+
+1. **根因**：`public/style.css` 的 `.rich-link-title` 写死 Tailwind slate `#0f172a` ≈ rgb(15,23,42)，在深色卡片 `#1a1d23` 上对比度约 **1:1，等于隐形**；同族的 `#64748b`（链接描述 / 平台名 / 平台动作）、`#475569`（相片说明 / 平台名）、`#334155`（唱片描边）、`#94a3b8`（卡片日期）与 `.widget-music-disk` 的 `#0f172a` 底色共 **9 处**都是浅色专用灰，不随 `data-theme` 反转。
+2. **链接色令牌化**：`:root` 新增 `--link-color: var(--ios-blue)`（深色层切 `#0A84FF`，Apple 深色系统蓝；`#007AFF` 在深底上只有约 4.3:1，偏暗），`.article-inline-link`（:1683）与 `.feed-content-text a`（:4061）统一走它；9 处 slate 分别改为 `var(--text-color)` / `var(--text-color-light)` / `var(--widget-bg)` / `rgba(var(--neutral-rgb), α)`。
+3. **去掉 JS 内联色**：`public/js/feeds.js` 把正文里的 URL 自动链接化时写死内联 `style="color:#007AFF"` —— 内联样式优先于样式表，深色层覆盖不掉，改为交给 `.feed-content-text a` 规则；`public/js/daily-spark.js` 的 `var(--ios-blue, #007aff)` 同步改用 `--link-color`。
+4. **回归门禁**：`tests/css.test.mjs` 新增第 13 条「深色下会失明的旧 Tailwind 色阶不得回归，链接色走 `--link-color`」——封禁 6 个 slate 字面量，并断言深色层 `--link-color: #0A84FF` 与两条链接规则存在。
+5. **验证**：`backups/_linkfix_{dark,light}.html` 用真实标记与 `../public/style.css` 在 420×1400 无头 Chrome 出图，深色下标题变白字、正文链接变亮蓝、胶囊与描述可读，浅色维持原样。
+
+**测试 221 → 222 用例（20 套件）**；README、`.agents/rules/ui-style.md` 与架构报告同批更新。
 
 ### 批次 A：应用级深色主题（跟随系统 + 手动开关）（v2.5.119）
 

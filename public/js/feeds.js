@@ -141,7 +141,7 @@ function renderFeeds() {
 
         let textHtml = '';
         if (contentText) {
-            const rawFormatted = escapeHtml(contentText).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" style="color:#007AFF;">$1</a>');
+            const rawFormatted = escapeHtml(contentText).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
             const formattedContent = actions.parseWikilinksToHtml ? actions.parseWikilinksToHtml(rawFormatted, true) : rawFormatted;
             textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
         }
