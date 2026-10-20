@@ -55,7 +55,7 @@
 | [`workers/src/bot-memory.js`](../../workers/src/bot-memory.js) | Bot 私人记忆 | 三层记忆的读写入口：有限长度的对话上下文（按字符预算截断）与「关于我」档案条目的增删查，一律软删、全部参数化绑定并受体积上限约束；并暴露应用内 `/api/bot/profile` 读写接口供「账号与安全」弹层可视化编辑。 |
 | [`workers/src/bot-outreach.js`](../../workers/src/bot-outreach.js) | Bot 主动关怀 | 没人说话时的开口资格判定：东八区 10:00–22:30 时窗内每天至多一次的随机开口时刻、刚聊完 30 分钟内不插嘴（6 小时内聊过则不等当天固定时刻，改在聊完 30–120 分钟内把最近 6 轮对话作为背景、允许顺着话题补一句）与只用 3–180 天前旧素材的门禁、模型 SKIP 否决权与概率闸门、账号级开关与逐条发送审计（正文落库但不进日志）；送达后把主动消息写进对话记忆并标注出处，保证用户回一句时接得上。 |
 | [`workers/src/bot-claw.js`](../../workers/src/bot-claw.js) | 外部 IM 接入（微信 ClawBot / iLink 协议） | 扫码绑定生命周期（二维码 / 确认 / 解绑，令牌只落库不回传）、每分钟 Cron 长轮询拉消息、游标与幂等排重、经 iLink `sendmessage` 回发文本。 |
-| [`workers/src/bot-media.js`](../../workers/src/bot-media.js) | Bot 图片接入 | 微信图片消息（外层 `message_type` 仍是 1，靠 `item.type=2` 的 `image_item` 识别）→ 下载 → 明文魔数嗅探，嗅不出再用 `aeskey` 走 AES-128-CBC 解密（`aeskey` 线上实测是 32 位 hex，也兼容 base64；IV 取密钥前 16 字节，兼容 AES-256）；地址与密钥都可能有多份形态（`item.aeskey` / `media.aes_key`、直链 / 需拼回 `encrypt_query_param` 授权参数的地址），逐对尝试、任一对嗅出真实魔数才认账 → 经既有上传通道写 R2 并落一条带图随手记；取不到原图只如实告知，绝不落库，任何一步都不记正文。 |
+| [`workers/src/bot-media.js`](../../workers/src/bot-media.js) | Bot 图片接入 | 微信图片消息（外层 `message_type` 仍是 1，靠 `item.type=2` 的 `image_item` 识别）→ 下载 → 明文魔数嗅探，嗅不出再用 `aeskey` 走 AES-128-CBC 解密（`aeskey` 线上实测是 32 位 hex，也兼容 base64；IV 取密钥前 16 字节，兼容 AES-256）；地址、密钥与 IV 都可能有多份形态（`item.aeskey` / `media.aes_key` / 「hex 再 base64」的中间层、直链 / 需拼回 `encrypt_query_param` 授权参数的地址、IV 取密钥前 16 字节或全零），逐组尝试、任一组嗅出真实魔数才认账；失败时原因码带 tried 列表与响应前 8 字节的十六进制（可一眼看出是 CDN 错误页或微信的 `wxgf` 私有容器） → 经既有上传通道写 R2 并落一条带图随手记；取不到原图只如实告知，绝不落库，任何一步都不记正文。 |
 | [`workers/src/maintenance.js`](../../workers/src/maintenance.js) | 定时任务编排 | 按 Cron 表达式分流：`* * * * *` 只跑 ClawBot 长轮询，`13 * * * *` 跑小时级维护（UGC 扫描、会话清理、限流清理、备份保留、审计保留）。 |
 
 ---

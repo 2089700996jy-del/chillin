@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.123**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.124**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,16 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot 图片：密钥中间层、全零 IV 与「响应头字节」诊断（v2.5.124）
+
+1. **第三次真机验证**：`note=not-an-image:202624 tried=direct+item:hex-16:fail,direct+media.aes_key:base64-32:fail,encrypt_query_param+item:hex-16:fail,encrypt_query_param+media.aes_key:base64-32:fail` —— 两个地址下到的是同一份 202624 字节密文（长度仍是 16 的倍数），但 `media.aes_key` 解出来是 **32 字节**，说明它很可能不是最终密钥。
+2. **新假设**：有些实现会把 16 字节密钥先写成 32 位 hex、再对这一整串做 base64；于是新增 `unwrapHexAsciiKey()`——若 base64 解出来是 32–64 位纯 hex，就再解一层，并把 `media.aes_key>hex` 作为额外候选密钥。
+3. **IV 兜底**：`decryptClawImage` 增加第 4 个参数 `ivMode`（`'key'` 用密钥前 16 字节、`'zero'` 用全零 IV），每个密钥两种 IV 各试一次。
+4. **诊断**：失败原因码现在带 `head=`（下载内容前 8 字节的十六进制，如 `3c21444f43` = `<!DOC` 说明 CDN 回的是错误页；`77786766` 则是微信私有的 `wxgf` 容器，会额外标 `wxgf`），tried 列表也带上了 `:iv0` 变体。
+5. **顺带修掉一个真 bug**：`headHex(null)` 会在「一个地址都没下到」（例如 404）时抛 `Cannot read properties of null (reading 'slice')`，导致整条消息处理失败、用户连「拿不到原图」的回复都收不到；已加空值兜底并补了回归用例。
+
+**测试 231 → 232 用例（20 套件）**；README、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 微信 Bot 图片：地址与密钥多形态兜底（v2.5.123）
 

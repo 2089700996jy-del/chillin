@@ -27,7 +27,8 @@ import {
     aesKeyKind,
     downloadClawImage,
     clawImageUrlCandidates,
-    clawImageKeys
+    clawImageKeys,
+    unwrapHexAsciiKey
 } from '../workers/src/bot-media.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
@@ -697,6 +698,29 @@ test('ClawBot - aeskey 兼容 32 位 hex 与 base64，AES-256 的 IV 仍取前 1
     assert.equal(sniffImageMagic(await decryptClawImage(cipher32, hex32)), 'image/png', 'AES-256 用前 16 字节当 IV');
 });
 
+test('ClawBot - media.aes_key 是「hex 再 base64」的中间层，且全零 IV 也能兜底', async () => {
+    const keyBytes = new Uint8Array(16).fill(0x5d);
+    const hexAscii = Buffer.from(keyBytes).toString('hex');
+    const wrapped = Buffer.from(hexAscii, 'utf8').toString('base64');
+    assert.equal(unwrapHexAsciiKey(wrapped), hexAscii, '先 base64 再 hex 还原出真正的密钥串');
+    assert.equal(unwrapHexAsciiKey('deadbeef'), '', '本来就是 hex 的不再包一层');
+    assert.equal(unwrapHexAsciiKey('not-base64!!'), '');
+    assert.deepEqual(clawImageKeys({ media: { aes_key: wrapped } }).map(k => k.tag), ['media.aes_key', 'media.aes_key>hex']);
+
+    const cipher = await encryptBytes(PNG_BYTES, keyBytes);
+    assert.equal(sniffImageMagic(await decryptClawImage(cipher, wrapped)), '', '中间层密钥直接当 base64 用是解不开的');
+    assert.equal(sniffImageMagic(await decryptClawImage(cipher, wrapped)), '', '仍然解不开');
+
+    const zeroIvCipher = await encryptBytes(PNG_BYTES, keyBytes, new Uint8Array(16));
+    assert.equal(sniffImageMagic(await decryptClawImage(zeroIvCipher, hexAscii)), '', 'IV 不匹配时按 IV=密钥 解不开');
+    assert.equal(sniffImageMagic(await decryptClawImage(zeroIvCipher, hexAscii, crypto, 'zero')), 'image/png', '全零 IV 作为兜底');
+
+    const { impl } = stubFetch({ 'direct.bin': () => ({ bytes: zeroIvCipher }) });
+    const got = await downloadClawImage({ media: { full_url: 'https://cdn.example/direct.bin', aes_key: wrapped } }, impl);
+    assert.equal(got.ok, true, JSON.stringify(got));
+    assert.equal(got.note, 'aes-hex-16:iv0/direct+media.aes_key>hex');
+});
+
 test('ClawBot - 图片地址与密钥多形态兜底：授权查询参数 + media.aes_key', async () => {
     const keyBytes = new Uint8Array(16).fill(0x7c);
     const cipher = await encryptBytes(PNG_BYTES, keyBytes);
@@ -727,7 +751,7 @@ test('ClawBot - 全部候选都失败时给出可判读原因码与响应头字�
     const { impl } = stubFetch({ 'bad.bin': () => ({ bytes: new Uint8Array([0x3c, 0x21, 0x44, 0x4f, 0x43]) }) });
     const got = await downloadClawImage(imageItem, impl);
     assert.equal(got.ok, false);
-    assert.ok(/^not-an-image:5 tried=/.test(got.note), got.note);
+    assert.ok(/^not-an-image:5 head=3c21444f43 tried=/.test(got.note), got.note);
     assert.ok(got.note.includes('direct+item:hex-16:fail'), got.note);
     assert.equal(got.head, '3c21444f43', '只记前 8 字节的十六进制（这里只有 5 字节）');
 });

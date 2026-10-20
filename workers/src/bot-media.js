@@ -86,22 +86,41 @@ export function aesKeyKind(aeskey) {
     return (hex ? 'hex-' : 'base64-') + key.length;
 }
 
-export async function decryptClawImage(bytes, aeskey, cryptoImpl = crypto) {
+export async function decryptClawImage(bytes, aeskey, cryptoImpl = crypto, ivMode = 'key') {
     const key = decodeAesKey(aeskey);
     if (!key || !cryptoImpl || !cryptoImpl.subtle) return null;
     try {
         const imported = await cryptoImpl.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
-        // 微信通例：IV 取 aeskey 的前 16 字节（AES-128 时就是密钥本身）
-        const plain = await cryptoImpl.subtle.decrypt({ name: 'AES-CBC', iv: key.slice(0, 16) }, imported, bytes);
+        // 微信通例：IV 取 aeskey 的前 16 字节（AES-128 时就是密钥本身）；少数实现用全零 IV，作为兜底再试一次
+        const iv = ivMode === 'zero' ? new Uint8Array(16) : key.slice(0, 16);
+        const plain = await cryptoImpl.subtle.decrypt({ name: 'AES-CBC', iv }, imported, bytes);
         return new Uint8Array(plain);
     } catch (err) {
         return null;
     }
 }
 
+/**
+ * 有些实现会把 16 字节密钥先写成 32 位 hex，再对这一整串做 base64；
+ * 线上 `media.aes_key` 解出来正好是 32 字节（很可能就是这个中间层），所以把它还原成真正的 hex 密钥串。
+ * 认不出就返回空串。
+ */
+export function unwrapHexAsciiKey(value) {
+    const text = String(value || '').trim();
+    if (!text || /^[0-9a-fA-F]+$/.test(text)) return '';
+    try {
+        const raw = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
+        if (raw.length % 2 === 0 && raw.length >= 32 && raw.length <= 64 && /^[0-9a-fA-F]+$/.test(raw)) return raw;
+        return '';
+    } catch (err) {
+        return '';
+    }
+}
+
 /** 日志用：只报前几个字节的十六进制，够看出是不是 HTML/JSON 错误页，却不含正文 */
 function headHex(bytes, n = 8) {
-    return Array.from(bytes.slice(0, n)).map(b => b.toString(16).padStart(2, '0')).join('');
+    const b = bytes || new Uint8Array(0);
+    return Array.from(b.slice(0, n)).map(v => v.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -137,7 +156,11 @@ export function clawImageKeys(imageItem) {
     };
     push(item.aeskey, 'item');
     if (media) {
-        for (const field of ['aes_key', 'aeskey', 'key']) push(media[field], 'media.' + field);
+        for (const field of ['aes_key', 'aeskey', 'key']) {
+            push(media[field], 'media.' + field);
+            const inner = unwrapHexAsciiKey(media[field]);
+            if (inner) push(inner, 'media.' + field + '>hex');
+        }
     }
     return out;
 }
@@ -186,18 +209,27 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
         }
         for (const key of keys) {
             const kind = aesKeyKind(key.value);
-            const decrypted = await decryptClawImage(bytes, key.value, options.cryptoImpl);
-            if (!decrypted) {
-                tried.push(candidate.tag + '+' + key.tag + ':' + kind + ':fail');
-                continue;
+            for (const ivMode of ['key', 'zero']) {
+                const suffix = (ivMode === 'zero' ? ':iv0' : '') + ':fail';
+                const decrypted = await decryptClawImage(bytes, key.value, options.cryptoImpl, ivMode);
+                if (!decrypted) {
+                    tried.push(candidate.tag + '+' + key.tag + ':' + kind + suffix);
+                    continue;
+                }
+                const mime = sniffImageMagic(decrypted);
+                if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind + (ivMode === 'zero' ? ':iv0' : '') + '/' + candidate.tag + '+' + key.tag };
+                tried.push(candidate.tag + '+' + key.tag + ':' + kind + (ivMode === 'zero' ? ':iv0' : '') + ':after');
             }
-            const mime = sniffImageMagic(decrypted);
-            if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind + '/' + candidate.tag + '+' + key.tag };
-            tried.push(candidate.tag + '+' + key.tag + ':' + kind + ':after');
         }
     }
     const size = lastBytes ? lastBytes.byteLength : 0;
-    return { ok: false, note: 'not-an-image:' + size + ' tried=' + tried.slice(0, 4).join(','), head: lastBytes ? headHex(lastBytes) : '' };
+    const head = headHex(lastBytes);
+    const wxgf = head.startsWith('77786766');
+    return {
+        ok: false,
+        note: 'not-an-image:' + size + (wxgf ? ' wxgf' : '') + ' head=' + head + ' tried=' + tried.slice(0, 6).join(','),
+        head
+    };
 }
 
 /** 诊断用：只输出字段形状（键名、长度、URL 主机），供日志确认协议，不含正文与密钥内容 */
