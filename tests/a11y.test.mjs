@@ -53,3 +53,13 @@ test('A11y - 批注项渲染出带可访问名称的删除按钮，且内容经�
     assert.doesNotMatch(html, /<img/, '批注内容里的标签必须被转义，不能原样注入');
     assert.match(html, /&lt;img/, '转义后应以实体形式出现');
 });
+
+test('A11y - 外观主题控件有可访问名称与三个可辨认选项，且首帧前已应用主题', () => {
+    const control = (html.match(/<div[^>]*id="app-theme-control"[^>]*>[\s\S]*?<\/div>/) || [''])[0];
+    assert.match(control, /role="group"/, '外观控件是一组互斥按钮，需要 role="group" 才能让读屏理解为同一组选项');
+    assert.match(control, /aria-label="外观主题"/, '外观控件缺少 aria-label，读屏只会听到三个孤立的按钮名');
+    const opts = [...control.matchAll(/data-app-theme="([^"]+)"[^>]*>([^<]+)</g)].map((m) => m[1] + ':' + m[2].trim());
+    assert.deepEqual(opts, ['auto:跟随系统', 'light:浅色', 'dark:深色'], '三个选项的取值与文案是 auth.js markAppThemeControl 的锚点，不能改名');
+    assert.match(html, /documentElement\.setAttribute\('data-theme'/, '首帧前必须在 head 内联脚本里落 data-theme，否则深色用户会先看到一帧白屏');
+    assert.match(html, /chillin_theme/, 'head 内联脚本必须读同一个 localStorage 键，否则手动选择会在刷新后闪回系统主题');
+});

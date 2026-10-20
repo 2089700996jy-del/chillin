@@ -130,3 +130,28 @@ test('CSS - backdrop-filter 数量不再增长，只允许悬浮表面使用', (
         assert.ok(blurred(selector), selector + ' 的磨砂是经过对比验证的固定栏/浮层效果，不要当作冗余删掉');
     }
 });
+
+test('CSS - 应用级深色主题层：RGB 令牌反转 + 五类主表面打底', () => {
+    const dark = (css.match(/:root\[data-theme="dark"\]\s*\{[\s\S]*?\n\}/) || [''])[0];
+    assert.ok(dark, '缺少 :root[data-theme="dark"] 令牌层——深色模式必须走 data-theme 属性，不要靠 filter: invert 或 JS 内联样式');
+    // 亮色基线：把「标签灰」「中性命灰」拆成 RGB 分量，深色只反转分量，alpha 语义完全不变
+    assert.match(css, /--label-rgb:\s*60,\s*60,\s*67/, '亮色基线 --label-rgb 被改动，会连带影响全站 rgba(var(--label-rgb), α) 的二级文字与细边框');
+    assert.match(css, /--neutral-rgb:\s*120,\s*120,\s*128/, '亮色基线 --neutral-rgb 被改动，会连带影响全站 rgba(var(--neutral-rgb), α) 的中性表面底色');
+    assert.match(dark, /--label-rgb:\s*235,\s*235,\s*245/, '深色层必须把 --label-rgb 反转成浅色分量，否则二级文字在深底上几乎不可见');
+    assert.match(dark, /--neutral-rgb:\s*255,\s*255,\s*255/, '深色层的 --neutral-rgb 必须是白色分量，否则中性表面会变成脏灰块');
+    for (const token of ['--bg-color', '--card-bg', '--text-color', '--nav-bg', '--input-bg', '--hover-bg', '--hairline', '--segment-active-bg']) {
+        assert.ok(new RegExp(token + '\\s*:').test(dark), '深色层缺少主表面令牌 ' + token + '（五类主表面：导航/底栏、卡片、文字、输入框与悬浮态）');
+    }
+    // 分段控件的选中胶囊必须比轨道更亮，否则深色下会出现「选中的比未选中的更暗」
+    assert.match(dark, /--segment-active-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.16\)/, '深色层必须把分段控件选中胶囊改为半透明白，否则选中态比轨道更暗');
+});
+
+test('CSS - 灰度色值一律走 RGB 分量令牌（禁止再写回 rgba(60,60,67,α) 字面量）', () => {
+    const label = (css.match(/rgba\(var\(--label-rgb\),/g) || []).length;
+    const neutral = (css.match(/rgba\(var\(--neutral-rgb\),/g) || []).length;
+    assert.ok(label >= 60, 'rgba(var(--label-rgb), α) 只剩 ' + label + ' 处——有人把灰度字面量写回来了，深色模式会再次出现看不清的二级文字');
+    assert.ok(neutral >= 60, 'rgba(var(--neutral-rgb), α) 只剩 ' + neutral + ' 处——中性表面会脱离主题切换');
+    for (const literal of ['rgba(60, 60, 67,', 'rgba(120, 120, 128,']) {
+        assert.ok(!css.includes(literal), '请用 rgba(var(--label-rgb), α) / rgba(var(--neutral-rgb), α) 代替字面量 ' + literal + '（见 .agents/rules/ui-style.md 的主题令牌纪律）');
+    }
+});

@@ -8,7 +8,11 @@
   --ios-bg: #F8F9FA;
   --ios-card-bg: #FFFFFF;
   --ios-label: #1A1A1A;
-  --ios-secondary-label: rgba(60, 60, 67, 0.65);
+  /* 应用级主题（批次 A）：把「标签灰」与「中性命灰」拆成 RGB 分量，
+     这样所有 alpha（0.04~0.95）的 rgba() 用法都能随主题自动反转，不必逐条写深色覆盖 */
+  --label-rgb: 60, 60, 67;
+  --neutral-rgb: 120, 120, 128;
+  --ios-secondary-label: rgba(var(--label-rgb), 0.65);
 
   --bg-color: var(--ios-bg);
   --text-color: #1A1A1A;
@@ -21,12 +25,25 @@
   --card-bg: var(--ios-card-bg);
   --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05);
   --card-hover-shadow: 0 12px 32px rgba(16, 24, 40, 0.10);
-  --widget-bg: rgba(120, 120, 128, 0.08);
+  --widget-bg: rgba(var(--neutral-rgb), 0.08);
   --callout-bg: rgba(0, 122, 255, 0.06);
   --danger-color: var(--ios-red);
   /* 路线 A：主表面统一大圆角；卡片刻意不画 1px 硬边框，靠柔和阴影分层 */
   --surface-radius: 26px;
-  --surface-hairline: rgba(60, 60, 67, 0.06);
+  --surface-hairline: rgba(var(--label-rgb), 0.06);
+  /* 批次 A：应用级深色主题的亮色基线（深色覆盖在文件末尾的 :root[data-theme="dark"] 里） */
+  --nav-bg: #F2F2F7;
+  --nav-glass: rgba(248, 249, 250, 0.82);
+  --nav-glass-scrolled: rgba(255, 255, 255, 0.94);
+  --nav-scrolled-bg: rgba(242, 242, 247, 0.88);
+  --input-bg: rgba(255, 255, 255, 0.75);
+  --input-bg-focus: #ffffff;
+  --hover-bg: rgba(0, 0, 0, 0.04);
+  --hairline: rgba(0, 0, 0, 0.06);
+  --segment-active-bg: #ffffff;
+  --tab-inactive: #8e8e93;
+  --glow-blue: rgba(0, 122, 255, 0.13);
+  --glow-green: rgba(52, 199, 89, 0.09);
   /* 路线 B：层级令牌。新增层一律引用令牌，不再写裸 z-index 魔数；
      从下到上：导航 → 弹层 → Toast → 登录遮罩 → 确认弹窗（永远最上层，避免被弹层内的按钮压住） */
   --z-nav: 1000;
@@ -35,7 +52,7 @@
   --z-auth: 99999;
   --z-alert: 100000;
   /* 路线 A：热力图色阶收敛为 systemGreen 的透明阶，去掉薄荷霓虹感 */
-  --heat-empty: rgba(120, 120, 128, 0.12);
+  --heat-empty: rgba(var(--neutral-rgb), 0.12);
   --heat-1: rgba(52, 199, 89, 0.16);
   --heat-2: rgba(52, 199, 89, 0.36);
   --heat-3: rgba(52, 199, 89, 0.62);
@@ -153,8 +170,8 @@ html, body {
 body {
   background-color: var(--bg-color);
   background-image:
-    radial-gradient(1200px 520px at 8% -12%, rgba(0, 122, 255, 0.13), transparent 60%),
-    radial-gradient(900px 460px at 96% 0%, rgba(52, 199, 89, 0.09), transparent 64%);
+    radial-gradient(1200px 520px at 8% -12%, var(--glow-blue), transparent 60%),
+    radial-gradient(900px 460px at 96% 0%, var(--glow-green), transparent 64%);
   background-repeat: no-repeat;
   background-attachment: fixed;
   color: var(--text-color); 
@@ -180,7 +197,7 @@ body.eyecare-reader-body {
   width: 100%; 
   max-width: 100%;
   height: 54px;
-  background: rgba(248, 249, 250, 0.82); 
+  background: var(--nav-glass); 
   backdrop-filter: blur(20px) saturate(180%); 
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: none;
@@ -195,7 +212,7 @@ body.eyecare-reader-body {
 
 .super-navbar.scrolled {
   transform: none;
-  background: rgba(255, 255, 255, 0.94); 
+  background: var(--nav-glass-scrolled); 
   border-bottom-color: rgba(0, 0, 0, 0.09);
   box-shadow: 0 2px 14px rgba(0, 0, 0, 0.04);
 }
@@ -287,7 +304,7 @@ body.eyecare-reader-body {
 @media (hover: hover) and (pointer: fine) {
   .nav-reader-btn:hover {
     opacity: 0.95;
-    background: rgba(120, 120, 128, 0.08);
+    background: rgba(var(--neutral-rgb), 0.08);
   }
 }
 
@@ -415,7 +432,7 @@ body.is-loading .nav-loading-bar,
 
 .nav-item:hover, .nav-item.active { 
   color: var(--text-color); 
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--hover-bg);
 }
 
 .nav-btn-back,
@@ -617,16 +634,16 @@ body.eyecare-reader-body #btn-back {
   opacity: 0.88;
 }
 .btn-secondary { 
-  background: rgba(120, 120, 128, 0.12); 
+  background: rgba(var(--neutral-rgb), 0.12); 
   color: var(--text-color); 
 }
 .btn-secondary:hover { 
-  background: rgba(120, 120, 128, 0.18); 
+  background: rgba(var(--neutral-rgb), 0.18); 
   transform: translateY(-1px);
 }
 .btn-secondary:active {
   transform: scale(0.96);
-  background: rgba(120, 120, 128, 0.24);
+  background: rgba(var(--neutral-rgb), 0.24);
 }
 
 .fab-btn {
@@ -711,7 +728,7 @@ body.eyecare-reader-body #btn-back {
   padding: 7px 14px; 
   border-radius: 99px; 
   border: none; 
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(var(--neutral-rgb), 0.12);
   color: var(--text-color); 
   font-size: 13px; 
   font-weight: 500;
@@ -721,7 +738,7 @@ body.eyecare-reader-body #btn-back {
   box-shadow: none;
 }
 .filter-btn:hover { 
-  background: rgba(120, 120, 128, 0.18); 
+  background: rgba(var(--neutral-rgb), 0.18); 
   color: var(--text-color);
   transform: none;
   box-shadow: none;
@@ -1063,9 +1080,9 @@ body.eyecare-reader-body #btn-back {
 .form-group input, .form-group textarea, .form-group select {
   width: 100%; 
   padding: 11px 14px; 
-  border: 1px solid rgba(60, 60, 67, 0.12); 
+  border: 1px solid rgba(var(--label-rgb), 0.12); 
   border-radius: 12px;
-  background: rgba(120, 120, 128, 0.04); 
+  background: rgba(var(--neutral-rgb), 0.04); 
   font-family: var(--font-family); 
   font-size: 14.5px; 
   color: var(--text-color);
@@ -1233,7 +1250,7 @@ body.eyecare-reader-body #btn-back {
 .ios-card-row {
   position: relative;
   padding: 13px 16px;
-  border-bottom: 1px solid rgba(60, 60, 67, 0.08);
+  border-bottom: 1px solid rgba(var(--label-rgb), 0.08);
   background: transparent;
 }
 .ios-card-row:last-child {
@@ -1243,12 +1260,12 @@ body.eyecare-reader-body #btn-back {
 /* Segmented Control Row */
 .ios-category-segmented-row {
   padding: 8px 12px;
-  background: rgba(120, 120, 128, 0.04);
+  background: rgba(var(--neutral-rgb), 0.04);
   border-bottom: 1px solid rgba(0, 0, 0, 0.05);
 }
 .ios-segmented-control {
   display: flex;
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(var(--neutral-rgb), 0.12);
   padding: 2.5px;
   border-radius: 12px;
   gap: 2px;
@@ -1305,7 +1322,7 @@ body.eyecare-reader-body #btn-back {
   box-shadow: none !important;
 }
 .ios-editor-title-input::placeholder {
-  color: rgba(60, 60, 67, 0.35);
+  color: rgba(var(--label-rgb), 0.35);
   font-weight: 600;
 }
 
@@ -1330,7 +1347,7 @@ body.eyecare-reader-body #btn-back {
   box-shadow: none !important;
 }
 .ios-editor-summary-input::placeholder {
-  color: rgba(60, 60, 67, 0.4);
+  color: rgba(var(--label-rgb), 0.4);
 }
 
 /* Date Row (Apple Inset Grouped) */
@@ -1428,7 +1445,7 @@ body.eyecare-reader-body #btn-back {
   min-width: 0;
 }
 .ios-editor-cover-input::placeholder {
-  color: rgba(60, 60, 67, 0.4);
+  color: rgba(var(--label-rgb), 0.4);
 }
 .ios-btn-upload {
   background: rgba(0, 122, 255, 0.08);
@@ -1532,7 +1549,7 @@ body.eyecare-reader-body #btn-back {
   box-shadow: none !important;
 }
 .ios-editor-content-textarea::placeholder {
-  color: rgba(60, 60, 67, 0.4);
+  color: rgba(var(--label-rgb), 0.4);
 }
 
 /* Content Image Preview Strip (Apple HIG Thumbnail Pills) */
@@ -1541,8 +1558,8 @@ body.eyecare-reader-body #btn-back {
   flex-direction: column;
   gap: 8px;
   padding: 12px 16px;
-  background: rgba(120, 120, 128, 0.04);
-  border-top: 1px solid rgba(60, 60, 67, 0.08);
+  background: rgba(var(--neutral-rgb), 0.04);
+  border-top: 1px solid rgba(var(--label-rgb), 0.08);
 }
 .note-paper-preview-strip {
   margin-top: 16px;
@@ -1587,7 +1604,7 @@ body.eyecare-reader-body #btn-back {
   border-radius: 12px;
   overflow: hidden;
   background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(60, 60, 67, 0.12);
+  border: 1px solid rgba(var(--label-rgb), 0.12);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
   display: flex;
   flex-direction: column;
@@ -1743,7 +1760,7 @@ body.eyecare-reader-body #btn-back {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  background: rgba(120, 120, 128, 0.02);
+  background: rgba(var(--neutral-rgb), 0.02);
 }
 .ios-inner-widget-card {
   background: var(--card-bg, #FFFFFF);
@@ -1766,7 +1783,7 @@ body.eyecare-reader-body #btn-back {
 .ios-inner-input-stack input,
 .ios-inner-input-stack textarea {
   width: 100%;
-  background: rgba(120, 120, 128, 0.05);
+  background: rgba(var(--neutral-rgb), 0.05);
   border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: 8px;
   padding: 8px 12px;
@@ -1798,7 +1815,7 @@ body.eyecare-reader-body #btn-back {
   padding-bottom: 24px;
 }
 .ios-btn-cancel {
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(var(--neutral-rgb), 0.12);
   color: var(--text-color);
   border: none;
   border-radius: 99px;
@@ -1810,7 +1827,7 @@ body.eyecare-reader-body #btn-back {
   font-family: var(--font-family);
 }
 .ios-btn-cancel:active {
-  background: rgba(120, 120, 128, 0.2);
+  background: rgba(var(--neutral-rgb), 0.2);
 }
 .ios-btn-save {
   background: var(--accent-color, #007AFF);
@@ -1844,7 +1861,7 @@ body.eyecare-reader-body #btn-back {
     right: 0;
     margin-top: 0;
     padding: 10px 16px calc(10px + env(safe-area-inset-bottom, 0px));
-    background: rgba(242, 242, 247, 0.88);
+    background: var(--nav-scrolled-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid rgba(0, 0, 0, 0.08);
@@ -1879,7 +1896,7 @@ body.eyecare-reader-body #btn-back {
   transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color, padding-left 0.2s ease;
 }
 .note-item:hover { 
-  background: rgba(0,0,0,0.02); 
+  background: var(--hover-bg); 
   padding-left: 12px;
 }
 .note-item-content { 
@@ -1931,7 +1948,7 @@ body.eyecare-reader-body #btn-back {
 .note-item-arrow {
   font-size: 16px;
   font-weight: 400;
-  color: rgba(60, 60, 67, 0.35);
+  color: rgba(var(--label-rgb), 0.35);
   line-height: 1;
   transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1), color 0.15s ease;
 }
@@ -2093,7 +2110,7 @@ body.eyecare-reader-body #btn-back {
 .bookmark-card-delete {
   flex: 0 0 auto;
   position: static;
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
   border: none;
   border-radius: 50%;
   width: 26px;
@@ -2114,7 +2131,7 @@ body.eyecare-reader-body #btn-back {
 .bookmark-card-delete:hover {
   opacity: 1;
   background: rgba(255, 59, 48, 0.12);
-  color: #ff3b30;
+  color: var(--danger-color);
   transform: scale(1.08);
 }
 .bookmark-card-delete:active {
@@ -2146,7 +2163,7 @@ body.eyecare-reader-body #btn-back {
   font-size: 12.5px; 
   font-weight: 500; 
   cursor: pointer;
-  background: rgba(120, 120, 128, 0.08); 
+  background: rgba(var(--neutral-rgb), 0.08); 
   color: var(--text-color-light);
   border: 1px solid transparent; 
   transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
@@ -2155,7 +2172,7 @@ body.eyecare-reader-body #btn-back {
 }
 .cat-chip:hover { 
   color: var(--text-color); 
-  border-color: rgba(60, 60, 67, 0.15);
+  border-color: rgba(var(--label-rgb), 0.15);
 }
 .cat-chip:active {
   transform: scale(0.96);
@@ -2182,9 +2199,9 @@ body.eyecare-reader-body #btn-back {
   width: 100vw; 
   height: 100vh;
   height: 100dvh;
-  background-color: #F2F2F7 !important; 
+  background-color: var(--nav-bg) !important; 
   color: #000000;
-  color-scheme: light !important;
+  color-scheme: light dark !important;
   z-index: var(--z-auth); 
   display: flex; 
   flex-direction: column;
@@ -2267,7 +2284,7 @@ body.not-authenticated #btn-back {
   display: flex;
   align-items: center;
   position: relative;
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(var(--neutral-rgb), 0.12);
   padding: 2.5px;
   border-radius: 12px;
   gap: 2px;
@@ -2287,7 +2304,7 @@ body.not-authenticated #btn-back {
   border-radius: 9.5px;
   font-size: 13px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.7);
+  color: rgba(var(--label-rgb), 0.7);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -2331,7 +2348,7 @@ body.not-authenticated #btn-back {
 .auth-inset-group {
   background: #ffffff;
   border-radius: 10px;
-  border: 0.5px solid rgba(60, 60, 67, 0.15);
+  border: 0.5px solid rgba(var(--label-rgb), 0.15);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
   overflow: hidden;
   width: 100%;
@@ -2388,7 +2405,7 @@ body.not-authenticated #btn-back {
 
 .auth-row-divider {
   height: 0.5px;
-  background: rgba(60, 60, 67, 0.15);
+  background: rgba(var(--label-rgb), 0.15);
   margin-left: 68px; /* Inset matching input start column */
 }
 
@@ -2430,7 +2447,7 @@ body.not-authenticated #btn-back {
 }
 
 .auth-error { 
-  color: #FF3B30; 
+  color: var(--danger-color); 
   font-size: 13px; 
   text-align: left; 
   padding: 8px 16px 0; 
@@ -2572,7 +2589,7 @@ body.hide-bottom-nav .nav-brand-mobile {
 
   .super-navbar.scrolled {
     transform: none !important;
-    background: rgba(242, 242, 247, 0.88);
+    background: var(--nav-scrolled-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-bottom: none !important;
@@ -2663,7 +2680,7 @@ body.hide-bottom-nav .nav-brand-mobile {
   }
 
   #btn-logout {
-    color: #8e8e93;
+    color: var(--tab-inactive);
   }
 
   .btn-icon-text:active,
@@ -2682,7 +2699,7 @@ body.hide-bottom-nav .nav-brand-mobile {
     right: 0;
     height: auto;
     min-height: 56px;
-    background: #F2F2F7 !important;
+    background: var(--nav-bg) !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     /* 路线 B：顶边线太硬，改柔和上投影；底色仍保持不透明（见对 Redmi 手势区色带的修复说明）。
@@ -2703,7 +2720,7 @@ body.hide-bottom-nav .nav-brand-mobile {
     align-items: center;
     justify-content: flex-start;
     text-decoration: none;
-    color: #8e8e93;
+    color: var(--tab-inactive);
     font-size: 10.5px;
     font-weight: 500;
     transition: color 0.18s ease;
@@ -2837,18 +2854,18 @@ body.hide-bottom-nav .nav-brand-mobile {
   width: 100%; 
   padding: 10px 18px; 
   border-radius: 99px; 
-  border: 1px solid rgba(0,0,0,0.06); 
+  border: 1px solid var(--hairline); 
   outline: none; 
   font-size: 13px; 
   font-family: var(--font-family);
-  background: rgba(255, 255, 255, 0.75);
+  background: var(--input-bg);
   transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 2px 8px rgba(0,0,0,0.01);
   color: var(--text-color);
 }
 .search-input:focus {
   border-color: rgba(0, 0, 0, 0.16);
-  background: rgba(255, 255, 255, 1);
+  background: var(--input-bg-focus);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.05);
   outline: none !important;
 }
@@ -3327,7 +3344,7 @@ body.in-reader-book .reader-main {
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .reader-nav-bottom .btn-nav {
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(var(--neutral-rgb), 0.1);
   border: 1px solid rgba(0, 0, 0, 0.04);
   border-radius: 999px;
   color: var(--text-color);
@@ -3357,7 +3374,7 @@ body.in-reader-book .reader-main {
   opacity: 0.3;
   cursor: not-allowed;
   transform: none;
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   color: var(--text-color-light);
   border-color: transparent;
 }
@@ -3759,15 +3776,15 @@ body.eyecare-reader-body .sidebar-header {
 }
 
 .btn-ai-pill-secondary {
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
   color: var(--text-color, #111827) !important;
-  border-color: rgba(120, 120, 128, 0.16);
+  border-color: rgba(var(--neutral-rgb), 0.16);
   font-weight: 500;
 }
 
 .btn-ai-pill-secondary:hover {
-  background: rgba(120, 120, 128, 0.14);
-  border-color: rgba(120, 120, 128, 0.28);
+  background: rgba(var(--neutral-rgb), 0.14);
+  border-color: rgba(var(--neutral-rgb), 0.28);
 }
 
 .heatmap-grid {
@@ -3835,7 +3852,7 @@ body.eyecare-reader-body .sidebar-header {
   font-family: inherit;
   font-size: 15px;
   line-height: 1.6;
-  color: #111827;
+  color: var(--text-color);
   background: transparent;
 }
 
@@ -3887,8 +3904,8 @@ body.keyboard-open .fab-btn {
   font-size: 12.5px;
   font-weight: 500;
   border: 1px solid transparent;
-  background: rgba(120, 120, 128, 0.08);
-  color: var(--text-color-light, rgba(60, 60, 67, 0.75));
+  background: rgba(var(--neutral-rgb), 0.08);
+  color: var(--text-color-light, rgba(var(--label-rgb), 0.75));
   cursor: pointer;
   transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
@@ -3906,7 +3923,7 @@ body.keyboard-open .fab-btn {
 
 .btn-chip:hover {
   color: var(--text-color);
-  border-color: rgba(60, 60, 67, 0.15);
+  border-color: rgba(var(--label-rgb), 0.15);
 }
 
 .btn-chip:active {
@@ -3972,7 +3989,7 @@ body.keyboard-open .fab-btn {
 }
 
 .feed-action-btn {
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
   border: none;
   border-radius: 50%;
   width: 26px;
@@ -4005,7 +4022,7 @@ body.keyboard-open .fab-btn {
 
 .feed-delete-btn:hover {
   background: rgba(255, 59, 48, 0.12) !important;
-  color: #ff3b30 !important;
+  color: var(--danger-color) !important;
 }
 
 .feed-copy-btn.copied {
@@ -4034,7 +4051,7 @@ body.keyboard-open .fab-btn {
 .feed-content-text {
   font-size: 15px;
   line-height: 1.6;
-  color: #1f2937;
+  color: var(--text-color);
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -4279,7 +4296,7 @@ body.keyboard-open .fab-btn {
 .echo-card-summary {
   font-size: 14px;
   line-height: 1.6;
-  color: var(--text-color-light, rgba(60, 60, 67, 0.6));
+  color: var(--text-color-light, rgba(var(--label-rgb), 0.6));
 }
 
 .echo-card-delete {
@@ -4363,7 +4380,7 @@ body.keyboard-open .fab-btn {
   display: flex;
   flex-direction: column;
   gap: 14px;
-  background: rgba(120, 120, 128, 0.03);
+  background: rgba(var(--neutral-rgb), 0.03);
 }
 
 .ai-msg {
@@ -4483,7 +4500,7 @@ body.keyboard-open .fab-btn {
 .ai-msg-bubble h4, .ai-msg-bubble h5, .ai-msg-bubble h6 { font-size: 14px; }
 .ai-msg-bubble ul, .ai-msg-bubble ol { margin: 2px 0 5px; padding-left: 18px; }
 .ai-msg-bubble li { margin: 1px 0; }
-.ai-msg-bubble code { background: rgba(120, 120, 128, 0.1); padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
+.ai-msg-bubble code { background: rgba(var(--neutral-rgb), 0.1); padding: 1px 5px; border-radius: 4px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
 .ai-msg-bubble strong { font-weight: 700; }
 .ai-msg-bubble em { font-style: italic; }
 
@@ -4921,7 +4938,7 @@ html.ios-pwa .super-navbar.scrolled {
   padding-top: var(--ios-sat) !important;
   box-sizing: border-box;
   /* Extend white bar under status icons */
-  background: rgba(255, 255, 255, 0.96) !important;
+  background: var(--nav-glass-scrolled) !important;
 }
 
 html.ios-pwa .super-navbar__content {
@@ -4936,7 +4953,7 @@ html.ios-pwa .notion-app {
 
 html.ios-pwa .super-navbar,
 html.ios-pwa .super-navbar.scrolled {
-  background: rgba(242, 242, 247, 0.94) !important;
+  background: var(--nav-scrolled-bg) !important;
 }
 
 html.ios-pwa .mobile-bottom-nav {
@@ -5062,7 +5079,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 .segmented-control {
   display: flex;
   align-items: center;
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(var(--neutral-rgb), 0.12);
   padding: 2.5px;
   border-radius: 12px;
   gap: 2px;
@@ -5102,7 +5119,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 }
 
 .segment-btn.active {
-  background: var(--ios-card-bg, #ffffff);
+  background: var(--segment-active-bg, var(--ios-card-bg, #ffffff));
   color: var(--text-color);
   font-weight: 600;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1), 0 0.5px 1.5px rgba(0, 0, 0, 0.06);
@@ -5113,7 +5130,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   font-weight: 600;
   padding: 1px 6px;
   border-radius: 99px;
-  background: rgba(120, 120, 128, 0.14);
+  background: rgba(var(--neutral-rgb), 0.14);
   color: var(--text-color-light);
   margin-left: 4px;
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
@@ -5180,7 +5197,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 .btn-clear-search,
 .prompts-search-clear {
   border: none;
-  background: rgba(120, 120, 128, 0.18);
+  background: rgba(var(--neutral-rgb), 0.18);
   color: var(--text-color-light);
   cursor: pointer;
   font-size: 11px;
@@ -5250,8 +5267,8 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   border-radius: 9999px;
   font-size: 12.5px;
   font-weight: 500;
-  background: rgba(120, 120, 128, 0.1);
-  color: rgba(60, 60, 67, 0.75);
+  background: rgba(var(--neutral-rgb), 0.1);
+  color: rgba(var(--label-rgb), 0.75);
   border: 1px solid transparent;
   cursor: pointer;
   transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
@@ -5415,7 +5432,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 }
 
 .prompt-badge-project {
-  background: rgba(120, 120, 128, 0.1);
+  background: rgba(var(--neutral-rgb), 0.1);
   color: var(--text-color-light);
 }
 
@@ -5432,7 +5449,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 
 .prompt-card-content-wrapper {
   position: relative;
-  background: rgba(120, 120, 128, 0.07);
+  background: rgba(var(--neutral-rgb), 0.07);
   border-radius: 12px;
   padding: 10px 12px;
   cursor: pointer;
@@ -5603,11 +5620,11 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 
 .btn-icon-action:hover {
   color: var(--text-color);
-  background: rgba(120, 120, 128, 0.22);
+  background: rgba(var(--neutral-rgb), 0.22);
 }
 
 .btn-prompt-delete:hover {
-  color: #FF3B30 !important;
+  color: var(--danger-color) !important;
   background: rgba(255, 59, 48, 0.12) !important;
 }
 
@@ -5621,7 +5638,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
     display: block;
     width: 36px;
     height: 5px;
-    background: rgba(120, 120, 128, 0.32);
+    background: rgba(var(--neutral-rgb), 0.32);
     border-radius: 9999px;
     margin: 10px auto 4px auto;
     flex-shrink: 0;
@@ -5673,7 +5690,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   align-items: center;
   justify-content: space-between;
   padding: 14px 20px;
-  border-bottom: 0.5px solid rgba(60, 60, 67, 0.12);
+  border-bottom: 0.5px solid rgba(var(--label-rgb), 0.12);
   background: transparent !important;
 }
 
@@ -5689,7 +5706,7 @@ body.dark-reader-body .prompt-variable-header {
   height: 30px !important;
   border-radius: 50% !important;
   background: rgba(118, 118, 128, 0.12) !important;
-  color: rgba(60, 60, 67, 0.7) !important;
+  color: rgba(var(--label-rgb), 0.7) !important;
   border: none !important;
   outline: none !important;
   box-shadow: none !important;
@@ -5708,7 +5725,7 @@ body.dark-reader-body .prompt-variable-header {
 .prompt-variable-header .btn-icon[data-close-modal]:hover,
 .prompt-variable-header [data-close-modal]:hover {
   background: rgba(118, 118, 128, 0.2) !important;
-  color: rgba(60, 60, 67, 0.95) !important;
+  color: rgba(var(--label-rgb), 0.95) !important;
 }
 
 .ios-modal-close-btn:active,
@@ -6483,7 +6500,7 @@ body.eyecare-reader-body .reader-sync-info {
   background: var(--card-bg);
   transform: translateY(-2px);
   box-shadow: var(--card-hover-shadow);
-  border-color: rgba(60, 60, 67, 0.12);
+  border-color: rgba(var(--label-rgb), 0.12);
   padding-left: 20px;
 }
 
@@ -6773,7 +6790,7 @@ body.dark-reader-body .segmented-control,
 body.dark-reader-body .ios-segmented-control,
 body.dark-reader-body .auth-segmented-control,
 body.dark-reader-body .backup-guard-segmented {
-  background: rgba(120, 120, 128, 0.24);
+  background: rgba(var(--neutral-rgb), 0.24);
 }
 body.dark-reader-body .segment-btn,
 body.dark-reader-body .ios-segmented-tab,
@@ -7158,7 +7175,7 @@ body.eyecare-reader-body .heatmap-streak-badge {
 .sheet-pull-handle {
   width: 36px;
   height: 4px;
-  background: rgba(120, 120, 128, 0.28);
+  background: rgba(var(--neutral-rgb), 0.28);
   border-radius: 9999px;
   margin: 8px auto 6px;
   flex-shrink: 0;
@@ -7195,7 +7212,7 @@ body.dark-reader-body .sheet-pull-handle {
     border-radius: 0;
     border: none;
     border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
-    background: rgba(248, 249, 250, 0.82);
+    background: var(--nav-glass);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -7203,7 +7220,7 @@ body.dark-reader-body .sheet-pull-handle {
 
   .super-navbar.scrolled {
     transform: none;
-    background: rgba(255, 255, 255, 0.94);
+    background: var(--nav-glass-scrolled);
     box-shadow: 0 2px 14px rgba(0, 0, 0, 0.04);
     border-bottom-color: rgba(0, 0, 0, 0.09);
   }
@@ -7320,7 +7337,7 @@ body.dark-reader-body .sheet-pull-handle {
 }
 
 .btn-prompt-copy:hover {
-  background: rgba(120, 120, 128, 0.16);
+  background: rgba(var(--neutral-rgb), 0.16);
 }
 
 .btn-prompt-send {
@@ -7443,8 +7460,8 @@ body.dark-reader-body .list-load-more {
   width: min(88vw, 320px);
   padding: 24px 20px 18px;
   border-radius: var(--surface-radius);
-  background: #ffffff !important;
-  color: #1c1c1e !important;
+  background: var(--card-bg) !important;
+  color: var(--text-color) !important;
   border: 1px solid rgba(0, 0, 0, 0.08);
   box-shadow: 0 20px 48px rgba(0, 0, 0, 0.22), 0 1px 3px rgba(0, 0, 0, 0.06);
   transform: scale(0.94);
@@ -7464,7 +7481,7 @@ body.dark-reader-body .list-load-more {
   line-height: 1.5; 
   font-weight: 500;
   letter-spacing: -0.2px;
-  color: #1c1c1e !important; 
+  color: var(--text-color) !important; 
   white-space: pre-wrap; 
   text-align: center;
   margin-bottom: 20px;
@@ -7499,12 +7516,12 @@ body.dark-reader-body .list-load-more {
 }
 
 #confirm-dialog-cancel {
-  background: rgba(120, 120, 128, 0.12) !important;
-  color: #1c1c1e !important;
+  background: rgba(var(--neutral-rgb), 0.12) !important;
+  color: var(--text-color) !important;
 }
 
 #confirm-dialog-cancel:hover {
-  background: rgba(120, 120, 128, 0.18) !important;
+  background: rgba(var(--neutral-rgb), 0.18) !important;
 }
 
 #confirm-dialog-ok {
@@ -7513,7 +7530,7 @@ body.dark-reader-body .list-load-more {
 }
 
 #confirm-dialog-ok.text-danger {
-  background: #ff3b30 !important;
+  background: var(--danger-color) !important;
   color: #ffffff !important;
 }
 
@@ -7574,13 +7591,13 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   font-size: 13px;
   font-weight: 600;
   letter-spacing: -0.2px;
-  color: rgba(60, 60, 67, 0.6);
+  color: rgba(var(--label-rgb), 0.6);
   margin: 14px 0 8px 2px;
 }
 
 /* 全量资产备份与导出卡片 (Konsta iOS Inset Grouped) */
 .backup-section-card {
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   border: 1px solid transparent;
   border-radius: 16px;
   padding: 16px;
@@ -7638,14 +7655,14 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
 }
 
 .backup-guard-badge.status-none {
-  background: rgba(120, 120, 128, 0.12);
-  color: rgba(60, 60, 67, 0.65);
-  border: 1px solid rgba(120, 120, 128, 0.2);
+  background: rgba(var(--neutral-rgb), 0.12);
+  color: rgba(var(--label-rgb), 0.65);
+  border: 1px solid rgba(var(--neutral-rgb), 0.2);
 }
 
 .backup-guard-time-hint {
   font-size: 12px;
-  color: rgba(60, 60, 67, 0.65);
+  color: rgba(var(--label-rgb), 0.65);
   line-height: 1.4;
 }
 
@@ -7663,13 +7680,13 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
 .backup-guard-interval-label {
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.7);
+  color: rgba(var(--label-rgb), 0.7);
 }
 
 .backup-guard-segmented {
   display: flex;
   align-items: center;
-  background: rgba(120, 120, 128, 0.12);
+  background: rgba(var(--neutral-rgb), 0.12);
   padding: 2.5px;
   border-radius: 12px;
   gap: 2px;
@@ -7687,7 +7704,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   border-radius: 9.5px;
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.7);
+  color: rgba(var(--label-rgb), 0.7);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -7711,7 +7728,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
 .backup-section-desc {
   font-size: 13.5px;
   line-height: 1.55;
-  color: rgba(60, 60, 67, 0.75);
+  color: rgba(var(--label-rgb), 0.75);
   margin: 0;
 }
 
@@ -7877,7 +7894,7 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   gap: var(--space-3);
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   border: 1px solid transparent;
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
@@ -7899,13 +7916,13 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   font-weight: 600;
 }
 
-.session-meta { margin-top: 3px; font-size: 12px; color: rgba(60, 60, 67, 0.6); }
+.session-meta { margin-top: 3px; font-size: 12px; color: rgba(var(--label-rgb), 0.6); }
 
 .session-revoke {
   flex: 0 0 auto;
   font-size: 13.5px;
   font-weight: 500;
-  color: #ff3b30 !important;
+  color: var(--danger-color) !important;
   background: transparent !important;
   border: none !important;
   cursor: pointer;
@@ -7919,7 +7936,7 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   opacity: 0.7;
 }
 
-.session-empty { padding: 18px 4px; font-size: 13px; color: rgba(60, 60, 67, 0.6); text-align: center; }
+.session-empty { padding: 18px 4px; font-size: 13px; color: rgba(var(--label-rgb), 0.6); text-align: center; }
 
 /* 「关于我」档案：列表复用 .session-row 骨架，编辑行留一个输入框与两个按钮 */
 .bot-profile-content { font-size: 14.5px; line-height: 1.45; color: inherit; word-break: break-word; }
@@ -7927,6 +7944,9 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
 .bot-profile-add { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 
 .bot-profile-add .search-input { flex: 1 1 auto; min-width: 0; }
+
+/* 输入框旁的按钮不能被压窄，否则中文按钮会折成两行 */
+.bot-profile-add .btn-text { flex: 0 0 auto; white-space: nowrap; }
 
 .session-edit-input {
   flex: 1 1 auto;
@@ -7958,7 +7978,7 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   color: var(--ios-blue, #007aff);
 }
 
-.bot-profile-forget { color: #ff3b30; }
+.bot-profile-forget { color: var(--danger-color); }
 
 .bot-profile-edit:active,
 .bot-profile-forget:active { transform: scale(0.95); opacity: 0.7; }
@@ -7978,7 +7998,7 @@ body.dark-reader-body .session-edit-input {
   margin-top: 10px;
   padding: 12px 14px;
   border-radius: 14px;
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   border: 1px solid transparent;
 }
 
@@ -7990,7 +8010,7 @@ body.dark-reader-body .session-edit-input {
   margin-top: 2px;
   font-size: 12.5px;
   line-height: 1.4;
-  color: var(--text-secondary, rgba(60, 60, 67, 0.6));
+  color: var(--text-secondary, rgba(var(--label-rgb), 0.6));
 }
 
 #btn-bot-outreach {
@@ -8015,7 +8035,7 @@ body.dark-reader-body .bot-outreach-row {
   gap: 12px;
   margin-top: 20px;
   padding-top: 14px;
-  border-top: 0.5px solid rgba(60, 60, 67, 0.12);
+  border-top: 0.5px solid rgba(var(--label-rgb), 0.12);
 }
 
 #btn-enable-push {
@@ -8041,7 +8061,7 @@ body.dark-reader-body .bot-outreach-row {
 #btn-security-logout-all {
   font-size: 13px;
   font-weight: 500;
-  color: #ff3b30;
+  color: var(--danger-color);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -8523,7 +8543,7 @@ body.eyecare-reader-body .backlink-snippet mark {
 .offline-status-text {
   font-size: 12.5px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.85);
+  color: rgba(var(--label-rgb), 0.85);
   letter-spacing: -0.15px;
   white-space: nowrap;
 }
@@ -8550,7 +8570,7 @@ body.eyecare-reader-body .offline-banner-content {
 
 /* ==================== 存储与离线韧性诊断 (Storage Diagnostics) ==================== */
 .storage-diagnostics-card {
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   border: 1px solid transparent;
   border-radius: 16px;
   padding: 14px 16px;
@@ -8593,14 +8613,14 @@ body.eyecare-reader-body .offline-banner-content {
 }
 
 .storage-persist-badge:not(.is-persisted) {
-  background: rgba(120, 120, 128, 0.12);
-  color: rgba(60, 60, 67, 0.7);
+  background: rgba(var(--neutral-rgb), 0.12);
+  color: rgba(var(--label-rgb), 0.7);
 }
 
 .storage-usage-num {
   font-size: 12px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.65);
+  color: rgba(var(--label-rgb), 0.65);
 }
 
 .storage-progress-track {
@@ -8621,7 +8641,7 @@ body.eyecare-reader-body .offline-banner-content {
 .storage-diag-footer {
   font-size: 11.5px;
   line-height: 1.45;
-  color: rgba(60, 60, 67, 0.55);
+  color: rgba(var(--label-rgb), 0.55);
 }
 
 body.dark-reader-body .storage-diagnostics-card {
@@ -8677,13 +8697,13 @@ body.dark-reader-body .storage-diag-footer {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(60, 60, 67, 0.5);
+  color: rgba(var(--label-rgb), 0.5);
 }
 
 .k-mood-status {
   font-size: 11px;
   font-weight: 400;
-  color: rgba(60, 60, 67, 0.45);
+  color: rgba(var(--label-rgb), 0.45);
 }
 
 .k-mood-status.is-checked {
@@ -8720,9 +8740,9 @@ body.dark-reader-body .storage-diag-footer {
   gap: 5px;
   font-size: 12px;
   font-weight: 500;
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
   border: 1px solid transparent;
-  color: rgba(60, 60, 67, 0.8);
+  color: rgba(var(--label-rgb), 0.8);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
@@ -8740,7 +8760,7 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip:hover {
-  background: rgba(120, 120, 128, 0.14);
+  background: rgba(var(--neutral-rgb), 0.14);
 }
 
 .k-mood-chip:active {
@@ -8817,7 +8837,7 @@ body.dark-reader-body .k-mood-chip.active {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(60, 60, 67, 0.55);
+  color: rgba(var(--label-rgb), 0.55);
 }
 
 .k-journal-shuffle-btn {
@@ -8826,7 +8846,7 @@ body.dark-reader-body .k-mood-chip.active {
   gap: 4px;
   font-size: 11.5px;
   font-weight: 400;
-  color: rgba(60, 60, 67, 0.5);
+  color: rgba(var(--label-rgb), 0.5);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -8838,7 +8858,7 @@ body.dark-reader-body .k-mood-chip.active {
 
 .k-journal-shuffle-btn:hover {
   color: var(--text-color, #1c1c1e);
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
 }
 
 .k-journal-prompt {
@@ -8965,7 +8985,7 @@ body.dark-reader-body .k-spark-send-btn {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(60, 60, 67, 0.55);
+  color: rgba(var(--label-rgb), 0.55);
 }
 
 .k-memory-shuffle-btn {
@@ -8974,7 +8994,7 @@ body.dark-reader-body .k-spark-send-btn {
   gap: 4px;
   font-size: 11.5px;
   font-weight: 400;
-  color: rgba(60, 60, 67, 0.5);
+  color: rgba(var(--label-rgb), 0.5);
   background: transparent;
   border: none;
   cursor: pointer;
@@ -8986,7 +9006,7 @@ body.dark-reader-body .k-spark-send-btn {
 
 .k-memory-shuffle-btn:hover {
   color: var(--text-color, #1c1c1e);
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
 }
 
 .k-memory-title {
@@ -8999,7 +9019,7 @@ body.dark-reader-body .k-spark-send-btn {
 .k-memory-quote {
   font-size: 13.5px;
   line-height: 1.52;
-  color: rgba(60, 60, 67, 0.85);
+  color: rgba(var(--label-rgb), 0.85);
   font-style: italic;
 }
 
@@ -9011,7 +9031,7 @@ body.dark-reader-body .k-spark-send-btn {
   padding-top: 8px;
   border-top: 1px solid rgba(0, 0, 0, 0.04);
   font-size: 11.5px;
-  color: rgba(60, 60, 67, 0.45);
+  color: rgba(var(--label-rgb), 0.45);
 }
 
 .k-memory-reflect-trigger {
@@ -9052,7 +9072,7 @@ body.dark-reader-body .k-spark-send-btn {
   height: 32px;
   border-radius: 16px;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   padding: 0 10px;
   font-size: 12.5px;
   color: inherit;
@@ -9069,7 +9089,7 @@ body.dark-reader-body .k-spark-send-btn {
   align-items: center;
   gap: 10px;
   padding: 4px 0;
-  color: rgba(60, 60, 67, 0.6);
+  color: rgba(var(--label-rgb), 0.6);
   font-size: 12.5px;
   line-height: 1.45;
 }
@@ -9113,8 +9133,8 @@ body.dark-reader-body .k-memory-input {
   font-weight: 500;
   padding: 2px 7px;
   border-radius: 6px;
-  background: rgba(120, 120, 128, 0.1);
-  color: rgba(60, 60, 67, 0.7);
+  background: rgba(var(--neutral-rgb), 0.1);
+  color: rgba(var(--label-rgb), 0.7);
   margin-left: 8px;
 }
 
@@ -9126,7 +9146,7 @@ body.dark-reader-body .k-memory-input {
 }
 
 .weekly-metric-cell {
-  background: rgba(120, 120, 128, 0.06);
+  background: rgba(var(--neutral-rgb), 0.06);
   border-radius: 12px;
   padding: 10px 8px;
   text-align: center;
@@ -9144,11 +9164,11 @@ body.dark-reader-body .k-memory-input {
   display: block;
   font-size: 11px;
   font-weight: 400;
-  color: rgba(60, 60, 67, 0.5);
+  color: rgba(var(--label-rgb), 0.5);
 }
 
 .weekly-review-content-card {
-  background: rgba(120, 120, 128, 0.04);
+  background: rgba(var(--neutral-rgb), 0.04);
   border: 1px solid rgba(0, 0, 0, 0.05);
   border-radius: 14px;
   padding: 14px 16px;
@@ -9165,14 +9185,14 @@ body.dark-reader-body .k-memory-input {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
-  color: rgba(60, 60, 67, 0.55);
+  color: rgba(var(--label-rgb), 0.55);
   margin-bottom: 8px;
 }
 
 .weekly-review-markdown {
   font-size: 13.5px;
   line-height: 1.6;
-  color: rgba(60, 60, 67, 0.9);
+  color: rgba(var(--label-rgb), 0.9);
 }
 
 .weekly-review-markdown p {
@@ -9196,7 +9216,7 @@ body.dark-reader-body .k-memory-input {
   align-items: center;
   gap: 10px;
   padding: 20px 0;
-  color: rgba(60, 60, 67, 0.65);
+  color: rgba(var(--label-rgb), 0.65);
   font-size: 13px;
 }
 
@@ -9268,14 +9288,14 @@ body.dark-reader-body .weekly-review-markdown {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.4px;
-  color: rgba(60, 60, 67, 0.6);
+  color: rgba(var(--label-rgb), 0.6);
   margin: 0;
 }
 
 .k-shelves-badge {
   font-size: 11px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.4);
+  color: rgba(var(--label-rgb), 0.4);
 }
 
 .k-shelves-more-btn {
@@ -9346,8 +9366,8 @@ body.dark-reader-body .weekly-review-markdown {
   font-weight: 500;
   padding: 1px 6px;
   border-radius: 5px;
-  background: rgba(120, 120, 128, 0.08);
-  color: rgba(60, 60, 67, 0.6);
+  background: rgba(var(--neutral-rgb), 0.08);
+  color: rgba(var(--label-rgb), 0.6);
 }
 .k-topic-tier-pill.tier-deep {
   background: rgba(0, 122, 255, 0.1);
@@ -9358,7 +9378,7 @@ body.dark-reader-body .weekly-review-markdown {
 .k-shelf-count-badge {
   font-size: 11px;
   font-weight: 500;
-  color: rgba(60, 60, 67, 0.45);
+  color: rgba(var(--label-rgb), 0.45);
 }
 
 .k-shelf-card-title {
@@ -9374,7 +9394,7 @@ body.dark-reader-body .weekly-review-markdown {
 .k-shelf-card-snippet {
   font-size: 11.5px;
   line-height: 1.45;
-  color: rgba(60, 60, 67, 0.7);
+  color: rgba(var(--label-rgb), 0.7);
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -9388,7 +9408,7 @@ body.dark-reader-body .weekly-review-markdown {
   align-items: center;
   gap: 4px;
   font-size: 11px;
-  color: rgba(60, 60, 67, 0.4);
+  color: rgba(var(--label-rgb), 0.4);
   padding-top: 6px;
   border-top: 1px solid rgba(0, 0, 0, 0.03);
 }
@@ -9397,12 +9417,12 @@ body.dark-reader-body .weekly-review-markdown {
   display: flex;
   align-items: center;
   gap: 8px;
-  background: rgba(120, 120, 128, 0.05);
+  background: rgba(var(--neutral-rgb), 0.05);
   border-radius: 12px;
   padding: 12px 14px;
   width: 100%;
   font-size: 12px;
-  color: rgba(60, 60, 67, 0.6);
+  color: rgba(var(--label-rgb), 0.6);
   line-height: 1.4;
 }
 
@@ -9426,7 +9446,7 @@ body.dark-reader-body .weekly-review-markdown {
 .k-topic-sheet-subtitle {
   font-size: 12px;
   font-weight: 400;
-  color: rgba(60, 60, 67, 0.55);
+  color: rgba(var(--label-rgb), 0.55);
   margin: 0;
 }
 
@@ -9437,7 +9457,7 @@ body.dark-reader-body .weekly-review-markdown {
 }
 
 .k-topic-item-row {
-  background: rgba(120, 120, 128, 0.04);
+  background: rgba(var(--neutral-rgb), 0.04);
   border: 1px solid rgba(0, 0, 0, 0.04);
   border-radius: 11px;
   padding: 10px 12px;
@@ -9447,7 +9467,7 @@ body.dark-reader-body .weekly-review-markdown {
   -webkit-tap-highlight-color: transparent;
 }
 .k-topic-item-row:hover {
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
 }
 .k-topic-item-row:active {
   transform: scale(0.99);
@@ -9458,7 +9478,7 @@ body.dark-reader-body .weekly-review-markdown {
   align-items: center;
   justify-content: space-between;
   font-size: 11px;
-  color: rgba(60, 60, 67, 0.45);
+  color: rgba(var(--label-rgb), 0.45);
   margin-bottom: 3px;
 }
 
@@ -9469,7 +9489,7 @@ body.dark-reader-body .weekly-review-markdown {
 
 .k-topic-item-info {
   font-size: 11px;
-  color: rgba(60, 60, 67, 0.4);
+  color: rgba(var(--label-rgb), 0.4);
 }
 
 .k-topic-item-title {
@@ -9593,7 +9613,7 @@ body.dark-reader-body .k-topic-item-title {
 }
 
 .k-searchbar-input::placeholder {
-  color: rgba(60, 60, 67, 0.45);
+  color: rgba(var(--label-rgb), 0.45);
 }
 
 .k-topic-back-btn {
@@ -9619,7 +9639,7 @@ body.dark-reader-body .k-topic-item-title {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  background: rgba(120, 120, 128, 0.04);
+  background: rgba(var(--neutral-rgb), 0.04);
   border: 1px solid rgba(0, 0, 0, 0.04);
   border-radius: 12px;
   padding: 11px 13px;
@@ -9629,7 +9649,7 @@ body.dark-reader-body .k-topic-item-title {
   -webkit-tap-highlight-color: transparent;
 }
 .k-directory-row:hover {
-  background: rgba(120, 120, 128, 0.08);
+  background: rgba(var(--neutral-rgb), 0.08);
 }
 .k-directory-row:active {
   transform: scale(0.99);
@@ -9665,12 +9685,12 @@ body.dark-reader-body .k-topic-item-title {
   flex-wrap: wrap;
   gap: 4px;
   font-size: 11.5px;
-  color: rgba(60, 60, 67, 0.45);
+  color: rgba(var(--label-rgb), 0.45);
 }
 
 .k-directory-snippet {
   font-size: 12px;
-  color: rgba(60, 60, 67, 0.7);
+  color: rgba(var(--label-rgb), 0.7);
   line-height: 1.4;
   display: -webkit-box;
   -webkit-line-clamp: 1;
@@ -9680,7 +9700,7 @@ body.dark-reader-body .k-topic-item-title {
 }
 
 .k-directory-arrow {
-  color: rgba(60, 60, 67, 0.3);
+  color: rgba(var(--label-rgb), 0.3);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -9730,6 +9750,109 @@ body.dark-reader-body .k-directory-arrow {
     scroll-behavior: auto !important;
   }
 }
+
+/* ==========================================
+   批次 A：应用级深色主题
+   只覆盖令牌，以及仍然写死浅色的少数表面；阅读器自带的夜间/护眼主题（body.dark-reader-body /
+   body.eyecare-reader-body）完全独立，不受这里影响。
+   主题在 <head> 的预绘内联脚本里先定一次（避免首帧闪白），运行期由 public/js/utils.js 负责，
+   偏好存 localStorage.chillin_theme（auto / light / dark）。
+   ========================================== */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  /* 标签与中性灰在深色下反转：rgba(var(--label-rgb), a) 自动变成浅色文字叠加 */
+  --label-rgb: 235, 235, 245;
+  --neutral-rgb: 255, 255, 255;
+  --ios-bg: #0f1115;
+  --ios-card-bg: #1a1d23;
+  --ios-label: #f2f2f7;
+  --ios-secondary-label: rgba(235, 235, 245, 0.6);
+  --bg-color: var(--ios-bg);
+  --card-bg: var(--ios-card-bg);
+  --text-color: #f2f2f7;
+  --text-color-light: rgba(235, 235, 245, 0.6);
+  --callout-bg: rgba(0, 122, 255, 0.18);
+  --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.38);
+  --card-hover-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
+  --surface-hairline: rgba(255, 255, 255, 0.08);
+  --nav-bg: #14161b;
+  --nav-glass: rgba(20, 22, 27, 0.82);
+  --nav-glass-scrolled: rgba(20, 22, 27, 0.94);
+  --nav-scrolled-bg: rgba(20, 22, 27, 0.88);
+  --input-bg: rgba(255, 255, 255, 0.08);
+  --input-bg-focus: rgba(255, 255, 255, 0.14);
+  --hover-bg: rgba(255, 255, 255, 0.08);
+  --hairline: rgba(255, 255, 255, 0.12);
+  /* 分段控件的选中胶囊：亮色是白底，深色必须比轨道更亮，否则会出现「选中的比未选中的更暗」 */
+  --segment-active-bg: rgba(255, 255, 255, 0.16);
+  --tab-inactive: rgba(235, 235, 245, 0.5);
+  --danger-color: #FF453A;
+  --glow-blue: rgba(0, 122, 255, 0.1);
+  --glow-green: rgba(52, 199, 89, 0.07);
+  --heat-1: rgba(52, 199, 89, 0.2);
+  --heat-2: rgba(52, 199, 89, 0.4);
+  --heat-3: rgba(52, 199, 89, 0.66);
+  --heat-4: #34c759;
+}
+
+/* 深色下光晕更收敛：底色本身已是深灰蓝，同样的透明度会显脏 */
+:root[data-theme="dark"] body {
+  background-image:
+    radial-gradient(1200px 520px at 8% -12%, var(--glow-blue), transparent 60%),
+    radial-gradient(900px 460px at 96% 0%, var(--glow-green), transparent 64%);
+}
+
+/* 顶栏/底部编辑坞的分隔线在深底上要反过来用白色叠加 */
+:root[data-theme="dark"] .super-navbar,
+:root[data-theme="dark"] .super-navbar.scrolled {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+:root[data-theme="dark"] .editor-actions-dock {
+  border-top-color: rgba(255, 255, 255, 0.08);
+}
+
+/* 仍写死浅色底的面板（原先 #ffffff / rgba(255,255,255,x)）换成卡片令牌 */
+:root[data-theme="dark"] .widget-music,
+:root[data-theme="dark"] .widget-polaroid,
+:root[data-theme="dark"] .widget-form-group,
+:root[data-theme="dark"] .bookmark-card,
+:root[data-theme="dark"] .annotation-content-box,
+:root[data-theme="dark"] .feed-input-card,
+:root[data-theme="dark"] .feed-item-card,
+:root[data-theme="dark"] .global-search-card,
+:root[data-theme="dark"] .global-search-item,
+:root[data-theme="dark"] .offline-banner-content,
+:root[data-theme="dark"] .wikilink-autocomplete-popup,
+:root[data-theme="dark"] .session-edit-input,
+:root[data-theme="dark"] .auth-inset-group,
+:root[data-theme="dark"] .auth-list-row,
+:root[data-theme="dark"] .auth-segment-btn.active,
+:root[data-theme="dark"] .backup-guard-segmented .k-segment-btn.active {
+  background: var(--card-bg);
+}
+
+/* 半透明纸面：深色下改成白色薄叠加，保持「比底色亮一点」的层次 */
+:root[data-theme="dark"] .note-annotations-section,
+:root[data-theme="dark"] .annotation-input,
+:root[data-theme="dark"] .ios-widget-content-body {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+:root[data-theme="dark"] .auth-overlay {
+  color: var(--text-color);
+}
+
+/* 输入类控件在深色下的描边与占位文字 */
+:root[data-theme="dark"] .search-input:focus {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
 
 
 

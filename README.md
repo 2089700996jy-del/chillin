@@ -33,7 +33,7 @@
 public/             Cloudflare Pages 的**发布目录**（build output directory，仓库其余内容不会被发布）
   index.html        单页容器（11 个视图 + 10 个弹层）
   app.js            启动装配：模块初始化、会话恢复、在线/离线
-  style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏；单一强调色、无边框柔和阴影材质、首屏柔光渐变与留白节奏）
+  style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏；单一强调色、无边框柔和阴影材质、首屏柔光渐变与留白节奏、应用级深色主题）
   sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
   manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
   js/               26 个 ES 模块（auth / sync / feeds / … / trusted-types）
@@ -167,8 +167,8 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
 | [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码（UTF-8 优先、GBK 兜底）、阅读进度写入保护（更旧写入被拒）、百分比夹紧与跨用户隔离 |
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
-| [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮 |
-| [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt |
+| [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌 |
+| [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用 |
 | [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、长轮询游标持久化与排重、**默认只聊天不落库**、显式「记录：…」才写入随手记、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误 |
 | [`tests/bot-outreach.test.mjs`](tests/bot-outreach.test.mjs) | Bot 主动关怀：东八区时窗与当天唯一开口时刻、每天至多一次、刚聊完 30 分钟内不插嘴、6 小时内聊过时把最近对话当背景、只用 3 天前旧素材、随机频率闸门、模型 SKIP 否决权、内容安全、发送失败与开关接口、**主动消息写进对话记忆（带出处）**（真实 SQLite） |
 | [`tests/docs.test.mjs`](tests/docs.test.mjs) | **文档一致性门禁**：README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、架构规约模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致 |

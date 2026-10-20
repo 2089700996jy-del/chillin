@@ -103,4 +103,14 @@
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 约 9740 行、仍有 296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、41 条 `backdrop-filter` 声明、约 516 处色值字面量待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 9860 行、仍有 296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、41 条 `backdrop-filter` 声明、约 1220 处色值字面量（509 个 hex + 717 处数字 `rgba()`；v2.5.119 已把其中 131 处灰度收敛为分量令牌）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+
+## 主题令牌纪律（v2.5.119 起）
+
+`html[data-theme="light"|"dark"]` 是**唯一**的应用级主题开关（`public/js/utils.js` 的 `applyAppTheme()` 写属性、`initAppTheme()` 跟随系统；`public/index.html` head 里的内联脚本在首帧之前落属性，避免深色用户先看到一帧白屏）。`prefers-color-scheme` 只允许出现在 `auto` 模式的判定分支里，**不得**再写 `@media (prefers-color-scheme: dark)` 覆盖规则。
+
+- **灰度一律走 RGB 分量令牌**：文字与细边框用 `rgba(var(--label-rgb), α)`，中性表面用 `rgba(var(--neutral-rgb), α)`。亮色基线 `--label-rgb: 60, 60, 67`、`--neutral-rgb: 120, 120, 128`；深色层只反转分量（`235, 235, 245` / `255, 255, 255`），alpha 语义不变。这样 131 处灰度自动跟随主题，不必逐条写深色覆盖。**禁止**再写回 `rgba(60, 60, 67, α)` / `rgba(120, 120, 128, α)`（`tests/css.test.mjs` 有门禁）。
+- **五类主表面在深色层必须有令牌**：导航与底栏（`--nav-bg` / `--nav-glass` / `--nav-glass-scrolled` / `--nav-scrolled-bg`）、卡片（`--card-bg` / `--ios-card-bg`）、文字（`--text-color` / `--ios-label` / `--ios-secondary-label`）、输入框（`--input-bg` / `--input-bg-focus` / `--hairline`）、悬浮与选中（`--hover-bg` / `--segment-active-bg`）。
+- **分段控件的选中胶囊必须比轨道更亮**：深色下 `--segment-active-bg: rgba(255, 255, 255, 0.16)`，轨道是半透明白。曾出现「选中的比未选中的更暗」的实现缺陷。
+- **深色红色用 `--danger-color`**（深色层切到 `#FF453A`），不要再写 `#ff3b30` 字面量。
+- **验证方法**：改动后必须用真浏览器读 `getComputedStyle` 逐元素核对（不要只看截图——归一化后的截图会让白字看起来发暗），并对浅色主题做逐像素 diff（`maxDiff` 必须为 0）证明零回归；`backups/` 里有采集页与 `_pngdiff.mjs` 可直接复用。

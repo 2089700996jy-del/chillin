@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { ui } from './ui.js';
 import { actions } from './actions.js';
 import { openSecurityModal } from './auth.js';
+import { applyAppTheme } from './utils.js';
 
 export function initRouter() {
     const views = document.querySelectorAll('.view-section');
@@ -120,10 +121,8 @@ const switchView = (targetViewId, opts = {}) => {
         document.documentElement.classList.remove('in-reader-book');
         const readerLayout = document.querySelector('.reader-layout');
         if (readerLayout) readerLayout.classList.remove('dark-reader', 'eyecare-reader');
-        const themeMeta = document.querySelector('meta[name="theme-color"]');
-        if (themeMeta && themeMeta.getAttribute('content') !== '#F2F2F7') {
-            themeMeta.setAttribute('content', '#F2F2F7');
-        }
+        // 回到应用级外观（批次 A）：不要固定刷成浅色，深色主题下会闪状态栏
+        applyAppTheme();
         if (targetViewId === 'reader') {
             setTimeout(actions.renderBookshelf, 100);
         } else if (targetViewId === 'feeds') {

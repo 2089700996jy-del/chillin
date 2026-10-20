@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.118**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.119**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -69,6 +69,19 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 批次 A：应用级深色主题（跟随系统 + 手动开关）（v2.5.119）
+
+**动机**（用户 m02613「先 B 再 A」：批次 B 清完 UI 工程债后做深色模式；此前只有阅读器的 `dark-reader-body` 有自己的深色规则，系统深色模式下主界面几乎全白）。
+
+1. **主题开关**：`public/js/utils.js` 新增 `getAppThemeMode()` / `applyAppTheme()` / `setAppThemeMode()` / `initAppTheme()`，同时切 `html[data-theme]` 与 `<meta name="theme-color">`；`public/app.js` 在 DOMContentLoaded 之前调用 `initAppTheme()`；`public/index.html` 的 head 内联脚本读 `localStorage.chillin_theme` 在首帧前落属性（否则深色用户会先看到一帧白屏）；「账号与安全」弹层新增「外观」分段控件（跟随系统 / 浅色 / 深色），`public/js/auth.js` 负责标记选中态。`router.js` / `reader.js` 原本在切页时把 theme-color 硬复位成 `#F2F2F7`，改为调用 `applyAppTheme()`。
+2. **深色令牌层**：`:root[data-theme="dark"]` 覆盖 `--bg-color` / `--ios-bg` `#0f1115`、`--card-bg` / `--ios-card-bg` `#1a1d23`、`--text-color` / `--ios-label` `#f2f2f7`、`--nav-bg` `#14161b` 与导航三态玻璃色、`--input-bg` / `--input-bg-focus` / `--hairline` / `--hover-bg`、`--segment-active-bg`、`--card-shadow` / `--card-hover-shadow` 的暗投影、`--danger-color` `#FF453A`、`--heat-1`~`4`（systemGreen 透明阶）。
+3. **灰度分量令牌（本批核心决策）**：`:root` 把「标签灰」与「中性命灰」拆成 `--label-rgb: 60, 60, 67` / `--neutral-rgb: 120, 120, 128`，全库 66 处 `rgba(60, 60, 67, α)` 与 65 处 `rgba(120, 120, 128, α)` 改为 `rgba(var(--label-rgb), α)` / `rgba(var(--neutral-rgb), α)`；深色只反转分量，alpha 语义完全不变，浅色渲染逐像素 diff **maxDiff = 0**。由此省掉整组「中性表面深色覆盖」与逐条二级文字覆盖（也不会顶破 `!important` 棘轮）。
+4. **两处真实缺陷修复**：`.feed-textarea` 文字 `#111827`、`.feed-content-text` `#1f2937` 在深底上几乎不可见 → 改 `var(--text-color)`；`.k-mood-chip` 的 `rgba(60,60,67,0.8)` 文字由分量令牌自动修复。另外把 10 处 `#ff3b30` / `#FF3B30` 收敛到 `var(--danger-color)`，`.bot-profile-add .btn-text` 加 `white-space: nowrap`（中文「记住」按钮曾被压成两行）。
+5. **回归门禁**：`tests/css.test.mjs` 新增「深色主题层：RGB 令牌反转 + 五类主表面打底」「灰度色值一律走 RGB 分量令牌（禁止写回字面量）」两条；`tests/a11y.test.mjs` 新增「外观控件有可访问名称与三个可辨认选项，且首帧前已应用主题」一条；`.agents/rules/ui-style.md` 新增「主题令牌纪律（v2.5.119 起）」。
+6. **验证**：真浏览器 `getComputedStyle` 逐元素核对 21 个主表面（首页 + 账号弹层），并在 500×1500 的首页骨架与账号弹层骨架上出图比对亮/深两套；亮色逐像素 diff 证明零回归。
+
+**测试 218 → 221 用例（20 套件）**；README、`.agents/rules/ui-style.md`、架构报告与 PROGRESS 同批更新。
 
 ### 批次 B：层级、过渡、模糊层与底栏定义的工程债清理（v2.5.118）
 

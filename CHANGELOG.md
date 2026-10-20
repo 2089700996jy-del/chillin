@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T14:58:48.549Z · 提交数：354
+> 生成时间：2026-10-20T15:23:32.948Z · 提交数：355
 
 ## 2026-10-20
 
@@ -20,6 +20,10 @@
 
 - **bot**: unify source labels to one date format
 - **test**: wrap table whitelist test in integration wrapper for node 20 compatibility
+
+### ♻️ 重构
+
+- **ui**: tokenize the z-index layering, spell out transitions and merge the bottom nav
 
 ### 📝 文档
 

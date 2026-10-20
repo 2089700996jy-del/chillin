@@ -31,9 +31,12 @@ import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
 import { initEvergreenTopics } from './js/evergreen-topics.js';
-import { showToast } from './js/utils.js';
+import { showToast, initAppTheme } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 import { checkAndSendBackupGuardNotification } from './js/backup.js';
+
+// 应用级主题（批次 A）：在 DOMContentLoaded 之前生效，避免首帧闪白
+initAppTheme();
 
 // Disable device vibration across the entire app as requested
 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {

@@ -2,7 +2,7 @@
  * Auth & HTTP client: login/logout, apiRequest, push subscribe.
  * Sync side effects after login are loaded via dynamic import('./sync.js') to avoid cycles.
  */
-import { showToast, urlBase64ToUint8Array, escapeHtml, confirmDialog } from './utils.js';
+import { showToast, urlBase64ToUint8Array, escapeHtml, confirmDialog, getAppThemeMode, setAppThemeMode } from './utils.js';
 import { CLOUD_WORKER_BASE, resolveApiBase } from './config.js';
 import { state } from './state.js';
 import { setHtml } from './trusted-types.js';
@@ -283,6 +283,9 @@ export function initAuthUI() {
     });
     document.getElementById('btn-bot-profile-clear')?.addEventListener('click', clearBotProfileAll);
     document.getElementById('btn-bot-outreach')?.addEventListener('click', toggleBotOutreach);
+
+    // 外观主题：跟随系统 / 浅色 / 深色（批次 A 应用级主题）
+    document.getElementById('app-theme-control')?.addEventListener('click', onAppThemeControlClick);
     document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
     document.getElementById('btn-test-push')?.addEventListener('click', sendTestNotification);
 
@@ -504,6 +507,7 @@ export async function openSecurityModal() {
     updateBackupGuardUI();
     loadBotProfile();
     loadBotOutreach();
+    markAppThemeControl();
     const container = document.getElementById('session-list');
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
@@ -883,4 +887,19 @@ async function toggleBotOutreach() {
         botOutreachBusy = false;
         if (btn) btn.disabled = false;
     }
+}
+
+/** 把已保存的外观模式映射到「外观」分段控件的选中态（批次 A） */
+function markAppThemeControl() {
+    const mode = getAppThemeMode();
+    document.querySelectorAll('#app-theme-control .segment-btn').forEach((btn) => {
+        btn.classList.toggle('active', (btn.dataset.appTheme || 'auto') === mode);
+    });
+}
+
+function onAppThemeControlClick(e) {
+    const btn = e.target instanceof Element ? e.target.closest('.segment-btn[data-app-theme]') : null;
+    if (!btn) return;
+    setAppThemeMode(btn.dataset.appTheme);
+    markAppThemeControl();
 }

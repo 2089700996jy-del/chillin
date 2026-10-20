@@ -1,5 +1,5 @@
 /** Local TXT reader (IndexedDB bookshelf, chapters, themes). */
-import { escapeHtml, showToast, confirmDialog } from './utils.js';
+import { escapeHtml, showToast, confirmDialog, applyAppTheme } from './utils.js';
 import { actions } from './actions.js';
 import { setHtml } from './trusted-types.js';
 import { apiRequest, fetchWithFallback } from './api.js';
@@ -702,8 +702,8 @@ function clearReaderSession() {
     document.documentElement.classList.remove('in-reader-book');
     const layout = document.querySelector('.reader-layout');
     if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.setAttribute('content', '#F2F2F7');
+    // 回到应用级外观（批次 A）：深色主题下不要把状态栏刷回浅色
+    applyAppTheme();
     currentBookId = null;
     currentBook = null;
     chapterMetas = [];

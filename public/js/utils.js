@@ -299,3 +299,55 @@ export function isSyncingNow() {
     return typeof document !== 'undefined' && document.body.classList.contains('is-syncing');
 }
 
+// ── 应用级主题（批次 A）：跟随系统 / 手动浅色 / 手动深色 ──
+// <head> 的内联预绘脚本已经先落过一次 data-theme（避免深色偏好用户首帧闪白），
+// 这里负责后续读写：持久化偏好、同步 <meta name="theme-color">、跟随系统外观切换。
+const APP_THEME_KEY = 'chillin_theme';
+const APP_THEME_COLOR = { dark: '#0f1115', light: '#F2F2F7' };
+
+export function getAppThemeMode() {
+    try {
+        const saved = localStorage.getItem(APP_THEME_KEY);
+        return saved === 'light' || saved === 'dark' ? saved : 'auto';
+    } catch (_) {
+        return 'auto';
+    }
+}
+
+function prefersDarkScheme() {
+    return typeof window !== 'undefined' && window.matchMedia
+        ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        : false;
+}
+
+/** 把模式（auto/light/dark）落到 <html data-theme> 与 theme-color 上，返回实际生效的主题。 */
+export function applyAppTheme(mode = getAppThemeMode()) {
+    const effective = mode === 'dark' || (mode !== 'light' && prefersDarkScheme()) ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', effective);
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', APP_THEME_COLOR[effective]);
+    return effective;
+}
+
+export function setAppThemeMode(mode) {
+    const next = mode === 'light' || mode === 'dark' ? mode : 'auto';
+    try {
+        if (next === 'auto') localStorage.removeItem(APP_THEME_KEY);
+        else localStorage.setItem(APP_THEME_KEY, next);
+    } catch (_) { /* 隐私模式下写不进去，本次会话内仍然生效 */ }
+    return applyAppTheme(next);
+}
+
+/** 启动时调用一次；只有「跟随系统」时才响应系统外观切换。 */
+export function initAppTheme() {
+    const effective = applyAppTheme();
+    if (typeof window !== 'undefined' && window.matchMedia) {
+        const mq = window.matchMedia('(prefers-color-scheme: dark)');
+        const onChange = () => { if (getAppThemeMode() === 'auto') applyAppTheme('auto'); };
+        if (mq.addEventListener) mq.addEventListener('change', onChange);
+        else if (mq.addListener) mq.addListener(onChange);
+    }
+    return effective;
+}
+
+
