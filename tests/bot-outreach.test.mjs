@@ -63,6 +63,12 @@ async function seedSent(db, refId, ageDays) {
     ).bind(refId, cstText(Date.now() - ageDays * 24 * 3600 * 1000)).run();
 }
 
+async function seedTurn(db, role, content, ms) {
+    await db.prepare(
+        'INSERT INTO bot_chat_turns (user_id, role, content, is_deleted, created_at) VALUES (1, ?1, ?2, 0, ?3)'
+    ).bind(role, content, cstText(ms)).run();
+}
+
 function aiEnv(reply) {
     const captured = [];
     const env = { AI: { run: async (model, opts) => { captured.push(opts && opts.messages); return { response: reply }; } } };
@@ -151,18 +157,54 @@ integration('每天最多一次：当天已经尝试过就不再开口', async (
     assert.equal(stub.calls.length, 1);
 });
 
-integration('用户刚说过话就不打扰', async () => {
+integration('刚说完话的 30 分钟内不插嘴', async () => {
     const db = await createTestDb();
     await seedClawAccount(db);
     await seedFeed(db, 7021, '最近在学做面包，第一次发酵失败了', 9);
-    await db.prepare("INSERT INTO bot_chat_turns (user_id, role, content, is_deleted) VALUES (1, 'user', '在吗', 0)").run();
     const now = cstMs(todayYmd(Date.now()), 12, 0);
-    const instant = pickOutreachInstantMs(1, now);
+    const runAt = pickOutreachInstantMs(1, now) + 1000;
+    await seedTurn(db, 'user', '在吗', runAt - 10 * 60 * 1000);
     const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: {} }]);
-    const res = await runOutreachChecks(aiEnv('hi').env, db, stub.impl, { nowMs: instant + 1000, random: () => 0.1 });
+    const res = await runOutreachChecks(aiEnv('hi').env, db, stub.impl, { nowMs: runAt, random: () => 0.1 });
     assert.equal(res.sent, 0);
+    assert.equal(res.state, 'idle');
     assert.equal(stub.calls.length, 0);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_outreach').first()).n, 0);
+});
+
+integration('聊完 30 分钟就能开口，并把刚才的对话当背景', async () => {
+    const db = await createTestDb();
+    await seedClawAccount(db);
+    await seedFeed(db, 7101, '最近在学做面包，第一次发酵失败了', 9);
+    const now = cstMs(todayYmd(Date.now()), 12, 0);
+    const runAt = pickOutreachInstantMs(1, now) + 1000;
+    await seedTurn(db, 'user', '我今天有点累', runAt - 31 * 60 * 1000);
+    await seedTurn(db, 'assistant', '那就早点休息，别硬撑。', runAt - 30 * 60 * 1000);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 9 } }]);
+    const { env, captured } = aiEnv('上次那炉面包最后发起来了吗。');
+    const res = await runOutreachChecks(env, db, stub.impl, { nowMs: runAt, random: () => 0.1 });
+    assert.equal(res.sent, 1);
+    assert.equal(stub.calls.length, 1);
+    const prompt = JSON.stringify(captured[0]);
+    assert.match(prompt, /【你们刚聊过】/);
+    assert.match(prompt, /我今天有点累/);
+    assert.match(prompt, /不重复刚才对话/);
+});
+
+integration('很久以前的对话不算「刚聊过」，不注入背景', async () => {
+    const db = await createTestDb();
+    await seedClawAccount(db);
+    await seedFeed(db, 7111, '想学会做一杯像样的手冲咖啡', 7);
+    const now = cstMs(todayYmd(Date.now()), 12, 0);
+    const runAt = pickOutreachInstantMs(1, now) + 1000;
+    await seedTurn(db, 'user', '八小时前说过的一句旧话', runAt - 8 * 60 * 60 * 1000);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 10 } }]);
+    const { env, captured } = aiEnv('手冲的水温这件事，最近顾上了吗。');
+    const res = await runOutreachChecks(env, db, stub.impl, { nowMs: runAt, random: () => 0.1 });
+    assert.equal(res.sent, 1);
+    const prompt = JSON.stringify(captured[0]);
+    assert.ok(!/【你们刚聊过】/.test(prompt));
+    assert.ok(!/八小时前说过的一句旧话/.test(prompt));
 });
 
 integration('太新的记录不碰，没有旧素材就安静', async () => {

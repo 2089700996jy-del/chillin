@@ -846,7 +846,7 @@ function renderBotOutreach(state) {
     if (!bound) {
         hint.textContent = '绑定微信 ClawBot 后，它才能在没人说话时偶尔想起你的一条旧记录。';
     } else if (enabled) {
-        hint.textContent = '每天最多一次，10:00–21:00 之间，只在你 3 小时没说话、且翻到 3 天前旧记录时才会开口。';
+        hint.textContent = '每天最多一次，10:00–21:00 之间；刚聊完的 30 分钟内不会打扰，之后翻到 3 天前旧记录时才可能开口。';
     } else {
         hint.textContent = '已关闭，它不会再主动开口。在微信里说「可以主动找我」也能恢复。';
     }

@@ -7,7 +7,8 @@
  * 克制是设计的一部分，不是可调参数：
  *   1. 时机随机但每天至多一次：东八区 10:00–21:00 之间，用 (user_id, 日期) 哈希出
  *      当天唯一的时刻；只有到点之后的第一次 cron 才可能行动。
- *   2. 必须久未打扰：用户最近 3 小时没说过话才允许开口。
+ *   2. 刚说完话不插嘴，聊完也算数：距用户上次说话至少 30 分钟；如果 6 小时内聊过，
+ *      就把刚才那几轮对话当背景喂给模型，允许它顺着话题补一句。
  *   3. 素材必须有出处：只从 3 天前到 180 天前的旧记录里挑；一条都挑不出来就不发。
  *   4. 模型有否决权：它觉得不值得提就回 SKIP，我们记一条 skipped 收工；每天只尝试
  *      一次，跳过了今天就不再补发（宁可不说，不可硬说）。
@@ -30,8 +31,10 @@ export const OUTREACH_WINDOW_START_HOUR = 10;
 export const OUTREACH_WINDOW_END_HOUR = 21;
 /** 每天最多一次真实尝试（发出去或被跳过都算用掉） */
 export const OUTREACH_DAILY_CAP = 1;
-/** 用户多久没说话才允许打扰 */
-export const OUTREACH_MIN_QUIET_MS = 3 * 60 * 60 * 1000;
+/** 刚说完话后的最小间隔：这段时间内绝不插嘴 */
+export const OUTREACH_MIN_GAP_MS = 30 * 60 * 1000;
+/** 多久之内聊过算「刚聊过」：可以把刚才的对话当背景，顺着话题补一句 */
+export const OUTREACH_FOLLOWUP_WINDOW_MS = 6 * 60 * 60 * 1000;
 /** 新记录不碰：只回忆 3 天前的东西 */
 export const OUTREACH_MIN_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 /** 太老的东西也不翻（180 天前） */
@@ -58,7 +61,8 @@ const OUTREACH_SYSTEM_PROMPT = [
     '1. 一句话，不超过 60 个汉字，口语，不要 markdown。',
     '2. 不要问候、不要问「在吗」、不要说教、不要提建议、不要评价对方。',
     '3. 不要复述原文，不要提「记录」「数据库」「花园」「检索」这类系统词。',
-    '4. 只说这条记录让你想到的东西；不确定就当没想起，回 SKIP。'
+    '4. 只说这条记录让你想到的东西；不确定就当没想起，回 SKIP。',
+    '5. 若给了「你们刚聊过」，那是背景不是台词：不要复述，也不要接着追问。'
 ].join('\n');
 
 const encoder = new TextEncoder();
@@ -246,28 +250,43 @@ async function recordAttempt(db, account, status, candidate, text, reason) {
     ).run();
 }
 
-/** 用户最近是否安静（最近说过话就不打扰） */
-async function isQuietEnough(db, account, nowMs) {
+/** 用户最近一次说话的时间（东八区文本或 epoch 毫秒）；从未说过返回 0 */
+async function lastUserTurnMs(db, userId) {
     const row = await db.prepare(
         "SELECT created_at FROM bot_chat_turns WHERE user_id = ?1 AND role = 'user' AND is_deleted = 0 ORDER BY id DESC LIMIT 1"
-    ).bind(account.user_id).first();
-    if (row && row.created_at) {
-        const t = parseRecordTimeMs(row.created_at);
-        if (t && nowMs - t < OUTREACH_MIN_QUIET_MS) return false;
-        return true;
+    ).bind(userId).first();
+    return row && row.created_at ? parseRecordTimeMs(row.created_at) : 0;
+}
+
+/**
+ * 开口的时间资格：距上次说话至少 OUTREACH_MIN_GAP_MS（刚说完就不插嘴）；
+ * 从未说过话时退回「距绑定至少 1 小时」。返回 lastUserMs 供 follow-up 判断。
+ */
+async function outreachTiming(db, account, nowMs) {
+    const lastUserMs = await lastUserTurnMs(db, account.user_id);
+    if (lastUserMs) {
+        if (nowMs - lastUserMs < OUTREACH_MIN_GAP_MS) return { ok: false, lastUserMs };
+        return { ok: true, lastUserMs };
     }
     const boundAt = Number(account.bound_at_ms || 0);
-    return !boundAt || nowMs - boundAt >= 60 * 60 * 1000;
+    if (boundAt && nowMs - boundAt < 60 * 60 * 1000) return { ok: false, lastUserMs: 0 };
+    return { ok: true, lastUserMs: 0 };
 }
 
 /** 一句话起草：模型说不出来就返回空串（等于放弃今天） */
-async function draftOutreach(env, db, userId, candidate) {
+async function draftOutreach(env, db, userId, candidate, followUp) {
     let profile = '';
     try { profile = await loadProfilePromptSafe(db, userId); } catch (_) { profile = ''; }
     const parts = [];
     if (profile) parts.push('【关于她/他】\n' + profile);
+    if (followUp) {
+        const talk = await loadRecentTalkSafe(db, userId);
+        if (talk) parts.push('【你们刚聊过】（这是背景，不是叫你现在接话）\n' + talk);
+    }
     parts.push('她/他 ' + candidate.ageDays + ' 天前写的一条' + candidate.kind + '：\n' + candidate.body);
-    parts.push('如果值得，就直接说出那句话；不值得就只回复 SKIP。');
+    parts.push(followUp
+        ? '如果值得，就说一句能落回这条旧记录、又不重复刚才对话的话；不值得就只回复 SKIP。'
+        : '如果值得，就直接说出那句话；不值得就只回复 SKIP。');
     let raw = '';
     try {
         raw = await callCustomLlmWithMessages(env, [
@@ -291,12 +310,29 @@ async function loadProfilePromptSafe(db, userId) {
     return mod.loadProfilePrompt(db, userId);
 }
 
-/** 单个账号的一次尝试；返回 'sent' | 'skipped' | 'failed' | 'wait' | 'done' | 'noisy' | 'empty' */
+// 最近几轮对话（同一份上下文记忆），只在「刚聊过」时才取；失败就当没有
+async function loadRecentTalkSafe(db, userId) {
+    try {
+        const mod = await import('./bot-memory.js');
+        const turns = await mod.loadChatContext(db, userId);
+        return (turns || []).slice(-6).map(t => {
+            const who = t && t.role === 'user' ? '她/他说' : '你说';
+            return who + '：' + String((t && t.content) || '').replace(/\s+/g, ' ').slice(0, 120);
+        }).join('\n');
+    } catch (_) {
+        return '';
+    }
+}
+
+/** 单个账号的一次尝试；返回 'sent' | 'skipped' | 'failed' | 'wait' | 'done' | 'too-soon' | 'empty' */
 async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
     if (nowMs < pickOutreachInstantMs(account.user_id, nowMs)) return 'wait';
     if (await attemptedToday(db, account.user_id, nowMs)) return 'done';
-    if (!(await isQuietEnough(db, account, nowMs))) return 'noisy';
     if (OUTREACH_DAILY_CAP <= 0) return 'done';
+
+    const timing = await outreachTiming(db, account, nowMs);
+    if (!timing.ok) return 'too-soon';
+    const followUp = !!timing.lastUserMs && nowMs - timing.lastUserMs < OUTREACH_FOLLOWUP_WINDOW_MS;
 
     const candidates = await collectCandidates(db, account.user_id, nowMs);
     const candidate = pickCandidate(candidates, await loadUsedRefs(db, account.user_id), random);
@@ -310,7 +346,7 @@ async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
         return 'skipped';
     }
 
-    const text = await draftOutreach(env, db, account.user_id, candidate);
+    const text = await draftOutreach(env, db, account.user_id, candidate, followUp);
     if (!text) {
         await recordAttempt(db, account, 'skipped', candidate, '', 'model-skip');
         return 'skipped';
@@ -327,7 +363,7 @@ async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
             fetchImpl
         });
         await recordAttempt(db, account, 'sent', candidate, text, '');
-        console.log('[outreach] 已主动送达 user=' + account.user_id + ' ref=' + candidate.type + ':' + candidate.id);
+        console.log('[outreach] 已主动送达 user=' + account.user_id + ' ref=' + candidate.type + ':' + candidate.id + (followUp ? ' (follow-up)' : ''));
         return 'sent';
     } catch (err) {
         await recordAttempt(db, account, 'failed', candidate, text, String((err && err.message) || '').slice(0, 120));
