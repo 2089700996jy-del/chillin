@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.124**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.125**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -71,6 +71,14 @@
 
 ## 近期已完成（摘要）
 
+### 微信 Bot 图片：参数名两种拼法 × 原值/编码值，并打印每个响应的形态（v2.5.125）
+
+1. **第四次真机验证**：`note=not-an-image:202624 head=40f8fbc90cc45d75`，`keyKinds=["item:hex-16","media.aes_key:base64-32"]`（**没有** `media.aes_key>hex`——上一版的「hex 中间层」假设被否证），`mediaHost=novac2c.cdn.weixin.qq.com`，`sizes=[2356,294033,294033]` 而两个地址下到的都只有 202624 字节。
+2. **新判断**：两张**不同**照片下到的密文长度完全相同、且既不等于 mid 也不等于 hd 尺寸，说明问题多半不在密钥，而在于**我们没下到真正的对象**（授权参数拼法不对）。
+3. **地址形态**：`clawImageUrlCandidates()` 现在把授权参数按 `encrypt_query_param` / `encrypted_query_param` **两种参数名**、原值与 `encodeURIComponent` 后**两种值形态**都产出候选（去重、上限 6 条）。
+4. **诊断**：`downloadClawImage()` 新增 `probes`，逐条记录每个地址的 `status / content-type / 长度 / 前 8 字节 / 重定向后的最终路径`，失败日志直接打印；`describeClawImage()` 增 `mediaPath` 与 `mediaQueryKeys`（只看路径与参数名，不含参数值，正文依旧绝不进日志）。
+
+**测试仍 232 用例（20 套件）**（本版只放宽既有断言，未新增用例）。
 ### 微信 Bot 图片：密钥中间层、全零 IV 与「响应头字节」诊断（v2.5.124）
 
 1. **第三次真机验证**：`note=not-an-image:202624 tried=direct+item:hex-16:fail,direct+media.aes_key:base64-32:fail,encrypt_query_param+item:hex-16:fail,encrypt_query_param+media.aes_key:base64-32:fail` —— 两个地址下到的是同一份 202624 字节密文（长度仍是 16 的倍数），但 `media.aes_key` 解出来是 **32 字节**，说明它很可能不是最终密钥。

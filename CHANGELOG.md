@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T16:11:53.178Z · 提交数：360
+> 生成时间：2026-10-20T16:16:14.978Z · 提交数：361
 
 ## 2026-10-21
 
 ### 🐛 缺陷修复
 
+- **bot**: unwrap the wrapped photo key and log the response head
 - **bot**: try every WeChat photo url and key pair before giving up
 - **bot**: decrypt WeChat photos with the hex aeskey
 

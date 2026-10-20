@@ -132,17 +132,23 @@ export function clawImageUrlCandidates(imageItem) {
     const media = item.media && typeof item.media === 'object' ? item.media : null;
     const out = [];
     const push = (url, tag) => {
-        if (isHttpUrl(url) && !out.some(v => v.url === url) && out.length < 3) out.push({ url, tag });
+        if (isHttpUrl(url) && !out.some(v => v.url === url) && out.length < 8) out.push({ url, tag });
     };
     push(resolveClawImageUrl(item), 'direct');
     if (media) {
         const base = NESTED_URL_FIELDS.map(f => media[f]).find(isHttpUrl) || '';
+        const sep = base.includes('?') ? '&' : '?';
         for (const field of ['encrypt_query_param', 'encrypted_query_param']) {
             const value = media[field];
             if (!base || typeof value !== 'string' || !value || base.includes(field)) continue;
-            push(base + (base.includes('?') ? '&' : '?') + field + '=' + encodeURIComponent(value), field);
+            // 参数名有 encrypt / encrypted 两种拼法，值也可能已经编码过，四种组合都试（去重后仍有限）
+            const other = field === 'encrypt_query_param' ? 'encrypted_query_param' : 'encrypt_query_param';
+            push(base + sep + field + '=' + value, field);
+            push(base + sep + field + '=' + encodeURIComponent(value), field + ':enc');
+            push(base + sep + other + '=' + value, other);
         }
     }
+    out.length = Math.min(out.length, 6);
     return out;
 }
 
@@ -176,6 +182,7 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
     if (!urls.length) return { ok: false, note: 'no-url' };
     const keys = clawImageKeys(imageItem);
     const tried = [];
+    const probes = [];
     let lastBytes = null;
     for (const candidate of urls) {
         let res;
@@ -183,10 +190,12 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
             res = await fetchImpl(candidate.url, { method: 'GET' });
         } catch (err) {
             tried.push(candidate.tag + ':fetch-error');
+            probes.push({ tag: candidate.tag, err: 'fetch' });
             continue;
         }
         if (!res || !res.ok) {
             tried.push(candidate.tag + ':http-' + ((res && res.status) || 0));
+            probes.push({ tag: candidate.tag, status: (res && res.status) || 0 });
             continue;
         }
         let bytes;
@@ -196,6 +205,14 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
             tried.push(candidate.tag + ':body-error');
             continue;
         }
+        probes.push({
+            tag: candidate.tag,
+            status: res.status,
+            ctype: String((res.headers && res.headers.get && res.headers.get('content-type')) || '').slice(0, 40),
+            len: bytes.byteLength,
+            head: headHex(bytes),
+            final: String(res.url || '').replace(/^https?:\/\//, '').split('?')[0].slice(0, 60)
+        });
         if (bytes.byteLength > MAX_IMAGE_BYTES) {
             tried.push(candidate.tag + ':too-large:' + bytes.byteLength);
             continue;
@@ -228,7 +245,8 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
     return {
         ok: false,
         note: 'not-an-image:' + size + (wxgf ? ' wxgf' : '') + ' head=' + head + ' tried=' + tried.slice(0, 6).join(','),
-        head
+        head,
+        probes
     };
 }
 
@@ -243,6 +261,8 @@ export function describeClawImage(imageItem) {
         mediaKeys: media && typeof media === 'object' ? Object.keys(media) : [],
         mediaLen: typeof media === 'string' ? media.length : 0,
         mediaHost: url ? new URL(url).host : '',
+        mediaPath: url ? new URL(url).pathname.slice(0, 60) : '',
+        mediaQueryKeys: url ? Array.from(new URL(url).searchParams.keys()).slice(0, 6) : [],
         aeskeyLen: String(item.aeskey || '').length,
         keyKinds: clawImageKeys(item).map(k => k.tag + ':' + aesKeyKind(k.value)),
         urlVariants: clawImageUrlCandidates(item).map(u => u.tag),
@@ -281,7 +301,7 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
     if (!imageItems.length) return '';
     const download = await downloadClawImage(imageItems[0], fetchImpl);
     if (!download.ok) {
-        console.warn('[bot-media] 图片下载失败 note=' + download.note + ' shape=' + JSON.stringify(describeClawImage(imageItems[0])));
+        console.warn('[bot-media] 图片下载失败 note=' + download.note + ' probes=' + JSON.stringify(download.probes || []) + ' shape=' + JSON.stringify(describeClawImage(imageItems[0])));
         return '这张图我暂时拿不到原图，你换个方式再发一次试试？';
     }
     const src = await storeClawImage(env, db, userId, download.bytes, download.mime);

@@ -732,7 +732,11 @@ test('ClawBot - 图片地址与密钥多形态兜底：授权查询参数 + medi
             aes_key: Buffer.from(keyBytes).toString('base64')
         }
     };
-    assert.deepEqual(clawImageUrlCandidates(imageItem).map(u => u.tag), ['direct', 'encrypt_query_param']);
+    const urlTags = clawImageUrlCandidates(imageItem).map(u => u.tag);
+    assert.equal(urlTags[0], 'direct');
+    assert.ok(urlTags.includes('encrypt_query_param'), JSON.stringify(urlTags));
+    assert.ok(urlTags.includes('encrypted_query_param'), '参数名两种拼法都要试');
+    assert.ok(urlTags.length <= 6, JSON.stringify(urlTags));
     assert.deepEqual(clawImageKeys(imageItem).map(k => k.tag), ['item', 'media.aes_key']);
 
     const { impl, calls } = stubFetch({
