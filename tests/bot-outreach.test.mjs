@@ -4,7 +4,8 @@ import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
     east8Parts, isOutreachWindow, pickOutreachInstantMs, parseRecordTimeMs,
     pickCandidate, loadOutreachState, setOutreachEnabled, runOutreachChecks,
-    handleBotOutreachApi, OUTREACH_TEXT_MAX_BYTES
+    handleBotOutreachApi, pickFollowUpDelayMs, OUTREACH_TEXT_MAX_BYTES,
+    OUTREACH_FOLLOWUP_MIN_MS, OUTREACH_FOLLOWUP_MAX_MS
 } from '../workers/src/bot-outreach.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 
@@ -50,11 +51,11 @@ async function seedClawAccount(db, overrides = {}) {
     ).run();
 }
 
-async function seedFeed(db, id, content, ageDays) {
+async function seedFeed(db, id, content, ageDays, userId = 1) {
     const at = cstText(Date.now() - ageDays * 24 * 3600 * 1000);
     await db.prepare(
-        'INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?1, 1, ?2, ?3, ?3, 0)'
-    ).bind(id, content, at).run();
+        'INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?1, ?2, ?3, ?4, ?4, 0)'
+    ).bind(id, userId, content, at).run();
 }
 
 async function seedSent(db, refId, ageDays) {
@@ -63,10 +64,10 @@ async function seedSent(db, refId, ageDays) {
     ).bind(refId, cstText(Date.now() - ageDays * 24 * 3600 * 1000)).run();
 }
 
-async function seedTurn(db, role, content, ms) {
+async function seedTurn(db, role, content, ms, userId = 1) {
     await db.prepare(
-        'INSERT INTO bot_chat_turns (user_id, role, content, is_deleted, created_at) VALUES (1, ?1, ?2, 0, ?3)'
-    ).bind(role, content, cstText(ms)).run();
+        'INSERT INTO bot_chat_turns (user_id, role, content, is_deleted, created_at) VALUES (?1, ?2, ?3, 0, ?4)'
+    ).bind(userId, role, content, cstText(ms)).run();
 }
 
 function aiEnv(reply) {
@@ -75,13 +76,26 @@ function aiEnv(reply) {
     return { env, captured };
 }
 
-test('时窗判定只认东八区 10:00–21:00', () => {
+test('时窗判定只认东八区 10:00–22:30', () => {
     const day = todayYmd(Date.now());
     assert.equal(isOutreachWindow(cstMs(day, 9, 59)), false);
     assert.equal(isOutreachWindow(cstMs(day, 10, 0)), true);
-    assert.equal(isOutreachWindow(cstMs(day, 20, 59)), true);
-    assert.equal(isOutreachWindow(cstMs(day, 21, 0)), false);
+    assert.equal(isOutreachWindow(cstMs(day, 22, 29)), true);
+    assert.equal(isOutreachWindow(cstMs(day, 22, 30)), false);
     assert.equal(isOutreachWindow(cstMs(day, 3, 0)), false);
+});
+
+test('聊完之后的开口时刻由对话哈希决定，落在 30–120 分钟内', () => {
+    const a = pickFollowUpDelayMs(1, 5);
+    assert.equal(a, pickFollowUpDelayMs(1, 5));
+    assert.ok(a >= OUTREACH_FOLLOWUP_MIN_MS && a < OUTREACH_FOLLOWUP_MAX_MS);
+    const many = new Set();
+    for (let id = 1; id <= 20; id++) {
+        const d = pickFollowUpDelayMs(1, id);
+        assert.ok(d >= OUTREACH_FOLLOWUP_MIN_MS && d < OUTREACH_FOLLOWUP_MAX_MS);
+        many.add(d);
+    }
+    assert.ok(many.size > 1);
 });
 
 test('当天的开口时刻稳定、随机且落在时窗内', () => {
@@ -90,7 +104,7 @@ test('当天的开口时刻稳定、随机且落在时窗内', () => {
     const b = pickOutreachInstantMs(1, now + 3600 * 1000);
     assert.equal(a, b);
     const start = cstMs(todayYmd(now), 10, 0);
-    const end = cstMs(todayYmd(now), 21, 0);
+    const end = cstMs(todayYmd(now), 22, 30);
     assert.ok(a >= start && a < end);
     const other = pickOutreachInstantMs(2, now);
     assert.ok(other >= start && other < end);
@@ -178,8 +192,9 @@ integration('聊完 30 分钟就能开口，并把刚才的对话当背景', asy
     await seedFeed(db, 7101, '最近在学做面包，第一次发酵失败了', 9);
     const now = cstMs(todayYmd(Date.now()), 12, 0);
     const runAt = pickOutreachInstantMs(1, now) + 1000;
-    await seedTurn(db, 'user', '我今天有点累', runAt - 31 * 60 * 1000);
-    await seedTurn(db, 'assistant', '那就早点休息，别硬撑。', runAt - 30 * 60 * 1000);
+    const delay = pickFollowUpDelayMs(1, 1);
+    await seedTurn(db, 'user', '我今天有点累', runAt - delay);
+    await seedTurn(db, 'assistant', '那就早点休息，别硬撑。', runAt - delay + 60 * 1000);
     const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 9 } }]);
     const { env, captured } = aiEnv('上次那炉面包最后发起来了吗。');
     const res = await runOutreachChecks(env, db, stub.impl, { nowMs: runAt, random: () => 0.1 });
@@ -189,6 +204,34 @@ integration('聊完 30 分钟就能开口，并把刚才的对话当背景', asy
     assert.match(prompt, /【你们刚聊过】/);
     assert.match(prompt, /我今天有点累/);
     assert.match(prompt, /不重复刚才对话/);
+});
+
+integration('刚聊过时不再等当天那个固定时刻', async () => {
+    const db = await createTestDb();
+    const now = cstMs(todayYmd(Date.now()), 10, 0);
+    let uid = 1;
+    let instant = pickOutreachInstantMs(uid, now);
+    const need = cstMs(todayYmd(now), 12, 0);
+    for (let u = 2; u <= 60 && instant < need; u++) {
+        uid = u;
+        instant = pickOutreachInstantMs(uid, now);
+    }
+    assert.ok(instant >= need, '需要一个当天固定时刻在 12:00 之后的操练用户');
+    const lastUserMs = instant - 2 * 3600 * 1000;
+    const delay = pickFollowUpDelayMs(uid, 1);
+    const runAt = lastUserMs + delay;
+    assert.ok(runAt < instant, '要在当天固定时刻之前就开口');
+    await seedUser(db, uid);
+    await db.prepare(
+        'INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, cursor, bound_at_ms, is_deleted, outreach_enabled) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 0, ?9)'
+    ).bind(uid, 'bound', 'test-token', 'https://ilinkai.weixin.qq.com', 'bot-1', 'wx-user-1', '', Date.now() - 10 * 24 * 3600 * 1000, 1).run();
+    await seedFeed(db, 7201, '想在明年春天去一趟京都看樱花', 20, uid);
+    await seedTurn(db, 'user', '今天忙了一整天', lastUserMs, uid);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 11 } }]);
+    const { env } = aiEnv('京都的樱花，春天还远，先记着也行。');
+    const res = await runOutreachChecks(env, db, stub.impl, { nowMs: runAt, random: () => 0.1 });
+    assert.equal(res.sent, 1);
+    assert.equal(stub.calls.length, 1);
 });
 
 integration('很久以前的对话不算「刚聊过」，不注入背景', async () => {

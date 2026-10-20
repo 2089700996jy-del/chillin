@@ -5,10 +5,11 @@
  * 没人说话的时候，它到底有没有资格先开口。
  *
  * 克制是设计的一部分，不是可调参数：
- *   1. 时机随机但每天至多一次：东八区 10:00–21:00 之间，用 (user_id, 日期) 哈希出
+ *   1. 时机随机但每天至多一次：东八区 10:00–22:30 之间，用 (user_id, 日期) 哈希出
  *      当天唯一的时刻；只有到点之后的第一次 cron 才可能行动。
  *   2. 刚说完话不插嘴，聊完也算数：距用户上次说话至少 30 分钟；如果 6 小时内聊过，
- *      就把刚才那几轮对话当背景喂给模型，允许它顺着话题补一句。
+ *      就不再等当天那个固定时刻，而是在聊完 30–120 分钟之间（由这轮对话哈希出的
+ *      时刻）开口，并把刚才那几轮对话当背景喂给模型，允许它顺着话题补一句。
  *   3. 素材必须有出处：只从 3 天前到 180 天前的旧记录里挑；一条都挑不出来就不发。
  *   4. 模型有否决权：它觉得不值得提就回 SKIP，我们记一条 skipped 收工；每天只尝试
  *      一次，跳过了今天就不再补发（宁可不说，不可硬说）。
@@ -25,14 +26,18 @@ import { sendClawText } from './bot-claw.js';
 import { callCustomLlmWithMessages, moderateText } from './llm.js';
 import { jsonResponse, readJsonCapped } from './security.js';
 
-/** 允许开口的时窗（东八区，左闭右开） */
-export const OUTREACH_WINDOW_START_HOUR = 10;
-/** 时窗结束小时（21 点整之后闭嘴，避免深夜打扰） */
-export const OUTREACH_WINDOW_END_HOUR = 21;
+/** 允许开口的时窗（东八区，左闭右开，以当天分钟数表示） */
+export const OUTREACH_WINDOW_START_MINUTE = 10 * 60;
+/** 时窗结束（22:30 之后闭嘴，夜里不再打扰） */
+export const OUTREACH_WINDOW_END_MINUTE = 22 * 60 + 30;
 /** 每天最多一次真实尝试（发出去或被跳过都算用掉） */
 export const OUTREACH_DAILY_CAP = 1;
 /** 刚说完话后的最小间隔：这段时间内绝不插嘴 */
 export const OUTREACH_MIN_GAP_MS = 30 * 60 * 1000;
+/** 聊完之后最早开口（与最小间隔同值，单独命名便于阅读） */
+export const OUTREACH_FOLLOWUP_MIN_MS = OUTREACH_MIN_GAP_MS;
+/** 聊完之后最晚开口：超过这个时间就不再算「顺着刚才的话题」 */
+export const OUTREACH_FOLLOWUP_MAX_MS = 120 * 60 * 1000;
 /** 多久之内聊过算「刚聊过」：可以把刚才的对话当背景，顺着话题补一句 */
 export const OUTREACH_FOLLOWUP_WINDOW_MS = 6 * 60 * 60 * 1000;
 /** 新记录不碰：只回忆 3 天前的东西 */
@@ -80,17 +85,19 @@ function cutUtf8(text, maxBytes) {
 export function east8Parts(nowMs) {
     const shifted = Number(nowMs) + 8 * 3600 * 1000;
     const dayStartShifted = Math.floor(shifted / 86400000) * 86400000;
+    const at = new Date(shifted);
     return {
-        ymd: new Date(shifted).toISOString().slice(0, 10),
-        hour: new Date(shifted).getUTCHours(),
+        ymd: at.toISOString().slice(0, 10),
+        hour: at.getUTCHours(),
+        minuteOfDay: at.getUTCHours() * 60 + at.getUTCMinutes(),
         dayStartMs: dayStartShifted - 8 * 3600 * 1000
     };
 }
 
 /** 现在是否在允许开口的时窗内 */
 export function isOutreachWindow(nowMs) {
-    const hour = east8Parts(nowMs).hour;
-    return hour >= OUTREACH_WINDOW_START_HOUR && hour < OUTREACH_WINDOW_END_HOUR;
+    const minute = east8Parts(nowMs).minuteOfDay;
+    return minute >= OUTREACH_WINDOW_START_MINUTE && minute < OUTREACH_WINDOW_END_MINUTE;
 }
 
 function hash32(str) {
@@ -104,13 +111,22 @@ function hash32(str) {
 
 /**
  * 当天的随机开口时刻：只由 (user_id, 东八区日期) 决定，所以同一天稳定、
- * 不同天不同；落在 [10:00, 21:00) 内。cron 每分钟跑，到点后的第一次就触发。
+ * 不同天不同；落在 [10:00, 22:30) 内。cron 每分钟跑，到点后的第一次就触发。
  */
 export function pickOutreachInstantMs(userId, nowMs) {
     const parts = east8Parts(nowMs);
-    const spanMs = (OUTREACH_WINDOW_END_HOUR - OUTREACH_WINDOW_START_HOUR) * 3600 * 1000;
+    const spanMs = (OUTREACH_WINDOW_END_MINUTE - OUTREACH_WINDOW_START_MINUTE) * 60 * 1000;
     const offset = hash32(String(userId) + ':' + parts.ymd) % spanMs;
-    return parts.dayStartMs + OUTREACH_WINDOW_START_HOUR * 3600 * 1000 + offset;
+    return parts.dayStartMs + OUTREACH_WINDOW_START_MINUTE * 60 * 1000 + offset;
+}
+
+/**
+ * 聊完之后多久才允许顺着话题开口：由 (user_id, 这轮对话的 id) 哈希决定，落在
+ * [30 分钟, 120 分钟)；同一轮对话只对应一个时刻，cron 每分钟跑也不会重掷。
+ */
+export function pickFollowUpDelayMs(userId, turnId) {
+    const span = OUTREACH_FOLLOWUP_MAX_MS - OUTREACH_FOLLOWUP_MIN_MS;
+    return OUTREACH_FOLLOWUP_MIN_MS + (hash32(String(userId) + ':' + String(turnId)) % span);
 }
 
 /** 容忍两种历史写法：东八区文本（YYYY-MM-DD HH:MM:SS）与 epoch 毫秒 */
@@ -250,12 +266,13 @@ async function recordAttempt(db, account, status, candidate, text, reason) {
     ).run();
 }
 
-/** 用户最近一次说话的时间（东八区文本或 epoch 毫秒）；从未说过返回 0 */
-async function lastUserTurnMs(db, userId) {
+/** 用户最近一次说话的时间（东八区文本或 epoch 毫秒）与那一轮的 id；从未说过返回 0 */
+async function lastUserTurnInfo(db, userId) {
     const row = await db.prepare(
-        "SELECT created_at FROM bot_chat_turns WHERE user_id = ?1 AND role = 'user' AND is_deleted = 0 ORDER BY id DESC LIMIT 1"
+        "SELECT id, created_at FROM bot_chat_turns WHERE user_id = ?1 AND role = 'user' AND is_deleted = 0 ORDER BY id DESC LIMIT 1"
     ).bind(userId).first();
-    return row && row.created_at ? parseRecordTimeMs(row.created_at) : 0;
+    if (!row || !row.created_at) return { atMs: 0, id: 0 };
+    return { atMs: parseRecordTimeMs(row.created_at), id: Number(row.id) || 0 };
 }
 
 /**
@@ -263,14 +280,14 @@ async function lastUserTurnMs(db, userId) {
  * 从未说过话时退回「距绑定至少 1 小时」。返回 lastUserMs 供 follow-up 判断。
  */
 async function outreachTiming(db, account, nowMs) {
-    const lastUserMs = await lastUserTurnMs(db, account.user_id);
-    if (lastUserMs) {
-        if (nowMs - lastUserMs < OUTREACH_MIN_GAP_MS) return { ok: false, lastUserMs };
-        return { ok: true, lastUserMs };
+    const last = await lastUserTurnInfo(db, account.user_id);
+    if (last.atMs) {
+        if (nowMs - last.atMs < OUTREACH_MIN_GAP_MS) return { ok: false, lastUserMs: last.atMs, lastUserTurnId: last.id };
+        return { ok: true, lastUserMs: last.atMs, lastUserTurnId: last.id };
     }
     const boundAt = Number(account.bound_at_ms || 0);
-    if (boundAt && nowMs - boundAt < 60 * 60 * 1000) return { ok: false, lastUserMs: 0 };
-    return { ok: true, lastUserMs: 0 };
+    if (boundAt && nowMs - boundAt < 60 * 60 * 1000) return { ok: false, lastUserMs: 0, lastUserTurnId: 0 };
+    return { ok: true, lastUserMs: 0, lastUserTurnId: 0 };
 }
 
 /** 一句话起草：模型说不出来就返回空串（等于放弃今天） */
@@ -326,13 +343,17 @@ async function loadRecentTalkSafe(db, userId) {
 
 /** 单个账号的一次尝试；返回 'sent' | 'skipped' | 'failed' | 'wait' | 'done' | 'too-soon' | 'empty' */
 async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
-    if (nowMs < pickOutreachInstantMs(account.user_id, nowMs)) return 'wait';
     if (await attemptedToday(db, account.user_id, nowMs)) return 'done';
     if (OUTREACH_DAILY_CAP <= 0) return 'done';
 
     const timing = await outreachTiming(db, account, nowMs);
     if (!timing.ok) return 'too-soon';
     const followUp = !!timing.lastUserMs && nowMs - timing.lastUserMs < OUTREACH_FOLLOWUP_WINDOW_MS;
+    // 刚聊过：不等当天那个固定时刻，改由这轮对话哈希出的 30–120 分钟后开口
+    const dueMs = followUp
+        ? timing.lastUserMs + pickFollowUpDelayMs(account.user_id, timing.lastUserTurnId)
+        : pickOutreachInstantMs(account.user_id, nowMs);
+    if (nowMs < dueMs) return 'wait';
 
     const candidates = await collectCandidates(db, account.user_id, nowMs);
     const candidate = pickCandidate(candidates, await loadUsedRefs(db, account.user_id), random);
