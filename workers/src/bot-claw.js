@@ -24,6 +24,7 @@
  */
 import { jsonResponse } from './security.js';
 import { truncateUtf8, buildBotReply, claimBotMessage } from './bot-commands.js';
+import { extractClawImageItems, handleClawImageMessage } from './bot-media.js';
 
 const ILINK_DEFAULT_BASE = 'https://ilinkai.weixin.qq.com';
 /** 官方客户端上报的通道版本 */
@@ -160,6 +161,7 @@ export function extractClawText(msg) {
         .join('\n')
         .trim();
 }
+
 
 /**
  * 排重键。message_id 是 uint64，JSON.parse 会丢精度，所以再叠上 item_list[0].msg_id
@@ -344,12 +346,19 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
         return;
     }
     const text = extractClawText(msg);
-    if (!text) return;
+    // iLink 的图片消息外层 message_type 仍是 1，靠 item.type=2 的 image_item 识别（2026-10-20 实测）
+    const hasImage = extractClawImageItems(msg).length > 0;
+    // 语音等其它类型仍不支持：既不回复也不声称保存，静默丢弃
+    if (!text && !hasImage) return;
     if (!(await claimBotMessage(db, 'claw:' + clawDedupKey(msg)))) {
         console.log('[bot-claw] 重复消息已忽略');
         return;
     }
-    const reply = await buildBotReply(env, db, userId, text);
+    // 有图就走存图通道（秒回、不经模型也不占对话限流桶）；图 + 文字时文字自动变成配文
+    const reply = hasImage
+        ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)
+        : await buildBotReply(env, db, userId, text);
+    if (!reply) return;
     await sendClawText({
         token: String(account.bot_token || ''),
         baseurl: account.baseurl,

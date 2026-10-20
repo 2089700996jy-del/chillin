@@ -137,12 +137,15 @@ export async function claimBotMessage(db, key) {
     return seen.ok;
 }
 
-/** 存进随手记：复用既有 CRUD handler，等价于前端调 POST /api/feeds */
-export async function saveFeed(db, userId, content) {
+/** 存进随手记：复用既有 CRUD handler，等价于前端调 POST /api/feeds（mediaUrl 非空时带图） */
+export async function saveFeed(db, userId, content, mediaUrl) {
+    const payload = mediaUrl
+        ? { content, media_url: mediaUrl, type: 'image' }
+        : { content };
     const res = await handlePostFeed(new Request('https://chillin.internal/api/feeds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content })
+        body: JSON.stringify(payload)
     }), db, userId);
     if (!res.ok) console.error('[bot] 存随手记失败 status=' + res.status);
     return res.ok;

@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.120**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.121**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -65,10 +65,23 @@
 | `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流、来源脚注只在用户追问依据时附上（来源标签统一成 `[类型] YYYY-MM-DD`） |
 | `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删）+ 应用内 `/api/bot/profile` 读写接口（增/改/单条遗忘/清空） |
 | `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
+| `workers/src/bot-media.js` | Bot 图片接入：微信图片消息（`item.type=2`）→ 下载 → 明文魔数嗅探，嗅不出再用 `aeskey` 走 AES-128-CBC（IV 即密钥）解密 → 经既有上传通道写 R2 并落一条带图随手记；取不到原图只如实告知、绝不落库；全程不记正文 |
 | `workers/src/bot-outreach.js` | Bot 主动关怀：东八区 10:00–22:30 时窗内每天至多一次的随机开口、刚聊完 30 分钟内不插嘴（6 小时内聊过则不等当天固定时刻，改在聊完 30–120 分钟内把最近对话当背景）与只用 3–180 天前旧素材的门禁、模型 SKIP 与概率闸门、账号级开关与发送审计；主动发出的消息同时写进对话记忆（带出处），用户回一句就能对上 |
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot 图片随手记（v2.5.121）
+
+**动机**（用户 m03337：「bot能看图片吗 同时记录可以记录图片」）。此前收信侧只处理纯文本，图片消息被整条丢弃。
+
+1. **报文形状靠实测确认**：临时探针只打印字段名/长度/URL 主机（绝不记正文）上线后确认——图片消息的**外层 `message_type` 仍是 1**，靠 `item_list[i].type === 2` 且带 `image_item` 识别；`image_item` 给出 `media`（地址）、`aeskey`、`thumb_size` / `mid_size` / `hd_size`。形状确定后探针已删除（`workers/src/bot-claw.js` 不再有 `sketchClawMessage`）。
+2. **新模块 `workers/src/bot-media.js`**：`extractClawImageItems` / `resolveClawImageUrl`（`media` 是字符串或嵌套对象都能兜底认地址）/ `sniffImageMagic`（JPEG/PNG/GIF/WEBP 魔数）/ `decryptClawImage`（base64 `aeskey` → AES-128-CBC，**IV 即密钥本身**）/ `downloadClawImage`（下载→明文嗅探→不行再解密嗅探）/ `handleClawImageMessage`。任何一步失败都折叠成原因码，不抛异常。
+3. **存图复用既有管道**：解密后的明文交给 `handleUpload`（5MB 上限 + 魔数嗅探 + 写 R2），拿回 `/api/file/<id>?t=<token>` 作为 `media_url`，再用扩展后的 `saveFeed(db, userId, content, mediaUrl)` 落一条 `type='image'` 的随手记——与前端上传走的是同一条链路，无新表、无新迁移。图 + 文字时文字自动成为正文，无文字时用「来自微信的图片」。
+4. **克制与安全**：取不到原图或入库失败时只回「拿不到原图，再发一次试试」，**绝不宣称保存**（与 chat-first 的「默认无副作用」一致）；图片通道不经模型、不占对话限流桶，秒回；日志只打用户 id、字节数与原因码，正文与 `aeskey` 永不进日志。
+5. **门禁**：`tests/bot-claw.test.mjs` 新增 6 条——图片 item 识别与地址兜底、魔数嗅探、`aeskey` 解密（含非法密钥）、发图落成带图随手记并回复且**不经模型**、图 + 文字时配文优先且密文先解密再入库、取不到原图时零写入、语音等类型静默丢弃。
+
+**测试 222 → 228 用例（20 套件）**；README、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 深色模式下的链接对比度修复（v2.5.120）
 

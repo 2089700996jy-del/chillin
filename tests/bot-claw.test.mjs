@@ -18,6 +18,12 @@ import {
     handleClawApi,
     pollClawAccounts
 } from '../workers/src/bot-claw.js';
+import {
+    extractClawImageItems,
+    resolveClawImageUrl,
+    sniffImageMagic,
+    decryptClawImage
+} from '../workers/src/bot-media.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
     parseRecordCommand,
@@ -57,6 +63,7 @@ function stubFetch(routes) {
         for (const key of Object.keys(routes)) {
             if (u.includes(key)) {
                 const r = routes[key](u, body) || {};
+                if (r.bytes) return new Response(r.bytes, { status: r.status || 200 });
                 return new Response(JSON.stringify(r.json || {}), { status: r.status || 200 });
             }
         }
@@ -590,6 +597,171 @@ integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（�
     assert.equal(row.is_deleted, 1, '遗忘必须是软删');
     assert.equal((await listProfile(db, 1)).length, 0);
     assert.match(await buildBotReply({}, db, 1, '你记得我什么'), /还没有你的档案/);
+});
+
+/** 最小可嗅探的 PNG 头：魔数 + IHDR 开头，足够走通「先魔数后入库」的链路 */
+const PNG_BYTES = new Uint8Array([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01
+]);
+
+/** 图片消息的实测形状：外层 message_type 仍是 1，靠 item.type=2 + image_item 识别 */
+function imageMessage(overrides = {}) {
+    const unique = Math.random().toString(36).slice(2);
+    return {
+        message_id: 'IMG-' + unique,
+        message_type: 1,
+        from_user_id: 'owner@im.wechat',
+        context_token: 'CTX-IMG',
+        create_time_ms: Date.now(),
+        item_list: [{
+            type: 2,
+            msg_id: 'IMGITEM-' + unique,
+            image_item: { aeskey: '', media: 'https://cdn.example/photo.png', mid_size: PNG_BYTES.length }
+        }],
+        ...overrides
+    };
+}
+
+/** 生产形态的绑定环境：R2 替身 + 一调就炸的 AI（图片通道绝不该经过模型） */
+function mediaEnv(db, puts) {
+    return {
+        DB: db,
+        MEDIA: {
+            put: async (key, buf, opts) => { puts.push({ key, size: buf.byteLength, type: opts.httpMetadata.contentType }); }
+        },
+        AI: { run: async () => { throw new Error('图片通道不该调用模型'); } }
+    };
+}
+
+async function encryptBytes(bytes, keyBytes) {
+    const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
+    const out = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: keyBytes }, key, bytes);
+    return new Uint8Array(out);
+}
+
+test('ClawBot - 图片 item 识别、下载地址兜底与魔数嗅探', () => {
+    const msg = { message_type: 1, item_list: [{ type: 1, text_item: { text: '配文' } }, { type: 2, image_item: { media: 'https://cdn.example/a.png' } }] };
+    assert.equal(extractClawImageItems(msg).length, 1, '只有 item.type=2 才算图片');
+    assert.equal(extractClawImageItems({ item_list: [{ type: 1, text_item: { text: 'x' } }] }).length, 0);
+    assert.equal(extractClawImageItems(null).length, 0);
+
+    assert.equal(resolveClawImageUrl({ media: 'https://cdn.example/a.png' }), 'https://cdn.example/a.png');
+    assert.equal(resolveClawImageUrl({ media: { url: 'https://cdn.example/b.png' } }), 'https://cdn.example/b.png');
+    assert.equal(resolveClawImageUrl({ hd_url: 'https://cdn.example/c.png' }), 'https://cdn.example/c.png');
+    assert.equal(resolveClawImageUrl({ media: 12345, thumb_size: 9 }), '', '认不出地址就返回空串');
+    assert.equal(resolveClawImageUrl(null), '');
+
+    assert.equal(sniffImageMagic(PNG_BYTES), 'image/png');
+    assert.equal(sniffImageMagic(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0])), 'image/jpeg');
+    assert.equal(sniffImageMagic(new Uint8Array([0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0, 0])), 'image/gif');
+    assert.equal(sniffImageMagic(new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50, 0])), 'image/webp');
+    assert.equal(sniffImageMagic(new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13])), '', '密文/杂数据不得当图片');
+});
+
+test('ClawBot - base64 aeskey 按 AES-128-CBC 解密（IV 即密钥），密钥非法返回空', async () => {
+    const keyBytes = new Uint8Array(16).fill(0x2a);
+    const cipher = await encryptBytes(PNG_BYTES, keyBytes);
+    assert.equal(sniffImageMagic(cipher), '', '密文本身不该被当成图片');
+    const plain = await decryptClawImage(cipher, Buffer.from(keyBytes).toString('base64'));
+    assert.ok(plain, '合法密钥必须能解出明文');
+    assert.equal(sniffImageMagic(plain), 'image/png');
+    assert.equal(await decryptClawImage(cipher, 'not-base64!!'), null);
+    assert.equal(await decryptClawImage(cipher, ''), null);
+    assert.equal(await decryptClawImage(cipher, Buffer.from(new Uint8Array(8)).toString('base64')), null, '长度不是 16 字节的密钥要用不了');
+});
+
+integration('ClawBot - 微信发图片落成带图随手记并回复，不经模型', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-IMG', msgs: [imageMessage()] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/photo.png': () => ({ bytes: PNG_BYTES })
+    });
+    await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
+    assert.ok(feed, '图片必须落成随手记');
+    assert.equal(feed.type, 'image');
+    assert.equal(feed.content, '来自微信的图片');
+    assert.match(feed.media_url, /^\/api\/file\/[0-9a-f-]+\?t=[0-9a-f-]+$/, '存的是可长期直读的 /api/file 地址');
+    const files = await db.prepare('SELECT COUNT(*) AS n FROM files').first();
+    assert.equal(files.n, 1, '二进制必须进 files 表');
+    assert.equal(puts.length, 1, '二进制必须进 R2');
+    assert.equal(puts[0].type, 'image/png');
+    assert.match(puts[0].key, /^uploads\/1\//);
+    assert.equal(puts[0].size, PNG_BYTES.length);
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.ok(send, '必须回一条消息');
+    assert.match(send.body.msg.item_list[0].text_item.text, /随手记/);
+    assert.equal(send.body.msg.context_token, 'CTX-IMG');
+});
+
+integration('ClawBot - 图 + 文字时文字成为随手记正文，AES 加密的图先解密再入库', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const keyBytes = new Uint8Array(16).fill(0x5c);
+    const cipher = await encryptBytes(PNG_BYTES, keyBytes);
+    const item = imageMessage();
+    item.item_list = [
+        { type: 1, msg_id: 'CAP-1', text_item: { text: '今晚的月亮' } },
+        { type: 2, msg_id: 'ENC-1', image_item: { aeskey: Buffer.from(keyBytes).toString('base64'), media: 'https://cdn.example/secret.bin' } }
+    ];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-ENC', msgs: [item] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/secret.bin': () => ({ bytes: cipher })
+    });
+    await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    const feed = await db.prepare('SELECT content, type FROM quick_feeds').first();
+    assert.equal(feed.content, '今晚的月亮', '配文优先于默认文案');
+    assert.equal(feed.type, 'image');
+    assert.equal(puts[0].size, PNG_BYTES.length, '进 R2 的必须是解密后的明文长度');
+    assert.equal(puts[0].type, 'image/png');
+});
+
+integration('ClawBot - 原图取不到时如实告知，不写任何数据', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-404', msgs: [imageMessage()] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/photo.png': () => ({ status: 404, json: {} })
+    });
+    await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '取不到图就不能落库');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM files').first()).n, 0);
+    assert.equal(puts.length, 0);
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.match(send.body.msg.item_list[0].text_item.text, /拿不到原图/);
+    assert.ok(!/已存入/.test(send.body.msg.item_list[0].text_item.text), '失败时绝不能宣称保存');
+});
+
+integration('ClawBot - 既无文字也无图片的消息静默丢弃（语音等仍不支持）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const msg = imageMessage();
+    msg.item_list = [{ type: 3, msg_id: 'VOICE-1', voice_item: { duration: 3 } }];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-VOICE', msgs: [msg] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } })
+    });
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
+
+    assert.equal(st.calls.filter(c => c.url.endsWith('/sendmessage')).length, 0, '不支持的类型不该回复');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first()).n, 0);
 });
 
 integration('Bot - 重置对话只清上下文，不动档案与花园记录', async () => {
