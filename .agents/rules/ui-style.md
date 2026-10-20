@@ -15,7 +15,13 @@
    * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏顶边线也一律取消，改用柔和上投影）；
    * 首屏柔光：亮色主题 `body` 顶部铺两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作 hero 光晕，卡片保持纯白浮在其上；深色与护眼主题必须显式 `background-image: none`（深底上会发脏蓝，由 `tests/css.test.mjs` 看住）。
 
-2. **Apple Spring 触感反馈微动效**：
+3. **模糊层 (backdrop-filter) 与层级纪律**：
+   * `backdrop-filter` 只允许「浮在内容之上」的表面使用：顶部导航 `.super-navbar`、阅读器底栏 `.reader-nav-bottom`、弹层遮罩 `.modal-overlay` / `.confirm-dialog-overlay` / `.wikilink-autocomplete-popup`、压在图片上的悬浮图标按钮；总数由 `tests/css.test.mjs` 的棘轮看住（基线 41 条声明，含 `-webkit-` 配对）；
+   * 判断标准是**背后有没有可模糊的内容**：父级不透明（如 `#FFFFFF` 卡片里的 `.search-input`）或背板只是纯色加平缓渐变（如 `.note-annotations-section` 之后的 `body`）时，模糊是零收益的合成层，应删除；固定栏上的模糊是**肉眼可见**的（0.88 alpha 下高对比条纹仍会透出，可用 `backups/_blur_on.html` 这类条纹页截图复验），必须保留；
+   * 顶层层级一律走 `:root` 的 `--z-nav` / `--z-modal` / `--z-toast` / `--z-auth` / `--z-alert` 令牌，禁止裸 `z-index`（否则「关闭按钮盖住确认弹窗」这类顺序错误会重现）；
+   * 过渡只允许显式属性列表，禁止 `transition: all`（会连带 `width`/`height` 触发布局重排）。
+
+4. **Apple Spring 触感反馈微动效**：
    * 所有交互按钮（`.btn-primary`, `.btn-secondary`, `.fab-btn`, `.btn-chip`, `.prompt-chip` 等）必须提供真实的触感回弹；
    * 采用 Apple Spring 弹性阻尼：
      ```css
@@ -92,9 +98,9 @@
 | 类别 | 令牌 |
 | :--- | :--- |
 | 间距 | `--space-1` 4px / `--space-2` 8px / `--space-3` 12px / `--space-4` 16px / `--space-5` 24px / `--space-6` 32px |
-| 圆角 | `--radius-sm` 10px / `--radius-md` 14px / `--radius-lg` 18px / `--radius-pill` 999px / `--surface-radius` 22px（主表面） |
+| 圆角 | `--radius-sm` 10px / `--radius-md` 14px / `--radius-lg` 18px / `--radius-pill` 999px / `--surface-radius` 26px（主表面） |
 | 动效 | `--dur-fast` 0.18s / `--dur-base` 0.28s / `--ease-spring` `cubic-bezier(0.16, 1, 0.3, 1)` |
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 约 9740 行、仍有 300 处 `!important`（多为 v2.5.30 之后叠加的覆写层）、约 516 处色值字面量待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 9740 行、仍有 296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、41 条 `backdrop-filter` 声明、约 516 处色值字面量待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。

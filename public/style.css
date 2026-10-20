@@ -27,6 +27,13 @@
   /* 路线 A：主表面统一大圆角；卡片刻意不画 1px 硬边框，靠柔和阴影分层 */
   --surface-radius: 26px;
   --surface-hairline: rgba(60, 60, 67, 0.06);
+  /* 路线 B：层级令牌。新增层一律引用令牌，不再写裸 z-index 魔数；
+     从下到上：导航 → 弹层 → Toast → 登录遮罩 → 确认弹窗（永远最上层，避免被弹层内的按钮压住） */
+  --z-nav: 1000;
+  --z-modal: 9999;
+  --z-toast: 10000;
+  --z-auth: 99999;
+  --z-alert: 100000;
   /* 路线 A：热力图色阶收敛为 systemGreen 的透明阶，去掉薄荷霓虹感 */
   --heat-empty: rgba(120, 120, 128, 0.12);
   --heat-1: rgba(52, 199, 89, 0.16);
@@ -401,7 +408,7 @@ body.is-loading .nav-loading-bar,
   color: var(--text-color-light); 
   font-size: 14px; 
   font-weight: 500; 
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.2s ease;
   padding: 6px 12px;
   border-radius: 99px;
 }
@@ -518,7 +525,7 @@ body.eyecare-reader-body #btn-back {
   font-size: 14px; 
   font-family: var(--font-family);
   color: var(--text-color-light); 
-  transition: all 0.2s ease; 
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.2s ease; 
   margin-left: 12px;
   display: inline-flex;
   align-items: center;
@@ -535,7 +542,7 @@ body.eyecare-reader-body #btn-back {
   border-radius: 99px;
   font-weight: 500;
   font-size: 13px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -560,7 +567,7 @@ body.eyecare-reader-body #btn-back {
   border-radius: 99px;
   font-weight: 500;
   font-size: 13px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -639,7 +646,7 @@ body.eyecare-reader-body #btn-back {
   display: flex; 
   align-items: center; 
   gap: 8px; 
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.3s cubic-bezier(0.16, 1, 0.3, 1); 
   z-index: 90;
 }
 .fab-btn:hover { 
@@ -958,7 +965,7 @@ body.eyecare-reader-body #btn-back {
   margin: 30px auto; 
   max-width: 380px; 
   transform: rotate(-1.5deg); 
-  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid rgba(0,0,0,0.02);
 }
 .widget-polaroid:hover { 
@@ -1097,7 +1104,7 @@ body.eyecare-reader-body #btn-back {
   font-family: var(--font-family); 
   font-size: 14px; 
   outline: none;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.2s ease;
 }
 .widget-form-group input:focus, .widget-form-group textarea:focus {
   border-color: rgba(0, 0, 0, 0.2);
@@ -1146,7 +1153,7 @@ body.eyecare-reader-body #btn-back {
   padding: 4px 8px;
   border-radius: 6px;
   background: transparent;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1257,7 +1264,7 @@ body.eyecare-reader-body #btn-back {
   font-weight: 500;
   color: var(--text-color-light);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: var(--font-family);
   display: flex;
   align-items: center;
@@ -1382,7 +1389,7 @@ body.eyecare-reader-body #btn-back {
   display: inline-flex;
   align-items: center;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1435,7 +1442,7 @@ body.eyecare-reader-body #btn-back {
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   white-space: nowrap;
   flex-shrink: 0;
 }
@@ -1454,7 +1461,7 @@ body.eyecare-reader-body #btn-back {
   align-items: center;
   gap: 4px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   white-space: nowrap;
   text-transform: none;
   letter-spacing: normal;
@@ -1720,7 +1727,7 @@ body.eyecare-reader-body #btn-back {
   background: rgba(0, 122, 255, 0.08);
   padding: 3px 9px;
   border-radius: 99px;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
   flex-shrink: 0;
 }
 .ios-widget-badge.has-filled {
@@ -1799,7 +1806,7 @@ body.eyecare-reader-body #btn-back {
   font-size: 14.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   font-family: var(--font-family);
 }
 .ios-btn-cancel:active {
@@ -1814,7 +1821,7 @@ body.eyecare-reader-body #btn-back {
   font-size: 14.5px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   font-family: var(--font-family);
   box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
 }
@@ -1869,7 +1876,7 @@ body.eyecare-reader-body #btn-back {
   padding: 18px 8px; 
   border-bottom: 1px solid rgba(0,0,0,0.05);
   cursor: pointer; 
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color, padding-left 0.2s ease;
 }
 .note-item:hover { 
   background: rgba(0,0,0,0.02); 
@@ -2096,7 +2103,7 @@ body.eyecare-reader-body #btn-back {
   justify-content: center;
   cursor: pointer;
   opacity: 0.35;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   color: var(--text-color-light);
   padding: 0;
 }
@@ -2119,7 +2126,7 @@ body.eyecare-reader-body #btn-back {
   position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
   background: rgba(0, 0, 0, 0.8); backdrop-filter: blur(8px);
   display: none; align-items: center; justify-content: center;
-  z-index: 9999; cursor: zoom-out;
+  z-index: var(--z-modal); cursor: zoom-out;
 }
 .modal-overlay.show { display: flex; animation: modalFadeIn 0.2s ease; }
 @keyframes modalFadeIn { from { opacity: 0; } to { opacity: 1; } }
@@ -2142,7 +2149,7 @@ body.eyecare-reader-body #btn-back {
   background: rgba(120, 120, 128, 0.08); 
   color: var(--text-color-light);
   border: 1px solid transparent; 
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -2178,7 +2185,7 @@ body.eyecare-reader-body #btn-back {
   background-color: #F2F2F7 !important; 
   color: #000000;
   color-scheme: light !important;
-  z-index: 99999; 
+  z-index: var(--z-auth); 
   display: flex; 
   flex-direction: column;
   justify-content: center; 
@@ -2284,7 +2291,7 @@ body.not-authenticated #btn-back {
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -2678,11 +2685,13 @@ body.hide-bottom-nav .nav-brand-mobile {
     background: #F2F2F7 !important;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
-    border-top: none;
-    box-shadow: none;
-    z-index: 1000;
+    /* 路线 B：顶边线太硬，改柔和上投影；底色仍保持不透明（见对 Redmi 手势区色带的修复说明）。
+       这几条原先写在文件末尾的顶层 .mobile-bottom-nav 里，合到这里以免同一组件在多处重复定义。 */
+    border-top: 1px solid transparent;
+    box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.05);
+    z-index: var(--z-nav);
     padding-top: 4px;
-    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
     box-sizing: border-box;
   }
 
@@ -2832,9 +2841,8 @@ body.hide-bottom-nav .nav-brand-mobile {
   outline: none; 
   font-size: 13px; 
   font-family: var(--font-family);
-  background: rgba(255, 255, 255, 0.75); 
-  backdrop-filter: blur(8px);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(255, 255, 255, 0.75);
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   box-shadow: 0 2px 8px rgba(0,0,0,0.01);
   color: var(--text-color);
 }
@@ -2867,8 +2875,6 @@ body.hide-bottom-nav .nav-brand-mobile {
   margin-top: 40px;
   padding: 30px;
   background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
   border-radius: 20px;
   border: 1px solid rgba(0, 0, 0, 0.03);
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);
@@ -2970,7 +2976,7 @@ body.hide-bottom-nav .nav-brand-mobile {
   color: var(--text-color);
   outline: none;
   resize: vertical;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.2s ease;
 }
 .annotation-input:focus {
   border-color: rgba(0, 0, 0, 0.18);
@@ -3003,7 +3009,7 @@ body.hide-bottom-nav .nav-brand-mobile {
   border-radius: 14px;
   padding: 20px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.2s;
   position: relative;
   overflow: hidden;
 }
@@ -3212,7 +3218,7 @@ body.in-reader-book .reader-main {
   font-size: 0.76rem;
   color: var(--text-color-light);
   cursor: pointer;
-  transition: all 0.12s;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, border-left-color 0.12s;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -3318,7 +3324,7 @@ body.in-reader-book .reader-main {
   user-select: none;
   -webkit-user-select: none;
   flex-shrink: 0;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .reader-nav-bottom .btn-nav {
   background: rgba(120, 120, 128, 0.1);
@@ -3613,7 +3619,7 @@ body.eyecare-reader-body .sidebar-header {
     left: 0;
     top: 0;
     bottom: 0;
-    z-index: 1000;
+    z-index: var(--z-nav);
     width: 280px;
     border-radius: 0;
     box-shadow: 4px 0 24px rgba(0, 0, 0, 0.15);
@@ -3736,7 +3742,7 @@ body.eyecare-reader-body .sidebar-header {
   font-size: 12px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   white-space: nowrap;
   letter-spacing: -0.2px;
@@ -3884,7 +3890,7 @@ body.keyboard-open .fab-btn {
   background: rgba(120, 120, 128, 0.08);
   color: var(--text-color-light, rgba(60, 60, 67, 0.75));
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -3976,7 +3982,7 @@ body.keyboard-open .fab-btn {
   justify-content: center;
   color: var(--text-color-light);
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   opacity: 0.6;
   padding: 0;
 }
@@ -4170,7 +4176,7 @@ body.keyboard-open .fab-btn {
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .echo-cards-header {
@@ -4292,7 +4298,7 @@ body.keyboard-open .fab-btn {
   font-size: 16px;
   line-height: 1;
   color: #888;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
 }
 .echo-card-delete:hover {
   background: #fee2e2;
@@ -4428,7 +4434,7 @@ body.keyboard-open .fab-btn {
   font-size: 12.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   line-height: 1.35;
 }
 
@@ -4496,7 +4502,7 @@ body.keyboard-open .fab-btn {
   border-radius: 22px;
   padding: 3px 4px 3px 14px;
   width: 100%;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
   border: 1px solid transparent;
 }
 
@@ -4529,7 +4535,7 @@ body.keyboard-open .fab-btn {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   flex-shrink: 0;
 }
 
@@ -4653,7 +4659,7 @@ body.keyboard-open .fab-btn {
 .global-search-overlay {
   align-items: flex-start;
   padding-top: 10vh;
-  z-index: 9999;
+  z-index: var(--z-modal);
 }
 
 .global-search-card {
@@ -4713,7 +4719,7 @@ body.keyboard-open .fab-btn {
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.04);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, border-left-color 0.15s ease;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -4764,7 +4770,7 @@ body.keyboard-open .fab-btn {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  z-index: 10000;
+  z-index: var(--z-toast);
   pointer-events: none;
 }
 
@@ -4854,7 +4860,7 @@ body.keyboard-open .fab-btn {
   padding: 3px 8px;
   border-radius: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -4934,14 +4940,9 @@ html.ios-pwa .super-navbar.scrolled {
 }
 
 html.ios-pwa .mobile-bottom-nav {
-  height: auto !important;
-  min-height: 56px;
-  padding-top: 4px;
+  /* 尺寸/底色/模糊与 @media (max-width: 768px) 的基础定义完全相同，不再重复；
+     这里只保留 PWA 下用 --ios-sab 精确垫高、并盖过非 PWA 的 10px 兜底。 */
   padding-bottom: max(8px, var(--ios-sab)) !important;
-  box-sizing: border-box;
-  background: #F2F2F7 !important;
-  backdrop-filter: none !important;
-  -webkit-backdrop-filter: none !important;
 }
 
 html.ios-pwa .mobile-tab-item {
@@ -5081,7 +5082,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   font-weight: 500;
   color: var(--text-color-light);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -5115,7 +5116,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   background: rgba(120, 120, 128, 0.14);
   color: var(--text-color-light);
   margin-left: 4px;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
 }
 
 .segment-btn.active .tab-count-badge {
@@ -5149,7 +5150,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   border-radius: 12px;
   padding: 0 12px;
   height: 40px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .prompts-search-wrapper:focus-within {
@@ -5253,7 +5254,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   color: rgba(60, 60, 67, 0.75);
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
 }
 
@@ -5549,7 +5550,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   font-weight: 600;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-prompt-action:active {
@@ -5593,7 +5594,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
   justify-content: center;
   cursor: pointer;
   color: var(--text-color-light);
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
 
 .btn-icon-action:active {
@@ -5698,7 +5699,7 @@ body.dark-reader-body .prompt-variable-header {
   cursor: pointer !important;
   padding: 0 !important;
   margin: 0 !important;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
   -webkit-tap-highlight-color: transparent !important;
   flex-shrink: 0 !important;
 }
@@ -5869,7 +5870,7 @@ body.dark-reader-body .prompt-variable-header [data-close-modal]:hover {
   font-size: 11.5px;
   font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
 
 .quick-var-btn:hover {
@@ -6169,7 +6170,7 @@ body.eyecare-reader-body .prompt-editor-card {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -6214,7 +6215,7 @@ body.eyecare-reader-body .prompt-editor-card {
   border: 2px solid transparent;
   background: rgba(0, 0, 0, 0.03);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -6369,17 +6370,10 @@ body.eyecare-reader-body .reader-sync-info {
 .btn-text:active {
   opacity: 0.65;
   transform: scale(0.96);
-  transition: all 0.12s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.12s ease;
 }
 
 /* 2. Mobile Tabbar & Top Navbar iOS HIG Alignment */
-/* 路线 B：顶边线太硬，改柔和上投影；底色仍保持不透明（见 2660 行对 Redmi 手势区色带的修复说明） */
-.mobile-bottom-nav {
-  border-top: 1px solid transparent;
-  box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.05);
-  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
-}
-
 .mobile-tab-item {
   transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -6978,7 +6972,7 @@ body.eyecare-reader-body input.bookmark-input {
 
 .global-search-item {
   position: relative;
-  transition: all 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition: transform, opacity, background-color, color, border-color, box-shadow, border-left-color 0.15s cubic-bezier(0.16, 1, 0.3, 1) !important;
   border-left: 3px solid transparent !important;
 }
 
@@ -7043,7 +7037,7 @@ body.is-offline .sync-status {
   background: rgba(0, 0, 0, 0.90) !important;
   backdrop-filter: blur(24px) saturate(180%);
   -webkit-backdrop-filter: blur(24px) saturate(180%);
-  z-index: 100000;
+  z-index: var(--z-modal);
   display: none;
   align-items: center;
   justify-content: center;
@@ -7098,8 +7092,8 @@ body.is-offline .sync-status {
   cursor: pointer;
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-  z-index: 100001;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: var(--z-toast);
 }
 
 .image-preview-close:hover {
@@ -7418,7 +7412,7 @@ body.dark-reader-body .list-load-more {
   position: fixed;
   top: -60px;
   left: var(--space-3);
-  z-index: 10000;
+  z-index: var(--z-toast);
   padding: 10px 14px;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
   background: var(--ios-blue, #007AFF);
@@ -7441,7 +7435,7 @@ body.dark-reader-body .list-load-more {
   backdrop-filter: blur(12px) saturate(140%) !important;
   -webkit-backdrop-filter: blur(12px) saturate(140%) !important;
   cursor: default !important;
-  z-index: 100000 !important;
+  z-index: var(--z-alert) !important;
   padding: 20px;
 }
 
@@ -7628,7 +7622,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: 0.01em;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
 }
 
 .backup-guard-badge.status-ok {
@@ -7697,7 +7691,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   background: transparent;
   border: none;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   text-align: center;
   white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
@@ -7742,7 +7736,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   border: none;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -7797,7 +7791,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   color: var(--ios-blue, #007aff);
   border: 1px solid rgba(0, 122, 255, 0.22);
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -7885,7 +7879,7 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   border-radius: 14px;
   background: rgba(120, 120, 128, 0.06);
   border: 1px solid transparent;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
 
 .session-row.is-current {
@@ -7917,7 +7911,7 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
 
 .session-revoke:active {
@@ -8036,7 +8030,7 @@ body.dark-reader-body .bot-outreach-row {
   padding: 7px 14px;
   border-radius: 9999px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
 
 #btn-enable-push:active {
@@ -8052,7 +8046,7 @@ body.dark-reader-body .bot-outreach-row {
   border: none;
   cursor: pointer;
   padding: 7px 10px;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
 }
 
 #btn-security-logout-all:active {
@@ -8265,7 +8259,7 @@ body.dark-reader-body #btn-enable-push {
 /* 双链打字自动联想浮层 (Wikilink Autocomplete Dropdown) */
 .wikilink-autocomplete-popup {
   position: absolute;
-  z-index: 9999;
+  z-index: var(--z-modal);
   width: 280px;
   max-width: 88vw;
   max-height: 240px;
@@ -8732,7 +8726,7 @@ body.dark-reader-body .storage-diag-footer {
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -8794,7 +8788,7 @@ body.dark-reader-body .k-mood-chip.active {
   border: 1px solid transparent;
   border-radius: var(--surface-radius);
   box-shadow: var(--card-shadow);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .k-journal-top {
@@ -8838,7 +8832,7 @@ body.dark-reader-body .k-mood-chip.active {
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 6px;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -8869,7 +8863,7 @@ body.dark-reader-body .k-mood-chip.active {
   padding: 3px 4px 3px 14px;
   height: 40px;
   box-shadow: 0 2px 10px rgba(16, 24, 40, 0.07);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .k-journal-field:focus-within {
@@ -8900,7 +8894,7 @@ body.dark-reader-body .k-mood-chip.active {
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -8942,7 +8936,7 @@ body.dark-reader-body .k-spark-send-btn {
   border-radius: var(--surface-radius);
   padding: 18px 20px;
   box-shadow: var(--card-shadow);
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .k-memory-top {
@@ -8986,7 +8980,7 @@ body.dark-reader-body .k-spark-send-btn {
   cursor: pointer;
   padding: 2px 6px;
   border-radius: 6px;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -9449,7 +9443,7 @@ body.dark-reader-body .weekly-review-markdown {
   padding: 10px 12px;
   margin-bottom: 6px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .k-topic-item-row:hover {
@@ -9580,7 +9574,7 @@ body.dark-reader-body .k-topic-item-title {
   border-radius: 10px;
   height: 36px;
   padding: 0 10px;
-  transition: all 0.2s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s ease;
 }
 
 .k-searchbar-inner:focus-within {
@@ -9631,7 +9625,7 @@ body.dark-reader-body .k-topic-item-title {
   padding: 11px 13px;
   margin-bottom: 7px;
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 .k-directory-row:hover {

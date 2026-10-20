@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.117**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.118**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,17 @@
 
 ## 近期已完成（摘要）
 
+### 批次 B：层级、过渡、模糊层与底栏定义的工程债清理（v2.5.118）
+
+**动机**（用户 m02613「先 B 再 A」：先把 UI 的工程债清掉，再做深色模式）。
+
+1. **层级令牌化**：`:root` 新增 `--z-nav` / `--z-modal` / `--z-toast` / `--z-auth` / `--z-alert`，11 处裸 `z-index` 全部改走令牌；顺手修掉一个真实层级错误——图片预览的关闭按钮原为 `100001`，会压在 `100000` 的确认弹窗之上（点 X 关掉的是预览而不是弹窗），现在确认弹窗是唯一顶层。
+2. **过渡只走显式属性**：65 处 `transition: all` 全部改写为「基准集 + 状态块回流」推导出的显式属性列表（`transform, opacity, background-color, color, border-color, box-shadow` 等），布局属性不再被意外动画化；`.reader-sidebar` 的 `margin-left`、`.prompt-card-content` 的 `max-height` 这类布局动画本来就没走 `all`，未被误删。
+3. **模糊层减负（46 → 41 条声明）**：`.search-input`（父级是不透明白卡）与 `.note-annotations-section`（背板只是纯色 + 平缓渐变的 `body`）删掉 `backdrop-filter`，并用高对比条纹页截图 + 逐像素 diff 证明零视觉变化；固定栏与浮层的磨砂全部保留（同一张条纹图也证明了它肉眼可见：0.88 alpha 下条纹仍透出来）。
+4. **底栏定义合并**：`.mobile-bottom-nav` 曾在 11 个规则块里靠 `!important` 互相压——把文件末尾的路线 B 覆写折回 `@media (max-width: 768px)` 的基础定义，并删掉 `html.ios-pwa` 里与基础定义逐字重复的 7 条声明，块数降到 10、`!important` 300 → 296；合并前后用真浏览器在 9 组会渲染的上下文（亮/深色/护眼 × PWA × 键盘弹起/隐藏/未登录 × 垫高）逐属性比对 `getComputedStyle`，**完全一致**（>768px 的差异只发生在 `display: none` 的元素上）。
+5. **回归门禁**：`tests/css.test.mjs` 新增「禁止 `transition: all`」「裸 `z-index ≥ 1000`」「`backdrop-filter` 数量棘轮 + 悬浮表面必须保留磨砂」「单组件定义块数棘轮（以 `.mobile-bottom-nav` 为反例）」四条，该套件累计 10 条；`.agents/rules/ui-style.md` 新增「模糊层与层级纪律」。
+
+**测试 214 → 218 用例（20 套件）**；README、`.agents/rules/ui-style.md`、架构报告与 PROGRESS 同批更新；比对用的 computed style 采集页与像素 diff 脚本都在 `backups/`。
 ### 路线 B：留白与字号节奏、首屏柔光渐变（v2.5.117）
 
 **动机**（用户参照 Gemini / ChatGPT 安卓版的「通透」质感，批准路线 B：在 v2.5.116 材质收敛之上做节奏与首屏）。

@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T14:28:59.752Z · 提交数：353
+> 生成时间：2026-10-20T14:58:48.549Z · 提交数：354
 
 ## 2026-10-20
 
@@ -27,6 +27,7 @@
 
 ### 🎨 样式
 
+- **ui**: give the first screen a soft glow and a calmer rhythm
 - **ui**: converge on one accent color and borderless soft-shadow surfaces
 
 ## 2026-10-19
