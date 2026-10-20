@@ -25,7 +25,7 @@
   --callout-bg: rgba(0, 122, 255, 0.06);
   --danger-color: var(--ios-red);
   /* 路线 A：主表面统一大圆角；卡片刻意不画 1px 硬边框，靠柔和阴影分层 */
-  --surface-radius: 22px;
+  --surface-radius: 26px;
   --surface-hairline: rgba(60, 60, 67, 0.06);
   /* 路线 A：热力图色阶收敛为 systemGreen 的透明阶，去掉薄荷霓虹感 */
   --heat-empty: rgba(120, 120, 128, 0.12);
@@ -145,11 +145,21 @@ html, body {
 
 body {
   background-color: var(--bg-color);
-  background-image: none;
+  background-image:
+    radial-gradient(1200px 520px at 8% -12%, rgba(0, 122, 255, 0.13), transparent 60%),
+    radial-gradient(900px 460px at 96% 0%, rgba(52, 199, 89, 0.09), transparent 64%);
+  background-repeat: no-repeat;
+  background-attachment: fixed;
   color: var(--text-color); 
   font-family: var(--font-family);
   -webkit-font-smoothing: antialiased; 
   min-height: 100vh;
+}
+
+/* 深色 / 护眼主题不铺光晕，避免在深底上出现脏蓝 */
+body.dark-reader-body,
+body.eyecare-reader-body {
+  background-image: none;
 }
 
 /* ========================================== */
@@ -646,7 +656,7 @@ body.eyecare-reader-body #btn-back {
 .notion-app { 
   max-width: 900px; 
   margin: 0 auto; 
-  padding: 100px 24px 60px; 
+  padding: 104px 28px 80px; 
 }
 .view-section { 
   display: none; 
@@ -665,14 +675,14 @@ body.eyecare-reader-body #btn-back {
 /* HOME VIEW */
 /* ========================================== */
 .page-header { 
-  margin-bottom: 40px; 
-  padding-top: 20px; 
+  margin-bottom: 32px; 
+  padding-top: 12px; 
 }
 .page-title { 
-  font-size: 34px; 
+  font-size: 40px; 
   font-weight: 700; 
-  margin-bottom: 16px; 
-  letter-spacing: -0.6px; 
+  margin-bottom: 12px; 
+  letter-spacing: -0.9px; 
   color: var(--text-color);
 }
 .page-description { 
@@ -1210,7 +1220,7 @@ body.eyecare-reader-body #btn-back {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 14px rgba(0, 0, 0, 0.02);
-  border: 1px solid rgba(60, 60, 67, 0.08);
+  border: 1px solid transparent;
 }
 
 .ios-card-row {
@@ -1530,7 +1540,7 @@ body.eyecare-reader-body #btn-back {
 .note-paper-preview-strip {
   margin-top: 16px;
   border-radius: 14px;
-  border: 1px solid rgba(60, 60, 67, 0.08);
+  border: 1px solid transparent;
 }
 .ios-content-preview-header {
   display: flex;
@@ -1632,7 +1642,7 @@ body.eyecare-reader-body #btn-back {
   display: block;
   margin: 12px auto;
   object-fit: cover;
-  border: 1px solid rgba(60, 60, 67, 0.08);
+  border: 1px solid transparent;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
   transition: transform 0.2s ease;
 }
@@ -1656,7 +1666,7 @@ body.eyecare-reader-body #btn-back {
   border-radius: 16px;
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 4px 14px rgba(0, 0, 0, 0.02);
-  border: 1px solid rgba(60, 60, 67, 0.08);
+  border: 1px solid transparent;
 }
 .ios-widget-summary {
   display: flex;
@@ -2752,18 +2762,18 @@ body.hide-bottom-nav .nav-brand-mobile {
 
   /* Page Padding Adjustment for Header & Bottom Tab Bar */
   .notion-app {
-    padding: 66px 16px 86px !important;
+    padding: 72px 18px 104px !important;
   }
 
   .page-header {
-    margin-bottom: 20px;
-    padding-top: 6px;
+    margin-bottom: 24px;
+    padding-top: 4px;
   }
 
   .page-title {
-    font-size: 34px;
-    margin-bottom: 8px;
-    letter-spacing: -0.6px;
+    font-size: 40px;
+    margin-bottom: 10px;
+    letter-spacing: -0.9px;
   }
 
   .page-description {
@@ -3684,8 +3694,8 @@ body.eyecare-reader-body .sidebar-header {
 .heatmap-widget {
   background: var(--ios-card-bg, #ffffff);
   border-radius: var(--surface-radius);
-  padding: 16px 18px 14px;
-  margin-bottom: 16px;
+  padding: 18px 20px 16px;
+  margin-bottom: 22px;
   border: 1px solid transparent;
   box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -5332,7 +5342,7 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 
 .prompt-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--card-hover-shadow);
   border-color: rgba(0, 0, 0, 0.08);
 }
 
@@ -6363,9 +6373,11 @@ body.eyecare-reader-body .reader-sync-info {
 }
 
 /* 2. Mobile Tabbar & Top Navbar iOS HIG Alignment */
+/* 路线 B：顶边线太硬，改柔和上投影；底色仍保持不透明（见 2660 行对 Redmi 手势区色带的修复说明） */
 .mobile-bottom-nav {
-  border-top: 0.5px solid rgba(60, 60, 67, 0.18) !important;
-  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px)) !important;
+  border-top: 1px solid transparent;
+  box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.05);
+  padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
 }
 
 .mobile-tab-item {
@@ -6408,13 +6420,13 @@ body.eyecare-reader-body .reader-sync-info {
 .notion-collection-card {
   border-radius: var(--surface-radius);
   border: 1px solid transparent;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .notion-collection-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--card-hover-shadow);
 }
 
 .notion-collection-card:active {
@@ -6425,14 +6437,14 @@ body.eyecare-reader-body .reader-sync-info {
 .feed-item-card {
   border-radius: var(--surface-radius);
   border: 1px solid transparent;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.02);
+  box-shadow: var(--card-shadow);
   padding: 18px 20px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .feed-item-card:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--card-hover-shadow);
 }
 
 .feed-item-card:active {
@@ -6442,13 +6454,13 @@ body.eyecare-reader-body .reader-sync-info {
 .feed-input-card {
   border-radius: var(--surface-radius);
   border: 1px solid transparent;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.02);
+  box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .feed-input-card:focus-within {
   border-color: rgba(0, 0, 0, 0.12);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--card-hover-shadow);
   outline: none;
 }
 
@@ -6466,17 +6478,17 @@ body.eyecare-reader-body .reader-sync-info {
 .note-item {
   border-radius: var(--surface-radius);
   background: var(--card-bg);
-  border: 1px solid rgba(60, 60, 67, 0.08);
+  border: 1px solid transparent;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
-  margin-bottom: 12px;
-  padding: 16px 20px;
+  margin-bottom: 14px;
+  padding: 18px 22px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .note-item:hover {
   background: var(--card-bg);
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--card-hover-shadow);
   border-color: rgba(60, 60, 67, 0.12);
   padding-left: 20px;
 }
@@ -6489,13 +6501,13 @@ body.eyecare-reader-body .reader-sync-info {
 .book-card {
   border-radius: var(--surface-radius);
   border: 1px solid transparent;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .book-card:hover {
   transform: translateY(-4px);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--card-hover-shadow);
 }
 
 .book-card:active {
@@ -6516,13 +6528,13 @@ body.eyecare-reader-body .reader-sync-info {
 .bookmark-card {
   border-radius: var(--surface-radius);
   border: 1px solid transparent;
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03);
+  box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .bookmark-card:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.06);
+  box-shadow: var(--card-hover-shadow);
 }
 
 .bookmark-card:active {
@@ -8776,8 +8788,8 @@ body.dark-reader-body .k-mood-chip.active {
 
 /* ==================== Konsta iOS: 每日偶想 (Apple Journal Reflection Card) ==================== */
 .k-journal-card {
-  margin: 14px 0 12px;
-  padding: 16px 18px 18px;
+  margin: 20px 0 16px;
+  padding: 18px 20px 20px;
   background: var(--card-bg, #ffffff);
   border: 1px solid transparent;
   border-radius: var(--surface-radius);
@@ -8924,11 +8936,11 @@ body.dark-reader-body .k-spark-send-btn {
 
 /* ==================== Konsta iOS: 时光留痕 (Apple Inset Grouped Memory Card) ==================== */
 .k-memory-card {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   background: var(--card-bg, #ffffff);
   border: 1px solid transparent;
   border-radius: var(--surface-radius);
-  padding: 16px 18px;
+  padding: 18px 20px;
   box-shadow: var(--card-shadow);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }

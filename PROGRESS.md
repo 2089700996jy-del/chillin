@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.116**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.117**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,17 @@
 
 ## 近期已完成（摘要）
 
+### 路线 B：留白与字号节奏、首屏柔光渐变（v2.5.117）
+
+**动机**（用户参照 Gemini / ChatGPT 安卓版的「通透」质感，批准路线 B：在 v2.5.116 材质收敛之上做节奏与首屏）。
+
+1. **留白与字号节奏**：移动端主容器 `66px 16px 86px` → `72px 18px 104px`，桌面端 `100px 24px 60px` → `104px 28px 80px`；卡片圆角 `--surface-radius` 22 → 26px；热力图微件 `16px 18px 14px` → `18px 20px 16px`、下间距 16 → 22px；今日偶想卡 `14px 0 12px` → `20px 0 16px`；时光留痕卡 16 → 20px；笔记卡 `16px 20px` → `18px 22px`；`.page-title` 34 → 40px、`letter-spacing` -0.6 → -0.9px（桌面与移动各一处）。
+2. **首屏柔光渐变**：亮色主题 `body` 顶部铺两枚 `radial-gradient`（`--ios-blue` 13%、systemGreen 9% 低透明度）作 hero 光晕，卡片仍是纯白，浮在柔光上；深色与护眼主题显式 `background-image: none`（两处主题本身也各自声明，`tests/css.test.mjs` 新增门禁看住这条不变量）。
+3. **材质残余对齐令牌**：列表层（`.notion-collection-card` / `.feed-item-card` / `.feed-input-card` / `.note-item` / `.book-card` / `.bookmark-card`）此前仍写死 `0 3px 14px rgba(0,0,0,0.02~0.03)` 一类字面阴影，全部收敛到 `var(--card-shadow)` / `var(--card-hover-shadow)`；`.note-item` 的 `1px solid rgba(60,60,67,0.08)` 硬边框改为透明。
+4. **底栏去硬线**：`.mobile-bottom-nav` 的 `border-top: 0.5px solid rgba(60,60,67,0.18) !important` 改为透明边框 + `0 -8px 24px rgba(16,24,40,0.05)` 柔和上投影（底色仍保持不透明，见该处注释里对 Redmi 手势区色带的既有修复）；`!important` 总数 302 → 300，`tests/css.test.mjs` 基线同步收紧到 300。
+5. **测试**：`tests/css.test.mjs` 新增「首屏柔光渐变只在亮色主题，深色/护眼显式关闭」1 条静态门禁。
+
+**测试 213 → 214 用例（20 套件）**；README、`.agents/rules/ui-style.md`、架构报告与 PROGRESS 同批更新。
 ### 材质收敛：单一强调色与无边框柔和阴影（v2.5.116）
 
 **动机**（用户参照 Gemini / ChatGPT 安卓版）：把「通透」拆开看，主体是**单一强调色 + 大圆角 + 无硬边框 + 柔和阴影 + 更松的留白**，而不是磨砂玻璃（`backdrop-filter` 全站铺开会在中低端安卓上掉帧）。本批只做令牌层收敛，不动布局骨架。

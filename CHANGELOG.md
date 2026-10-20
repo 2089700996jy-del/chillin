@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T14:12:53.872Z · 提交数：352
+> 生成时间：2026-10-20T14:28:59.752Z · 提交数：353
 
 ## 2026-10-20
 
@@ -24,6 +24,10 @@
 ### 📝 文档
 
 - **report**: align the architecture report with v2.5.107, SW v154 and the ClawBot milestone
+
+### 🎨 样式
+
+- **ui**: converge on one accent color and borderless soft-shadow surfaces
 
 ## 2026-10-19
 

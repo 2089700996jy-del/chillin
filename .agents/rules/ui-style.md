@@ -8,10 +8,12 @@
 
 1. **容器卡片 (Inset Grouped)**：
    * 所有卡片（周记、随手记、笔记、书签、提示词、阅读书架）统一遵循 iOS Inset Grouped 设计标准；
-   * 圆角规范：主表面统一使用 `var(--surface-radius)`（22px），微件与子元素使用 `10px ~ 12px`，胶囊一律 `var(--radius-pill)`；
+   * 圆角规范：主表面统一使用 `var(--surface-radius)`（26px），微件与子元素使用 `10px ~ 12px`，胶囊一律 `var(--radius-pill)`；
    * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 只为保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时用 `--surface-hairline`；
    * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并微升 `transform: translateY(-2px)`；
-   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#007AFF`，对齐 iOS 系统蓝），不得再引入第二个蓝；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）。
+   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#007AFF`，对齐 iOS 系统蓝），不得再引入第二个蓝；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
+   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏顶边线也一律取消，改用柔和上投影）；
+   * 首屏柔光：亮色主题 `body` 顶部铺两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作 hero 光晕，卡片保持纯白浮在其上；深色与护眼主题必须显式 `background-image: none`（深底上会发脏蓝，由 `tests/css.test.mjs` 看住）。
 
 2. **Apple Spring 触感反馈微动效**：
    * 所有交互按钮（`.btn-primary`, `.btn-secondary`, `.fab-btn`, `.btn-chip`, `.prompt-chip` 等）必须提供真实的触感回弹；
@@ -95,4 +97,4 @@
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 约 9700 行、仍有 302 处 `!important`（多为 v2.5.30 之后叠加的覆写层）、约 516 处色值字面量待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 9740 行、仍有 300 处 `!important`（多为 v2.5.30 之后叠加的覆写层）、约 516 处色值字面量待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。

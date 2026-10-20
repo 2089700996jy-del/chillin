@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.116 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.117 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端 (v2.5.112，Service Worker `chillin-v163`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0026 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端 (v2.5.112，Service Worker `chillin-v164`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0026 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -43,7 +43,7 @@
 * **零摩擦捕获 (Zero-Friction Capture)**：随手记 1 秒内完成记录，支持链接卡片与图片多图预览；**v2.5.97 起不再解析外链标题/封面**（第三方抓取对 Cloudflare 出口长期不可用，故整体移除该能力），无排版心理负担。
 * **常青生长与知识网络 (Evergreen Network)**：引入数字花园三阶生命周期（萌芽/生根/常青），支持 `[[双向维基链接]]` 与反向引用（Backlinks）上下文高亮反查，让碎片记录自发生长为知识森林。
 * **绝对自主与备份守卫 (Data Sovereignty & Guard)**：存储引擎升级至 IndexedDB 异步大容量接管，彻底突破 5MB 限制；内置一键打包全量 ZIP 备份与定时备份守卫提醒，真正做到数据永不丢失、随时可带走。
-* **去 AI 感的 Apple HIG 质感 (De-AI Craftsmanship)**：全站落地 Konsta iOS / Apple HIG 规范，自然纸感暖灰底色（`#F8F9FA`）、全矢量精巧 SVG、半屏抽屉（Bottom Sheet）与细致微动效，洗尽 AI 模板的浮躁廉价感；v2.5.116 起强调色唯一化为 `#007AFF`，主表面去掉 1px 硬边框改两层柔和弥散阴影（`--surface-radius` 22px），热力图色阶收敛为 systemGreen 透明阶。
+* **去 AI 感的 Apple HIG 质感 (De-AI Craftsmanship)**：全站落地 Konsta iOS / Apple HIG 规范，自然纸感暖灰底色（`#F8F9FA`）、全矢量精巧 SVG、半屏抽屉（Bottom Sheet）与细致微动效，洗尽 AI 模板的浮躁廉价感；v2.5.116 起强调色唯一化为 `#007AFF`，主表面去掉 1px 硬边框改两层柔和弥散阴影（`--surface-radius` 26px），热力图色阶收敛为 systemGreen 透明阶；v2.5.117 起补上首屏柔光渐变（低透明度蓝绿 `radial-gradient`）与 40px 大标题、20px+ 卡片间距的留白节奏。
 
 ---
 
@@ -266,10 +266,10 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `bot-outreach.js`：主动关怀的克制层——东八区 10:00–22:30 时窗内每天至多一次的随机开口、刚聊完 30 分钟内不插嘴（6 小时内聊过时不再等当天固定时刻，而是在聊完 30–120 分钟内把最近对话作为背景、顺着话题补一句）与只用 3–180 天前旧素材的门禁、模型 SKIP 否决权与概率闸门、账号级开关与逐条发送审计（主动消息同时写进对话记忆并带上出处，用户回一句就能对上）；
 * `maintenance.js`：按 Cron 表达式分流的定时任务编排——每分钟只跑 ClawBot 轮询，整点第 13 分才跑 UGC 扫描与各类清理。
 
-#### ⑤ 原生自动化测试套件 (20 套件 / 213 用例)
+#### ⑤ 原生自动化测试套件 (20 套件 / 214 用例)
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
 * **20 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`architecture`、`auth`、`backup`、`bot-claw`、`bot-outreach`、`books`、`css`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
-* **213 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 先写缓存再返回**、文档与代码一致性门禁等；
+* **214 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 先写缓存再返回**、文档与代码一致性门禁等；
 * **测试全量执行耗时 < 1s**，保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通。
 
 ---

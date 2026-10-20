@@ -18,7 +18,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 // 基线：这里只许变小，不许变大
-const IMPORTANT_BASELINE = 302;
+const IMPORTANT_BASELINE = 300;
 
 test('CSS - 每个 @keyframes 都被 animation 引用（无死动画）', () => {
     const defs = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
@@ -66,4 +66,15 @@ test('CSS - !important 数量不再增长（基线棘轮）', () => {
         count <= IMPORTANT_BASELINE,
         `!important 从基线 ${IMPORTANT_BASELINE} 涨到 ${count}——先想想能不能靠更具体的选择器解决；确有必要时请更新 tests/css.test.mjs 里的基线并说明原因`
     );
+});
+
+test('CSS - 首屏柔光渐变只在亮色主题，深色/护眼显式关闭', () => {
+    const clean = css.replace(/\/\*[\s\S]*?\*\//g, '');
+    const bodyBlock = clean.match(/(^|\n)body\s*\{([^}]*)\}/);
+    assert.ok(bodyBlock && /radial-gradient/.test(bodyBlock[2]), '亮色主题 body 缺少首屏柔光渐变（hero 光晕）');
+    const blocks = [...clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)];
+    for (const theme of ['body.dark-reader-body', 'body.eyecare-reader-body']) {
+        const resets = blocks.filter((m) => m[1].split(',').some((s) => s.trim() === theme || s.trim() === 'html.' + theme + ' body') && /background-image/.test(m[2]));
+        assert.ok(resets.some((m) => /background-image:\s*none/.test(m[2])), theme + ' 必须显式 background-image: none，否则亮色 hero 光晕会在深底上发脏蓝');
+    }
 });
