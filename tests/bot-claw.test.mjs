@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createCipheriv, randomBytes } from 'node:crypto';
 import api from '../workers/api.js';
 import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
@@ -28,7 +29,8 @@ import {
     downloadClawImage,
     clawImageUrlCandidates,
     clawImageKeys,
-    unwrapHexAsciiKey
+    unwrapHexAsciiKey,
+    aes128EcbDecrypt
 } from '../workers/src/bot-media.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
@@ -641,6 +643,12 @@ function mediaEnv(db, puts) {
     };
 }
 
+/** 线上真实形态：AES-128-ECB + PKCS7（与 node:crypto 对齐，用来造测试密文） */
+function encryptEcbBytes(bytes, keyBytes) {
+    const cipher = createCipheriv('aes-128-ecb', keyBytes, null);
+    return new Uint8Array(Buffer.concat([cipher.update(bytes), cipher.final()]));
+}
+
 async function encryptBytes(bytes, keyBytes, iv = keyBytes.slice(0, 16)) {
     const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
     const out = await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, key, bytes);
@@ -756,8 +764,34 @@ test('ClawBot - 全部候选都失败时给出可判读原因码与响应头字�
     const got = await downloadClawImage(imageItem, impl);
     assert.equal(got.ok, false);
     assert.ok(/^not-an-image:5 head=3c21444f43 tried=/.test(got.note), got.note);
-    assert.ok(got.note.includes('direct+item:hex-16:fail'), got.note);
+    assert.ok(got.note.includes('direct+item:hex-16:ecb:fail'), got.note);
     assert.equal(got.head, '3c21444f43', '只记前 8 字节的十六进制（这里只有 5 字节）');
+});
+
+test('ClawBot - AES-128-ECB 与 node:crypto 对齐，填充非法即拒（v2.5.126 的主力解密方式）', () => {
+    for (const len of [16, 200, 4096]) {
+        const key = new Uint8Array(randomBytes(16));
+        const plain = new Uint8Array(randomBytes(len));
+        const got = aes128EcbDecrypt(encryptEcbBytes(plain, key), key);
+        assert.ok(got, '合法密文必须能解开，len=' + len);
+        assert.deepEqual(Array.from(got), Array.from(plain), 'len=' + len);
+    }
+    assert.equal(aes128EcbDecrypt(new Uint8Array(32), new Uint8Array(16)), null, '全零密文的填充必然非法');
+    assert.equal(aes128EcbDecrypt(new Uint8Array([1, 2, 3]), new Uint8Array(16)), null, '长度不是 16 的倍数');
+    assert.equal(aes128EcbDecrypt(new Uint8Array(32), new Uint8Array(8)), null, '密钥必须是 16 字节');
+});
+
+test('ClawBot - 线上实测形态：item aeskey（hex）+ ECB 密文，ECB 优先于 CBC', async () => {
+    const keyBytes = new Uint8Array(16).fill(0x91);
+    const cipher = encryptEcbBytes(PNG_BYTES, keyBytes);
+    const item = { aeskey: Buffer.from(keyBytes).toString('hex'), media: { full_url: 'https://cdn.example/ecb.bin' } };
+    const { impl, calls } = stubFetch({ 'ecb.bin': () => ({ bytes: cipher }) });
+    const got = await downloadClawImage(item, impl);
+    assert.equal(got.ok, true, JSON.stringify(got));
+    assert.equal(got.mime, 'image/png');
+    assert.equal(got.note, 'aes-hex-16:ecb/direct+item', 'ECB 是主力方式，且优先尝试');
+    assert.equal(calls.length, 1, '第一对候选就成功，不再浪费请求');
+    assert.equal(got.bytes.length, PNG_BYTES.length, '拿到的是解密后的明文');
 });
 
 integration('ClawBot - 微信发图片落成带图随手记并回复，不经模型', async () => {
@@ -813,6 +847,44 @@ integration('ClawBot - 图 + 文字时文字成为随手记正文，AES 加密�
     assert.equal(feed.type, 'image');
     assert.equal(puts[0].size, PNG_BYTES.length, '进 R2 的必须是解密后的明文长度');
     assert.equal(puts[0].type, 'image/png');
+});
+
+integration('ClawBot - ECB 加密（线上真实形态）的微信图片照样落成带图随手记', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const keyBytes = new Uint8Array(16).fill(0x4e);
+    const cipher = encryptEcbBytes(PNG_BYTES, keyBytes);
+    const item = imageMessage();
+    item.item_list = [{
+        type: 2,
+        msg_id: 'ECB-1',
+        image_item: {
+            aeskey: Buffer.from(keyBytes).toString('hex'),
+            media: {
+                full_url: 'https://cdn.example/ecb-real.bin',
+                aes_key: Buffer.from(keyBytes).toString('base64'),
+                encrypt_query_param: 'EQP'
+            }
+        }
+    }];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-ECB', msgs: [item] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'ecb-real.bin': () => ({ bytes: cipher })
+    });
+    await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
+    assert.ok(feed, 'ECB 密文解出来后必须落成随手记');
+    assert.equal(feed.type, 'image');
+    assert.match(feed.media_url, /^\/api\/file\//);
+    assert.equal(puts.length, 1);
+    assert.equal(puts[0].size, PNG_BYTES.length, '进 R2 的必须是解密后的明文长度');
+    assert.equal(puts[0].type, 'image/png');
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.match(send.body.msg.item_list[0].text_item.text, /已存入/);
 });
 
 integration('ClawBot - 原图取不到时如实告知，不写任何数据', async () => {

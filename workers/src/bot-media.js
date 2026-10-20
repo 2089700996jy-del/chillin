@@ -5,9 +5,10 @@
  *   item_list[i] = { type: 2, msg_id, image_item: { aeskey, media, thumb_size, mid_size, hd_size, thumb_width, thumb_height } }
  *   （外层 message_type 仍是 1，所以「非文本消息」不是靠 message_type 判断，而是靠 item.type）。
  *
- * `aeskey` 是 base64 的 16 字节密钥：微信 CDN 的图片可能是 AES-128-CBC 密文（IV 即密钥本身、PKCS7 填充），
- * 与官方客户端一致。所以下载链路是「取地址 → 下载 → 先按明文嗅探魔数 → 不行再用 aeskey 解密嗅探 →
- * 只有识出真实图片才认账」，绝不把密文写进 R2。任何一步失败都只记状态与字段形状，绝不记正文。
+ * `aeskey` 是 **32 位十六进制**（= 16 字节）密钥，图片是 **AES-128-ECB + PKCS7** 密文（v2.5.126 用真实
+ * 报文离线枚举确证：CBC 的几种 IV 全部失败，ECB 直接解出 JPEG）。WebCrypto 不提供 ECB，所以解密由本
+ * 文件的纯 JS 实现承担。链路是「取地址 → 下载 → 先按明文嗅探魔数 → 不行再用 aeskey 解密嗅探 → 只有识出
+ * 真实图片才认账」，绝不把密文写进 R2。任何一步失败都只记状态与字段形状，绝不记正文。
  */
 import { handleUpload } from './garden-media.js';
 import { saveFeed } from './bot-commands.js';
@@ -86,12 +87,127 @@ export function aesKeyKind(aeskey) {
     return (hex ? 'hex-' : 'base64-') + key.length;
 }
 
+/**
+ * ── AES-128-ECB 解密（纯 JS，仅解密侧）────────────────────────────────────────
+ * WebCrypto 只提供 CBC / CTR / GCM，没有 ECB；而线上报文确证微信 CDN 用的是 AES-128-ECB + PKCS7，
+ * 所以这里自带一份标准实现（只用查表，解密 200KB 量级的图片在边缘约几十毫秒）。
+ */
+const AES_SBOX = Uint8Array.from(
+    ('637c777bf26b6fc53001672bfed7ab76' + 'ca82c97dfa5947f0add4a2af9ca472c0'
+        + 'b7fd9326363ff7cc34a5e5f171d83115' + '04c723c31896059a071280e2eb27b275'
+        + '09832c1a1b6e5aa0523bd6b329e32f84' + '53d100ed20fcb15b6acbbe394a4c58cf'
+        + 'd0efaafb434d338545f9027f503c9fa8' + '51a3408f929d38f5bcb6da2110fff3d2'
+        + 'cd0c13ec5f974417c4a77e3d645d1973' + '60814fdc222a908846eeb814de5e0bdb'
+        + 'e0323a0a4906245cc2d3ac629195e479' + 'e7c8376d8dd54ea96c56f4ea657aae08'
+        + 'ba78252e1ca6b4c6e8dd741f4bbd8b8a' + '703eb5664803f60e613557b986c11d9e'
+        + 'e1f8981169d98e949b1e87e9ce5528df' + '8ca1890dbfe6426841992d0fb054bb16'
+    ).match(/../g).map(h => parseInt(h, 16))
+);
+const AES_INV_SBOX = (() => {
+    const t = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) t[AES_SBOX[i]] = i;
+    return t;
+})();
+
+/** GF(2^8) 乘法，只用于建表；查表用 MUL* 常量 */
+function gmul(a, b) {
+    let p = 0;
+    for (let i = 0; i < 8; i++) {
+        if (b & 1) p ^= a;
+        const hi = a & 0x80;
+        a = (a << 1) & 0xff;
+        if (hi) a ^= 0x1b;
+        b >>= 1;
+    }
+    return p;
+}
+function mulTable(n) {
+    const t = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) t[i] = gmul(i, n);
+    return t;
+}
+const MUL9 = mulTable(9), MUL11 = mulTable(11), MUL13 = mulTable(13), MUL14 = mulTable(14);
+
+/** AES-128 密钥扩展：11 组轮密钥共 176 字节 */
+function aesExpandKey(key) {
+    const w = new Uint8Array(176);
+    w.set(key, 0);
+    let rcon = 1;
+    for (let i = 4; i < 44; i++) {
+        const off = i * 4;
+        let t0 = w[off - 4], t1 = w[off - 3], t2 = w[off - 2], t3 = w[off - 1];
+        if (i % 4 === 0) {
+            const first = t0;
+            t0 = AES_SBOX[t1] ^ rcon;
+            t1 = AES_SBOX[t2];
+            t2 = AES_SBOX[t3];
+            t3 = AES_SBOX[first];
+            rcon = ((rcon << 1) ^ ((rcon & 0x80) ? 0x1b : 0)) & 0xff;
+        }
+        w[off] = w[off - 16] ^ t0;
+        w[off + 1] = w[off - 15] ^ t1;
+        w[off + 2] = w[off - 14] ^ t2;
+        w[off + 3] = w[off - 13] ^ t3;
+    }
+    return w;
+}
+
+/** 单块解密到位（state 与 key schedule 都是列优先，索引 i = 4*列 + 行） */
+function aesDecryptBlock(s, w, scratch) {
+    const keyAdd = round => { for (let i = 0; i < 16; i++) s[i] ^= w[round * 16 + i]; };
+    const invShiftRows = () => {
+        for (let r = 1; r < 4; r++) {
+            for (let i = 0; i < 4; i++) scratch[i] = s[r + 4 * ((i + 4 - r) % 4)];
+            for (let i = 0; i < 4; i++) s[r + 4 * i] = scratch[i];
+        }
+    };
+    keyAdd(10);
+    for (let round = 9; round >= 1; round--) {
+        invShiftRows();
+        for (let i = 0; i < 16; i++) s[i] = AES_INV_SBOX[s[i]];
+        keyAdd(round);
+        for (let c = 0; c < 4; c++) {
+            const o = 4 * c;
+            const a0 = s[o], a1 = s[o + 1], a2 = s[o + 2], a3 = s[o + 3];
+            s[o] = MUL14[a0] ^ MUL11[a1] ^ MUL13[a2] ^ MUL9[a3];
+            s[o + 1] = MUL9[a0] ^ MUL14[a1] ^ MUL11[a2] ^ MUL13[a3];
+            s[o + 2] = MUL13[a0] ^ MUL9[a1] ^ MUL14[a2] ^ MUL11[a3];
+            s[o + 3] = MUL11[a0] ^ MUL13[a1] ^ MUL9[a2] ^ MUL14[a3];
+        }
+    }
+    invShiftRows();
+    for (let i = 0; i < 16; i++) s[i] = AES_INV_SBOX[s[i]];
+    keyAdd(0);
+}
+
+/** AES-128-ECB 解密 + PKCS7 去填充；长度或填充不合法返回 null */
+export function aes128EcbDecrypt(bytes, key) {
+    if (!bytes || !key || key.length !== 16) return null;
+    if (!bytes.length || bytes.length % 16 !== 0) return null;
+    const w = aesExpandKey(key);
+    const out = new Uint8Array(bytes.length);
+    const s = new Uint8Array(16);
+    const scratch = new Uint8Array(4);
+    for (let off = 0; off < bytes.length; off += 16) {
+        s.set(bytes.subarray(off, off + 16));
+        aesDecryptBlock(s, w, scratch);
+        out.set(s, off);
+    }
+    const pad = out[out.length - 1];
+    if (pad < 1 || pad > 16 || pad > out.length) return null;
+    for (let i = out.length - pad; i < out.length; i++) if (out[i] !== pad) return null;
+    return out.subarray(0, out.length - pad);
+}
+
 export async function decryptClawImage(bytes, aeskey, cryptoImpl = crypto, ivMode = 'key') {
     const key = decodeAesKey(aeskey);
-    if (!key || !cryptoImpl || !cryptoImpl.subtle) return null;
+    if (!key) return null;
+    // 实测证实的主力方式：AES-128-ECB + PKCS7（WebCrypto 无 ECB，走本地实现）
+    if (ivMode === 'ecb') return key.length === 16 ? aes128EcbDecrypt(bytes, key) : null;
+    if (!cryptoImpl || !cryptoImpl.subtle) return null;
     try {
         const imported = await cryptoImpl.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
-        // 微信通例：IV 取 aeskey 的前 16 字节（AES-128 时就是密钥本身）；少数实现用全零 IV，作为兜底再试一次
+        // 兜底：CBC 时 IV 取 aeskey 的前 16 字节；少数实现用全零 IV，再试一次
         const iv = ivMode === 'zero' ? new Uint8Array(16) : key.slice(0, 16);
         const plain = await cryptoImpl.subtle.decrypt({ name: 'AES-CBC', iv }, imported, bytes);
         return new Uint8Array(plain);
@@ -226,16 +342,16 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
         }
         for (const key of keys) {
             const kind = aesKeyKind(key.value);
-            for (const ivMode of ['key', 'zero']) {
-                const suffix = (ivMode === 'zero' ? ':iv0' : '') + ':fail';
+            // ECB 先试（实测主力），CBC 两种 IV 作为兜底
+            for (const [ivMode, modeTag] of [['ecb', ':ecb'], ['key', ''], ['zero', ':iv0']]) {
                 const decrypted = await decryptClawImage(bytes, key.value, options.cryptoImpl, ivMode);
                 if (!decrypted) {
-                    tried.push(candidate.tag + '+' + key.tag + ':' + kind + suffix);
+                    tried.push(candidate.tag + '+' + key.tag + ':' + kind + modeTag + ':fail');
                     continue;
                 }
                 const mime = sniffImageMagic(decrypted);
-                if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind + (ivMode === 'zero' ? ':iv0' : '') + '/' + candidate.tag + '+' + key.tag };
-                tried.push(candidate.tag + '+' + key.tag + ':' + kind + (ivMode === 'zero' ? ':iv0' : '') + ':after');
+                if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind + modeTag + '/' + candidate.tag + '+' + key.tag };
+                tried.push(candidate.tag + '+' + key.tag + ':' + kind + modeTag + ':after');
             }
         }
     }
@@ -246,6 +362,7 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
         ok: false,
         note: 'not-an-image:' + size + (wxgf ? ' wxgf' : '') + ' head=' + head + ' tried=' + tried.slice(0, 6).join(','),
         head,
+        bytes: lastBytes,
         probes
     };
 }

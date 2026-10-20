@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.125**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.126**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -71,6 +71,15 @@
 
 ## 近期已完成（摘要）
 
+### 微信 Bot 图片：真实报文离线枚举，确认是 AES-128-ECB + PKCS7（v2.5.126）
+
+1. **第五次真机验证**仍是 `not-an-image:202624`；这一版把失败时下到的**密文与密钥候选**暂存进用户自己的 R2（`probe/` 前缀），取回本地用 `node:crypto` 做「密钥 × 模式 × IV」全枚举。
+2. **结论**：`AES-128-ECB` + PKCS7，密钥就是 `item.aeskey`（32 位 hex = 16 字节）——解出来是 1080×2400 的 JPEG（202614 字节），解密耗时 8 ms。此前试的 CBC（IV=密钥前 16 字节 / 全零）与 AES-256 全部否证，`media.aes_key` 的 32 字节是干扰项。
+3. **一直没试出来的原因**：WebCrypto 只提供 CBC / CTR / GCM，没有 ECB，所以过去只试了 CBC。
+4. **实现**：`workers/src/bot-media.js` 自带一份纯 JS 的 AES-128-ECB 解密（查表实现 + PKCS7 去填充），与 `node:crypto` 逐字节对齐；`downloadClawImage` 改为 **ECB 优先**、CBC 两种 IV 兜底。
+5. **临时诊断已撤**：R2 的 `probe/` 对象与本地副本分析完即删；日志仍只记形状与响应前 8 字节，正文与密钥绝不进日志。
+
+**测试 232 → 235 用例（20 套件）**；README、`.agents/rules/architecture.md` 与架构报告同批更新。
 ### 微信 Bot 图片：参数名两种拼法 × 原值/编码值，并打印每个响应的形态（v2.5.125）
 
 1. **第四次真机验证**：`note=not-an-image:202624 head=40f8fbc90cc45d75`，`keyKinds=["item:hex-16","media.aes_key:base64-32"]`（**没有** `media.aes_key>hex`——上一版的「hex 中间层」假设被否证），`mediaHost=novac2c.cdn.weixin.qq.com`，`sizes=[2356,294033,294033]` 而两个地址下到的都只有 202624 字节。

@@ -169,7 +169,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
 | [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌、深色下会失明的 Tailwind 色阶与链接色令牌 |
 | [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用 |
-| [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、长轮询游标持久化与排重、**默认只聊天不落库**、显式「记录：…」才写入随手记、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误、**微信发图落成带图随手记（魔数嗅探 + `aeskey`/`media.aes_key`/「hex 再 base64」多种密钥与带授权参数的地址、全零 IV 兜底逐个尝试，图取不到就如实告知且不落库）** |
+| [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、长轮询游标持久化与排重、**默认只聊天不落库**、显式「记录：…」才写入随手记、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误、**微信发图落成带图随手记（`item.type=2` 识别 → 明文魔数 → **AES-128-ECB + PKCS7** 解密（`aeskey` 32 位 hex，另兼容 `media.aes_key` 与「hex 再 base64」中间层，CBC 两种 IV 兜底），直链与带授权参数的地址都试，图取不到就如实告知且不落库）** |
 | [`tests/bot-outreach.test.mjs`](tests/bot-outreach.test.mjs) | Bot 主动关怀：东八区时窗与当天唯一开口时刻、每天至多一次、刚聊完 30 分钟内不插嘴、6 小时内聊过时把最近对话当背景、只用 3 天前旧素材、随机频率闸门、模型 SKIP 否决权、内容安全、发送失败与开关接口、**主动消息写进对话记忆（带出处）**（真实 SQLite） |
 | [`tests/docs.test.mjs`](tests/docs.test.mjs) | **文档一致性门禁**：README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、架构规约模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致 |
 
