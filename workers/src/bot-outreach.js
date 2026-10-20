@@ -16,6 +16,8 @@
  *   5. 概率闸门：即使到点、有素材，也只有 OUTREACH_SEND_PROBABILITY 的概率真的发；
  *      连续 4 天没发过则免除这道闸，避免长期沉默。
  *   6. 一切可关：账号级 outreach_enabled + 审计表记录每条主动消息的出处与结果。
+ *   7. 主动消息也进对话记忆：说出来之后马上写一条 assistant 轮次（带出处），否则用户回
+ *      一句「什么时候啊」，下一轮完全不知道自己在说什么；写失败只记错误，不影响已发出的消息。
  *
  * 与 bot-claw.js 的边界：这里只调用它的 sendClawText，协议细节不在这里。
  * 主动消息的正文会落审计表（用户自己的库，用于回答「你凭什么想起这件事」），
@@ -127,6 +129,15 @@ export function pickOutreachInstantMs(userId, nowMs) {
 export function pickFollowUpDelayMs(userId, turnId) {
     const span = OUTREACH_FOLLOWUP_MAX_MS - OUTREACH_FOLLOWUP_MIN_MS;
     return OUTREACH_FOLLOWUP_MIN_MS + (hash32(String(userId) + ':' + String(turnId)) % span);
+}
+
+/**
+ * 主动消息写进对话记忆时的正文：原话 + 一行出处备注。
+ * 出处是为了让它答得出「那是多久以前的事」——用户实测问过「什么时候啊」。
+ */
+export function outreachTurnContent(text, candidate) {
+    const ref = candidate ? (candidate.ageDays + ' 天前的' + candidate.kind) : '一条旧记录';
+    return String(text || '') + '\n（这条是我自己先开口提的，出处：' + ref + '）';
 }
 
 /** 容忍两种历史写法：东八区文本（YYYY-MM-DD HH:MM:SS）与 epoch 毫秒 */
@@ -341,6 +352,16 @@ async function loadRecentTalkSafe(db, userId) {
     }
 }
 
+// 主动消息落进同一份对话记忆；失败绝不影响已经发出去的那条消息
+async function saveOutreachTurnSafe(db, userId, text, candidate) {
+    try {
+        const mod = await import('./bot-memory.js');
+        await mod.saveChatTurn(db, userId, 'assistant', outreachTurnContent(text, candidate));
+    } catch (err) {
+        console.error('[outreach] 写入对话记忆失败 user=' + userId + ': ' + (err && err.message));
+    }
+}
+
 /** 单个账号的一次尝试；返回 'sent' | 'skipped' | 'failed' | 'wait' | 'done' | 'too-soon' | 'empty' */
 async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
     if (await attemptedToday(db, account.user_id, nowMs)) return 'done';
@@ -384,6 +405,7 @@ async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
             fetchImpl
         });
         await recordAttempt(db, account, 'sent', candidate, text, '');
+        await saveOutreachTurnSafe(db, account.user_id, text, candidate);
         console.log('[outreach] 已主动送达 user=' + account.user_id + ' ref=' + candidate.type + ':' + candidate.id + (followUp ? ' (follow-up)' : ''));
         return 'sent';
     } catch (err) {

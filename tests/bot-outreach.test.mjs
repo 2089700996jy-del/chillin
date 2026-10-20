@@ -5,7 +5,7 @@ import {
     east8Parts, isOutreachWindow, pickOutreachInstantMs, parseRecordTimeMs,
     pickCandidate, loadOutreachState, setOutreachEnabled, runOutreachChecks,
     handleBotOutreachApi, pickFollowUpDelayMs, OUTREACH_TEXT_MAX_BYTES,
-    OUTREACH_FOLLOWUP_MIN_MS, OUTREACH_FOLLOWUP_MAX_MS
+    OUTREACH_FOLLOWUP_MIN_MS, OUTREACH_FOLLOWUP_MAX_MS, outreachTurnContent
 } from '../workers/src/bot-outreach.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 
@@ -382,4 +382,54 @@ integration('微信里一句话就能开关主动关怀', async () => {
     const on = await buildBotReply({}, db, 1, '可以主动找我');
     assert.match(on, /偶尔/);
     assert.equal((await loadOutreachState(db, 1)).enabled, true);
+});
+
+test('主动消息进记忆时带上出处，好回答「那是多久前的事」', () => {
+    const text = outreachTurnContent('京都的樱花，春天还远。', { ageDays: 20, kind: '随手记' });
+    assert.match(text, /^京都的樱花，春天还远。/);
+    assert.match(text, /我自己先开口提的/);
+    assert.match(text, /20 天前的随手记/);
+    assert.match(outreachTurnContent('随便一句', null), /一条旧记录/);
+    assert.match(outreachTurnContent('', { ageDays: 3, kind: '周记' }), /3 天前的周记/);
+});
+
+integration('主动发出的消息会进对话记忆，用户回一句就能对上', async () => {
+    const db = await createTestDb();
+    await seedClawAccount(db);
+    await seedFeed(db, 7301, '想在明年春天去一趟京都看樱花', 20);
+    const now = cstMs(todayYmd(Date.now()), 12, 0);
+    const instant = pickOutreachInstantMs(1, now);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 21 } }]);
+    const sent = await runOutreachChecks(aiEnv('京都的樱花，春天还远。').env, db, stub.impl, { nowMs: instant + 1000, random: () => 0.1 });
+    assert.equal(sent.sent, 1);
+
+    const turns = await db.prepare('SELECT role, content FROM bot_chat_turns ORDER BY id').all();
+    assert.equal(turns.results.length, 1, '主动说出的话必须留下一条记忆，实际：' + JSON.stringify(turns.results));
+    assert.equal(turns.results[0].role, 'assistant');
+    assert.match(turns.results[0].content, /京都/);
+    assert.match(turns.results[0].content, /\d+ 天前的随手记/);
+
+    const { env, captured } = aiEnv('嗯，是有点久了，你突然提起来我还愣了一下。');
+    await buildBotReply(env, db, 1, '什么时候啊');
+    const prompt = JSON.stringify(captured[0]);
+    assert.match(prompt, /京都/);
+    assert.match(prompt, /我自己先开口提的/);
+});
+
+integration('没说出口（跳过或发送失败）就不该留下对话记忆', async () => {
+    const db = await createTestDb();
+    await seedClawAccount(db);
+    await seedFeed(db, 7311, '想把厨房的旧柜子重新刷一遍漆', 11);
+    const now = cstMs(todayYmd(Date.now()), 12, 0);
+    const instant = pickOutreachInstantMs(1, now);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: {} }]);
+    const skipped = await runOutreachChecks(aiEnv('SKIP').env, db, stub.impl, { nowMs: instant + 1000, random: () => 0.1 });
+    assert.equal(skipped.skipped, 1);
+    const failStub = stubFetch([{ match: '/ilink/bot/sendmessage', status: 500, json: {} }]);
+    const failed = await runOutreachChecks(
+        aiEnv('柜子刷漆这件事，周末动手来得及。').env, db, failStub.impl,
+        { nowMs: instant + 1000, random: () => 0.1 }
+    );
+    assert.equal(failed.sent, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first()).n, 0);
 });
