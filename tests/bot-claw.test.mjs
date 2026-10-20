@@ -24,7 +24,10 @@ import {
     sniffImageMagic,
     decryptClawImage,
     decodeAesKey,
-    aesKeyKind
+    aesKeyKind,
+    downloadClawImage,
+    clawImageUrlCandidates,
+    clawImageKeys
 } from '../workers/src/bot-media.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
@@ -692,6 +695,41 @@ test('ClawBot - aeskey 兼容 32 位 hex 与 base64，AES-256 的 IV 仍取前 1
     assert.equal(aesKeyKind(hex32), 'hex-32');
     const cipher32 = await encryptBytes(PNG_BYTES, key32);
     assert.equal(sniffImageMagic(await decryptClawImage(cipher32, hex32)), 'image/png', 'AES-256 用前 16 字节当 IV');
+});
+
+test('ClawBot - 图片地址与密钥多形态兜底：授权查询参数 + media.aes_key', async () => {
+    const keyBytes = new Uint8Array(16).fill(0x7c);
+    const cipher = await encryptBytes(PNG_BYTES, keyBytes);
+    const imageItem = {
+        aeskey: 'aa'.repeat(16),
+        media: {
+            full_url: 'https://cdn.example/direct.bin',
+            encrypt_query_param: 'EQP-1',
+            aes_key: Buffer.from(keyBytes).toString('base64')
+        }
+    };
+    assert.deepEqual(clawImageUrlCandidates(imageItem).map(u => u.tag), ['direct', 'encrypt_query_param']);
+    assert.deepEqual(clawImageKeys(imageItem).map(k => k.tag), ['item', 'media.aes_key']);
+
+    const { impl, calls } = stubFetch({
+        'encrypt_query_param=': () => ({ bytes: cipher }),
+        'direct.bin': () => ({ bytes: new Uint8Array([0x3c, 0x21, 0x44, 0x4f]) })
+    });
+    const got = await downloadClawImage(imageItem, impl);
+    assert.equal(got.ok, true, JSON.stringify(got));
+    assert.equal(got.mime, 'image/png');
+    assert.equal(got.note, 'aes-base64-16/encrypt_query_param+media.aes_key');
+    assert.equal(calls.length, 2, '先试直链（HTML 错误页）再试带授权参数的地址');
+});
+
+test('ClawBot - 全部候选都失败时给出可判读原因码与响应头字节', async () => {
+    const imageItem = { aeskey: 'bb'.repeat(16), media: { full_url: 'https://cdn.example/bad.bin' } };
+    const { impl } = stubFetch({ 'bad.bin': () => ({ bytes: new Uint8Array([0x3c, 0x21, 0x44, 0x4f, 0x43]) }) });
+    const got = await downloadClawImage(imageItem, impl);
+    assert.equal(got.ok, false);
+    assert.ok(/^not-an-image:5 tried=/.test(got.note), got.note);
+    assert.ok(got.note.includes('direct+item:hex-16:fail'), got.note);
+    assert.equal(got.head, '3c21444f43', '只记前 8 字节的十六进制（这里只有 5 字节）');
 });
 
 integration('ClawBot - 微信发图片落成带图随手记并回复，不经模型', async () => {

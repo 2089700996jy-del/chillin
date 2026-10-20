@@ -99,37 +99,105 @@ export async function decryptClawImage(bytes, aeskey, cryptoImpl = crypto) {
     }
 }
 
+/** 日志用：只报前几个字节的十六进制，够看出是不是 HTML/JSON 错误页，却不含正文 */
+function headHex(bytes, n = 8) {
+    return Array.from(bytes.slice(0, n)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+/**
+ * 候选下载地址：直链之外，微信 CDN 常常还需要把授权参数拼回查询串。
+ * 只产出 http(s) 地址、去重、最多 3 条，避免为一个 item 无限重试。
+ */
+export function clawImageUrlCandidates(imageItem) {
+    const item = imageItem || {};
+    const media = item.media && typeof item.media === 'object' ? item.media : null;
+    const out = [];
+    const push = (url, tag) => {
+        if (isHttpUrl(url) && !out.some(v => v.url === url) && out.length < 3) out.push({ url, tag });
+    };
+    push(resolveClawImageUrl(item), 'direct');
+    if (media) {
+        const base = NESTED_URL_FIELDS.map(f => media[f]).find(isHttpUrl) || '';
+        for (const field of ['encrypt_query_param', 'encrypted_query_param']) {
+            const value = media[field];
+            if (!base || typeof value !== 'string' || !value || base.includes(field)) continue;
+            push(base + (base.includes('?') ? '&' : '?') + field + '=' + encodeURIComponent(value), field);
+        }
+    }
+    return out;
+}
+
+/** 候选密钥：item.aeskey 与 media.aes_key 都可能存在，谁对用谁（去重，保留来源标签） */
+export function clawImageKeys(imageItem) {
+    const item = imageItem || {};
+    const media = item.media && typeof item.media === 'object' ? item.media : null;
+    const out = [];
+    const push = (value, tag) => {
+        if (typeof value === 'string' && value && !out.some(v => v.value === value)) out.push({ value, tag });
+    };
+    push(item.aeskey, 'item');
+    if (media) {
+        for (const field of ['aes_key', 'aeskey', 'key']) push(media[field], 'media.' + field);
+    }
+    return out;
+}
+
 /**
  * 下载 → 必要时解密 → 魔数嗅探。返回 { ok, bytes, mime, note }；任何异常都折叠成 ok:false，绝不抛。
- * note 是给日志看的原因码（plain / aes / http-403 / no-url / not-an-image…），不会直接给用户看。
+ * note 是给日志看的原因码（plain / aes-<密钥种类>/<地址来源>+<密钥来源> / not-an-image…），不会给用户看。
+ * 地址与密钥都可能有多份形态（线上实测：item.aeskey 是 16 字节 hex，而真正的图要 media.aes_key 才解得开），
+ * 所以逐对尝试，任一对解出真实魔数就认账；全部失败也只记「形状」，不记正文与密钥内容。
  */
 export async function downloadClawImage(imageItem, fetchImpl = fetch, options = {}) {
-    const url = resolveClawImageUrl(imageItem);
-    if (!url) return { ok: false, note: 'no-url' };
-    let res;
-    try {
-        res = await fetchImpl(url, { method: 'GET' });
-    } catch (err) {
-        return { ok: false, note: 'fetch-error' };
+    const urls = clawImageUrlCandidates(imageItem);
+    if (!urls.length) return { ok: false, note: 'no-url' };
+    const keys = clawImageKeys(imageItem);
+    const tried = [];
+    let lastBytes = null;
+    for (const candidate of urls) {
+        let res;
+        try {
+            res = await fetchImpl(candidate.url, { method: 'GET' });
+        } catch (err) {
+            tried.push(candidate.tag + ':fetch-error');
+            continue;
+        }
+        if (!res || !res.ok) {
+            tried.push(candidate.tag + ':http-' + ((res && res.status) || 0));
+            continue;
+        }
+        let bytes;
+        try {
+            bytes = new Uint8Array(await res.arrayBuffer());
+        } catch (err) {
+            tried.push(candidate.tag + ':body-error');
+            continue;
+        }
+        if (bytes.byteLength > MAX_IMAGE_BYTES) {
+            tried.push(candidate.tag + ':too-large:' + bytes.byteLength);
+            continue;
+        }
+        const plainMime = sniffImageMagic(bytes);
+        if (plainMime) return { ok: true, bytes, mime: plainMime, note: 'plain/' + candidate.tag };
+        lastBytes = bytes;
+        if (!keys.length) {
+            tried.push(candidate.tag + ':no-key');
+            continue;
+        }
+        for (const key of keys) {
+            const kind = aesKeyKind(key.value);
+            const decrypted = await decryptClawImage(bytes, key.value, options.cryptoImpl);
+            if (!decrypted) {
+                tried.push(candidate.tag + '+' + key.tag + ':' + kind + ':fail');
+                continue;
+            }
+            const mime = sniffImageMagic(decrypted);
+            if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind + '/' + candidate.tag + '+' + key.tag };
+            tried.push(candidate.tag + '+' + key.tag + ':' + kind + ':after');
+        }
     }
-    if (!res || !res.ok) return { ok: false, note: 'http-' + ((res && res.status) || 0) };
-    let bytes;
-    try {
-        bytes = new Uint8Array(await res.arrayBuffer());
-    } catch (err) {
-        return { ok: false, note: 'body-error' };
-    }
-    if (bytes.byteLength > MAX_IMAGE_BYTES) return { ok: false, note: 'too-large:' + bytes.byteLength };
-    const plainMime = sniffImageMagic(bytes);
-    if (plainMime) return { ok: true, bytes, mime: plainMime, note: 'plain' };
-    const kind = aesKeyKind(imageItem && imageItem.aeskey);
-    const decrypted = await decryptClawImage(bytes, imageItem && imageItem.aeskey, options.cryptoImpl);
-    if (decrypted) {
-        const mime = sniffImageMagic(decrypted);
-        if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind };
-        return { ok: false, note: 'not-an-image:' + bytes.byteLength + '/after-' + kind };
-    }
-    return { ok: false, note: 'not-an-image:' + bytes.byteLength + '/' + kind };
+    const size = lastBytes ? lastBytes.byteLength : 0;
+    return { ok: false, note: 'not-an-image:' + size + ' tried=' + tried.slice(0, 4).join(','), head: lastBytes ? headHex(lastBytes) : '' };
 }
 
 /** 诊断用：只输出字段形状（键名、长度、URL 主机），供日志确认协议，不含正文与密钥内容 */
@@ -144,6 +212,8 @@ export function describeClawImage(imageItem) {
         mediaLen: typeof media === 'string' ? media.length : 0,
         mediaHost: url ? new URL(url).host : '',
         aeskeyLen: String(item.aeskey || '').length,
+        keyKinds: clawImageKeys(item).map(k => k.tag + ':' + aesKeyKind(k.value)),
+        urlVariants: clawImageUrlCandidates(item).map(u => u.tag),
         sizes: [item.thumb_size, item.mid_size, item.hd_size].map(v => Number(v) || 0)
     };
 }

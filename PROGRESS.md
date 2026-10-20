@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.122**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.123**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,16 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot 图片：地址与密钥多形态兜底（v2.5.123）
+
+1. **第二次真机验证**（用户重发照片）：抓到 `note=not-an-image:202624/hex-16`，`media` 对象的键是 `["encrypt_query_param","aes_key","full_url"]` —— item 级 `aeskey` 确实能解码出 16 字节，但解出来的不是图片；真正能解开的是 `media.aes_key`，真正能下到图的地址还需要拼回授权参数。
+2. **修复**：新增 `clawImageUrlCandidates`（直链 + 把 `encrypt_query_param`/`encrypted_query_param` 拼回查询串，去重、最多 3 条）与 `clawImageKeys`（`item.aeskey` / `media.aes_key` / `media.aeskey` / `media.key`，去重并保留来源标签）；`downloadClawImage` 改成「地址 × 密钥」逐对尝试，任一对嗅出真实魔数才认账，且只把那一份解密结果写进 R2。
+3. **诊断升级**：`describeClawImage` 增 `keyKinds` 与 `urlVariants`；全部失败时原因码带 tried 列表（如 `direct+item:hex-16:fail`），并附响应前 8 字节的十六进制（`3c21444f43` 一眼看出 CDN 返回的是 `<!DOC` 错误页），依然不记正文、不记密钥内容。
+4. **回归门禁**：新增两条用例——授权参数 + `media.aes_key` 的双层兜底成功；全部失败时的 tried 列表与 head 十六进制，把线上真实形状固化成测试。
+5. **教训**：字段没有公开文档时，「多形态兜底 + 可判读原因码」比死猜单一形状更快收敛；AES-CBC 只有填充校验，能解开不等于解对了，最终必须靠魔数认账。
+
+**测试 229 → 231 用例（20 套件）**；README、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 微信 Bot 图片：aeskey 是 hex，密文解密后才是真图（v2.5.122）
 
