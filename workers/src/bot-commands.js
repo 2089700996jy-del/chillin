@@ -22,8 +22,8 @@ import { callCustomLlm, callCustomLlmWithMessages, moderateText } from './llm.js
 import { checkRateLimitShared } from './security.js';
 import {
     saveChatTurn, loadChatContext, clearChatContext,
-    addProfileItem, listProfile, forgetProfile, clearProfile, loadProfilePrompt,
-    PROFILE_MAX_ITEMS, PROFILE_ITEM_MAX_CHARS
+    addProfileItem, listProfile, forgetProfile, clearProfile, loadProfilePrompt, PROFILE_MAX_ITEMS,
+    PROFILE_ITEM_MAX_CHARS
 } from './bot-memory.js';
 
 /** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
@@ -221,7 +221,10 @@ async function runRecord(db, userId, content) {
 async function runRemember(db, userId, content) {
     const item = content.slice(0, PROFILE_ITEM_MAX_CHARS);
     const res = await addProfileItem(db, userId, item);
-    if (!res.ok) return '这条我没能记下来（存储临时不可用），稍后再试一次。';
+    if (!res.ok) {
+        if (res.full) return '档案最多记 ' + PROFILE_MAX_ITEMS + ' 条，先发「忘记 <关键词>」腾一条，我再记新的。';
+        return '这条我没能记下来（存储临时不可用），稍后再试一次。';
+    }
     if (res.duplicate) return '这条我已经记得了 🙂';
     return '好，我记住了：\n\n> ' + item.replace(/\n/g, '\n> ')
         + '\n\n以后想删掉，就发「忘记 <关键词>」。';

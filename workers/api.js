@@ -76,10 +76,11 @@ import {
     handleAuditScan
 } from './src/garden-echo.js';
 import { handleClawApi } from './src/bot-claw.js';
+import { handleBotProfileApi } from './src/bot-memory.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.108';
+const APP_VERSION = '2.5.109';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -139,6 +140,9 @@ async function router(path, method, request, env, ctx) {
 
     // 微信 ClawBot（iLink）绑定与扫码：私人操作，挂在登录态之后
     if (path.startsWith('/api/bot/claw')) return handleClawApi(request, env, url, db, userId);
+
+    // 「关于我」个人档案：应用内查看/编辑/遗忘，同一份记忆的第二个入口
+    if (path.startsWith('/api/bot/profile')) return handleBotProfileApi(request, env, url, db, userId);
 
     // ── 账号与文件 ──
     if (path === '/api/upload' && method === 'POST') return handleUpload(request, env, db, userId);

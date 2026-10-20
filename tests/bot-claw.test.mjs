@@ -26,7 +26,15 @@ import {
     buildBotReply,
     BOT_HELP_TEXT
 } from '../workers/src/bot-commands.js';
-import { loadChatContext, listProfile } from '../workers/src/bot-memory.js';
+import {
+    loadChatContext,
+    listProfile,
+    addProfileItem,
+    updateProfileItem,
+    forgetProfileById,
+    handleBotProfileApi,
+    PROFILE_MAX_ITEMS
+} from '../workers/src/bot-memory.js';
 
 /**
  * 微信 ClawBot（官方 iLink 协议）：传输层纯函数 + D1 接入层 + 每分钟长轮询。
@@ -578,4 +586,92 @@ integration('Bot - 提示词带人格边界、档案与最近上下文（旧→�
     assert.equal(messages[messages.length - 1].content, '在吗');
     const roles = messages.slice(1, -1).map((m) => m.role);
     assert.deepEqual(roles, ['user', 'assistant', 'user', 'assistant'], '上下文按旧→新注入，实际：' + JSON.stringify(roles));
+});
+/** 应用内档案接口的请求替身：与网关一样把 URL、方法、JSON body 交给处理器 */
+function profileCall(method, path, body) {
+    const init = { method: method, headers: { 'Content-Type': 'application/json' } };
+    if (body !== undefined) init.body = JSON.stringify(body);
+    return new Request('https://chillin.example' + path, init);
+}
+
+integration('Bot - 应用内档案接口支持查看/新增/编辑/遗忘，删除全部走软删', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const call = (method, path, body) => handleBotProfileApi(profileCall(method, path, body), {}, new URL('https://chillin.example' + path), db, 1);
+
+    let res = await call('POST', '/api/bot/profile', { content: '我不吃香菜' });
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { ok: true, duplicate: false });
+
+    res = await call('POST', '/api/bot/profile', { content: '我不吃香菜' });
+    assert.equal((await res.json()).duplicate, true, '内容重复只提示、不重复入库');
+    assert.equal((await listProfile(db, 1)).length, 1);
+
+    res = await call('GET', '/api/bot/profile');
+    const list = await res.json();
+    assert.equal(list.items.length, 1);
+    assert.equal(list.maxItems, PROFILE_MAX_ITEMS);
+    assert.equal(list.itemMaxChars, 240);
+    assert.equal(list.items[0].content, '我不吃香菜');
+
+    const id = list.items[0].id;
+    res = await call('PUT', '/api/bot/profile/' + id, { content: '我不吃香菜和葱' });
+    assert.equal(res.status, 200);
+    assert.deepEqual((await listProfile(db, 1)).map((it) => it.content), ['我不吃香菜和葱']);
+
+    res = await call('DELETE', '/api/bot/profile/' + id);
+    assert.equal(res.status, 200);
+    assert.equal((await listProfile(db, 1)).length, 0);
+    const row = await db.prepare('SELECT is_deleted FROM bot_profile WHERE id = ?1').bind(id).first();
+    assert.equal(row.is_deleted, 1, '应用内删除也必须是软删，行还在');
+    assert.deepEqual(await forgetProfileById(db, 1, 'abc'), { removed: 0 }, '非法 id 直接拒绝');
+
+    res = await call('DELETE', '/api/bot/profile/' + id);
+    assert.equal(res.status, 404, '已遗忘的条目再删应报不存在');
+    res = await call('POST', '/api/bot/profile', { content: '' });
+    assert.equal(res.status, 400, '空内容拒绝写入');
+    res = await call('PUT', '/api/bot/profile/999999', { content: '改一条不存在的' });
+    assert.equal(res.status, 404);
+    res = await call('GET', '/api/bot/profile/nope');
+    assert.equal(res.status, 404, '前缀下未定义的路径一律 404');
+});
+
+integration('Bot - 档案接口跨用户隔离：改不动也删不掉别人的条目', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+    const call = (user, method, path, body) => handleBotProfileApi(profileCall(method, path, body), {}, new URL('https://chillin.example' + path), db, user);
+    await call(1, 'POST', '/api/bot/profile', { content: '我在写一本小说' });
+    const mine = (await (await call(1, 'GET', '/api/bot/profile')).json()).items;
+    assert.equal(mine.length, 1);
+
+    assert.equal((await (await call(2, 'GET', '/api/bot/profile')).json()).items.length, 0, '档案按用户隔离');
+    assert.equal((await call(2, 'PUT', '/api/bot/profile/' + mine[0].id, { content: '被篡改' })).status, 404);
+    assert.equal((await call(2, 'DELETE', '/api/bot/profile/' + mine[0].id)).status, 404);
+    assert.equal((await call(2, 'POST', '/api/bot/profile/clear')).status, 200, '清空只作用于自己');
+    assert.equal((await listProfile(db, 1))[0].content, '我在写一本小说', '别人的档案毫发无伤');
+});
+
+integration('Bot - 档案到 24 条上限后拒绝新增，绝不写进库却读不出来', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    for (let i = 1; i <= PROFILE_MAX_ITEMS; i++) await addProfileItem(db, 1, '偏好 ' + i);
+    assert.equal((await listProfile(db, 1)).length, PROFILE_MAX_ITEMS);
+
+    const full = await addProfileItem(db, 1, '第 25 条');
+    assert.equal(full.ok, false);
+    assert.equal(full.full, true, '必须显式报告满了，不能静默写入');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_profile').first()).n, PROFILE_MAX_ITEMS);
+    assert.match(await buildBotReply({}, db, 1, '记住：第 25 条'), /最多记 24 条/);
+
+    const res = await handleBotProfileApi(profileCall('POST', '/api/bot/profile', { content: '第 25 条' }), {}, new URL('https://chillin.example/api/bot/profile'), db, 1);
+    assert.equal(res.status, 409);
+    assert.equal((await updateProfileItem(db, 1, 1, '')).ok, false, '空内容不算一次合法编辑');
+});
+
+integration('Bot - 网关把 /api/bot/profile 挂在登录态之后（未登录 401）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const res = await api.fetch(new Request('https://chillin.example/api/bot/profile'), { DB: db }, ctx);
+    assert.equal(res.status, 401);
 });

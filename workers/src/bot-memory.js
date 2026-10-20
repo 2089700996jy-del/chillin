@@ -10,6 +10,8 @@
  * 写入全部软删（is_deleted），用户数据永不物理删除；聊天正文永不进日志。
  */
 
+import { jsonResponse, readJsonCapped, isValidRecordId } from './security.js';
+
 /** 注入提示词的最近对话条数上限 */
 export const CHAT_CONTEXT_TURNS = 8;
 /** 注入提示词的对话上下文字符总预算（有界，防止长回答把提示词撑爆） */
@@ -22,6 +24,8 @@ export const PROFILE_MAX_ITEMS = 24;
 export const PROFILE_MAX_CHARS = 1200;
 /** 单条档案条目的字符上限 */
 export const PROFILE_ITEM_MAX_CHARS = 240;
+/** 应用内档案接口的请求体上限（单条 ≤240 字，留足 JSON 包装余量） */
+const MAX_PROFILE_BODY_BYTES = 4096;
 
 function clip(text, max) {
     const s = String(text == null ? '' : text);
@@ -86,6 +90,8 @@ export async function addProfileItem(db, userId, content, label = '') {
     const body = clip(content, PROFILE_ITEM_MAX_CHARS);
     const existing = await listProfile(db, userId);
     if (existing.some((it) => String(it.content) === body)) return { ok: true, duplicate: true };
+    // 条数硬上限：缺这道闸，第 25 条会写进库里却永远读不出来（listProfile 自带 LIMIT）
+    if (existing.length >= PROFILE_MAX_ITEMS) return { ok: false, duplicate: false, full: true };
     try {
         await db.prepare(
             'INSERT INTO bot_profile (user_id, label, content, source, is_deleted) VALUES (?1, ?2, ?3, ?4, 0)'
@@ -106,11 +112,7 @@ export async function forgetProfile(db, userId, keyword) {
         String(it.content || '').toLowerCase().includes(kw)
         || String(it.label || '').toLowerCase().includes(kw)
     ));
-    for (const it of hit) {
-        await db.prepare(
-            "UPDATE bot_profile SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2"
-        ).bind(it.id, Number(userId)).run();
-    }
+    for (const it of hit) await forgetProfileById(db, userId, it.id);
     return { removed: hit.length };
 }
 
@@ -121,6 +123,28 @@ export async function clearProfile(db, userId) {
         "UPDATE bot_profile SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE user_id = ?1 AND is_deleted = 0"
     ).bind(Number(userId)).run();
     return { removed: (res && res.meta && res.meta.changes) || 0 };
+}
+
+/** 按 id 遗忘一条：只作用于本人未软删的条目，仍走软删 */
+export async function forgetProfileById(db, userId, id) {
+    const rid = Number(id);
+    if (!db || !userId || !isValidRecordId(rid)) return { removed: 0 };
+    const res = await db.prepare(
+        "UPDATE bot_profile SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND is_deleted = 0"
+    ).bind(rid, Number(userId)).run();
+    return { removed: (res && res.meta && res.meta.changes) || 0 };
+}
+
+/** 应用内改一条档案：只更新本人未软删的条目（改内容与标签，不改归属） */
+export async function updateProfileItem(db, userId, id, content, label = '') {
+    const rid = Number(id);
+    const body = String(content == null ? '' : content).trim();
+    if (!db || !userId || !isValidRecordId(rid) || !body) return { ok: false, reason: 'invalid' };
+    const res = await db.prepare(
+        "UPDATE bot_profile SET content = ?1, label = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND user_id = ?4 AND is_deleted = 0"
+    ).bind(clip(body, PROFILE_ITEM_MAX_CHARS), clip(label, 40), rid, Number(userId)).run();
+    const changes = (res && res.meta && res.meta.changes) || 0;
+    return { ok: changes > 0, reason: changes > 0 ? '' : 'not_found' };
 }
 
 /** 拼成注入提示词的档案块（受字符预算约束，空档案返回空串） */
@@ -135,4 +159,57 @@ export async function loadProfilePrompt(db, userId) {
         lines.push(line);
     }
     return lines.join('\n');
+}
+
+// ─────────────── 应用内「关于我」档案接口 ───────────────
+
+/**
+ * 应用内档案接口：查看 / 新增 / 编辑 / 遗忘。
+ * 与微信侧共用同一份 bot_profile，所以两个入口看到的是同一份档案；
+ * 删除一律软删，用户数据永不物理删除；请求体有上限、全部参数化绑定。
+ */
+export async function handleBotProfileApi(request, env, url, db, userId) {
+    const path = url.pathname;
+    try {
+        if (path === '/api/bot/profile' && request.method === 'GET') {
+            const items = await listProfile(db, userId);
+            return jsonResponse({ items, maxItems: PROFILE_MAX_ITEMS, itemMaxChars: PROFILE_ITEM_MAX_CHARS }, 200);
+        }
+        if (path === '/api/bot/profile' && request.method === 'POST') {
+            const parsed = await readJsonCapped(request, MAX_PROFILE_BODY_BYTES);
+            if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+            const payload = parsed.value || {};
+            const content = String(payload.content == null ? '' : payload.content).trim();
+            if (!content) return jsonResponse({ error: '内容不能为空' }, 400);
+            const res = await addProfileItem(db, userId, content, String(payload.label == null ? '' : payload.label).trim());
+            if (!res.ok) {
+                if (res.full) return jsonResponse({ error: '档案最多保留 ' + PROFILE_MAX_ITEMS + ' 条，先遗忘一两条再记新的' }, 409);
+                return jsonResponse({ error: '写入失败，请稍后重试' }, 500);
+            }
+            return jsonResponse({ ok: true, duplicate: !!res.duplicate }, 200);
+        }
+        if (path === '/api/bot/profile/clear' && request.method === 'POST') {
+            return jsonResponse(await clearProfile(db, userId), 200);
+        }
+        const one = path.match(/^\/api\/bot\/profile\/(\d+)$/);
+        if (one && request.method === 'PUT') {
+            const parsed = await readJsonCapped(request, MAX_PROFILE_BODY_BYTES);
+            if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
+            const payload = parsed.value || {};
+            const content = String(payload.content == null ? '' : payload.content).trim();
+            if (!content) return jsonResponse({ error: '内容不能为空' }, 400);
+            const res = await updateProfileItem(db, userId, one[1], content, String(payload.label == null ? '' : payload.label).trim());
+            if (!res.ok) return jsonResponse({ error: res.reason === 'invalid' ? '内容不能为空' : '这条档案不存在' }, res.reason === 'invalid' ? 400 : 404);
+            return jsonResponse({ ok: true }, 200);
+        }
+        if (one && request.method === 'DELETE') {
+            const res = await forgetProfileById(db, userId, one[1]);
+            if (!res.removed) return jsonResponse({ error: '这条档案不存在' }, 404);
+            return jsonResponse({ ok: true, removed: res.removed }, 200);
+        }
+    } catch (err) {
+        console.error('[bot-memory] 档案接口失败: ' + (err && err.message));
+        return jsonResponse({ error: '档案服务暂时不可用，请稍后重试' }, 502);
+    }
+    return jsonResponse({ error: '接口不存在' }, 404);
 }

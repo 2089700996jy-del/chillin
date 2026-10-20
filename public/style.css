@@ -7906,6 +7906,54 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
 
 .session-empty { padding: 18px 4px; font-size: 13px; color: rgba(60, 60, 67, 0.6); text-align: center; }
 
+/* 「关于我」档案：列表复用 .session-row 骨架，编辑行留一个输入框与两个按钮 */
+.bot-profile-content { font-size: 14.5px; line-height: 1.45; color: inherit; word-break: break-word; }
+
+.bot-profile-add { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+
+.bot-profile-add .search-input { flex: 1 1 auto; min-width: 0; }
+
+.session-edit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.85);
+  font-family: var(--font-family);
+  font-size: 14px;
+  color: var(--text-color);
+}
+
+.session-edit-input:focus {
+  outline: none;
+  border-color: rgba(0, 122, 255, 0.45);
+}
+
+.bot-profile-edit,
+.bot-profile-forget {
+  flex: 0 0 auto;
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--ios-blue, #007aff);
+}
+
+.bot-profile-forget { color: #ff3b30; }
+
+.bot-profile-edit:active,
+.bot-profile-forget:active { transform: scale(0.95); opacity: 0.7; }
+
+body.dark-reader-body .session-edit-input {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.14);
+  color: inherit;
+}
+
 .security-actions {
   display: flex;
   justify-content: space-between;

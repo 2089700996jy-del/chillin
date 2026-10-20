@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.108**（Worker 已部署、D1 迁移 0001–0025 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.109**（Worker 已部署、D1 迁移 0001–0025 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -63,11 +63,22 @@
 | `workers/src/llm.js` | 模型集成：DeepSeek/Workers AI 调用、流式 SSE、内容合规审查 |
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
 | `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流 |
-| `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删） |
+| `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删）+ 应用内 `/api/bot/profile` 读写接口（增/改/单条遗忘/清空） |
 | `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 应用内「关于我」档案可视编辑（v2.5.109）
+
+**为什么还要做**：v2.5.108 的档案只能在微信里「你记得我什么 / 忘记 X」，而产品定义要求用户**能在 Chillin 内查看/编辑/删除**。
+
+1. **后端**：`workers/src/bot-memory.js` 新增 `handleBotProfileApi`（`GET/POST /api/bot/profile`、`POST /api/bot/profile/clear`、`PUT|DELETE /api/bot/profile/<id>`）与 `forgetProfileById` / `updateProfileItem`；`addProfileItem` 补上 24 条硬闸（此前第 25 条会入库却因 `listProfile` 的 `LIMIT 24` 永远读不出来）。网关在 ClawBot 路由后加一行前缀分派（仍挂在鉴权闸门之后）。
+2. **前端**：「账号与安全」弹层新增「关于我」区块——列表、新增、就地改名、单条遗忘、整份清空；写入走既有 `apiRequest`，删除/清空先经确认对话，一律软删；复用既有 `.session-*` 样式，零新增依赖。
+3. **安全与隔离**：所有 SQL 参数化并限定 `user_id` 且 `is_deleted = 0`（跨用户改不动别人的条目，已由测试固定）；请求体限长 4096 字节；日志仍只打错误、不打档案正文。
+4. **测试**：`tests/bot-claw.test.mjs` 25 → **29 用例**（接口 CRUD 与软删、跨用户隔离、24 条上限与 409、网关未登录 401）。
+
+**测试 183 → 187 用例（19 套件）**；README（测试布局表）、`.agents/rules/architecture.md`（模块表）、PROGRESS、架构报告同批同步。
 
 ### 微信 ClawBot 改造为 chat-first 私人伴侣（v2.5.108）
 

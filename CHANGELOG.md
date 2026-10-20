@@ -1,13 +1,18 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T11:32:49.670Z · 提交数：343
+> 生成时间：2026-10-20T11:46:34.506Z · 提交数：345
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
+- **bot**: make ClawBot chat-first with a private companion memory
 - **bot**: add the WeChat ClawBot iLink integration and drop the WeChat Work path
+
+### 🐛 缺陷修复
+
+- **test**: wrap table whitelist test in integration wrapper for node 20 compatibility
 
 ### 📝 文档
 

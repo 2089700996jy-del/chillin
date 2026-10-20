@@ -274,6 +274,14 @@ export function initAuthUI() {
         if (btn && btn.dataset.sessionId) revokeSession(btn.dataset.sessionId);
     });
     document.getElementById('btn-security-logout-all')?.addEventListener('click', logoutAllDevices);
+
+    // 「关于我」档案：查看 / 新增 / 编辑 / 遗忘（与微信端共用同一份记忆）
+    document.getElementById('bot-profile-list')?.addEventListener('click', onBotProfileListClick);
+    document.getElementById('btn-bot-profile-add')?.addEventListener('click', addBotProfileFromInput);
+    document.getElementById('bot-profile-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addBotProfileFromInput(); }
+    });
+    document.getElementById('btn-bot-profile-clear')?.addEventListener('click', clearBotProfileAll);
     document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
     document.getElementById('btn-test-push')?.addEventListener('click', sendTestNotification);
 
@@ -493,6 +501,7 @@ export async function openSecurityModal() {
     updateStorageDiagnostics();
     updatePushNotificationStatus();
     updateBackupGuardUI();
+    loadBotProfile();
     const container = document.getElementById('session-list');
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
@@ -708,5 +717,114 @@ async function sendSubscriptionToServer(subscription) {
         });
     } catch (e) {
         console.error('Failed to send subscription:', e);
+    }
+}
+/** 「关于我」档案条目：应用内查看 / 编辑 / 遗忘（与微信端共用同一份记忆） */
+let editingProfileId = null;
+
+function renderBotProfile(items) {
+    const container = document.getElementById('bot-profile-list');
+    if (!container) return;
+    if (!Array.isArray(items) || items.length === 0) {
+        setHtml(container, '<div class="session-empty">还没有关于你的记录。在微信里发「记住：…」，或在上面的输入框加一条。</div>');
+        return;
+    }
+    setHtml(container, items.map((it) => {
+        const id = escapeHtml(String(it.id));
+        if (String(it.id) === String(editingProfileId)) {
+            return '<div class="session-row">'
+                + '<input type="text" class="session-edit-input" data-profile-edit="' + id + '" maxlength="240" value="' + escapeHtml(String(it.content || '')) + '" aria-label="编辑这条档案">'
+                + '<button type="button" class="btn-text bot-profile-edit profile-save" data-profile-id="' + id + '">保存</button>'
+                + '<button type="button" class="btn-text bot-profile-edit profile-cancel">取消</button>'
+                + '</div>';
+        }
+        const label = it.label ? escapeHtml(String(it.label)) + ' · ' : '';
+        const when = escapeHtml(String(it.created_at || '').slice(0, 16));
+        return '<div class="session-row">'
+            + '<div class="session-main">'
+            + '<div class="bot-profile-content">' + escapeHtml(String(it.content || '')) + '</div>'
+            + '<div class="session-meta">' + label + when + '</div>'
+            + '</div>'
+            + '<button type="button" class="btn-text bot-profile-edit profile-edit" data-profile-id="' + id + '">改</button>'
+            + '<button type="button" class="btn-text bot-profile-forget profile-forget" data-profile-id="' + id + '">忘</button>'
+            + '</div>';
+    }).join(''));
+}
+
+async function loadBotProfile() {
+    const container = document.getElementById('bot-profile-list');
+    if (!container) return;
+    setHtml(container, '<div class="session-empty">正在读取档案…</div>');
+    try {
+        const data = await apiRequest('/api/bot/profile');
+        renderBotProfile(data && data.items);
+    } catch (_) {
+        setHtml(container, '<div class="session-empty">读取失败，请稍后重试</div>');
+    }
+}
+
+async function addBotProfileFromInput() {
+    const input = document.getElementById('bot-profile-input');
+    const content = input ? String(input.value || '').trim() : '';
+    if (!content) { showToast('先写一条内容再点「记住」', 'warn'); if (input) input.focus(); return; }
+    try {
+        const res = await apiRequest('/api/bot/profile', { method: 'POST', body: JSON.stringify({ content: content }) });
+        if (input) input.value = '';
+        showToast(res && res.duplicate ? '这条档案里已经有了' : '好，记住了', 'success');
+        await loadBotProfile();
+    } catch (e) {
+        showToast('没记下来：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+function onBotProfileListClick(e) {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    const edit = target.closest('.profile-edit');
+    if (edit && edit.dataset.profileId) { editingProfileId = edit.dataset.profileId; loadBotProfile(); return; }
+    if (target.closest('.profile-cancel')) { editingProfileId = null; loadBotProfile(); return; }
+    const save = target.closest('.profile-save');
+    if (save && save.dataset.profileId) {
+        const row = save.closest('.session-row');
+        const field = row ? row.querySelector('[data-profile-edit]') : null;
+        saveBotProfileItem(save.dataset.profileId, field ? field.value : '');
+        return;
+    }
+    const forget = target.closest('.profile-forget');
+    if (forget && forget.dataset.profileId) forgetBotProfileItem(forget.dataset.profileId);
+}
+
+async function saveBotProfileItem(id, content) {
+    const body = String(content || '').trim();
+    if (!body) { showToast('内容不能为空', 'warn'); return; }
+    try {
+        await apiRequest('/api/bot/profile/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ content: body }) });
+        editingProfileId = null;
+        showToast('已更新', 'success');
+        await loadBotProfile();
+    } catch (e) {
+        showToast('更新失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+async function forgetBotProfileItem(id) {
+    if (!(await confirmDialog('忘掉这条关于你的记录？', { confirmText: '忘掉' }))) return;
+    try {
+        await apiRequest('/api/bot/profile/' + encodeURIComponent(id), { method: 'DELETE' });
+        showToast('已忘掉', 'success');
+        await loadBotProfile();
+    } catch (e) {
+        showToast('操作失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+async function clearBotProfileAll() {
+    if (!(await confirmDialog('清空整份「关于我」档案？', { confirmText: '清空' }))) return;
+    try {
+        const res = await apiRequest('/api/bot/profile/clear', { method: 'POST' });
+        showToast(res && res.removed ? '已清空 ' + res.removed + ' 条' : '档案本来就是空的', 'success');
+        await loadBotProfile();
+    } catch (e) {
+        showToast('操作失败：' + (e && e.message ? e.message : e), 'warn');
     }
 }
