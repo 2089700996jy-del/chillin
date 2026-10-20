@@ -2,7 +2,7 @@
 
 :root {
   /* Apple HIG & Warm Paper Design Tokens */
-  --ios-blue: #0066CC;
+  --ios-blue: #007AFF;
   --ios-green: #34C759;
   --ios-red: #FF3B30;
   --ios-bg: #F8F9FA;
@@ -19,11 +19,20 @@
     "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
 
   --card-bg: var(--ios-card-bg);
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
-  --card-hover-shadow: 0 6px 16px rgba(0, 0, 0, 0.05);
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05);
+  --card-hover-shadow: 0 12px 32px rgba(16, 24, 40, 0.10);
   --widget-bg: rgba(120, 120, 128, 0.08);
-  --callout-bg: rgba(0, 102, 204, 0.06);
+  --callout-bg: rgba(0, 122, 255, 0.06);
   --danger-color: var(--ios-red);
+  /* 路线 A：主表面统一大圆角；卡片刻意不画 1px 硬边框，靠柔和阴影分层 */
+  --surface-radius: 22px;
+  --surface-hairline: rgba(60, 60, 67, 0.06);
+  /* 路线 A：热力图色阶收敛为 systemGreen 的透明阶，去掉薄荷霓虹感 */
+  --heat-empty: rgba(120, 120, 128, 0.12);
+  --heat-1: rgba(52, 199, 89, 0.16);
+  --heat-2: rgba(52, 199, 89, 0.36);
+  --heat-3: rgba(52, 199, 89, 0.62);
+  --heat-4: #2f9e4a;
 
   /* ---- 尺寸 / 节奏令牌 ----
      新代码一律使用变量；旧的散落字面量按模块逐步迁移（见 .agents/rules/ui-style.md）。
@@ -406,7 +415,7 @@ body.is-loading .nav-loading-bar,
   font-size: 15px; 
   font-weight: 500;
   line-height: 1;
-  color: var(--accent-color, #0066CC); 
+  color: var(--accent-color, #007AFF); 
   transition: opacity 0.15s ease, transform 0.15s ease; 
   font-family: var(--font-family);
   display: inline-flex;
@@ -1454,7 +1463,7 @@ body.eyecare-reader-body #btn-back {
   overflow: hidden;
   margin-top: 4px;
   background: rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
 }
 .ios-cover-preview img {
   width: 100%;
@@ -3674,11 +3683,11 @@ body.eyecare-reader-body .sidebar-header {
 /* 1. Heatmap Widget (???????) */
 .heatmap-widget {
   background: var(--ios-card-bg, #ffffff);
-  border-radius: 18px;
+  border-radius: var(--surface-radius);
   padding: 16px 18px 14px;
   margin-bottom: 16px;
-  border: 1px solid rgba(60, 60, 67, 0.08);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  border: 1px solid transparent;
+  box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -3770,7 +3779,7 @@ body.eyecare-reader-body .sidebar-header {
   width: 11px;
   height: 11px;
   border-radius: 2px;
-  background-color: #ebedf0;
+  background-color: var(--heat-empty);
   transition: transform 0.15s ease, background-color 0.2s ease;
 }
 
@@ -3779,10 +3788,10 @@ body.eyecare-reader-body .sidebar-header {
   z-index: 2;
 }
 
-.heatmap-cell.level-1 { background-color: #a7f3d0; }
-.heatmap-cell.level-2 { background-color: #6ee7b7; }
-.heatmap-cell.level-3 { background-color: var(--ios-green); }
-.heatmap-cell.level-4 { background-color: #248a3d; }
+.heatmap-cell.level-1 { background-color: var(--heat-1); }
+.heatmap-cell.level-2 { background-color: var(--heat-2); }
+.heatmap-cell.level-3 { background-color: var(--heat-3); }
+.heatmap-cell.level-4 { background-color: var(--heat-4); }
 
 /* 2. Feed Input Card (随手记输入卡片) */
 .feed-input-card {
@@ -3791,7 +3800,7 @@ body.eyecare-reader-body .sidebar-header {
   padding: 20px;
   margin-bottom: 28px;
   box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -4175,7 +4184,7 @@ body.keyboard-open .fab-btn {
   gap: 6px;
   font-size: 13px;
   font-weight: 600;
-  color: var(--accent-color, #0066CC);
+  color: var(--accent-color, #007AFF);
 }
 
 .echo-cards-toggle-btn {
@@ -4365,7 +4374,7 @@ body.keyboard-open .fab-btn {
 .ai-msg-bot .ai-msg-bubble {
   background: var(--card-bg, #ffffff);
   color: var(--text-color, #1f2937);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   border-radius: 18px 18px 18px 4px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.03);
 }
@@ -5306,8 +5315,8 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 
 .prompt-card {
   background: var(--card-bg);
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--surface-radius);
+  border: 1px solid transparent;
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -5820,7 +5829,7 @@ body.dark-reader-body .prompt-variable-header [data-close-modal]:hover {
 /* Konsta Prompt Editor & Quick Variable Pills */
 .prompt-editor-card {
   background: var(--card-bg);
-  border-radius: 18px;
+  border-radius: var(--surface-radius);
   border: 1px solid rgba(0, 0, 0, 0.08);
   padding: 24px;
   max-width: 760px;
@@ -6397,8 +6406,8 @@ body.eyecare-reader-body .reader-sync-info {
 /* 3. Inset Grouped Cards Across All 10 Views */
 /* Weeklies (Home) */
 .notion-collection-card {
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--surface-radius);
+  border: 1px solid transparent;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
@@ -6414,8 +6423,8 @@ body.eyecare-reader-body .reader-sync-info {
 
 /* Feeds */
 .feed-item-card {
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--surface-radius);
+  border: 1px solid transparent;
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.02);
   padding: 18px 20px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
@@ -6431,8 +6440,8 @@ body.eyecare-reader-body .reader-sync-info {
 }
 
 .feed-input-card {
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--surface-radius);
+  border: 1px solid transparent;
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.02);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -6445,7 +6454,7 @@ body.eyecare-reader-body .reader-sync-info {
 
 .rich-link-card {
   border-radius: 14px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
 }
 
@@ -6455,7 +6464,7 @@ body.eyecare-reader-body .reader-sync-info {
 
 /* Notes (Upgraded to Inset Grouped Cell Cards) */
 .note-item {
-  border-radius: 18px;
+  border-radius: var(--surface-radius);
   background: var(--card-bg);
   border: 1px solid rgba(60, 60, 67, 0.08);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
@@ -6478,8 +6487,8 @@ body.eyecare-reader-body .reader-sync-info {
 
 /* Bookshelf / Reader Cards */
 .book-card {
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--surface-radius);
+  border: 1px solid transparent;
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
@@ -6505,8 +6514,8 @@ body.eyecare-reader-body .reader-sync-info {
 
 /* Bookmarks & Resources Cards */
 .bookmark-card {
-  border-radius: 18px;
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: var(--surface-radius);
+  border: 1px solid transparent;
   box-shadow: 0 3px 14px rgba(0, 0, 0, 0.03);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
@@ -7124,7 +7133,7 @@ body.eyecare-reader-body .heatmap-streak-badge {
   .heatmap-widget {
     padding: 12px 14px 10px;
     margin-bottom: 14px;
-    border-radius: 14px;
+    border-radius: var(--surface-radius);
   }
   
   .heatmap-header {
@@ -7225,7 +7234,7 @@ body.dark-reader-body .sheet-pull-handle {
 
   .nav-item.active {
     background: rgba(0, 102, 204, 0.08);
-    color: var(--accent-color, #0066CC);
+    color: var(--accent-color, #007AFF);
     font-weight: 600;
   }
 
@@ -7285,7 +7294,7 @@ body.dark-reader-body .sheet-pull-handle {
 /* 5. Prompt Card Badges & Button De-AI Toning */
 .prompt-badge-vars {
   background: rgba(0, 102, 204, 0.08) !important;
-  color: var(--accent-color, #0066CC) !important;
+  color: var(--accent-color, #007AFF) !important;
 }
 
 .prompt-badge-project {
@@ -7310,7 +7319,7 @@ body.dark-reader-body .sheet-pull-handle {
 
 .btn-prompt-send {
   background: rgba(0, 102, 204, 0.08);
-  color: var(--accent-color, #0066CC);
+  color: var(--accent-color, #007AFF);
   border: 1px solid rgba(0, 102, 204, 0.18);
 }
 
@@ -7336,7 +7345,7 @@ body.dark-reader-body .btn-prompt-send {
   margin-bottom: var(--space-3);
   border-radius: var(--radius-lg);
   background: var(--widget-bg, #ffffff);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
 }
 
 .skeleton-line {
@@ -7374,7 +7383,7 @@ body.dark-reader-body .skeleton-line {
   border-radius: var(--radius-md);
   border: 1px solid rgba(0, 102, 204, 0.18);
   background: var(--widget-bg, #ffffff);
-  color: var(--ios-blue, #0066CC);
+  color: var(--ios-blue, #007AFF);
   font-size: 15px;
   font-weight: 600;
   cursor: pointer;
@@ -7400,7 +7409,7 @@ body.dark-reader-body .list-load-more {
   z-index: 10000;
   padding: 10px 14px;
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  background: var(--ios-blue, #0066CC);
+  background: var(--ios-blue, #007AFF);
   color: #fff;
   font-size: 14px;
   font-weight: 600;
@@ -7427,7 +7436,7 @@ body.dark-reader-body .list-load-more {
 .confirm-dialog-card {
   width: min(88vw, 320px);
   padding: 24px 20px 18px;
-  border-radius: 18px;
+  border-radius: var(--surface-radius);
   background: #ffffff !important;
   color: #1c1c1e !important;
   border: 1px solid rgba(0, 0, 0, 0.08);
@@ -7566,7 +7575,7 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
 /* 全量资产备份与导出卡片 (Konsta iOS Inset Grouped) */
 .backup-section-card {
   background: rgba(120, 120, 128, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   border-radius: 16px;
   padding: 16px;
   display: flex;
@@ -7863,7 +7872,7 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(120, 120, 128, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   transition: all 0.15s ease;
 }
 
@@ -7964,7 +7973,7 @@ body.dark-reader-body .session-edit-input {
   padding: 12px 14px;
   border-radius: 14px;
   background: rgba(120, 120, 128, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
 }
 
 .bot-outreach-main { min-width: 0; }
@@ -8536,7 +8545,7 @@ body.eyecare-reader-body .offline-banner-content {
 /* ==================== 存储与离线韧性诊断 (Storage Diagnostics) ==================== */
 .storage-diagnostics-card {
   background: rgba(120, 120, 128, 0.06);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  border: 1px solid transparent;
   border-radius: 16px;
   padding: 14px 16px;
   display: flex;
@@ -8767,12 +8776,12 @@ body.dark-reader-body .k-mood-chip.active {
 
 /* ==================== Konsta iOS: 每日偶想 (Apple Journal Reflection Card) ==================== */
 .k-journal-card {
-  margin: 12px 0 10px;
-  padding: 14px 16px 16px;
+  margin: 14px 0 12px;
+  padding: 16px 18px 18px;
   background: var(--card-bg, #ffffff);
-  border: 1px solid rgba(60, 60, 67, 0.08);
-  border-radius: 18px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  border: 1px solid transparent;
+  border-radius: var(--surface-radius);
+  box-shadow: var(--card-shadow);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
@@ -8843,16 +8852,17 @@ body.dark-reader-body .k-mood-chip.active {
   position: relative;
   display: flex;
   align-items: center;
-  background: rgba(118, 118, 128, 0.08);
-  border-radius: 20px;
-  padding: 3px 4px 3px 12px;
-  height: 38px;
+  background: var(--card-bg, #ffffff);
+  border-radius: var(--radius-pill);
+  padding: 3px 4px 3px 14px;
+  height: 40px;
+  box-shadow: 0 2px 10px rgba(16, 24, 40, 0.07);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .k-journal-field:focus-within {
-  background: rgba(118, 118, 128, 0.12);
-  box-shadow: 0 0 0 2.5px rgba(0, 122, 255, 0.18);
+  background: var(--card-bg, #ffffff);
+  box-shadow: 0 2px 12px rgba(16, 24, 40, 0.09), 0 0 0 2.5px rgba(0, 122, 255, 0.18);
 }
 
 .k-journal-input {
@@ -8914,12 +8924,12 @@ body.dark-reader-body .k-spark-send-btn {
 
 /* ==================== Konsta iOS: 时光留痕 (Apple Inset Grouped Memory Card) ==================== */
 .k-memory-card {
-  margin-bottom: 14px;
+  margin-bottom: 16px;
   background: var(--card-bg, #ffffff);
-  border: 1px solid rgba(60, 60, 67, 0.08);
-  border-radius: 18px;
-  padding: 14px 16px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  border: 1px solid transparent;
+  border-radius: var(--surface-radius);
+  padding: 16px 18px;
+  box-shadow: var(--card-shadow);
   transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 

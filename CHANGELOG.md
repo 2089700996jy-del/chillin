@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T13:44:53.000Z · 提交数：351
+> 生成时间：2026-10-20T14:12:53.872Z · 提交数：352
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
+- **bot**: keep the companion's own outreach in chat memory
 - **bot**: attach record sources only when asked
 - **bot**: time follow-ups from the conversation
 - **bot**: let the companion follow up after a chat

@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.115 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.116 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端 (v2.5.112，Service Worker `chillin-v162`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0026 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端 (v2.5.112，Service Worker `chillin-v163`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0026 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -43,7 +43,7 @@
 * **零摩擦捕获 (Zero-Friction Capture)**：随手记 1 秒内完成记录，支持链接卡片与图片多图预览；**v2.5.97 起不再解析外链标题/封面**（第三方抓取对 Cloudflare 出口长期不可用，故整体移除该能力），无排版心理负担。
 * **常青生长与知识网络 (Evergreen Network)**：引入数字花园三阶生命周期（萌芽/生根/常青），支持 `[[双向维基链接]]` 与反向引用（Backlinks）上下文高亮反查，让碎片记录自发生长为知识森林。
 * **绝对自主与备份守卫 (Data Sovereignty & Guard)**：存储引擎升级至 IndexedDB 异步大容量接管，彻底突破 5MB 限制；内置一键打包全量 ZIP 备份与定时备份守卫提醒，真正做到数据永不丢失、随时可带走。
-* **去 AI 感的 Apple HIG 质感 (De-AI Craftsmanship)**：全站落地 Konsta iOS / Apple HIG 规范，自然纸感暖灰底色（`#F8F9FA`）、全矢量精巧 SVG、半屏抽屉（Bottom Sheet）与细致微动效，洗尽 AI 模板的浮躁廉价感。
+* **去 AI 感的 Apple HIG 质感 (De-AI Craftsmanship)**：全站落地 Konsta iOS / Apple HIG 规范，自然纸感暖灰底色（`#F8F9FA`）、全矢量精巧 SVG、半屏抽屉（Bottom Sheet）与细致微动效，洗尽 AI 模板的浮躁廉价感；v2.5.116 起强调色唯一化为 `#007AFF`，主表面去掉 1px 硬边框改两层柔和弥散阴影（`--surface-radius` 22px），热力图色阶收敛为 systemGreen 透明阶。
 
 ---
 

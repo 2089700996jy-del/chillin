@@ -8,9 +8,10 @@
 
 1. **容器卡片 (Inset Grouped)**：
    * 所有卡片（周记、随手记、笔记、书签、提示词、阅读书架）统一遵循 iOS Inset Grouped 设计标准；
-   * 圆角规范：主卡片统一使用 `border-radius: 16px ~ 18px`，微件与子元素使用 `10px ~ 12px`；
-   * 边框与微光：浅色模式下统一搭配浅透微边框 `border: 1px solid rgba(0, 0, 0, 0.05 ~ 0.06)`，杜绝生硬粗黑边框；
-   * 投影系统：使用柔和弥散阴影 `box-shadow: 0 4px 16px rgba(0, 0, 0, 0.03)`，悬停微升 `transform: translateY(-2px)`。
+   * 圆角规范：主表面统一使用 `var(--surface-radius)`（22px），微件与子元素使用 `10px ~ 12px`，胶囊一律 `var(--radius-pill)`；
+   * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 只为保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时用 `--surface-hairline`；
+   * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并微升 `transform: translateY(-2px)`；
+   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#007AFF`，对齐 iOS 系统蓝），不得再引入第二个蓝；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）。
 
 2. **Apple Spring 触感反馈微动效**：
    * 所有交互按钮（`.btn-primary`, `.btn-secondary`, `.fab-btn`, `.btn-chip`, `.prompt-chip` 等）必须提供真实的触感回弹；
@@ -89,8 +90,9 @@
 | 类别 | 令牌 |
 | :--- | :--- |
 | 间距 | `--space-1` 4px / `--space-2` 8px / `--space-3` 12px / `--space-4` 16px / `--space-5` 24px / `--space-6` 32px |
-| 圆角 | `--radius-sm` 10px / `--radius-md` 14px / `--radius-lg` 18px / `--radius-pill` 999px |
+| 圆角 | `--radius-sm` 10px / `--radius-md` 14px / `--radius-lg` 18px / `--radius-pill` 999px / `--surface-radius` 22px（主表面） |
 | 动效 | `--dur-fast` 0.18s / `--dur-base` 0.28s / `--ease-spring` `cubic-bezier(0.16, 1, 0.3, 1)` |
-| 颜色 | `--ios-blue` / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
+| 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
+| 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 约 8700 行、仍有 302 处 `!important`（多为 v2.5.30 之后叠加的覆写层）。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 约 9700 行、仍有 302 处 `!important`（多为 v2.5.30 之后叠加的覆写层）、约 516 处色值字面量待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
