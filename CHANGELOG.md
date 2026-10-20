@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T15:53:31.131Z · 提交数：357
+> 生成时间：2026-10-20T16:01:45.042Z · 提交数：358
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
+- **bot**: record WeChat photos into the garden as image feeds
 - **ui**: add an app-level dark theme with a manual switch
 - **bot**: keep the companion's own outreach in chat memory
 - **bot**: attach record sources only when asked

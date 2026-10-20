@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.121**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.122**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,18 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot 图片：aeskey 是 hex，密文解密后才是真图（v2.5.122）
+
+**动机**：v2.5.121 上线后请用户在微信里真发了一张照片，`wrangler tail` 抓到真实失败（这正是做线上验证的价值）。
+
+1. **线上失败原文**：`[bot-media] 图片下载失败 note=not-an-image:313904 shape={"keys":["aeskey","media","mid_size","thumb_size","thumb_height","thumb_width","hd_size"],"mediaType":"object","mediaLen":0,"mediaHost":"","aeskeyLen":32,"sizes":[3428,313888,313888]}` —— 下载本身成功（313904 = 313888 + 16，正好是 PKCS7 补一整块的密文长度），但 `aeskeyLen=32` 说明它是 **32 位十六进制**（= 16 字节），而旧代码只按 base64 解，长度不等于 16 就被判为「没有密钥」，于是密文永远嗅不出魔数。
+2. **修复**：`decodeAesKey` 同时接受 hex（32/48/64 位）与 base64，密钥长度支持 16/24/32 字节；`decryptClawImage` 的 IV 改为「`aeskey` 前 16 字节」（微信通例，AES-128 时即密钥本身，AES-256 时不再整段当 IV）。新增 `aesKeyKind()` 只报密钥种类与长度，供日志定位。
+3. **可诊断性**：失败原因码升级为 `not-an-image:<字节数>/<密钥种类>`、解密成功但魔数仍不对则 `.../after-<密钥种类>`；形状日志补上 `media` 的嵌套键名与最终认到的地址主机——**依然不记正文、不记密钥内容**。
+4. **回归门禁**：`tests/bot-claw.test.mjs` 新增「aeskey 兼容 32 位 hex 与 base64，AES-256 的 IV 仍取前 16 字节」，并把「图 + 文字」集成用例的密钥改为 hex（与线上真实形状一致）。
+5. **教训**：下载成功 ≠ 拿到图片；「密文长度 = 明文长度 + 16」是识别 PKCS7 密文的实用信号。
+
+**测试 228 → 229 用例（20 套件）**；README、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 微信 Bot 图片随手记（v2.5.121）
 

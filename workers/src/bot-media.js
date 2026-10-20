@@ -57,17 +57,33 @@ export function sniffImageMagic(bytes) {
     return '';
 }
 
-/** base64 的 aeskey → 16 字节密钥；长度不对就当作没有密钥 */
-function decodeAesKey(aeskey) {
+/**
+ * aeskey → 密钥字节。微信实测给的是 **32 位十六进制**（= 16 字节，AES-128），
+ * 也兼容 base64 与 32 字节（AES-256）的写法；长度不是 16/24/32 字节就当作没有密钥。
+ */
+export function decodeAesKey(aeskey) {
     const text = String(aeskey || '').trim();
     if (!text) return null;
+    if (/^[0-9a-fA-F]+$/.test(text) && text.length % 2 === 0 && text.length >= 32 && text.length <= 64) {
+        const key = new Uint8Array(text.length / 2);
+        for (let i = 0; i < key.length; i++) key[i] = parseInt(text.slice(i * 2, i * 2 + 2), 16);
+        return [16, 24, 32].includes(key.length) ? key : null;
+    }
     try {
         const raw = atob(text.replace(/-/g, '+').replace(/_/g, '/'));
-        if (raw.length !== 16) return null;
+        if (![16, 24, 32].includes(raw.length)) return null;
         return Uint8Array.from(raw, ch => ch.charCodeAt(0));
     } catch (err) {
         return null;
     }
+}
+
+/** 诊断用：说明 aeskey 是怎么被解读的（只报种类与长度，不报内容） */
+export function aesKeyKind(aeskey) {
+    const key = decodeAesKey(aeskey);
+    if (!key) return 'none:' + String(aeskey || '').length;
+    const hex = /^[0-9a-fA-F]+$/.test(String(aeskey || '').trim());
+    return (hex ? 'hex-' : 'base64-') + key.length;
 }
 
 export async function decryptClawImage(bytes, aeskey, cryptoImpl = crypto) {
@@ -75,7 +91,8 @@ export async function decryptClawImage(bytes, aeskey, cryptoImpl = crypto) {
     if (!key || !cryptoImpl || !cryptoImpl.subtle) return null;
     try {
         const imported = await cryptoImpl.subtle.importKey('raw', key, { name: 'AES-CBC' }, false, ['decrypt']);
-        const plain = await cryptoImpl.subtle.decrypt({ name: 'AES-CBC', iv: key }, imported, bytes);
+        // 微信通例：IV 取 aeskey 的前 16 字节（AES-128 时就是密钥本身）
+        const plain = await cryptoImpl.subtle.decrypt({ name: 'AES-CBC', iv: key.slice(0, 16) }, imported, bytes);
         return new Uint8Array(plain);
     } catch (err) {
         return null;
@@ -105,23 +122,27 @@ export async function downloadClawImage(imageItem, fetchImpl = fetch, options = 
     if (bytes.byteLength > MAX_IMAGE_BYTES) return { ok: false, note: 'too-large:' + bytes.byteLength };
     const plainMime = sniffImageMagic(bytes);
     if (plainMime) return { ok: true, bytes, mime: plainMime, note: 'plain' };
+    const kind = aesKeyKind(imageItem && imageItem.aeskey);
     const decrypted = await decryptClawImage(bytes, imageItem && imageItem.aeskey, options.cryptoImpl);
     if (decrypted) {
         const mime = sniffImageMagic(decrypted);
-        if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes' };
+        if (mime) return { ok: true, bytes: decrypted, mime, note: 'aes-' + kind };
+        return { ok: false, note: 'not-an-image:' + bytes.byteLength + '/after-' + kind };
     }
-    return { ok: false, note: 'not-an-image:' + bytes.byteLength };
+    return { ok: false, note: 'not-an-image:' + bytes.byteLength + '/' + kind };
 }
 
 /** 诊断用：只输出字段形状（键名、长度、URL 主机），供日志确认协议，不含正文与密钥内容 */
 export function describeClawImage(imageItem) {
     const item = imageItem || {};
     const media = item.media;
+    const url = resolveClawImageUrl(item);
     return {
         keys: Object.keys(item),
         mediaType: typeof media,
+        mediaKeys: media && typeof media === 'object' ? Object.keys(media) : [],
         mediaLen: typeof media === 'string' ? media.length : 0,
-        mediaHost: isHttpUrl(media) ? new URL(media).host : '',
+        mediaHost: url ? new URL(url).host : '',
         aeskeyLen: String(item.aeskey || '').length,
         sizes: [item.thumb_size, item.mid_size, item.hd_size].map(v => Number(v) || 0)
     };

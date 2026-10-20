@@ -22,7 +22,9 @@ import {
     extractClawImageItems,
     resolveClawImageUrl,
     sniffImageMagic,
-    decryptClawImage
+    decryptClawImage,
+    decodeAesKey,
+    aesKeyKind
 } from '../workers/src/bot-media.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
@@ -635,9 +637,9 @@ function mediaEnv(db, puts) {
     };
 }
 
-async function encryptBytes(bytes, keyBytes) {
+async function encryptBytes(bytes, keyBytes, iv = keyBytes.slice(0, 16)) {
     const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'AES-CBC' }, false, ['encrypt']);
-    const out = await crypto.subtle.encrypt({ name: 'AES-CBC', iv: keyBytes }, key, bytes);
+    const out = await crypto.subtle.encrypt({ name: 'AES-CBC', iv }, key, bytes);
     return new Uint8Array(out);
 }
 
@@ -670,6 +672,26 @@ test('ClawBot - base64 aeskey 按 AES-128-CBC 解密（IV 即密钥），密钥�
     assert.equal(await decryptClawImage(cipher, 'not-base64!!'), null);
     assert.equal(await decryptClawImage(cipher, ''), null);
     assert.equal(await decryptClawImage(cipher, Buffer.from(new Uint8Array(8)).toString('base64')), null, '长度不是 16 字节的密钥要用不了');
+});
+
+test('ClawBot - aeskey 兼容 32 位 hex 与 base64，AES-256 的 IV 仍取前 16 字节', async () => {
+    const keyBytes = new Uint8Array(16).fill(0x2a);
+    const hexKey = Buffer.from(keyBytes).toString('hex');
+    assert.equal(hexKey.length, 32, '线上实测的 aeskey 就是 32 位 hex');
+    assert.equal(aesKeyKind(hexKey), 'hex-16');
+    assert.deepEqual(Array.from(decodeAesKey(hexKey)), Array.from(keyBytes));
+    assert.equal(aesKeyKind(Buffer.from(keyBytes).toString('base64')), 'base64-16');
+    assert.equal(aesKeyKind(''), 'none:0');
+    assert.equal(decodeAesKey('not-base64!!'), null);
+    assert.equal(decodeAesKey('0011223344'), null, '长度不足 16 字节的 hex 不是密钥');
+
+    const cipher = await encryptBytes(PNG_BYTES, keyBytes);
+    assert.equal(sniffImageMagic(await decryptClawImage(cipher, hexKey)), 'image/png', 'hex 密钥必须能解开');
+    const key32 = new Uint8Array(32).fill(0x11);
+    const hex32 = Buffer.from(key32).toString('hex');
+    assert.equal(aesKeyKind(hex32), 'hex-32');
+    const cipher32 = await encryptBytes(PNG_BYTES, key32);
+    assert.equal(sniffImageMagic(await decryptClawImage(cipher32, hex32)), 'image/png', 'AES-256 用前 16 字节当 IV');
 });
 
 integration('ClawBot - 微信发图片落成带图随手记并回复，不经模型', async () => {
@@ -711,7 +733,7 @@ integration('ClawBot - 图 + 文字时文字成为随手记正文，AES 加密�
     const item = imageMessage();
     item.item_list = [
         { type: 1, msg_id: 'CAP-1', text_item: { text: '今晚的月亮' } },
-        { type: 2, msg_id: 'ENC-1', image_item: { aeskey: Buffer.from(keyBytes).toString('base64'), media: 'https://cdn.example/secret.bin' } }
+        { type: 2, msg_id: 'ENC-1', image_item: { aeskey: Buffer.from(keyBytes).toString('hex'), media: 'https://cdn.example/secret.bin' } }
     ];
     const st = stubFetch({
         '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-ENC', msgs: [item] } }),
