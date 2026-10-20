@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T11:46:34.506Z · 提交数：345
+> 生成时间：2026-10-20T12:58:39.617Z · 提交数：346
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
+- **bot**: expose the companion profile in-app with edit and forget
 - **bot**: make ClawBot chat-first with a private companion memory
 - **bot**: add the WeChat ClawBot iLink integration and drop the WeChat Work path
 

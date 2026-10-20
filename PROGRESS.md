@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.109**（Worker 已部署、D1 迁移 0001–0025 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.110**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0025`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0026`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -65,9 +65,22 @@
 | `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流 |
 | `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删）+ 应用内 `/api/bot/profile` 读写接口（增/改/单条遗忘/清空） |
 | `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
+| `workers/src/bot-outreach.js` | Bot 主动关怀：东八区 10:00–21:00 时窗内每天至多一次的随机开口、久未说话与只用 3–180 天前旧素材的门禁、模型 SKIP 与概率闸门、账号级开关与发送审计 |
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot 的主动关怀（v2.5.110）
+
+**问题**（用户需求）：Bot 只在被叫到时才存在，用户希望它「偶尔想起来什么跟我说一下」——要的是主动权与记挂感，不是定时推送。
+
+1. **实验先行**：先用真实 `bot_token` + **空 `context_token`** 调 iLink `sendmessage`（HTTP 200，用户确认收到），推翻了 `bot-claw.js` 里「回信必须回传入站消息的 context_token」的旧假设——Bot 可以自己先开口；该注释已随之修正。
+2. **新增 `migrations/0026_bot_outreach.sql`**：`bot_claw_accounts.outreach_enabled` 账号级开关 + `bot_outreach` 审计表（记录依据的 `ref_type/ref_id`、正文、结果与原因，一律软删、时间东八区）。
+3. **克制写进代码**（`workers/src/bot-outreach.js`）：东八区 10:00–21:00、每天至多一次、用户 3 小时没说话才允许、素材只取 3–180 天前的旧记录、LLM 有 SKIP 否决权、到点后仍以 0.65 概率决定（连续 4 天没发则免除）——绝大多数分钟只做几次廉价判断，环境没有模型时直接不动；正文落审计表但永不进日志。
+4. **两个开关，同一份状态**：微信里说「别主动找我 / 可以主动找我」；应用内「账号与安全」弹层新增「偶尔主动想起你」，读 `GET /api/bot/outreach`、切 `POST /api/bot/outreach`。
+5. **测试**：新增 `tests/bot-outreach.test.mjs`（16 用例：到点前后、每日上限、安静门禁、旧素材、随机闸门、SKIP、内容安全、发送失败、开关与接口）。
+
+**测试 187 → 203 用例（20 套件）**；README（模块数/迁移范围/测试布局表）、`.agents/rules/architecture.md`（模块表）、PROGRESS、架构报告同批同步。
 
 ### 应用内「关于我」档案可视编辑（v2.5.109）
 

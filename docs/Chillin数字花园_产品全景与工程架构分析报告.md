@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.109 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.110 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端 (v2.5.109，Service Worker `chillin-v156`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0025 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端 (v2.5.110，Service Worker `chillin-v157`，发布目录 `public/`) + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0025 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -62,7 +62,7 @@
 
 ```mermaid
 mindmap
-  root((Chillin 数字花园 v2.5.109))
+  root((Chillin 数字花园 v2.5.110))
     随手记 Feeds
       极速时间流
       链接卡片（仅展示，不解析）
@@ -263,19 +263,20 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `ai.js` / `rag.js` / `llm.js`：下沉独立 AI 路由，流式 SSE、多轮继承与 RAG 打分算法；
 * `audit.js`：定时 Cron 自动化内容违规扫描、隔离区备份与审计日志 180 天生命周期清理；
 * `bot-claw.js` / `bot-commands.js` / `bot-memory.js`：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等；配套的 chat-first 对话编排（默认聊天不落库，显式「记录：…」才入随手记）与私人记忆模块（对话上下文 + 「关于我」档案，一律软删，并暴露应用内 `/api/bot/profile` 读写接口与「账号与安全」弹层里的可视编辑区）；
+* `bot-outreach.js`：主动关怀的克制层——东八区 10:00–21:00 时窗内每天至多一次的随机开口、久未说话与只用 3–180 天前旧素材的门禁、模型 SKIP 否决权与概率闸门、账号级开关与逐条发送审计；
 * `maintenance.js`：按 Cron 表达式分流的定时任务编排——每分钟只跑 ClawBot 轮询，整点第 13 分才跑 UGC 扫描与各类清理。
 
-#### ⑤ 原生自动化测试套件 (19 套件 / 187 用例)
+#### ⑤ 原生自动化测试套件 (20 套件 / 203 用例)
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
-* **19 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`architecture`、`auth`、`backup`、`bot-claw`、`books`、`css`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
-* **187 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 先写缓存再返回**、文档与代码一致性门禁等；
+* **20 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`architecture`、`auth`、`backup`、`bot-claw`、`bot-outreach`、`books`、`css`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
+* **203 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 先写缓存再返回**、文档与代码一致性门禁等；
 * **测试全量执行耗时 < 1s**，保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通。
 
 ---
 
 ## 7. 竞品横向对比与差异化优势
 
-| 对比维度 | Notion | Flomo 浮墨笔记 | Obsidian | **Chillin (本项目 v2.5.109)** |
+| 对比维度 | Notion | Flomo 浮墨笔记 | Obsidian | **Chillin (本项目 v2.5.110)** |
 | :--- | :--- | :--- | :--- | :--- |
 | **首屏启动耗时** | 慢（2~4秒，庞大框架包） | 快（<1秒） | 中等（受本地插件影响） | **极快 (< 200ms 秒开，Zero-Build 纯原生)** |
 | **跨端与安装成本** | 需安装大型客户端 / 打开慢 | Web / 微信小程序 | 需自行配置多端同步或付费 | **原生 PWA，浏览器直达，零构建负担** |
@@ -323,7 +324,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 
 ## 9. 总结与商业价值评价
 
-**Chillin (v2.5.109)** 展现了一个现代个人心智工具的范本形态：
+**Chillin (v2.5.110)** 展现了一个现代个人心智工具的范本形态：
 
 1. **坚持 Zero-Build 的工程底气**：在前端工具链层层堆叠虚拟 DOM 与沉重捆绑包的今天，Chillin 坚守原生 ES Modules 与 Vanilla CSS，以极其克制优雅的代码实现了秒开、低功耗与无卡顿的极致性能。
 2. **原生触感与人文审美**：通过推倒模板化 AI 痕迹、引入 Konsta iOS / Apple HIG 规范，搭配手势灯箱、半屏抽屉与单行极简阅读器，产品处处散发着温暖的纸质感与工匠精神。

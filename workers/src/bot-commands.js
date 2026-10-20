@@ -48,6 +48,7 @@ export const BOT_HELP_TEXT = [
     '- 「问 问题」：结合你的记忆回答',
     '- 「你记得我什么」：查看「关于我」档案',
     '- 「忘记 关键词」：从档案里删掉这一条',
+    '- 「别主动找我 / 可以主动找我」：开关偶尔的主动关心',
     '- 「重置对话」：清空我们这次的对话上下文',
     '- 「帮助」：显示这条说明'
 ].join('\n');
@@ -62,6 +63,10 @@ const RECORD_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:(?:记录一下|记�
 const REMEMBER_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记住|记牢|\/remember)[\s:：]*([\s\S]+)$/i;
 /** 档案遗忘指令 */
 const FORGET_RE = /^(?:忘记|忘掉|\/forget)[\s:：]*([\s\S]+)$/i;
+
+/** 主动关怀开关：微信里一句话就能让它安静 / 重新开口（动态 import，避免与 bot-claw 形成环） */
+const OUTREACH_OFF_RE = /^(?:别主动找我|不要主动找我|先别主动找我|少主动找我|关掉主动关怀|关闭主动关怀|\/outreoff)$/;
+const OUTREACH_ON_RE = /^(?:可以主动找我|主动来找我|开启主动关怀|打开主动关怀|可以主动关心我|\/outreon)$/;
 const FORGET_ALL_RE = /^(?:忘记全部|清空档案|清空关于我|\/forgetall)$/i;
 const PROFILE_VIEW_RE = /^(?:你记得我什么|你记住了我什么|我的档案|查看档案|\/profile)$/i;
 const RESET_RE = /^(?:重置对话|清空对话|重置上下文|清空上下文|\/reset|\/clear)$/i;
@@ -248,6 +253,17 @@ async function runForget(db, userId, req) {
 export async function runCommand(env, db, userId, content) {
     const text = String(content || '').trim();
     if (HELP_RE.test(text)) return BOT_HELP_TEXT;
+
+    if (OUTREACH_OFF_RE.test(text)) {
+        const mod = await import('./bot-outreach.js');
+        await mod.setOutreachEnabled(db, userId, false);
+        return '好，我安静一点，不再主动找你。想我了就说「可以主动找我」。';
+    }
+    if (OUTREACH_ON_RE.test(text)) {
+        const mod = await import('./bot-outreach.js');
+        await mod.setOutreachEnabled(db, userId, true);
+        return '好，那我偶尔想起什么就跟你说一句——一天最多一次，你随时可以让我安静。';
+    }
     if (PROFILE_VIEW_RE.test(text)) return runProfileView(db, userId);
 
     const forget = parseForgetCommand(text);

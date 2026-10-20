@@ -9,7 +9,9 @@
  *         GET  /ilink/bot/get_qrcode_status?qrcode=… -> wait|scaned|confirmed|expired…
  *   收信：POST /ilink/bot/getupdates（长轮询，实测无消息时服务端约 18s 返回），
  *         响应里的 get_updates_buf 是必须持久化的游标。
- *   回信：POST /ilink/bot/sendmessage，必须回传入站消息的 context_token。
+ *   回信：POST /ilink/bot/sendmessage。带上来信消息的 context_token 表示「接着这句话回」；
+ *         置空同样能送达（v2.5.110 实测：无人说话时用空 context_token 主动开口，HTTP 200 且用户收到），
+ *         这是 bot-outreach 主动关怀的传输基础。
  *
  * 分层：
  * - 传输层：上面几个纯函数，全部可注入 fetchImpl，便于离线单测。

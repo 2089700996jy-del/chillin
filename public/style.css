@@ -7954,6 +7954,45 @@ body.dark-reader-body .session-edit-input {
   color: inherit;
 }
 
+/* 主动关怀开关：与「关于我」档案同一区块，复用 session 视觉语言 */
+.bot-outreach-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(120, 120, 128, 0.06);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.bot-outreach-main { min-width: 0; }
+
+.bot-outreach-title { font-size: 14.5px; font-weight: 500; }
+
+.bot-outreach-hint {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary, rgba(60, 60, 67, 0.6));
+}
+
+#btn-bot-outreach {
+  flex: 0 0 auto;
+  font-size: 13.5px;
+  font-weight: 500;
+  color: var(--accent-color, #007aff);
+}
+
+#btn-bot-outreach.is-on { color: var(--ios-green, #34c759); }
+#btn-bot-outreach:disabled { opacity: 0.45; }
+
+body.dark-reader-body .bot-outreach-row {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .security-actions {
   display: flex;
   justify-content: space-between;

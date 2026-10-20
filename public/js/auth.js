@@ -282,6 +282,7 @@ export function initAuthUI() {
         if (e.key === 'Enter') { e.preventDefault(); addBotProfileFromInput(); }
     });
     document.getElementById('btn-bot-profile-clear')?.addEventListener('click', clearBotProfileAll);
+    document.getElementById('btn-bot-outreach')?.addEventListener('click', toggleBotOutreach);
     document.getElementById('btn-enable-push')?.addEventListener('click', registerPushNotification);
     document.getElementById('btn-test-push')?.addEventListener('click', sendTestNotification);
 
@@ -502,6 +503,7 @@ export async function openSecurityModal() {
     updatePushNotificationStatus();
     updateBackupGuardUI();
     loadBotProfile();
+    loadBotOutreach();
     const container = document.getElementById('session-list');
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
@@ -826,5 +828,59 @@ async function clearBotProfileAll() {
         await loadBotProfile();
     } catch (e) {
         showToast('操作失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+let botOutreachBusy = false;
+
+function renderBotOutreach(state) {
+    const btn = document.getElementById('btn-bot-outreach');
+    const hint = document.getElementById('bot-outreach-hint');
+    if (!btn || !hint) return;
+    const bound = !!(state && state.bound);
+    const enabled = !!(state && state.enabled);
+    btn.disabled = !bound;
+    btn.setAttribute('aria-pressed', enabled ? 'true' : 'false');
+    btn.classList.toggle('is-on', bound && enabled);
+    btn.textContent = !bound ? '未绑定微信' : (enabled ? '已开启' : '已关闭');
+    if (!bound) {
+        hint.textContent = '绑定微信 ClawBot 后，它才能在没人说话时偶尔想起你的一条旧记录。';
+    } else if (enabled) {
+        hint.textContent = '每天最多一次，10:00–21:00 之间，只在你 3 小时没说话、且翻到 3 天前旧记录时才会开口。';
+    } else {
+        hint.textContent = '已关闭，它不会再主动开口。在微信里说「可以主动找我」也能恢复。';
+    }
+}
+
+export async function loadBotOutreach() {
+    const btn = document.getElementById('btn-bot-outreach');
+    const hint = document.getElementById('bot-outreach-hint');
+    if (!btn || !hint) return;
+    hint.textContent = '正在读取状态…';
+    try {
+        renderBotOutreach(await apiRequest('/api/bot/outreach'));
+    } catch (e) {
+        btn.disabled = true;
+        hint.textContent = '状态读取失败，请稍后重试';
+    }
+}
+
+async function toggleBotOutreach() {
+    if (botOutreachBusy) return;
+    const btn = document.getElementById('btn-bot-outreach');
+    const hint = document.getElementById('bot-outreach-hint');
+    botOutreachBusy = true;
+    if (btn) btn.disabled = true;
+    try {
+        const current = await apiRequest('/api/bot/outreach');
+        const next = !(current && current.enabled);
+        renderBotOutreach(await apiRequest('/api/bot/outreach', { method: 'POST', body: JSON.stringify({ enabled: next }) }));
+        showToast(next ? '已开启主动关怀' : '已关闭主动关怀', 'success');
+    } catch (e) {
+        if (hint) hint.textContent = '设置失败，请稍后重试';
+        showToast('设置失败：' + (e && e.message ? e.message : e), 'warn');
+    } finally {
+        botOutreachBusy = false;
+        if (btn) btn.disabled = false;
     }
 }

@@ -77,10 +77,11 @@ import {
 } from './src/garden-echo.js';
 import { handleClawApi } from './src/bot-claw.js';
 import { handleBotProfileApi } from './src/bot-memory.js';
+import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.109';
+const APP_VERSION = '2.5.110';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -143,6 +144,8 @@ async function router(path, method, request, env, ctx) {
 
     // 「关于我」个人档案：应用内查看/编辑/遗忘，同一份记忆的第二个入口
     if (path.startsWith('/api/bot/profile')) return handleBotProfileApi(request, env, url, db, userId);
+    // 主动关怀：应用内开关「偶尔主动想起你」，与微信里一句话开关共用同一份状态
+    if (path.startsWith('/api/bot/outreach')) return handleBotOutreachApi(request, env, url, db, userId);
 
     // ── 账号与文件 ──
     if (path === '/api/upload' && method === 'POST') return handleUpload(request, env, db, userId);
