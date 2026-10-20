@@ -463,7 +463,7 @@ test('时间基准 - 迁移文件的 created_at/updated_at 默认值不得再引
     );
 });
 
-test('Security - 表名助手对未知表名 fail-closed（SQL 标识符不能靠调用方自觉）', async () => {
+integration('Security - 表名助手对未知表名 fail-closed（SQL 标识符不能靠调用方自觉）', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
 
