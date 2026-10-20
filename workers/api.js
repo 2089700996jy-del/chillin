@@ -79,7 +79,7 @@ import { handleClawApi } from './src/bot-claw.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.107';
+const APP_VERSION = '2.5.108';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;

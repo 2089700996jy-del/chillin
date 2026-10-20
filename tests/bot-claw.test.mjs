@@ -19,6 +19,14 @@ import {
     pollClawAccounts
 } from '../workers/src/bot-claw.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
+import {
+    parseRecordCommand,
+    parseRememberCommand,
+    parseForgetCommand,
+    buildBotReply,
+    BOT_HELP_TEXT
+} from '../workers/src/bot-commands.js';
+import { loadChatContext, listProfile } from '../workers/src/bot-memory.js';
 
 /**
  * 微信 ClawBot（官方 iLink 协议）：传输层纯函数 + D1 接入层 + 每分钟长轮询。
@@ -325,7 +333,7 @@ integration('ClawBot - 网关把 /api/bot/claw 挂在登录态之后（未登录
     assert.equal(res.status, 401);
 });
 
-integration('ClawBot - 长轮询把消息落成随手记并回复，游标同时持久化', async () => {
+integration('ClawBot - 长轮询默认只聊天：普通消息不落库，游标仍持久化', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedAccount(db);
@@ -335,9 +343,14 @@ integration('ClawBot - 长轮询把消息落成随手记并回复，游标同时
     });
     await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
 
-    const feed = await db.prepare('SELECT content, type FROM quick_feeds').first();
-    assert.equal(feed.content, '今晚手冲咖啡，水温 92 度');
-    assert.equal(feed.type, 'text');
+    // 意图反转的核心：默认路径一句业务数据都不写
+    const feeds = await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first();
+    assert.equal(feeds.n, 0, '闲聊绝不能落进随手记');
+    const turns = await db.prepare('SELECT role, content FROM bot_chat_turns ORDER BY id').all();
+    assert.equal(turns.results.length, 2, '用户与助手各留一条对话上下文');
+    assert.equal(turns.results[0].role, 'user');
+    assert.equal(turns.results[0].content, '今晚手冲咖啡，水温 92 度');
+    assert.equal(turns.results[1].role, 'assistant');
 
     const row = await db.prepare('SELECT cursor, last_poll_at FROM bot_claw_accounts WHERE id = 1').first();
     assert.equal(row.cursor, 'CURSOR-1');
@@ -349,7 +362,10 @@ integration('ClawBot - 长轮询把消息落成随手记并回复，游标同时
     assert.ok(send, '必须回一条消息');
     assert.equal(send.body.msg.context_token, 'CTX-1');
     assert.equal(send.body.msg.to_user_id, 'owner@im.wechat');
-    assert.match(send.body.msg.item_list[0].text_item.text, /随手记/);
+    assert.ok(
+        !/已存入|随手记/.test(send.body.msg.item_list[0].text_item.text),
+        '没写库就不该宣称保存：' + send.body.msg.item_list[0].text_item.text
+    );
 });
 
 integration('ClawBot - 同一条消息重复投递只处理一次（uint64 丢精度也能排重）', async () => {
@@ -365,8 +381,8 @@ integration('ClawBot - 同一条消息重复投递只处理一次（uint64 丢�
     await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
     await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
 
-    const count = await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first();
-    assert.equal(count.n, 1);
+    const count = await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first();
+    assert.equal(count.n, 2, '重复投递只应产生一组对话');
     assert.equal(st.calls.filter(c => c.url.endsWith('/sendmessage')).length, 1);
 });
 
@@ -459,12 +475,107 @@ integration('ClawBot - 一次 cron 调用内持续拉取，中途到达的消息
 
     const polls = st.calls.filter(c => c.url.endsWith('/getupdates')).length;
     assert.ok(polls >= 2, '预算内应继续拉取，实测 ' + polls + ' 轮');
-    const feed = await db.prepare('SELECT content FROM quick_feeds').first();
-    assert.equal(feed.content, '今晚手冲咖啡，水温 92 度');
+    const turns = await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first();
+    assert.equal(turns.n, 2, '同一条消息同一调用内只处理一次');
     assert.equal(st.calls.filter(c => c.url.endsWith('/sendmessage')).length, 1, '同一条消息同一调用内只回一次');
 
     // 预算为 0 时必须只拉一轮，循环不能空转
     st.calls.length = 0;
     await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
     assert.equal(st.calls.filter(c => c.url.endsWith('/getupdates')).length, 1);
+});
+
+// ── 私人伴侣：意图分流、个人档案与对话上下文 ──────────────────────────────
+
+test('Bot - 记录/记住/忘记只认显式写法，含糊语气一律不判为写入', () => {
+    assert.equal(parseRecordCommand('记录：今晚手冲咖啡，水温 92 度'), '今晚手冲咖啡，水温 92 度');
+    assert.equal(parseRecordCommand('记一下 明天买牛奶'), '明天买牛奶');
+    assert.equal(parseRecordCommand('记录一下今天开会被夸了'), '今天开会被夸了');
+    assert.equal(parseRecordCommand('帮我记录：周四复诊'), '周四复诊');
+    assert.equal(parseRecordCommand('今天天气不错'), null);
+    assert.equal(parseRecordCommand('记录了这件事'), null, '叙述句不是指令');
+
+    assert.equal(parseRememberCommand('记住：我不吃香菜'), '我不吃香菜');
+    assert.equal(parseRememberCommand('记住我不吃香菜'), '我不吃香菜');
+    assert.equal(parseRememberCommand('记住'), null, '没有内容不写档案');
+    assert.equal(parseRememberCommand('我记得你说过'), null);
+
+    assert.deepEqual(parseForgetCommand('忘记 香菜'), { all: false, keyword: '香菜' });
+    assert.deepEqual(parseForgetCommand('清空档案'), { all: true, keyword: '' });
+    assert.equal(parseForgetCommand('忘了吧'), null, '「忘了吧」是语气词，不是遗忘指令');
+});
+
+test('Bot - 帮助文案不再宣称「直接发文字存入随手记」', () => {
+    assert.ok(!/直接发文字/.test(BOT_HELP_TEXT), '意图反转后帮助文案必须改写');
+    assert.match(BOT_HELP_TEXT, /记录：/);
+    assert.match(BOT_HELP_TEXT, /重置对话/);
+});
+
+integration('Bot - 显式「记录：…」才落随手记，闲聊只留对话上下文', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const chat = await buildBotReply({}, db, 1, '今天天气不错');
+    assert.ok(!/已存入|随手记/.test(chat), '闲聊回复不该宣称保存，实际：' + chat);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '闲聊绝不落库');
+
+    const saved = await buildBotReply({}, db, 1, '记录：今晚手冲咖啡，水温 92 度');
+    assert.match(saved, /随手记/);
+    const feed = await db.prepare('SELECT content, type FROM quick_feeds').first();
+    assert.equal(feed.content, '今晚手冲咖啡，水温 92 度');
+    assert.equal(feed.type, 'text');
+    const turns = await db.prepare('SELECT role FROM bot_chat_turns ORDER BY id').all();
+    assert.equal(turns.results.length, 4, '闲聊与记录各留下一组对话');
+});
+
+integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（全程软删）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    assert.match(await buildBotReply({}, db, 1, '记住：我不吃香菜'), /我记住了/);
+    assert.match(await buildBotReply({}, db, 1, '记住：我不吃香菜'), /已经记得/);
+    const items = await listProfile(db, 1);
+    assert.equal(items.length, 1, '重复写入不得生成第二条');
+
+    assert.match(await buildBotReply({}, db, 1, '你记得我什么'), /不吃香菜/);
+    assert.match(await buildBotReply({}, db, 1, '忘记 香菜'), /已忘记 1 条/);
+    const row = await db.prepare('SELECT is_deleted FROM bot_profile WHERE id = ?1').bind(items[0].id).first();
+    assert.equal(row.is_deleted, 1, '遗忘必须是软删');
+    assert.equal((await listProfile(db, 1)).length, 0);
+    assert.match(await buildBotReply({}, db, 1, '你记得我什么'), /还没有你的档案/);
+});
+
+integration('Bot - 重置对话只清上下文，不动档案与花园记录', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await buildBotReply({}, db, 1, '记住：我喜欢雨天');
+    await buildBotReply({}, db, 1, '记录：明天买牛奶');
+    assert.ok((await loadChatContext(db, 1)).length > 0);
+
+    assert.match(await buildBotReply({}, db, 1, '重置对话'), /清空/);
+    assert.equal((await loadChatContext(db, 1)).length, 0);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns WHERE is_deleted = 0').first()).n, 0);
+    assert.ok((await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first()).n > 0, '重置必须软删，行还在');
+    assert.equal((await listProfile(db, 1)).length, 1, '档案不受影响');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1, '花园记录不受影响');
+});
+
+integration('Bot - 提示词带人格边界、档案与最近上下文（旧→新）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await buildBotReply({}, db, 1, '记住：我习惯晚上写周记');
+    await buildBotReply({}, db, 1, '最近有点累');
+
+    let messages = null;
+    const env = { AI: { run: async (model, opts) => { messages = opts.messages; return { response: '我在听。' }; } } };
+    assert.equal(await buildBotReply(env, db, 1, '在吗'), '我在听。');
+    assert.ok(messages, '必须真的调用模型');
+    assert.equal(messages[0].role, 'system');
+    assert.match(messages[0].content, /关于我/, '必须注入个人档案块');
+    assert.match(messages[0].content, /晚上写周记/);
+    assert.match(messages[0].content, /东八区/, '必须给模型时间锚点');
+    assert.match(messages[0].content, /不是存储工具/, '人格边界必须进提示词');
+    assert.equal(messages[messages.length - 1].content, '在吗');
+    const roles = messages.slice(1, -1).map((m) => m.role);
+    assert.deepEqual(roles, ['user', 'assistant', 'user', 'assistant'], '上下文按旧→新注入，实际：' + JSON.stringify(roles));
 });

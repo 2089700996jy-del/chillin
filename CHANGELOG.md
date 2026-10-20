@@ -1,13 +1,17 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-19T16:17:38.503Z · 提交数：342
+> 生成时间：2026-10-20T11:32:49.670Z · 提交数：343
 
 ## 2026-10-20
 
 ### ✨ 新功能
 
 - **bot**: add the WeChat ClawBot iLink integration and drop the WeChat Work path
+
+### 📝 文档
+
+- **report**: align the architecture report with v2.5.107, SW v154 and the ClawBot milestone
 
 ## 2026-10-19
 

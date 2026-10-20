@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-19。供后续会话快速接续。当前前端/Worker：**v2.5.107**（Worker 已部署、D1 迁移 0001–0024 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.108**（Worker 已部署、D1 迁移 0001–0025 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0024`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0025`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -62,11 +62,24 @@
 | `workers/src/rag.js` | 记忆检索：全表（含 prompts）索引、分词、多轮主题继承、打分 |
 | `workers/src/llm.js` | 模型集成：DeepSeek/Workers AI 调用、流式 SSE、内容合规审查 |
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
-| `workers/src/bot-commands.js` | Bot 指令大脑（ClawBot 专用）：幂等排重、文字/链接入随手记、「搜 X」检索记忆、「问 X」走 Echo AI 与独立限流 |
+| `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流 |
+| `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删） |
 | `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 ClawBot 改造为 chat-first 私人伴侣（v2.5.108）
+
+**问题**（用户需求）：Bot 此前是「指令驱动的存储工具」——`buildBotReply` 的最后一步把**任何**没命中指令的文本都写成随手记，于是「今天天气不错」「测试速度」这类闲聊全部污染花园与 RAG；同时每条消息都是孤立回合，Bot 既不认识用户，也不记得上一句。
+
+1. **意图反转（架构不变量：默认无副作用）**：新增 `migrations/0025_bot_memory.sql`（`bot_chat_turns` + `bot_profile`）与 `workers/src/bot-memory.js`；重写 `workers/src/bot-commands.js`——只有确定性正则指令会写库，聊天路径一个 INSERT 都没有：显式「记录：…」才落随手记，「记住：… / 忘记 … / 你记得我什么」维护「关于我」档案（一律软删），「重置对话」只清上下文、档案与花园记录不受影响。
+2. **短多轮上下文**：每次回复前读最近 8 轮（单条 ≤2000 字、合计 ≤2400 字预算，越界即停），system 块注入东八区时间锚点 +「关于我」档案（≤1200 字）+ 花园 RAG 片段；检索与问答路径也带上 history 做指代继承。
+3. **人格边界写进提示词**：不做存储工具（除显式指令外不得声称保存/记住）、倾诉先共情、不了解就说不了解、篇幅 150 字内；内容安全门禁不削弱，只把硬拒话术改成温和措辞。全部日志仍只打 id/错误，绝不打聊天正文。
+4. **帮助文案与断言同步**：`BOT_HELP_TEXT` 不再宣称「直接发文字存入随手记」。
+5. **测试**：`tests/bot-claw.test.mjs` 19 → **25 用例**（原「长轮询落成随手记」改为覆盖「默认不落库」，新增意图分流单测、档案写入/去重/查看/遗忘、重置只清上下文、提示词注入断言）。
+
+**测试 177 → 183 用例（19 套件）**；README（workers/src 17→18 模块、迁移 0001–0025、测试布局表）、`.agents/rules/architecture.md`（模块表 + bot-memory）、PROGRESS、架构报告同批同步。
 
 ### 微信 ClawBot（iLink 协议）接入（工作树内，未发布）
 
