@@ -8,7 +8,8 @@
  *   1. **默认无副作用**——普通聊天只产生回复，绝不写库；写入只有确定性的显式指令一条路，
  *      宁可少记、不可错记。
  *   2. 三层记忆各司其职：当前对话（bot-memory）→ 个人档案（bot-memory）→ 花园事实（rag）。
- *   3. 脚注只在「真的动了数据」或「用户主动索要依据」时出现——默认聊天保持干净。
+ *   3. 脚注只在「真的动了数据」或「用户主动索要依据」时出现——默认聊天保持干净，
+ *      且来源标签统一成 `[类型] YYYY-MM-DD`（标题重复日期时不重复展示）。
  *   4. 聊天正文永不进日志（只记 id 与错误信息）。
  *
  * 指令（确定性正则，先垫一层）：
@@ -17,7 +18,7 @@
  */
 
 import { handlePostFeed } from './garden-resources.js';
-import { retrieveGardenMemories, generateFallbackReply } from './rag.js';
+import { retrieveGardenMemories, generateFallbackReply, parseDateToYmd } from './rag.js';
 import { callCustomLlm, callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
 import {
@@ -101,6 +102,20 @@ export function parseForgetCommand(text) {
     return keyword ? { all: false, keyword } : null;
 }
 
+/**
+ * 来源标签统一成一种：日期一律 `YYYY-MM-DD`，标题只在提供额外信息时追加。
+ * 有些周记的标题本身就是日期（`2026.5.21`），与 date 重复时只留一种写法，
+ * 避免同一条依据行里出现 `2026-08-31` 与 `2026.5.21` 混排。
+ */
+export function sourceLabel(source) {
+    const s = source || {};
+    const type = String(s.type || '记录');
+    const date = String(s.date || '').trim();
+    const title = String(s.title || '').trim();
+    const extra = title && title !== date && parseDateToYmd(title) !== date;
+    return '[' + type + '] ' + (date || title || '未知日期') + (extra ? ' · ' + title : '');
+}
+
 /** 按字节截断，且保证结果不超过 maxBytes（先扣掉省略号本身） */
 export function truncateUtf8(text, maxBytes) {
     const source = String(text);
@@ -140,8 +155,7 @@ function nowInEast8() {
 }
 
 function formatSources(sources) {
-    return sources.map((s, i) => (i + 1) + '. [' + s.type + '] ' + (s.title ? s.title + ' · ' : '')
-        + s.date + '\n   ' + s.snippet).join('\n');
+    return sources.map((s, i) => (i + 1) + '. ' + sourceLabel(s) + '\n   ' + s.snippet).join('\n');
 }
 
 export async function runSearch(db, userId, query) {
@@ -173,7 +187,7 @@ export async function runAsk(env, db, userId, question) {
     const sources = memory.sources || [];
     if (!sources.length || !wantsEvidence(question)) return moderated.text;
     return moderated.text + '\n\n---\n依据：'
-        + sources.slice(0, 3).map(s => '[' + s.type + '] ' + (s.title || s.date)).join('、');
+        + sources.slice(0, 3).map(sourceLabel).join('、');
 }
 
 /** 聊天人格与边界：默认路径，只说话、不动数据 */
@@ -222,7 +236,7 @@ async function runChat(env, db, userId, text, history) {
     if (!moderated.ok) return '这个话题我不太方便展开，我们换个轻松的聊？';
     if (!sources.length || !wantsEvidence(text)) return moderated.text;
     return moderated.text + '\n\n---\n依据：'
-        + sources.slice(0, 3).map(s => '[' + s.type + '] ' + (s.title || s.date)).join('、');
+        + sources.slice(0, 3).map(sourceLabel).join('、');
 }
 
 async function runRecord(db, userId, content) {

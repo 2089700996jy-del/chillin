@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.113**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.114**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -62,13 +62,23 @@
 | `workers/src/rag.js` | 记忆检索：全表（含 prompts）索引、分词、多轮主题继承、打分 |
 | `workers/src/llm.js` | 模型集成：DeepSeek/Workers AI 调用、流式 SSE、内容合规审查 |
 | `workers/src/audit.js` | 定时审计：Cron UGC 违规扫描与隔离区备份、过期 Session 清除 |
-| `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流、来源脚注只在用户追问依据时附上 |
+| `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流、来源脚注只在用户追问依据时附上（来源标签统一成 `[类型] YYYY-MM-DD`） |
 | `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删）+ 应用内 `/api/bot/profile` 读写接口（增/改/单条遗忘/清空） |
 | `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
 | `workers/src/bot-outreach.js` | Bot 主动关怀：东八区 10:00–22:30 时窗内每天至多一次的随机开口、刚聊完 30 分钟内不插嘴（6 小时内聊过则不等当天固定时刻，改在聊完 30–120 分钟内把最近对话当背景）与只用 3–180 天前旧素材的门禁、模型 SKIP 与概率闸门、账号级开关与发送审计 |
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 来源标签统一成一种日期写法（v2.5.114）
+
+**问题**（用户反馈）：依据行里日期格式混排——随手记显示 `2026-08-31`，而标题本身就是日期的周记显示 `2026.5.21`（脚注取的是 `title || date`）。
+
+1. **统一标签函数**：新增纯函数 `sourceLabel(source)`——日期一律 `YYYY-MM-DD`（复用 `rag.js` 的 `parseDateToYmd` 归一化），标题只在提供额外信息时追加（`[类型] 2026-05-21 · 读书笔记`）；标题归一化后与日期相同则不再重复展示；两者都缺时显示「未知日期」。
+2. **两条路径共用**：「依据：」脚注与「搜 X」的结果列表都改走 `sourceLabel`，不会再出现两种写法。
+3. **测试**：`tests/bot-claw.test.mjs` 31 → 32 用例（新增标签归一化用例，并在既有脚注用例里断言日期必须是 `YYYY-MM-DD`）。
+
+**测试 209 → 210 用例（20 套件）**；README、`.agents/rules/architecture.md`、架构报告与 PROGRESS 同批更新。
 
 ### 依据脚注改成按需附上（v2.5.113）
 

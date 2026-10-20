@@ -25,6 +25,7 @@ import {
     parseForgetCommand,
     buildBotReply,
     wantsEvidence,
+    sourceLabel,
     BOT_HELP_TEXT
 } from '../workers/src/bot-commands.js';
 import {
@@ -529,6 +530,16 @@ test('Bot - 来源脚注按需触发：只有索要依据的问法才算', () =>
     assert.equal(wantsEvidence(''), false);
 });
 
+test('Bot - 来源标签统一成 [类型] YYYY-MM-DD，标题与日期重复时不重复展示', () => {
+    assert.equal(sourceLabel({ type: '随手记', date: '2026-08-31', title: '' }), '[随手记] 2026-08-31');
+    // 周记标题本身就是点分日期：归一化后与 date 相同，只留一种写法
+    assert.equal(sourceLabel({ type: '周记', date: '2026-05-21', title: '2026.5.21' }), '[周记] 2026-05-21');
+    assert.equal(sourceLabel({ type: '笔记', date: '2026-05-21', title: '读书笔记' }), '[笔记] 2026-05-21 · 读书笔记');
+    assert.equal(sourceLabel({ type: '笔记', date: '', title: '只有标题' }), '[笔记] 只有标题');
+    assert.equal(sourceLabel({ type: '笔记' }), '[笔记] 未知日期');
+    assert.equal(sourceLabel(null), '[记录] 未知日期');
+});
+
 integration('Bot - 默认聊天不附依据，追问来源时才带', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -544,6 +555,7 @@ integration('Bot - 默认聊天不附依据，追问来源时才带', async () =
     const asked = await buildBotReply(env, db, 1, '《人类简史》这个依据是什么');
     assert.match(asked, /依据：/, '追问来源时必须给出处');
     assert.match(asked, /\[随手记\]/);
+    assert.match(asked, /依据：.随手记. \d{4}-\d{2}-\d{2}/, '脚注日期必须统一成 YYYY-MM-DD，实际：' + asked);
 });
 
 integration('Bot - 显式「记录：…」才落随手记，闲聊只留对话上下文', async () => {
