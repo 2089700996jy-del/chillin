@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-21T16:47:27.637Z · 提交数：375
+> 生成时间：2026-10-21T16:55:50.012Z · 提交数：376
 
 ## 2026-10-22
 
@@ -11,6 +11,7 @@
 
 ### 🐛 缺陷修复
 
+- **bot**: clear stale poll errors and stop the bot denying its own abilities
 - **bot**: keep the link card cover when the reader answers with JSON
 
 ## 2026-10-21

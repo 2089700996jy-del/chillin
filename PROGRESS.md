@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.139**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.140**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -8,7 +8,7 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
+- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓封面/标题/详情做成卡片（单集详情取 `description`、缺失时用 `shownotes` 去标签，播客页取简介；v2.5.140 起不再抓时长），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
@@ -70,6 +70,16 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 链接卡片只装封面、标题、详情，不再抓时长（v2.5.140）
+
+1. **用户口径**：她在微信里看到单集速览回的是「vol.19 此情此景…／谐星聊天会 · 1:08:46」，明确说「需要抓取的是封面 标题 和详情 不是时间」。
+2. **改法**（`workers/src/bot-links.js`）：单集详情优先取页面自带 `__NEXT_DATA__` 的 `episode.description`（真实页面实测：vol.19 288 字、vol.611 567 字），缺失时把 `shownotes` 富文本去标签解实体（新增 `stripHtml`），再退 `og:description` / `description`，全都没有才用播客名兜底；`formatDuration` 与两处 `"duration"` 解析整块删除（导出与对应断言一并去掉），播客页本来就不碰时长——现在整个模块里没有时长逻辑了。
+3. **卡片与回信**：`summary` 仍是 `{title, description, cover, platform, icon}`，前端 `public/js/feeds.js` 的 `.rich-link-desc` 原样渲染详情（CSS 两行截断）；回信「🎧 <标题>」下一行就是详情，超过 160 字截断并补省略号（`LINK_DESC_MAX_CHARS`）。
+4. **线上真页面复核**（住宅 IP 抓 vol.19 / vol.611 两页喂新解析器）：详情分别为「本期主播： @单口喜剧周奇墨 …」与「本期主播：六兽、阿铖 … 03:06 刀匠学徒老张的师傅…」，封面 `image.xyzcdn.net/...` 各自正确，详情里不再拼接时长（vol.611 详情中出现的章节时间戳属于 shownotes 本身，保留）。
+5. **测试**：`tests/bot-claw.test.mjs` 70 → **71 用例**（新增「单集卡片给的是详情，不是时长」：结构化 description 优先、详情不混时长、shownotes 去标签解实体、超长截断带省略号；原 `formatDuration` 断言删除，其余涉及「播客名 · 时长」的断言改为「退回播客名」）。
+
+**测试 260 → 261 用例（20 套件）**。
 
 ### 通道状态不再骗人，Bot 也不再自称没有能力（v2.5.139）
 

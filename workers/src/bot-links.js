@@ -1,8 +1,11 @@
 /**
  * 微信 Bot 的小宇宙链接速览（v2.5.132）。
  *
- * 用户发来小宇宙链接时，服务端替她读一次页面的 og 元数据，单集回「标题 + 播客名 + 时长」、
- * 播客页回「播客名 + 简介」（绝不把页面上某个单集的时长按到播客头上），
+ * 用户发来小宇宙链接时，服务端替她读一次页面的 og 元数据，卡片只装三样东西：**封面、标题、详情**。
+ * 单集详情取结构化数据里的 `description`（没有就退回 `shownotes` 去标签，再退回 og:description，
+ * 最后用播客名兜底），播客页取 og:description 当简介。
+ * v2.5.140 起不再抓时长——用户明确说「要的是封面/标题/详情，不是时间」；
+ * 这条改动顺带消掉了老坑：播客页曾把页面上某个单集的时长按到播客头上（线上实测过「听播客，上小宇宙 · 1:13:16」）。
  * 并把卡片元数据放进「待存位」——她回「记录」才写成随手记（与图片共用同一条确认路径）。
  * 前端 public/js/feeds.js 早就支持结构化 quick_feeds.summary：只要把
  * {title, description, cover, platform, icon} 写进 summary，花园里这条记录就自动渲染成富链接卡片；
@@ -128,17 +131,6 @@ export function buildManualLinkCard(text) {
     return { url, meta };
 }
 
-/** 秒 → 1:49:52；超出合理区间（0 < s ≤ 4 天）返回空串 */
-export function formatDuration(seconds) {
-    const total = Math.floor(Number(seconds));
-    if (!Number.isFinite(total) || total <= 0 || total > 4 * 86400) return '';
-    const pad = (n) => String(n).padStart(2, '0');
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return (h ? h + ':' + pad(m) : String(m)) + ':' + pad(s);
-}
-
 function decodeEntities(value) {
     return String(value)
         .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
@@ -157,18 +149,21 @@ function metaContent(html, prop) {
     return '';
 }
 
+/** 把 shownotes 这类富文本压成纯文本：去标签、解实体、空白交给调用方压平 */
+function stripHtml(value) {
+    return decodeEntities(String(value || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
 function tagTitle(html) {
     const m = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
     return m ? decodeEntities(m[1].replace(/\s+/g, ' ').trim()) : '';
 }
 
 /**
- * 解析小宇宙页面：og:title 是标题，<title> 里的第二段是播客名，
- * 单集时长从页面内联 JSON 的 "duration" 抠（线上实测单集页第 104275 字节附近）。
- *
- * 播客页（kind: 'podcast'）不一样：页面上混着 33 个单集各自的 "duration"，抠第一个必然张冠李戴，
- * 所以它只取 og:description 当简介、绝不给时长（2026-10-21 线上实测：播客页会回
- * 「基本无害 Mostly Harmless」+「听播客，上小宇宙 · 1:13:16」，那个 1:13:16 其实是某一集的）。
+ * 解析小宇宙页面：og:title 是标题，页面自带的 `__NEXT_DATA__` 结构化字段优先。
+ * 卡片要「封面 / 标题 / 详情」三样，**不要时长**（v2.5.140）：
+ * 单集详情 = `episode.description`（没有则 `shownotes` 去标签，再退 og:description），播客名只在全都没有时兜底；
+ * 播客页（kind: 'podcast'）= og:description / description，绝不碰页面上那几十个单集的 "duration"。
  */
 /** 页面自带的 `__NEXT_DATA__` SSR 数据块（Next.js）：拿不到或 JSON 坏了都返回 null，绝不抛 */
 function parseNextData(html) {
@@ -206,18 +201,19 @@ export function parseXiaoyuzhouPage(html, options = {}) {
         description = (nextPodcast && nextPodcast.description)
             || metaContent(text, 'og:description') || metaContent(text, 'description');
     } else {
-        const duration = nextEpisode
-            ? formatDuration(nextEpisode.duration)
-            : formatDuration((text.match(/"duration"\s*:\s*(\d{1,7})/) || [])[1]);
-        description = [podcast, duration].filter(Boolean).join(' · ');
+        // 详情优先：结构化 description → shownotes 去标签 → og:description → 播客名兜底
+        description = (nextEpisode && (nextEpisode.description || stripHtml(nextEpisode.shownotes)))
+            || metaContent(text, 'og:description') || metaContent(text, 'description')
+            || podcast;
     }
     const nextCover = (nextEpisode && nextEpisode.image && (nextEpisode.image.picUrl || nextEpisode.image.largePicUrl))
         || (nextPodcast && nextPodcast.image && (nextPodcast.image.picUrl || nextPodcast.image.largePicUrl))
         || '';
+    const detail = description.replace(/\s+/g, ' ').trim();
     return {
         ok: true,
         title,
-        description: description.replace(/\s+/g, ' ').trim().slice(0, LINK_DESC_MAX_CHARS),
+        description: detail.length > LINK_DESC_MAX_CHARS ? detail.slice(0, LINK_DESC_MAX_CHARS - 1) + '…' : detail,
         cover: nextCover || metaContent(text, 'og:image') || metaContent(text, 'twitter:image')
     };
 }

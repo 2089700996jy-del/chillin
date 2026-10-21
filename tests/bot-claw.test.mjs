@@ -59,7 +59,7 @@ import {
     isAllowedOutboundUrl,
     parseXiaoyuzhouUrl,
     parseXiaoyuzhouPage,
-    formatDuration,
+    LINK_DESC_MAX_CHARS,
     handleClawLinkMessage,
     buildManualLinkCard,
     readerEndpoint,
@@ -1342,12 +1342,10 @@ const LZ_HTML = '<!doctype html><html><head>'
 test('Bot - 小宇宙链接只认白名单域名，标题与播客名从 og 与页面标题里取', () => {
     assert.equal(extractFirstUrl('看这个 ' + LZ_EPISODE + '。'), LZ_EPISODE, '中文句号不该被当成链接的一部分');
     assert.equal(extractFirstUrl('没有链接'), '');
-    assert.equal(formatDuration(6592), '1:49:52');
-    assert.equal(formatDuration(0), '');
     const parsed = parseXiaoyuzhouPage(LZ_HTML);
     assert.equal(parsed.ok, true);
     assert.equal(parsed.title, 'Ep204 未来生活指南｜刘德华给我发微信');
-    assert.equal(parsed.description, '基本无害 Mostly Harmless · 1:49:52');
+    assert.equal(parsed.description, '基本无害 Mostly Harmless', '页面没有详情时退回播客名，不再给时长');
     assert.equal(parsed.cover, 'https://image.xyzcdn.net/cover-abc');
     assert.deepEqual(parseXiaoyuzhouUrl(LZ_EPISODE), { kind: 'episode', id: '6a76ebabc4079d62c57f3b74', url: LZ_EPISODE });
     assert.equal(parseXiaoyuzhouUrl('https://example.com/episode/6a76ebabc4079d62c57f3b74'), null, '只认小宇宙域名');
@@ -1378,7 +1376,7 @@ test('Bot - 播客页取简介、不抠单集时长；站点模板尾巴不冒�
     assert.equal(xiaoyuzhouHostOf('http://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74'), 'www.xiaoyuzhoufm.com', '域名认得出，才能给出「只读 https」的提示');
     assert.equal(xiaoyuzhouHostOf('https://evil.example/episode/6a76ebabc4079d62c57f3b74'), '');
     const template = parseXiaoyuzhouPage(LZ_HTML.replace('基本无害 Mostly Harmless | 小宇宙', '小宇宙 | 小宇宙'));
-    assert.equal(template.description, '1:49:52', '站点模板文案不能冒充播客名');
+    assert.equal(template.description, '', '站点模板文案不能冒充播客名，详情与播客名都没有就留空');
 });
 
 test('Bot - 页面自带 __NEXT_DATA__ 时优先用结构化字段，坏 JSON 不炸', () => {
@@ -1395,7 +1393,7 @@ test('Bot - 页面自带 __NEXT_DATA__ 时优先用结构化字段，坏 JSON �
         + '<body><script id="__NEXT_DATA__" type="application/json">' + JSON.stringify(episodeData) + '</script></body></html>';
     const ep = parseXiaoyuzhouPage(episodeHtml);
     assert.equal(ep.title, 'Ep204 结构化标题', 'SSR 数据块比 og 优先');
-    assert.equal(ep.description, '基本无害 Mostly Harmless · 1:49:52');
+    assert.equal(ep.description, '节目简介', '单集详情取结构化 description，不再拼时长');
     assert.equal(ep.cover, 'https://image.xyzcdn.net/next-ep.jpg', '封面同样优先用结构化字段');
 
     const podcastData = { props: { pageProps: { podcast: {
@@ -1413,7 +1411,39 @@ test('Bot - 页面自带 __NEXT_DATA__ 时优先用结构化字段，坏 JSON �
     const broken = parseXiaoyuzhouPage(LZ_HTML.replace('</head>', '<script id="__NEXT_DATA__">{ 坏掉的 JSON</script></head>'));
     assert.equal(broken.ok, true, '坏 JSON 不能炸，要回落 og');
     assert.equal(broken.title, 'Ep204 未来生活指南｜刘德华给我发微信');
-    assert.equal(broken.description, '基本无害 Mostly Harmless · 1:49:52');
+    assert.equal(broken.description, '基本无害 Mostly Harmless');
+});
+
+test('Bot - 单集卡片给的是详情，不是时长（v2.5.140）', () => {
+    const withDetail = { props: { pageProps: { episode: {
+        title: 'vol.611 真·菜刀达人｜害！我和中华小当家，就差这把刀！',
+        duration: 5397,
+        description: '本期主播：六兽、阿铖 00:38 这期阿铖痛失原名？？？ 03:06 刀匠学徒老张的师傅竟然是新国作的老师？',
+        image: { picUrl: 'https://image.xyzcdn.net/ep.jpg' },
+        podcast: { title: '无聊斋' }
+    } } } };
+    const html = '<html><head><title>vol.611 - 无聊斋 | 小宇宙</title></head><body>'
+        + '<script id="__NEXT_DATA__">' + JSON.stringify(withDetail) + '</script></body></html>';
+    const card = parseXiaoyuzhouPage(html);
+    assert.equal(card.title, 'vol.611 真·菜刀达人｜害！我和中华小当家，就差这把刀！');
+    assert.match(card.description, /^本期主播：六兽、阿铖/, '详情用 episode.description');
+    assert.ok(!/1:29:57/.test(card.description), '详情里不能混进时长');
+    assert.equal(card.cover, 'https://image.xyzcdn.net/ep.jpg');
+
+    const shownotesOnly = { props: { pageProps: { episode: {
+        title: '只有 shownotes 的单集',
+        shownotes: '<p><span>第一段</span></p><p><a class="timestamp">00:38</a> <span>&amp; 第二段</span></p>',
+        podcast: { title: '无聊斋' }
+    } } } };
+    const html2 = '<html><head><title>只有 shownotes - 无聊斋 | 小宇宙</title></head><body>'
+        + '<script id="__NEXT_DATA__">' + JSON.stringify(shownotesOnly) + '</script></body></html>';
+    assert.equal(parseXiaoyuzhouPage(html2).description, '第一段 00:38 & 第二段', 'shownotes 详情要去标签、解实体');
+
+    const long = { props: { pageProps: { episode: { title: 'T', description: '详'.repeat(400), podcast: { title: 'P' } } } } };
+    const html3 = '<html><head><title>T - P | 小宇宙</title></head><body><script id="__NEXT_DATA__">' + JSON.stringify(long) + '</script></body></html>';
+    const clamped = parseXiaoyuzhouPage(html3).description;
+    assert.equal(clamped.length, LINK_DESC_MAX_CHARS, '过长的详情要截断');
+    assert.ok(clamped.endsWith('…'), '截断要留省略号');
 });
 
 integration('Bot - http 的小宇宙链接不沉默：说明只读 https，且一次都不出站', async () => {
@@ -1444,7 +1474,7 @@ integration('Bot - 小宇宙链接先给速览，回「记录」才落成带卡�
     });
     const reply = await handleClawLinkMessage(visionEnv(db, puts), db, 1, '这个不错 ' + LZ_EPISODE, st.impl);
     assert.match(reply, /Ep204 未来生活指南/, '回信要给标题');
-    assert.match(reply, /基本无害 Mostly Harmless · 1:49:52/, '回信要给播客名与时长');
+    assert.match(reply, /基本无害 Mostly Harmless/, '页面没有详情时回信退回播客名（不再给时长）');
     assert.match(reply, /记录/, '要告诉用户怎么确认');
     assert.ok(!/已存入/.test(reply), '没确认就不能说已存');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
@@ -1558,7 +1588,7 @@ integration('Bot - 直连被出口封时用配置好的读取服务代读（方�
     const env = visionEnv(db, puts, { LINK_READER_API_KEY: 'rk-1' });
     const reply = await handleClawLinkMessage(env, db, 1, '这个不错 ' + LZ_EPISODE, st.impl);
     assert.match(reply, /Ep204 代读标题/, '代读拿到的标题要进回信');
-    assert.match(reply, /基本无害 Mostly Harmless · 1:49:52/, '代读的页面照样解析出播客名与时长');
+    assert.match(reply, /基本无害 Mostly Harmless/, '代读的页面照样解析出播客名');
     assert.match(reply, /记录/, '仍然要她回「记录」才落库');
     assert.equal(st.calls.length, 3, '直连 403 → 代读 → 封面转存，一共三次');
     assert.equal(st.calls[0].url, LZ_EPISODE, '先直连');
@@ -1572,7 +1602,7 @@ integration('Bot - 直连被出口封时用配置好的读取服务代读（方�
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
 });
 
-integration('Bot - 代读回的是 Jina 形状 JSON 时，从 data.html 里照样拿到封面与时长（v2.5.138）', async () => {
+integration('Bot - 代读回的是 Jina 形状 JSON 时，从 data.html 里照样拿到封面与播客名（v2.5.138）', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     const puts = [];
@@ -1584,7 +1614,7 @@ integration('Bot - 代读回的是 Jina 形状 JSON 时，从 data.html 里照�
     });
     const reply = await handleClawLinkMessage(visionEnv(db, puts, { LINK_READER_API_KEY: 'rk-1' }), db, 1, LZ_EPISODE, st.impl);
     assert.match(reply, /Ep204 代读标题/, '正文优先用内嵌 HTML 解析，而不是 JSON 里那个干标题');
-    assert.match(reply, /基本无害 Mostly Harmless · 1:49:52/, 'HTML 里才有播客名与时长');
+    assert.match(reply, /基本无害 Mostly Harmless/, 'HTML 里才有播客名');
     const pending = await db.prepare('SELECT media_url, summary FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
     assert.match(pending.media_url, /^\/api\/file\//, '封面照样要转存 R2——线上 v2.5.137 缺封面的根因就是没走 HTML');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '还是回「记录」才落库');
