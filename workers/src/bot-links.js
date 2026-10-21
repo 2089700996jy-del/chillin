@@ -8,6 +8,11 @@
  * {title, description, cover, platform, icon} 写进 summary，花园里这条记录就自动渲染成富链接卡片；
  * 封面转存 R2 后写自家 /api/file/... 地址，卡片不依赖第三方防盗链。
  *
+ * **可用性事实（2026-10-21 Cloudflare 边缘探测）**：小宇宙按出口 IP/ASN 封了 Cloudflare，
+ * www/static 主机一律 403（openresty），api 主机可达但要鉴权（401），图床 xyzcdn 正常（200），
+ * 同一 URL 从住宅 IP 实测 200。所以本模块的抓取只当**尽力而为**：拿不到就如实说、绝不假装，
+ * 并给出「记录：<标题> <链接>」这条不依赖网络的兜底路径。
+ *
  * 出站抓取是本模块唯一的对外动作，边界收得极紧（见 .agents/rules/security.md §3）：
  * 只认小宇宙的页面域名与它的图床、强制 https + 443 端口、手动跟随重定向并逐跳复核域名、
  * 6 秒超时、HTML 512KB / 封面 4MB 上限、IP 字面量与私网主机一律拒绝。
@@ -265,7 +270,9 @@ export async function handleClawLinkMessage(env, db, userId, text, fetchImpl = f
 
     const card = await previewXiaoyuzhouLink(env, db, userId, target, fetchImpl);
     if (!card.ok) {
-        return '这个链接我没能打开（' + card.reason + '）。想原样存成随手记，就发「记录：' + url + '」。';
+        return '这个链接我读不到内容（' + card.reason + '）。'
+            + '想原样存进随手记，就发「记录：' + url + '」；'
+            + '想带上标题，把标题写在前面：记录：<标题> ' + url + '。';
     }
     const caption = String(text || '').replace(url, ' ').replace(/\s+/g, ' ').trim();
     const content = [caption, url].filter(Boolean).join('\n').slice(0, LINK_MAX_CHARS);

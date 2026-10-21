@@ -62,6 +62,34 @@ export const BOT_HELP_TEXT = [
 ].join('\n');
 
 /**
+ * 微信里转发/粘贴的内容常带着包裹符与句末标点（「记录：xxx」。），
+ * 指令一律先剥掉最外层这类字符再匹配——否则用户明明发了指令，却被当成闲聊丢给模型。
+ * 只剥最外层、最多两层，正文里的标点原样保留。
+ */
+const CMD_WRAP_PAIRS = {
+    '「': '」', '『': '』', '“': '”', '‘': '’', '（': '）', '(': ')',
+    '【': '】', '[': ']', '《': '》', '"': '"', "'": "'"
+};
+const CMD_TAIL_PUNCT_RE = /[\s。！!？?～~，,、；;]+$/;
+export function normalizeCommandText(text) {
+    let out = String(text == null ? '' : text).trim();
+    for (let i = 0; i < 2; i++) {
+        let next = out;
+        const closer = CMD_WRAP_PAIRS[next[0]];
+        if (closer) {
+            // 先去掉句末标点，再按配对剥收尾符：「记录：x」。 → 记录：x
+            // 但仍然只在开头那层包裹符配到自己的收尾符时才剥，正文里的成对引号不动
+            next = next.slice(1).trim().replace(CMD_TAIL_PUNCT_RE, '');
+            if (next.endsWith(closer)) next = next.slice(0, -closer.length).trim();
+        }
+        next = next.replace(CMD_TAIL_PUNCT_RE, '');
+        if (next === out) break;
+        out = next;
+    }
+    return out;
+}
+
+/**
  * 明确的数据写入指令：返回要保存的内容，未命中返回 null。
  * 「记录一下」「记一下」「存一下」自带明确的动作语义，后面可省分隔符；
  * 光杆「记录」「随手记」则必须跟分隔符，避免把「记录了这件事」这类叙述误判成指令。
@@ -95,19 +123,19 @@ const HELP_RE = /^(?:帮助|help|\/help|\?|？)$/i;
 const PENDING_COMMIT_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记录|记录一下|记一下|记下来|记下|存|存一下|存起来|保存|保存一下|存进随手记|存到随手记|存进花园)[\s。！!～~]*$/;
 
 export function parseRecordCommand(text) {
-    const m = RECORD_RE.exec(String(text || '').trim());
+    const m = RECORD_RE.exec(normalizeCommandText(text));
     const body = m ? m[1].trim() : '';
     return body || null;
 }
 
 export function parseRememberCommand(text) {
-    const m = REMEMBER_RE.exec(String(text || '').trim());
+    const m = REMEMBER_RE.exec(normalizeCommandText(text));
     const body = m ? m[1].trim() : '';
     return body.length >= 2 ? body : null;
 }
 
 export function parseForgetCommand(text) {
-    const raw = String(text || '').trim();
+    const raw = normalizeCommandText(text);
     if (FORGET_ALL_RE.test(raw)) return { all: true, keyword: '' };
     const m = FORGET_RE.exec(raw);
     const keyword = m ? m[1].trim() : '';
@@ -214,7 +242,7 @@ const CHAT_SYSTEM_PROMPT = [
     '不要用「已完成任务」「已为您处理」这类机器人腔，也不要每次都总结或给建议。',
     '',
     '【边界，必须遵守】',
-    '1. 你不是存储工具。除非对方用了明确的指令（「记录：…」「记住：…」），否则不要声称已经保存、已经记住任何东西。',
+    '1. 你不是存储工具，你没有写入能力：任何情况下都不要说「已保存 / 已记录 / 存好了 / 已经存进花园」。真的记录由系统的指令通道完成——你还在说话，说明那条消息没被当作指令，请告诉对方要发「记录：<内容>」这样的格式。',
     '2. 如果对方明显希望你记下什么却没说指令，就温和地问一句要不要记，并告诉他怎么发（例如「想存的话发：记录：<内容>」）——由对方决定，你不要自己写。',
     '3. 只依据【花园记忆片段】陈述过去发生的事；片段没提到的就说没找到，绝不编造。',
     '4. 不了解、不确定的事就说不了解、不确定，不要假装知道。',
@@ -311,7 +339,7 @@ async function runForget(db, userId, req) {
 
 /** 已支持的显式指令；返回 null 表示「不是指令」，交给对话模型 */
 export async function runCommand(env, db, userId, content) {
-    const text = String(content || '').trim();
+    const text = normalizeCommandText(content) || String(content || '').trim();
     if (HELP_RE.test(text)) return BOT_HELP_TEXT;
 
     if (OUTREACH_OFF_RE.test(text)) {
@@ -358,9 +386,11 @@ export async function runCommand(env, db, userId, content) {
 export async function buildBotReply(env, db, userId, content) {
     const text = String(content || '').trim();
     if (!text) return '';
+    // 指令匹配用「剥掉包裹符与句末标点」的副本；对话上下文里仍保留用户原本的写法
+    const cmdText = normalizeCommandText(text);
 
     // 重置对话：清空上下文，这条指令本身不留在上下文里
-    if (RESET_RE.test(text)) {
+    if (RESET_RE.test(cmdText)) {
         await clearChatContext(db, userId);
         return '好，我们这次的对话上下文已经清空 ✨ 个人档案和花园记录都不受影响。';
     }
@@ -368,7 +398,7 @@ export async function buildBotReply(env, db, userId, content) {
     const commandReply = await runCommand(env, db, userId, text);
     if (commandReply !== null) {
         // 帮助只是使用说明，不必占用对话上下文
-        if (!HELP_RE.test(text)) {
+        if (!HELP_RE.test(cmdText)) {
             await saveChatTurn(db, userId, 'user', text);
             await saveChatTurn(db, userId, 'assistant', commandReply);
         }

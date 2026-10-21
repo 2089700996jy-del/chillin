@@ -38,6 +38,7 @@ import {
     parseRecordCommand,
     parseRememberCommand,
     parseForgetCommand,
+    normalizeCommandText,
     buildBotReply,
     wantsEvidence,
     sourceLabel,
@@ -567,6 +568,20 @@ test('Bot - 记录/记住/忘记只认显式写法，含糊语气一律不判为
     assert.deepEqual(parseForgetCommand('忘记 香菜'), { all: false, keyword: '香菜' });
     assert.deepEqual(parseForgetCommand('清空档案'), { all: true, keyword: '' });
     assert.equal(parseForgetCommand('忘了吧'), null, '「忘了吧」是语气词，不是遗忘指令');
+
+    // 微信里转发/粘贴出来的内容常整句被引号、书名号或句号包着：
+    // 2026-10-21 真机上「记录：<链接>」。就是这样被漏判、丢给模型编了一句「存好了 ✅」
+    assert.equal(
+        parseRecordCommand('「记录：https://www.xiaoyuzhoufm.com/episode/5e4a8c49418a84a046bb4fe2」。'),
+        'https://www.xiaoyuzhoufm.com/episode/5e4a8c49418a84a046bb4fe2'
+    );
+    assert.equal(parseRecordCommand('“记录：明天买牛奶”'), '明天买牛奶');
+    assert.equal(parseRecordCommand('《记录：他说「好的」》'), '他说「好的」', '剥掉最外层书名号，里面的引号不动');
+    assert.equal(parseRememberCommand('「记住：我不吃香菜」'), '我不吃香菜');
+    assert.deepEqual(parseForgetCommand('【忘记 香菜】'), { all: false, keyword: '香菜' });
+    assert.equal(parseRecordCommand('随手记录一下今天的会议内容'), null, '剥包裹符不等于放宽到随便匹配');
+    assert.equal(normalizeCommandText('  「重置对话」。  '), '重置对话');
+    assert.equal(normalizeCommandText('记录：他说「好的」'), '记录：他说「好的」', '没收尾包裹符就不剥，正文里的引号原样留着');
 });
 
 test('Bot - 帮助文案不再宣称「直接发文字存入随手记」', () => {
@@ -627,6 +642,21 @@ integration('Bot - 显式「记录：…」才落随手记，闲聊只留对话�
     assert.equal(feed.type, 'text');
     const turns = await db.prepare('SELECT role FROM bot_chat_turns ORDER BY id').all();
     assert.equal(turns.results.length, 4, '闲聊与记录各留下一组对话');
+});
+
+integration('Bot - 被引号包着的「记录：<链接>」也真的落库（2026-10-21 真机漏记的回归）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const url = 'https://www.xiaoyuzhoufm.com/episode/5e4a8c49418a84a046bb4fe2';
+
+    const reply = await buildBotReply({}, db, 1, '「记录：' + url + '」。');
+    assert.match(reply, /已存入\*\*随手记\*\*/, '必须如实回报存入，实际：' + reply);
+    assert.ok(!/存好了/.test(reply), '不能只丢一句无法核对的「存好了」');
+
+    const feed = await db.prepare('SELECT content, type FROM quick_feeds').first();
+    assert.equal(feed.content, url);
+    assert.equal(feed.type, 'link', '裸链接按链接存');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1);
 });
 
 integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（全程软删）', async () => {
@@ -1352,8 +1382,9 @@ integration('Bot - 小宇宙页面抓不到时不占坑，并给出「记录：�
     await seedUser(db, 1);
     const down = stubFetch({ [LZ_ROUTE]: () => ({ status: 503 }) });
     const reply = await handleClawLinkMessage({}, db, 1, LZ_EPISODE, down.impl);
-    assert.match(reply, /没能打开/, '失败要如实说');
+    assert.match(reply, /读不到内容/, '失败要如实说');
     assert.ok(reply.includes('记录：' + LZ_EPISODE), '给出原样保存的兜底路径');
+    assert.match(reply, /记录：<标题>/, '拿不到标题时告诉她怎么自己补一个');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media').first()).n, 0, '抓不到就不该占坑');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
 
@@ -1370,7 +1401,7 @@ integration('Bot - 小宇宙页面重定向到白名单之外时立刻停下，�
         [LZ_ROUTE]: () => ({ response: new Response('', { status: 302, headers: { location: 'https://evil.example/steal' } }) })
     });
     const reply = await handleClawLinkMessage({}, db, 1, LZ_EPISODE, st.impl);
-    assert.match(reply, /没能打开/);
+    assert.match(reply, /读不到内容/);
     assert.equal(st.calls.length, 1, '第二跳就该被拦下');
     assert.ok(st.calls[0].init.redirect === 'manual', '必须手动跟重定向才能逐跳复核域名');
 });

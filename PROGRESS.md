@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.133**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.134**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -8,7 +8,7 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
+- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
@@ -70,6 +70,16 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot：被引号包着的「记录：…」也认，且绝不再假装已存（v2.5.134）
+
+1. **真机漏记**：她发「记录：https://…」（微信把整句连引号一起发出去的形态）→ `parseRecordCommand` 因为正则要求以「记录」开头而**不认**，消息回落普通聊天；模型于是自由发挥回「存好了 ✅」，`quick_feeds` 里其实一条都没有（2026-10-21 23:05 真机 + 远端 D1 双向确证）。
+2. **指令容错（`workers/src/bot-commands.js`）**：新增 `normalizeCommandText(text)`——剥掉开头的成对包裹符（只有配到自己的收尾符才剥，不吃正文里成对的引号）与句末标点（最多两层）；`parseRecordCommand` / `parseRememberCommand` / `parseForgetCommand` 与 `runCommand` 里 `重置对话`、`帮助` 的匹配全部先过它，对话上下文仍存原始文本。
+3. **反幻觉**：`CHAT_SYSTEM_PROMPT` 第 1 条改成明确的自我认知——「你不是存储工具，你没有写入能力」，任何情况下不许说「已保存 / 已记录 / 存好了 / 已经存进花园」，并主动告诉对方正确的格式「记录：<内容>」。
+4. **链接读数失败也能自救**：`workers/src/bot-links.js` 的失败文案改为「这个链接我读不到内容（原因）。想原样存进随手记，就发「记录：<链接>」；想带上标题，把标题写在前面：记录：<标题> <链接>。」文件头同时记下出站可用性事实：**Cloudflare 出口 IP 已被小宇宙 403 封**（2026-10-21 用临时 Pages 探针确证：页面 / 数据路由 / robots 全 403、`api.xiaoyuzhoufm.com/v1/*` 401、图床 `xyzcdn.net` 200、本机住宅 IP 200），所以这不是代码能修的，抓取只当尽力而为。
+5. **测试**：`tests/bot-claw.test.mjs` 58 → **59 用例**（包裹符六种形态 + 《记录：他说「好的」》不许吃掉正文引号 + 引号包裹的真机链接回归用例：回信含「已存入**随手记**」、不含「存好了」、`quick_feeds` 增一行 `type=link`）。
+
+**测试 248 → 249 用例（20 套件）**；PROGRESS、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 小宇宙播客页不再张冠李戴，http 链接也不再沉默（v2.5.133）
 
