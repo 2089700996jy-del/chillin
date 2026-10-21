@@ -1336,6 +1336,41 @@ test('Bot - 播客页取简介、不抠单集时长；站点模板尾巴不冒�
     assert.equal(template.description, '1:49:52', '站点模板文案不能冒充播客名');
 });
 
+test('Bot - 页面自带 __NEXT_DATA__ 时优先用结构化字段，坏 JSON 不炸', () => {
+    const episodeData = { props: { pageProps: { episode: {
+        title: 'Ep204 结构化标题',
+        duration: 6592,
+        image: { picUrl: 'https://image.xyzcdn.net/next-ep.jpg' },
+        podcast: { title: '基本无害 Mostly Harmless' },
+        description: '节目简介'
+    } } } };
+    const episodeHtml = '<html><head><title>Ep999 og 标题 - 模板 | 小宇宙</title>'
+        + '<meta property="og:title" content="og 标题">'
+        + '<meta property="og:image" content="https://image.xyzcdn.net/og.jpg"></head>'
+        + '<body><script id="__NEXT_DATA__" type="application/json">' + JSON.stringify(episodeData) + '</script></body></html>';
+    const ep = parseXiaoyuzhouPage(episodeHtml);
+    assert.equal(ep.title, 'Ep204 结构化标题', 'SSR 数据块比 og 优先');
+    assert.equal(ep.description, '基本无害 Mostly Harmless · 1:49:52');
+    assert.equal(ep.cover, 'https://image.xyzcdn.net/next-ep.jpg', '封面同样优先用结构化字段');
+
+    const podcastData = { props: { pageProps: { podcast: {
+        title: '结构化播客名', description: '结构化播客简介',
+        image: { picUrl: 'https://image.xyzcdn.net/next-pod.jpg' }
+    } } } };
+    const podcastHtml = '<html><head><title>模板 | 小宇宙</title>'
+        + '<meta property="og:description" content="og 简介"></head>'
+        + '<body><script id="__NEXT_DATA__">' + JSON.stringify(podcastData) + '</script></body></html>';
+    const pod = parseXiaoyuzhouPage(podcastHtml, { kind: 'podcast' });
+    assert.equal(pod.title, '结构化播客名');
+    assert.equal(pod.description, '结构化播客简介');
+    assert.equal(pod.cover, 'https://image.xyzcdn.net/next-pod.jpg');
+
+    const broken = parseXiaoyuzhouPage(LZ_HTML.replace('</head>', '<script id="__NEXT_DATA__">{ 坏掉的 JSON</script></head>'));
+    assert.equal(broken.ok, true, '坏 JSON 不能炸，要回落 og');
+    assert.equal(broken.title, 'Ep204 未来生活指南｜刘德华给我发微信');
+    assert.equal(broken.description, '基本无害 Mostly Harmless · 1:49:52');
+});
+
 integration('Bot - http 的小宇宙链接不沉默：说明只读 https，且一次都不出站', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

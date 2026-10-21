@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.135**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.136**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,15 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 小宇宙页面解析改用页面自带的 __NEXT_DATA__（v2.5.136）
+
+1. **解析升级**：`workers/src/bot-links.js` 新增私有 `parseNextData(html)`（只认 `<script id="__NEXT_DATA__">`，JSON 坏了返回 null、绝不抛），`parseXiaoyuzhouPage` 改成**结构化字段优先**——单集页取 `pageProps.episode` 的 title / duration / image.picUrl / podcast.title，播客页取 `pageProps.podcast` 的 title / description / image；og、`<title>` 拆分与 `"duration"` 正则全部保留为回落。
+2. **真页实证**（2026-10-21 用住宅 IP 抓的线上 HTML：单集页 169529 字节、播客页 175222 字节）：单集 → 「Ep204 未来生活指南｜刘德华给我发微信」+「基本无害 Mostly Harmless · 1:49:52」+ 单集封面 `image.xyzcdn.net/Fq6waJpa…`（旧逻辑走 og:image 拿到的是播客封面）；播客页 → 播客名 + 343 字简介 + 播客封面。此前报告里写「页面没有 `__NEXT_DATA__`」是**看错了**：数据块在 idx≈97136，`self.__next_f` 确实没有。
+3. **同批实测「从 Cloudflare 到底能不能读到页面」**（临时 Pages 探针 `chillin-egress-probe2`，用完已删）：直连 https 仍 403（openresty）；直连 http 15 秒超时；`api.allorigins.win/raw`、`api.codetabs.com/v1/proxy` 15 秒超时（本机测已是 522，服务本身挂了）；`corsproxy.io` 401（改成必须 API key）；`thingproxy` 530；`api.cors.lol`、`cors.eu.org` 429；`api.dub.co/metatags` 返回的是它自家官网 HTML；`api.urlmeta.org` 401；`opengraph.io` 401；`r.jina.ai` 与 `api.microlink.io` 429（免费额度按出口 IP 计）→ **十个免费 / 无 key 端点全灭**：自动抓取只剩「带 key 的第三方读取」或「非 CF 出口」两条路。
+4. **测试**：`tests/bot-claw.test.mjs` 61 → **62 用例**（NEXT_DATA 单集/播客字段优先、坏 JSON 回落 og 且不炸）。
+
+**测试 251 → 252 用例（20 套件）**。
 
 ### 抓不到元数据也能出卡片：自己写标题的「记录：<标题> <链接>」落成真卡片（v2.5.135）
 

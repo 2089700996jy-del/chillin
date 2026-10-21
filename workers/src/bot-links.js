@@ -147,28 +147,55 @@ function tagTitle(html) {
  * 所以它只取 og:description 当简介、绝不给时长（2026-10-21 线上实测：播客页会回
  * 「基本无害 Mostly Harmless」+「听播客，上小宇宙 · 1:13:16」，那个 1:13:16 其实是某一集的）。
  */
+/** 页面自带的 `__NEXT_DATA__` SSR 数据块（Next.js）：拿不到或 JSON 坏了都返回 null，绝不抛 */
+function parseNextData(html) {
+    const m = String(html || '').match(/<script id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/i);
+    if (!m) return null;
+    try {
+        const data = JSON.parse(m[1]);
+        return (data && data.props && data.props.pageProps) || null;
+    } catch { return null; }
+}
+
 export function parseXiaoyuzhouPage(html, options = {}) {
     const text = String(html || '');
     const kind = options && options.kind === 'podcast' ? 'podcast' : 'episode';
+    // 页面自带的 SSR 数据块优先：结构化字段比 og / 正则稳（2026-10-21 实测单集页与播客页都有）
+    const pageProps = parseNextData(text);
+    const nextEpisode = (kind === 'episode' && pageProps && pageProps.episode) ? pageProps.episode : null;
+    const nextPodcast = (kind === 'podcast' && pageProps && pageProps.podcast) ? pageProps.podcast : null;
+
     const segments = tagTitle(text).split(' - ');
     const rawName = segments.length > 1 ? segments[1].split('|')[0].trim() : '';
     // 站点模板尾巴（"听播客，上小宇宙"）不是播客名，别拿它冒充
-    const podcast = (/听播客|上小宇宙/.test(rawName) || rawName === '小宇宙') ? '' : rawName;
-    const title = (metaContent(text, 'og:title') || metaContent(text, 'twitter:title') || segments[0] || '')
-        .trim().slice(0, LINK_TITLE_MAX_CHARS);
+    const titlePodcast = (/听播客|上小宇宙/.test(rawName) || rawName === '小宇宙') ? '' : rawName;
+    const podcast = (nextEpisode && nextEpisode.podcast && nextEpisode.podcast.title) || titlePodcast;
+    const title = String(
+        (nextEpisode && nextEpisode.title)
+        || (nextPodcast && nextPodcast.title)
+        || metaContent(text, 'og:title')
+        || metaContent(text, 'twitter:title')
+        || segments[0] || ''
+    ).trim().slice(0, LINK_TITLE_MAX_CHARS);
     if (!title) return { ok: false, reason: '页面上没有标题' };
     let description = '';
     if (kind === 'podcast') {
-        description = metaContent(text, 'og:description') || metaContent(text, 'description');
+        description = (nextPodcast && nextPodcast.description)
+            || metaContent(text, 'og:description') || metaContent(text, 'description');
     } else {
-        const durationMatch = text.match(/"duration"\s*:\s*(\d{1,7})/);
-        description = [podcast, formatDuration(durationMatch ? durationMatch[1] : 0)].filter(Boolean).join(' · ');
+        const duration = nextEpisode
+            ? formatDuration(nextEpisode.duration)
+            : formatDuration((text.match(/"duration"\s*:\s*(\d{1,7})/) || [])[1]);
+        description = [podcast, duration].filter(Boolean).join(' · ');
     }
+    const nextCover = (nextEpisode && nextEpisode.image && (nextEpisode.image.picUrl || nextEpisode.image.largePicUrl))
+        || (nextPodcast && nextPodcast.image && (nextPodcast.image.picUrl || nextPodcast.image.largePicUrl))
+        || '';
     return {
         ok: true,
         title,
         description: description.replace(/\s+/g, ' ').trim().slice(0, LINK_DESC_MAX_CHARS),
-        cover: metaContent(text, 'og:image') || metaContent(text, 'twitter:image')
+        cover: nextCover || metaContent(text, 'og:image') || metaContent(text, 'twitter:image')
     };
 }
 
