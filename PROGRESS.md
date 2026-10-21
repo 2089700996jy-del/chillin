@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.137**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.138**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -70,6 +70,15 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 代读拿回 JSON 时也要从 data.html 里捞封面（v2.5.138）
+
+1. **线上真缺陷**：2026-10-22 00:28 她发的小宇宙链接速览**有标题、有简介，唯独没有封面**——D1 里 `bot_pending_media.summary.cover` 为空、`files` 没有新行。住宅 IP 复现（带线上那套请求头）→ 请求头里的 `Accept: text/html,application/json` 会让 **Jina 回 JSON 而不是 HTML**（`application/json`、163267 字节）：标题与简介取自 JSON 的 `data.title` / `data.description`，而 **JSON 里压根没有封面字段**，页面正文（含 `og:image` 与 `__NEXT_DATA__`）藏在 `data.html` 里，我们没看。
+2. **修法**（`workers/src/bot-links.js`）：`Accept` 改成只请求 `text/html`（同一个 URL 立刻回 `text/plain` 的 150140 字节 HTML，`__NEXT_DATA__` 完整）；`parseReaderMetadata` 额外返回 `html`（`data.html` / `data.content` 里含 `<` 才认），`readXiaoyuzhouSource` 优先用这段内嵌 HTML 走 `parseXiaoyuzhouPage`，于是封面、播客名与时长一起回来；JSON 里的封面仍按图床白名单过滤。
+3. **实测对照**（同一单集 `5e4a8c49418a84a046bb4fe2`）：HTML 解析 → `vol.19 此情此景，少侠不想吟诗一首么？` / `谐星聊天会 · 1:08:46` / 封面 `image.xyzcdn.net/FpDmtlxyQ8b0rivm2K1lVSFZ7nmN`；JSON 元数据 → 只有标题与 `听《谐星聊天会》上小宇宙。`，封面空。
+4. **测试**：`tests/bot-claw.test.mjs` 66 → **67 用例**（新增「代读回 Jina 形状 JSON 时从 `data.html` 得到封面与时长」，并在代读集成里钉死 `Accept: text/html`）。
+
+**测试 256 → 257 用例（20 套件）**。
 
 ### 直连被出口封时可选用第三方读取服务代读（v2.5.137）
 

@@ -40,6 +40,12 @@ const LINK_MAX_REDIRECTS = 3;
  * 地址默认 `https://r.jina.ai`，可用 `env.LINK_READER_URL` 换服务；地址里带 `?` 的走查询参数形式，
  * 兼容 Microlink 的 `https://api.microlink.io/?url=`。密钥同时以 `Authorization: Bearer` 与 `x-api-key` 发出，
  * 前者给 Jina、后者给 Microlink，两家各取所需。
+ *
+ * v2.5.138 修一处线上真缺陷：请求头里 Accept 带了 `application/json` 时，Jina 会**回 JSON 而不是 HTML**
+ * （2026-10-22 实测：同一 URL 返回 `application/json` 163267 字节、`data.html` 里才是页面正文），
+ * 而 JSON 里压根没有封面字段 → 线上卡片有标题、有简介，唯独**没有封面**。
+ * 现在只请求 `Accept: text/html`（Jina 回 text/plain 的 HTML 正文，可直接解析），
+ * 万一还是回了 JSON，就从 `data.html` / `data.content` 里取出内嵌 HTML 再交给页面解析器。
  */
 export const LINK_READER_DEFAULT_URL = 'https://r.jina.ai';
 export const LINK_READER_TIMEOUT_MS = 15000;
@@ -297,8 +303,11 @@ export function readerEndpoint(baseUrl, target) {
 }
 
 /**
- * 读取服务返回 JSON（Microlink 形状）时的解析：`{data:{title,description,image:{url}}}`。
+ * 读取服务返回 JSON 时的解析：Microlink 形状 `{data:{title,description,image:{url}}}`、
+ * Jina 形状 `{data:{title,description,html}}`（正文在 `data.html`，2026-10-22 实测）。
  * 不是 JSON 或没有标题返回 null，交回 HTML 解析器；封面只认自家图床白名单，别的一律丢掉（不热链第三方）。
+ * `html` 是 JSON 里内嵌的页面正文（含 `<` 才认），有值时优先喂给 `parseXiaoyuzhouPage`——
+ * 因为 JSON 本身没有封面字段，只有正文里才有 og:image / `__NEXT_DATA__`。
  */
 export function parseReaderMetadata(text) {
     const raw = String(text || '').trim();
@@ -308,10 +317,15 @@ export function parseReaderMetadata(text) {
     const d = (data && data.data) || data || {};
     const title = String(d.title || '').trim().slice(0, LINK_TITLE_MAX_CHARS);
     if (!title) return null;
-    const image = (d.image && (d.image.url || (typeof d.image === 'string' ? d.image : ''))) || d.cover || '';
+    const images = Array.isArray(d.images) ? d.images : [];
+    const firstImage = images.length ? ((typeof images[0] === 'string' ? images[0] : (images[0] && images[0].url) || '')) : '';
+    const image = (d.image && (d.image.url || (typeof d.image === 'string' ? d.image : ''))) || d.cover || firstImage || '';
+    const embedded = (typeof d.html === 'string' && d.html.includes('<')) ? d.html
+        : ((typeof d.content === 'string' && d.content.includes('<')) ? d.content : '');
     return {
         ok: true,
         title,
+        html: embedded,
         description: String(d.description || d.desc || '').replace(/\s+/g, ' ').trim().slice(0, LINK_DESC_MAX_CHARS),
         cover: isAllowedOutboundUrl(image, { image: true }) ? String(image) : ''
     };
@@ -327,7 +341,7 @@ async function fetchViaReader(env, key, target, fetchImpl) {
             method: 'GET',
             redirect: 'follow',
             headers: {
-                Accept: 'text/html,application/json',
+                Accept: 'text/html',
                 'X-Return-Format': 'html',
                 Authorization: 'Bearer ' + key,
                 'x-api-key': key,
@@ -362,7 +376,11 @@ async function readXiaoyuzhouSource(env, target, fetchImpl) {
     if (!key) return { ok: false, reason: firstReason };
     const via = await fetchViaReader(env, key, url, fetchImpl);
     if (!via.ok) return { ok: false, reason: firstReason + '，代读也失败：' + via.reason };
-    const parsed = parseReaderMetadata(via.text) || parseXiaoyuzhouPage(via.text, { kind });
+    const meta = parseReaderMetadata(via.text);
+    const fromHtml = parseXiaoyuzhouPage((meta && meta.html) ? meta.html : via.text, { kind });
+    const parsed = fromHtml.ok
+        ? { ...fromHtml, cover: fromHtml.cover || (meta && meta.cover) || '' }
+        : (meta || fromHtml);
     if (!parsed.ok) return { ok: false, reason: firstReason + '，代读也没读出标题' };
     return { ok: true, parsed };
 }

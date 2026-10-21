@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-21T16:07:50.809Z · 提交数：373
+> 生成时间：2026-10-21T16:37:00.680Z · 提交数：374
+
+## 2026-10-22
+
+### ✨ 新功能
+
+- **bot**: let a keyed reader service fetch Xiaoyuzhou when the edge is blocked
 
 ## 2026-10-21
 

@@ -1494,7 +1494,10 @@ test('Bot - 读取服务地址两种拼法，JSON 元数据只认白名单封面
     assert.equal(readerEndpoint('https://user:pass@r.jina.ai', LZ_EPISODE), '', '带 userinfo 拒绝');
     assert.equal(readerEndpoint('https://r.jina.ai', ''), '');
     const json = JSON.stringify({ status: 'success', data: { title: '  Ep204 代读  ', description: '基本无害\n· 1:49:52', image: { url: 'https://image.xyzcdn.net/cover-abc' } } });
-    assert.deepEqual(parseReaderMetadata(json), { ok: true, title: 'Ep204 代读', description: '基本无害 · 1:49:52', cover: 'https://image.xyzcdn.net/cover-abc' });
+    assert.deepEqual(parseReaderMetadata(json), { ok: true, title: 'Ep204 代读', html: '', description: '基本无害 · 1:49:52', cover: 'https://image.xyzcdn.net/cover-abc' });
+    const jinaJson = JSON.stringify({ code: 200, status: 20000, data: { title: 'Ep204 JSON 标题', description: '听《基本无害》上小宇宙。', html: LZ_READER_HTML } });
+    assert.equal(parseReaderMetadata(jinaJson).html, LZ_READER_HTML, 'Jina 形状的 JSON 里正文在 data.html，要留给页面解析器');
+    assert.equal(parseReaderMetadata(JSON.stringify({ data: { title: 'T', content: '{"a":1}' } })).html, '', '看起来不像 HTML 的 content 不认');
     assert.equal(parseReaderMetadata(JSON.stringify({ data: { title: '', description: 'x' } })), null, '没有标题就当没读出');
     assert.equal(parseReaderMetadata(JSON.stringify({ data: { title: 'T', image: { url: 'https://evil.example/x.jpg' } } })).cover, '', '不在图床白名单的封面一律丢掉');
     assert.equal(parseReaderMetadata('<html><title>T</title></html>'), null, 'HTML 交回页面解析器');
@@ -1520,10 +1523,29 @@ integration('Bot - 直连被出口封时用配置好的读取服务代读（方�
     assert.equal(st.calls[1].url, 'https://r.jina.ai/' + LZ_EPISODE, '再用读取服务代读');
     assert.equal(st.calls[1].init.headers.Authorization, 'Bearer rk-1');
     assert.equal(st.calls[1].init.headers['X-Return-Format'], 'html');
+    assert.equal(st.calls[1].init.headers.Accept, 'text/html', '只请求 HTML——Accept 带上 application/json 时 Jina 会回 JSON，而 JSON 里没有封面字段');
     const pending = await db.prepare('SELECT media_url, summary FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
     assert.match(pending.media_url, /^\/api\/file\//, '代读拿到的封面同样要转存 R2');
     assert.equal(JSON.parse(pending.summary).title, 'Ep204 代读标题');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
+});
+
+integration('Bot - 代读回的是 Jina 形状 JSON 时，从 data.html 里照样拿到封面与时长（v2.5.138）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const puts = [];
+    const jinaJson = JSON.stringify({ code: 200, status: 20000, data: { title: 'vol.19 JSON 标题', description: '听《谐星聊天会》上小宇宙。', html: LZ_READER_HTML } });
+    const st = stubFetch({
+        [LZ_READER]: () => ({ bytes: jinaJson, status: 200 }),
+        [LZ_ROUTE]: () => ({ status: 403 }),
+        [LZ_COVER]: () => ({ bytes: PNG_BYTES, status: 200 })
+    });
+    const reply = await handleClawLinkMessage(visionEnv(db, puts, { LINK_READER_API_KEY: 'rk-1' }), db, 1, LZ_EPISODE, st.impl);
+    assert.match(reply, /Ep204 代读标题/, '正文优先用内嵌 HTML 解析，而不是 JSON 里那个干标题');
+    assert.match(reply, /基本无害 Mostly Harmless · 1:49:52/, 'HTML 里才有播客名与时长');
+    const pending = await db.prepare('SELECT media_url, summary FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.match(pending.media_url, /^\/api\/file\//, '封面照样要转存 R2——线上 v2.5.137 缺封面的根因就是没走 HTML');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '还是回「记录」才落库');
 });
 
 integration('Bot - 没配读取服务就绝不代读，失败原因如实带回', async () => {
