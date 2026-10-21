@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-21T14:42:13.304Z · 提交数：368
+> 生成时间：2026-10-21T14:58:21.286Z · 提交数：369
 
 ## 2026-10-21
 
 ### ✨ 新功能
 
+- **bot**: preview Xiaoyuzhou links and only save them on confirmation
 - **bot**: read images with a vision model and fold the description into the feed
 
 ### 🐛 缺陷修复

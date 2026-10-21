@@ -60,7 +60,8 @@ import {
     parseXiaoyuzhouPage,
     formatDuration,
     handleClawLinkMessage,
-    LINK_HTML_MAX_BYTES
+    LINK_HTML_MAX_BYTES,
+    xiaoyuzhouHostOf
 } from '../workers/src/bot-links.js';
 
 /**
@@ -1250,6 +1251,44 @@ test('Bot - 小宇宙链接只认白名单域名，标题与播客名从 og 与�
     assert.equal(isAllowedOutboundUrl('https://127.0.0.1/episode/6a76ebabc4079d62c57f3b74'), false, 'IP 字面量拒绝');
     assert.equal(isAllowedOutboundUrl('https://image.xyzcdn.net/a.jpg', { image: true }), true, '图床只对图片通道开放');
     assert.equal(isAllowedOutboundUrl('https://image.xyzcdn.net/a.jpg'), false);
+});
+
+test('Bot - 播客页取简介、不抠单集时长；站点模板尾巴不冒充播客名', () => {
+    const podcastHtml = '<!doctype html><html><head>'
+        + '<meta property="og:title" content="基本无害 Mostly Harmless">'
+        + '<meta name="description" property="og:description" content="基本无害是一档没有固定主题和形式，\n用不客观不中立甚至也不坚定的眼光进行人间观察的播客节目。">'
+        + '<meta property="og:image" content="https://image.xyzcdn.net/pod-cover">'
+        + '</head><body><script>window.__DATA__ = [{"duration":4396},{"duration":3000}];</script></body></html>';
+    const pod = parseXiaoyuzhouPage(podcastHtml, { kind: 'podcast' });
+    assert.equal(pod.ok, true);
+    assert.equal(pod.title, '基本无害 Mostly Harmless');
+    assert.match(pod.description, /^基本无害是一档没有固定主题和形式， 用不客观不中立/, 'og:description 的换行要压平');
+    assert.ok(!/1:13:16/.test(pod.description), '播客页里的单集时长绝不能按到这个播客头上');
+    assert.equal(pod.cover, 'https://image.xyzcdn.net/pod-cover');
+    assert.equal(parseXiaoyuzhouUrl('https://www.xiaoyuzhoufm.com/podcast/5eae66d1418a84a046472b4d').kind, 'podcast');
+    assert.equal(parseXiaoyuzhouUrl('http://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74'), null, 'http 不算可抓链接');
+    assert.equal(xiaoyuzhouHostOf('http://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74'), 'www.xiaoyuzhoufm.com', '域名认得出，才能给出「只读 https」的提示');
+    assert.equal(xiaoyuzhouHostOf('https://evil.example/episode/6a76ebabc4079d62c57f3b74'), '');
+    const template = parseXiaoyuzhouPage(LZ_HTML.replace('基本无害 Mostly Harmless | 小宇宙', '小宇宙 | 小宇宙'));
+    assert.equal(template.description, '1:49:52', '站点模板文案不能冒充播客名');
+});
+
+integration('Bot - http 的小宇宙链接不沉默：说明只读 https，且一次都不出站', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const puts = [];
+    const st = stubFetch({});
+    const original = globalThis.fetch;
+    globalThis.fetch = st.impl;
+    try {
+        const reply = await buildBotReply(visionEnv(db, puts), db, 1, 'http://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74');
+        assert.match(reply, /只会读 https/, '要如实说是协议的问题');
+        assert.match(reply, /记录：/, '要给「原样存」的兜底路径');
+        assert.equal(st.calls.length, 0, 'http 链接一次都不许出站');
+        assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 0, '不占待存位');
+    } finally {
+        globalThis.fetch = original;
+    }
 });
 
 integration('Bot - 小宇宙链接先给速览，回「记录」才落成带卡片的随手记', async () => {

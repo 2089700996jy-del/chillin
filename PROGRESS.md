@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.132**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.133**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -8,7 +8,7 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面/时长做成卡片，回「记录」才落库；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
+- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
@@ -70,6 +70,15 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 小宇宙播客页不再张冠李戴，http 链接也不再沉默（v2.5.133）
+
+1. **线上实测发现的错卡**：发播客页链接（`/podcast/<pid>`）时，卡片回来的是「基本无害 Mostly Harmless / 听播客，上小宇宙 · 1:13:16」——播客页上混着 33 个单集各自的 `"duration"`，抠第一个必然把某一集的时长按到这个播客头上；`<title>` 第二段在播客页是站点模板尾巴，不是播客名。
+2. **修复（`workers/src/bot-links.js`）**：`parseXiaoyuzhouPage(html, { kind })` 按页面类型分流——播客页只取 `og:description` 当简介（压平空白、截 160 字），绝不给时长；单集页照旧「播客名 · 时长」；站点模板尾巴（`听播客` / `上小宇宙` / 恰好等于 `小宇宙`）不再冒充播客名。
+3. **http 链接不再沉默**：`extractFirstUrl` 也会抓 `http://`，而白名单只放 https，旧行为是**直接回落普通聊天**（用户会以为 Bot 没看懂）。新增 `xiaoyuzhouHostOf(rawUrl)` 只判域名，命中就如实说一句「这个链接是 http 的，我只会读 https 的页面。改成 https 再发我一次？想原样存就发「记录：<链接>」」，仍然一次都不出站。
+4. **测试**：`tests/bot-claw.test.mjs` 56 → **58 用例**（播客页只取简介 + 模板名不冒充 + `xiaoyuzhouHostOf` 正反例；http 链接零出站且给兜底路径）。
+
+**测试 246 → 248 用例（20 套件）**；PROGRESS、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 微信 Bot 小宇宙链接速览：抓标题/封面做卡片，回「记录」才落库（v2.5.132）
 

@@ -1,7 +1,8 @@
 /**
  * 微信 Bot 的小宇宙链接速览（v2.5.132）。
  *
- * 用户发来小宇宙链接时，服务端替她读一次页面的 og 元数据，回一条「标题 + 播客名 + 时长」的速览，
+ * 用户发来小宇宙链接时，服务端替她读一次页面的 og 元数据，单集回「标题 + 播客名 + 时长」、
+ * 播客页回「播客名 + 简介」（绝不把页面上某个单集的时长按到播客头上），
  * 并把卡片元数据放进「待存位」——她回「记录」才写成随手记（与图片共用同一条确认路径）。
  * 前端 public/js/feeds.js 早就支持结构化 quick_feeds.summary：只要把
  * {title, description, cover, platform, icon} 写进 summary，花园里这条记录就自动渲染成富链接卡片；
@@ -43,6 +44,13 @@ const PRIVATE_HOST_RE = /(^|\.)(10|127|169\.254|172\.(1[6-9]|2\d|3[01])|192\.168
 export function extractFirstUrl(text) {
     const m = String(text || '').match(URL_IN_TEXT_RE);
     return m ? m[0].replace(TRAILING_PUNCT_RE, '') : '';
+}
+
+/** 只判域名（不看协议与路径）：用来区分「不是小宇宙链接」和「是小宇宙但协议/路径不认」 */
+export function xiaoyuzhouHostOf(rawUrl) {
+    let u;
+    try { u = new URL(String(rawUrl)); } catch { return ''; }
+    return hostAllowed(u.hostname, PAGE_HOST_SUFFIXES) ? u.hostname.toLowerCase() : '';
 }
 
 function hostAllowed(host, suffixes) {
@@ -111,23 +119,34 @@ function tagTitle(html) {
 }
 
 /**
- * 解析小宇宙单集页：og:title 是单集标题，<title> 里的第二段是播客名，
- * 时长从页面内联 JSON 的 "duration" 抠（线上实测单集页第 104275 字节附近）。
+ * 解析小宇宙页面：og:title 是标题，<title> 里的第二段是播客名，
+ * 单集时长从页面内联 JSON 的 "duration" 抠（线上实测单集页第 104275 字节附近）。
+ *
+ * 播客页（kind: 'podcast'）不一样：页面上混着 33 个单集各自的 "duration"，抠第一个必然张冠李戴，
+ * 所以它只取 og:description 当简介、绝不给时长（2026-10-21 线上实测：播客页会回
+ * 「基本无害 Mostly Harmless」+「听播客，上小宇宙 · 1:13:16」，那个 1:13:16 其实是某一集的）。
  */
-export function parseXiaoyuzhouPage(html) {
+export function parseXiaoyuzhouPage(html, options = {}) {
     const text = String(html || '');
+    const kind = options && options.kind === 'podcast' ? 'podcast' : 'episode';
     const segments = tagTitle(text).split(' - ');
-    const podcast = segments.length > 1 ? segments[1].split('|')[0].trim() : '';
+    const rawName = segments.length > 1 ? segments[1].split('|')[0].trim() : '';
+    // 站点模板尾巴（"听播客，上小宇宙"）不是播客名，别拿它冒充
+    const podcast = (/听播客|上小宇宙/.test(rawName) || rawName === '小宇宙') ? '' : rawName;
     const title = (metaContent(text, 'og:title') || metaContent(text, 'twitter:title') || segments[0] || '')
         .trim().slice(0, LINK_TITLE_MAX_CHARS);
     if (!title) return { ok: false, reason: '页面上没有标题' };
-    const durationMatch = text.match(/"duration"\s*:\s*(\d{1,7})/);
-    const duration = formatDuration(durationMatch ? durationMatch[1] : 0);
-    const description = [podcast, duration].filter(Boolean).join(' · ').slice(0, LINK_DESC_MAX_CHARS);
+    let description = '';
+    if (kind === 'podcast') {
+        description = metaContent(text, 'og:description') || metaContent(text, 'description');
+    } else {
+        const durationMatch = text.match(/"duration"\s*:\s*(\d{1,7})/);
+        description = [podcast, formatDuration(durationMatch ? durationMatch[1] : 0)].filter(Boolean).join(' · ');
+    }
     return {
         ok: true,
         title,
-        description,
+        description: description.replace(/\s+/g, ' ').trim().slice(0, LINK_DESC_MAX_CHARS),
         cover: metaContent(text, 'og:image') || metaContent(text, 'twitter:image')
     };
 }
@@ -207,7 +226,7 @@ async function storeClawCover(env, db, userId, coverUrl, fetchImpl) {
 export async function previewXiaoyuzhouLink(env, db, userId, target, fetchImpl = fetch) {
     const got = await fetchBounded(target && target.url, LINK_HTML_MAX_BYTES, fetchImpl, { image: false });
     if (!got.ok) return { ok: false, reason: got.reason };
-    const parsed = parseXiaoyuzhouPage(new TextDecoder().decode(got.bytes));
+    const parsed = parseXiaoyuzhouPage(new TextDecoder().decode(got.bytes), { kind: target && target.kind });
     if (!parsed.ok) return parsed;
 
     const titleVerdict = moderateText(parsed.title, env);
@@ -236,7 +255,13 @@ export async function handleClawLinkMessage(env, db, userId, text, fetchImpl = f
     const url = extractFirstUrl(text);
     if (!url) return '';
     const target = parseXiaoyuzhouUrl(url);
-    if (!target) return '';
+    if (!target) {
+        // 是小宇宙的域名但协议不是 https：沉默会让人以为 Bot 没看懂，如实说一句更省事
+        if (xiaoyuzhouHostOf(url) && !/^https:/i.test(url)) {
+            return '这个链接是 http 的，我只会读 https 的页面。改成 https 再发我一次？想原样存就发「记录：' + url + '」。';
+        }
+        return '';
+    }
 
     const card = await previewXiaoyuzhouLink(env, db, userId, target, fetchImpl);
     if (!card.ok) {
