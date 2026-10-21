@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-20T16:27:37.060Z · 提交数：362
+> 生成时间：2026-10-21T12:51:22.377Z · 提交数：363
 
 ## 2026-10-21
 
 ### 🐛 缺陷修复
 
+- **bot**: decrypt WeChat media with AES-128-ECB
 - **bot**: probe every WeChat image url spelling and log each response shape
 - **bot**: unwrap the wrapped photo key and log the response head
 - **bot**: try every WeChat photo url and key pair before giving up

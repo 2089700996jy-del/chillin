@@ -32,6 +32,7 @@ import {
     unwrapHexAsciiKey,
     aes128EcbDecrypt
 } from '../workers/src/bot-media.js';
+import { describeClawImageContent } from '../workers/src/bot-vision.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
     parseRecordCommand,
@@ -1045,4 +1046,97 @@ integration('Bot - 网关把 /api/bot/profile 挂在登录态之后（未登录 
     await seedUser(db, 1);
     const res = await api.fetch(new Request('https://chillin.example/api/bot/profile'), { DB: db }, ctx);
     assert.equal(res.status, 401);
+});
+
+/** 看图环境：R2 替身 + 一把可用的视觉密钥（AI 绑定照旧一调就炸，描述只走 VISION_API_KEY 的兼容端点） */
+const VISION_ROUTE = 'vision.example/v1/chat/completions';
+
+function visionEnv(db, puts, overrides = {}) {
+    return {
+        ...mediaEnv(db, puts),
+        VISION_API_KEY: 'sk-test-vision',
+        VISION_API_BASE: 'https://vision.example/v1',
+        ...overrides
+    };
+}
+
+test('ClawBot - 看图：取回并压平描述、超长截断、没密钥不发请求、报错与违规都只当没描述', async () => {
+    const env = { VISION_API_KEY: 'sk-x', VISION_API_BASE: 'https://vision.example/v1' };
+    const ok = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '  一只黑猫\n蹲在窗台上  ' } }] } }) });
+    assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', ok.impl), '一只黑猫 蹲在窗台上');
+    assert.equal(ok.calls.length, 1);
+    assert.equal(ok.calls[0].body.model, 'deepseek-chat', '默认走 deepseek-chat（flash 的思考会吃光 max_tokens）');
+    assert.equal(ok.calls[0].init.headers.Authorization, 'Bearer sk-x');
+    assert.match(ok.calls[0].body.messages[0].content[1].image_url.url, /^data:image\/png;base64,/);
+
+    const long = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '猫'.repeat(400) } }] } }) });
+    assert.equal((await describeClawImageContent(env, PNG_BYTES, 'image/png', long.impl)).length, 120, '描述必须截断到 120 字');
+
+    const noKey = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '不该被调用' } }] } }) });
+    assert.equal(await describeClawImageContent({}, PNG_BYTES, 'image/png', noKey.impl), '', '没有密钥就一字不取');
+    assert.equal(noKey.calls.length, 0, '没有密钥绝不发请求');
+
+    const bad = stubFetch({ [VISION_ROUTE]: () => ({ status: 500, json: {} }) });
+    assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', bad.impl), '', '模型报错只当没有描述');
+
+    const empty = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '   ' } }] } }) });
+    assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', empty.impl), '');
+
+    const boom = async () => { throw new Error('network down'); };
+    assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', boom), '', '网络异常必须吞掉，不能把存图一起拖下水');
+
+    const blocked = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '这是赌博网站' } }] } }) });
+    assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', blocked.impl), '', '硬违规描述必须丢掉');
+
+    const soft = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '加微信看更多' } }] } }) });
+    assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', soft.impl), '****看更多', '软违规词沿用既有替换策略');
+});
+
+integration('ClawBot - 图 + 配文时，看图描述与配文一起写进随手记并回读给用户', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const msg = imageMessage();
+    msg.item_list = [
+        { type: 1, msg_id: 'CAP-VIS', text_item: { text: '今晚的月亮' } },
+        { type: 2, msg_id: 'IMG-VIS', image_item: { aeskey: '', media: 'https://cdn.example/photo.png' } }
+    ];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-VIS', msgs: [msg] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/photo.png': () => ({ bytes: PNG_BYTES }),
+        [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '窗台上蹲着一只黑猫' } }] } })
+    });
+    await pollClawAccounts(visionEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feed.content, '今晚的月亮\n\n窗台上蹲着一只黑猫', '描述要与配文一起落库');
+    assert.equal(feed.type, 'image');
+    assert.match(feed.media_url, /^\/api\/file\//);
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.match(send.body.msg.item_list[0].text_item.text, /我看到：窗台上蹲着一只黑猫/, '回信要把看到的内容说给用户');
+    assert.match(send.body.msg.item_list[0].text_item.text, /已存入/);
+    assert.equal(send.body.msg.context_token, 'CTX-IMG');
+});
+
+integration('ClawBot - 看图失败绝不拖累存图：退回默认文案，回信不提描述', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-NOVIS', msgs: [imageMessage()] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/photo.png': () => ({ bytes: PNG_BYTES }),
+        [VISION_ROUTE]: () => ({ status: 503, json: {} })
+    });
+    await pollClawAccounts(visionEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    const feed = await db.prepare('SELECT content FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feed.content, '来自微信的图片', '拿不到描述也要照常落库');
+    assert.equal(puts.length, 1, '二进制照样进 R2');
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.match(send.body.msg.item_list[0].text_item.text, /已存入/);
+    assert.ok(!/我看到/.test(send.body.msg.item_list[0].text_item.text), '没有描述就不能编一个');
 });

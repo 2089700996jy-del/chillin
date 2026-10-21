@@ -40,10 +40,10 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        20 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        21 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
                     garden-echo / rag / llm / ai / audit / bot-commands /
-                    bot-claw / bot-memory / bot-outreach / bot-media / maintenance）
+                    bot-claw / bot-memory / bot-outreach / bot-media / bot-vision / maintenance）
 migrations/         D1 迁移 0001–0026（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）

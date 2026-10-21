@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-20。供后续会话快速接续。当前前端/Worker：**v2.5.126**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.127**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -71,6 +71,14 @@
 
 ## 近期已完成（摘要）
 
+### 微信 Bot 看懂图片：看图描述写进随手记并回读（v2.5.127）
+
+1. **线上探针先证可行性**（临时路由用完即撤）：用 `VISION_API_KEY` 打 DeepSeek 官方端点——`GET /v1/models` 只有 `deepseek-flash` / `deepseek-v4-pro`；R2 里那张 202614 字节 JPEG 以 data URL 发出，**`deepseek-chat` 1355ms 返回准确中文描述**（`prompt_tokens` 960）；`deepseek-flash` 是带 `reasoning_content` 的思考模型，max_tokens 被思考吃光后 `content` 为空——所以默认模型定为 `deepseek-chat`。
+2. **新增 `workers/src/bot-vision.js`**：`describeClawImageContent(env, bytes, mime, fetchImpl)` 走 OpenAI 兼容的 `chat/completions`，密钥 `VISION_API_KEY`（缺省回落 `LLM_API_KEY`）、地址与模型可被 `VISION_API_BASE` / `VISION_MODEL` 覆盖，8 秒超时 + 描述压平空白并截断 120 字 + 过 `moderateText`。
+3. **失败绝不拖累存图**：没密钥 / 非 2xx / 网络异常 / 空回复 / 内容安全拦截，一律返回空串——`handleClawImageMessage` 照常写 R2 与随手记；有描述时正文是「配文 + 描述」、回信变成「> 我看到：…」，没有描述就退回原来的「来自微信的图片」并只报「已存入」，绝不编造。
+4. **测试**：`tests/bot-claw.test.mjs` 45 → **48 用例**（看图纯函数：取回/压平/截断/无密钥零请求/500/网络抛错/空白/硬违规丢弃/软违规打码；两条集成：描述与配文一起落库并回读、看图失败仍照常存图且不提描述）。
+
+**测试 235 → 238 用例（20 套件）**；README（workers/src 20→21 模块）、`.agents/rules/architecture.md`（模块表新增 `bot-vision.js`）与架构报告同批更新。
 ### 微信 Bot 图片：真实报文离线枚举，确认是 AES-128-ECB + PKCS7（v2.5.126）
 
 1. **第五次真机验证**仍是 `not-an-image:202624`；这一版把失败时下到的**密文与密钥候选**暂存进用户自己的 R2（`probe/` 前缀），取回本地用 `node:crypto` 做「密钥 × 模式 × IV」全枚举。

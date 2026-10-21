@@ -12,13 +12,13 @@
  */
 import { handleUpload } from './garden-media.js';
 import { saveFeed } from './bot-commands.js';
+import { describeClawImageContent } from './bot-vision.js';
 
 const IMAGE_ITEM_TYPE = 2;
 /** 与 garden-media 的上限保持一致：5MB */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CAPTION_CHARS = 2000;
 const DEFAULT_CONTENT = '来自微信的图片';
-
 const URL_FIELDS = ['media', 'url', 'hd_url', 'mid_url', 'thumb_url', 'download_url'];
 const NESTED_URL_FIELDS = ['url', 'download_url', 'full_url', 'cdn_url', 'src'];
 
@@ -424,10 +424,13 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
     const src = await storeClawImage(env, db, userId, download.bytes, download.mime);
     if (!src) return '图片收到了，但没存住，稍后再发一次试试？';
     const text = String(caption || '').trim().slice(0, MAX_CAPTION_CHARS);
-    const content = text || DEFAULT_CONTENT;
+    // 看一眼图片（可选）：失败只是没有描述，绝不阻塞存图
+    const desc = await describeClawImageContent(env, download.bytes, download.mime, fetchImpl);
+    const content = [text, desc].filter(Boolean).join('\n\n') || DEFAULT_CONTENT;
     const saved = await saveFeed(db, userId, content, src);
     if (!saved) return '图片收到了，但没存进随手记，稍后再发一次试试？';
-    console.log('[bot-media] 图片已入随手记 userId=' + userId + ' bytes=' + download.bytes.byteLength + ' note=' + download.note);
+    console.log('[bot-media] 图片已入随手记 userId=' + userId + ' bytes=' + download.bytes.byteLength + ' descLen=' + desc.length + ' note=' + download.note);
+    if (desc) return '收到图片，已存入**随手记** ✅\n\n> 我看到：' + desc;
     const preview = content.length > 60 ? content.slice(0, 60) + '…' : content;
     return '收到图片，已存入**随手记** ✅' + (text ? '' : '（没配文字，我按「' + DEFAULT_CONTENT + '」记的）') + '\n\n> ' + preview;
 }
