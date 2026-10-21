@@ -1062,11 +1062,53 @@ integration('Bot - 提示词带人格边界、档案与最近上下文（旧→�
     assert.match(messages[0].content, /关于我/, '必须注入个人档案块');
     assert.match(messages[0].content, /晚上写周记/);
     assert.match(messages[0].content, /东八区/, '必须给模型时间锚点');
-    assert.match(messages[0].content, /不是存储工具/, '人格边界必须进提示词');
+    assert.match(messages[0].content, /你自己没有写入能力和定时能力/, '人格边界必须进提示词：不许自称已保存、不许承诺到点提醒');
+    assert.match(messages[0].content, /记录：<内容>/, '必须把指令通道的真实能力列给它，否则它会答「我没有写入能力」');
+    assert.match(messages[0].content, /不是闹钟/, '主动开口与定点提醒的边界要说清');
     assert.equal(messages[messages.length - 1].content, '在吗');
     const roles = messages.slice(1, -1).map((m) => m.role);
     assert.deepEqual(roles, ['user', 'assistant', 'user', 'assistant'], '上下文按旧→新注入，实际：' + JSON.stringify(roles));
 });
+integration('ClawBot - 成功拉到信就擦掉历史 last_error，并把 last_poll_at 走到这一轮', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    await db.prepare("UPDATE bot_claw_accounts SET last_error = 'getupdates http 520', last_poll_at = '2000-01-01 00:00:00' WHERE id = 1").run();
+    const st = stubFetch({ '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: '', msgs: [] } }) });
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
+
+    let row = await db.prepare('SELECT last_error, last_poll_at FROM bot_claw_accounts WHERE id = 1').first();
+    assert.equal(String(row.last_error || ''), '', '成功这一轮要擦掉旧错误，否则界面永远停在「通道已死」');
+    assert.notEqual(row.last_poll_at, '2000-01-01 00:00:00', '游标没变也要刷新 last_poll_at——它表示最近一次成功轮询');
+
+    // 再挂一次错误、再成功一次：擦除要能反复发生，而不是只赔一次
+    await db.prepare("UPDATE bot_claw_accounts SET last_error = 'getupdates http 503' WHERE id = 1").run();
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
+    row = await db.prepare('SELECT last_error FROM bot_claw_accounts WHERE id = 1').first();
+    assert.equal(String(row.last_error || ''), '', '反复失败后成功都要擦干净');
+});
+
+integration('Bot - 光杆「记住」直接要内容，不再答「我没有写入能力」', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const reply = await buildBotReply({}, db, 1, '记住');
+    assert.match(reply, /记住：<内容>/, '要说清正确发法');
+    assert.ok(!/没有写入能力/.test(reply), '不能把自己答成没有写入能力');
+    assert.equal((await listProfile(db, 1)).length, 0, '没带内容就什么都不写');
+});
+
+integration('Bot - 定点提醒如实说做不到，也不假装已经保存', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    for (const text of ['等会6点30记得提醒我给电动牙刷充电', '记得提醒我给电动牙刷充电', '提醒我 6:30 充电']) {
+        const reply = await buildBotReply({}, db, 1, text);
+        assert.match(reply, /没法定点提醒/, text + ' 要如实说做不到：' + reply);
+        assert.ok(!/已保存|已记录|已存入/.test(reply), '不许假装保存：' + reply);
+    }
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '闲聊与做不到的请求都不落库');
+    assert.equal((await listProfile(db, 1)).length, 0);
+});
+
 /** 应用内档案接口的请求替身：与网关一样把 URL、方法、JSON body 交给处理器 */
 function profileCall(method, path, body) {
     const init = { method: method, headers: { 'Content-Type': 'application/json' } };

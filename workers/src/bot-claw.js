@@ -223,6 +223,16 @@ async function markAccountError(db, id, message) {
         .bind(id, String(message || '').slice(0, 200)).run();
 }
 
+/**
+ * 这一轮成功拉到信：擦掉历史上那次失败（last_error 一直挂着旧值，会让人误判通道已死），
+ * 同时刷新 last_poll_at——它的语义是「最近一次成功轮询」，不是「最近一次游标变化」，
+ * 安静期也该往前走。每轮 cron 只写一次（调用点用 successMarked 挡住），不产生多余写入。
+ */
+async function markAccountSuccess(db, id) {
+    await db.prepare("UPDATE bot_claw_accounts SET last_error = '', last_poll_at = datetime('now', '+8 hours') WHERE id = ?1")
+        .bind(id).run();
+}
+
 // ─────────────────────────── 接入层 API（登录态之后） ───────────────────────────
 
 function publicStatus(row) {
@@ -309,6 +319,7 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
     let cursor = String(account.cursor || '');
     let polls = 0;
     let consecutiveErrors = 0;
+    let successMarked = false;
     do {
         polls++;
         let updates;
@@ -338,6 +349,11 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
         if (updates.ret !== undefined && updates.ret !== null && Number(updates.ret) !== 0) {
             await markAccountError(db, account.id, 'ret=' + updates.ret + ' errcode=' + updates.errcode);
             return;
+        }
+        // 本轮第一次成功就擦掉旧错误、刷新 last_poll_at；后续轮次不再重复写
+        if (!successMarked) {
+            await markAccountSuccess(db, account.id);
+            successMarked = true;
         }
         if (updates.cursor && updates.cursor !== cursor) {
             cursor = updates.cursor;
