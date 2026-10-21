@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.131**（Worker 已部署、D1 迁移 0001–0027 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.132**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -8,9 +8,9 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
+- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面/时长做成卡片，回「记录」才落库；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0027`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -70,6 +70,14 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 微信 Bot 小宇宙链接速览：抓标题/封面做卡片，回「记录」才落库（v2.5.132）
+
+- **问题**：小宇宙单集链接发进微信只存成一条光秃秃的 URL（`quick_feeds` 里已躺着 3 条），而前端 `public/js/feeds.js` 早就支持结构化 `summary` → 富链接卡片；缺的只是服务端那一次「替浏览器读元数据」。
+- **解析**：新增 `workers/src/bot-links.js`，只认 `www.xiaoyuzhoufm.com/episode|podcast/<id>`。线上实测：单集页 169529 字节 HTML，`og:title` = 单集标题、`<title>` 第二段 = 播客名、内联 JSON 的 `"duration":6592` 给时长；封面 `og:image`（`image.xyzcdn.net`）无防盗链，转存 R2 后写自家 `/api/file/...`。
+- **默认无副作用**（沿用图片那条确认路径）：卡片 JSON `{title, description, cover, platform:'小宇宙', icon:'🎧'}` 进「待存位」（`0028_bot_pending_summary.sql` 给 `bot_pending_media` 加了 `summary` 列），回「记录」才连同原始链接写进 `quick_feeds.summary`（`type='link'`）；前端零改动。
+- **出站边界**（见 `.agents/rules/security.md` §3）：只认 `xiaoyuzhoufm.com` 与图床 `xyzcdn.net`、强制 https + 443、无 userinfo、手动跟重定向并逐跳复核域名、6 秒超时、HTML 512KB / 封面 4MB 上限、IP 字面量与私网主机拒绝；**白名单之外的链接一次都不出站**（原样交回聊天）。解析失败如实说明并给出「记录：<链接>」兜底。
+- **测试**：`tests/bot-claw.test.mjs` 新增 5 例——纯解析、全链路落库、聊天入口路由 + 非白名单零出站、抓取失败/超限不占坑、重定向到白名单外立刻停下。
 
 ### 图片回信提速：瞬时 5xx 不再丢收信窗口，存图与看图并行（v2.5.131）
 

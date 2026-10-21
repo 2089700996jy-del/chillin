@@ -14,7 +14,8 @@
  *
  * 指令（确定性正则，先垫一层）：
  *   帮助 / 记录：X / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
- *   光杆「记录」= 确认把刚才暂存的图片写进随手记（图片消息默认不落库，见 bot-media.js）
+ *   光杆「记录」= 确认把刚才暂存的图片/链接写进随手记（消息默认不落库，见 bot-media.js / bot-links.js）
+ *   小宇宙链接 = 抓 title/cover 做速览（只认白名单域名），回「记录」才落成富链接卡片
  * 其余一律走对话模型：温和、陪伴、多共情，不做任何持久化。
  */
 
@@ -28,6 +29,7 @@ import {
     PROFILE_ITEM_MAX_CHARS,
     readPendingMedia, clearPendingMedia
 } from './bot-memory.js';
+import { handleClawLinkMessage } from './bot-links.js';
 
 /** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
 export const MAX_REPLY_BYTES = 20000;
@@ -47,6 +49,7 @@ export const BOT_HELP_TEXT = [
     '- 直接跟我说话：聊天、倾诉、问问题都行',
     '- 「记录：内容」：把内容存进**随手记**',
     '- 发图片：我先说说看到什么，回「记录」才存进随手记',
+    '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片',
     '- 「记住：内容」：写进「关于我」，以后都记得',
     '- 「搜 关键词」：翻花园里的历史记录',
     '- 「问 问题」：结合你的记忆回答',
@@ -146,11 +149,13 @@ export async function claimBotMessage(db, key) {
     return seen.ok;
 }
 
-/** 存进随手记：复用既有 CRUD handler，等价于前端调 POST /api/feeds（mediaUrl 非空时带图） */
-export async function saveFeed(db, userId, content, mediaUrl) {
-    const payload = mediaUrl
-        ? { content, media_url: mediaUrl, type: 'image' }
-        : { content };
+/** 存进随手记：复用既有 CRUD handler，等价于前端调 POST /api/feeds（带图或带卡片元数据时补齐 payload） */
+export async function saveFeed(db, userId, content, mediaUrl, summary, type) {
+    const payload = { content };
+    if (mediaUrl) payload.media_url = mediaUrl;
+    if (summary) payload.summary = summary;
+    if (type) payload.type = type;
+    else if (mediaUrl) payload.type = 'image';
     const res = await handlePostFeed(new Request('https://chillin.internal/api/feeds', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -259,20 +264,23 @@ async function runRecord(db, userId, content) {
 }
 
 /**
- * 光杆「记录」：把暂存的图片写进随手记。
- * 图片消息默认不落库，所以这条路径必须存在；没有待存图时如实说明，
+ * 光杆「记录」：把暂存的内容（微信图片，或小宇宙链接速览）写进随手记。
+ * 消息默认不落库，所以这条路径必须存在；没有待存内容时如实说明，
  * 而不是把「记录」当成闲聊丢给模型——那会让用户以为已经存好了。
  */
 async function runCommitPendingMedia(db, userId) {
     const pending = await readPendingMedia(db, userId);
     if (!pending) {
-        return '这会儿没有等着存的图片——发完图 1 小时内回我「记录」就行，超时我就放下了。要记文字直接发「记录：内容」。';
+        return '这会儿没有等着存的东西——发完图或链接 1 小时内回我「记录」就行，超时我就放下了。要记文字直接发「记录：内容」。';
     }
+    const isLink = !!pending.summary;
     const content = String(pending.content).slice(0, MAX_FEED_CHARS);
-    if (!(await saveFeed(db, userId, content, pending.media_url))) return '保存失败了，稍后再试一次？';
+    if (!(await saveFeed(db, userId, content, pending.media_url, pending.summary, isLink ? 'link' : 'image'))) {
+        return '保存失败了，稍后再试一次？';
+    }
     await clearPendingMedia(db, userId);
     const preview = content.length > 160 ? content.slice(0, 160) + '…' : content;
-    return '已存入**随手记** ✅（连图一起）\n\n> ' + preview.replace(/\n/g, '\n> ');
+    return '已存入**随手记** ✅（' + (isLink ? '连链接卡片一起' : '连图一起') + '）\n\n> ' + preview.replace(/\n/g, '\n> ');
 }
 
 async function runRemember(db, userId, content) {
@@ -329,6 +337,10 @@ export async function runCommand(env, db, userId, content) {
 
     // 光杆「记录」：确认把刚才暂存的图片写进随手记（放在 RECORD_RE 之后，避免抢走「记录：X」）
     if (PENDING_COMMIT_RE.test(text)) return runCommitPendingMedia(db, userId);
+
+    // 小宇宙链接：抓标题与封面做速览；只认白名单域名，其它链接原样交回聊天
+    const linkReply = await handleClawLinkMessage(env, db, userId, text);
+    if (linkReply) return linkReply;
 
     const searchCmd = text.match(/^(?:搜|搜索|search|find)[\s:：]+([\s\S]+)$/i);
     if (searchCmd) return runSearch(db, userId, searchCmd[1].trim());

@@ -12,15 +12,15 @@
  */
 import { handleUpload } from './garden-media.js';
 import { describeClawImageContent } from './bot-vision.js';
-import { saveChatTurn, savePendingMedia } from './bot-memory.js';
+import { saveChatTurn, savePendingMedia, PENDING_CONFIRM_HINT } from './bot-memory.js';
 
 const IMAGE_ITEM_TYPE = 2;
 /** 与 garden-media 的上限保持一致：5MB */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CAPTION_CHARS = 2000;
 const DEFAULT_CONTENT = '来自微信的图片';
-/** 图片只暂存：回一句「记录」才落进随手记（默认无副作用） */
-const CONFIRM_HINT = '\n\n要存进随手记就回我「记录」。';
+/** 图片只暂存：回一句「记录」才落进随手记（默认无副作用；提示语与链接速览共用同一句） */
+const CONFIRM_HINT = PENDING_CONFIRM_HINT;
 const URL_FIELDS = ['media', 'url', 'hd_url', 'mid_url', 'thumb_url', 'download_url'];
 const NESTED_URL_FIELDS = ['url', 'download_url', 'full_url', 'cdn_url', 'src'];
 

@@ -76,40 +76,46 @@ export async function clearChatContext(db, userId) {
     return (res && res.meta && res.meta.changes) || 0;
 }
 
-/** 待存图片的保留时长：超过这个时间还没被「记录」确认，就当用户不要了 */
+/** 待存内容的保留时长：超过这个时间还没被「记录」确认，就当用户不要了 */
 export const PENDING_MEDIA_TTL_MINUTES = 60;
-/** 待存图片正文上限（配文 ≤2000 字 + 看图描述 ≤120 字，留足余量） */
+/** 待存正文上限（配文 ≤2000 字 + 看图描述 ≤120 字，留足余量） */
 const PENDING_MEDIA_MAX_CHARS = 2400;
+/** 待存卡片元数据（JSON）上限：链接速览用的 title / description / cover */
+const PENDING_SUMMARY_MAX_CHARS = 1200;
+/** 待存内容的确认提示：图片与链接速览共用同一句 */
+export const PENDING_CONFIRM_HINT = '\n\n要存进随手记就回我「记录」。';
 
 /**
- * 暂存一张「待确认为随手记」的图片。
- * 每人只留最新一张（user_id 主键 + UPSERT）：图片消息不再自动写进随手记，
+ * 暂存一条「待确认为随手记」的消息（微信图片，或带卡片元数据的小宇宙链接）。
+ * 每人只留最新一条（user_id 主键 + UPSERT）：消息不再自动写进随手记，
  * 而是等用户在有效期内回一句「记录」——默认无副作用，宁可少记不可错记。
+ * media_url 允许为空串（页面没有封面时），summary 只在链接速览时为卡片 JSON。
  */
-export async function savePendingMedia(db, userId, mediaUrl, content) {
+export async function savePendingMedia(db, userId, mediaUrl, content, summary) {
     const url = String(mediaUrl || '');
     const body = String(content || '').trim();
-    if (!db || !userId || !url || !body) return false;
+    if (!db || !userId || !body) return false;
+    const meta = summary ? clip(String(summary), PENDING_SUMMARY_MAX_CHARS) : null;
     try {
         await db.prepare(
-            'INSERT INTO bot_pending_media (user_id, media_url, content, is_deleted) VALUES (?1, ?2, ?3, 0) '
-            + "ON CONFLICT(user_id) DO UPDATE SET media_url = ?2, content = ?3, is_deleted = 0, created_at = datetime('now', '+8 hours')"
-        ).bind(Number(userId), url, clip(body, PENDING_MEDIA_MAX_CHARS)).run();
+            'INSERT INTO bot_pending_media (user_id, media_url, content, summary, is_deleted) VALUES (?1, ?2, ?3, ?4, 0) '
+            + "ON CONFLICT(user_id) DO UPDATE SET media_url = ?2, content = ?3, summary = ?4, is_deleted = 0, created_at = datetime('now', '+8 hours')"
+        ).bind(Number(userId), url, clip(body, PENDING_MEDIA_MAX_CHARS), meta).run();
         return true;
     } catch (err) {
-        console.error('[bot-memory] 暂存图片失败: ' + (err && err.message));
+        console.error('[bot-memory] 暂存消息失败: ' + (err && err.message));
         return false;
     }
 }
 
-/** 取有效期内的待存图片（created_at 是东八区，减 8 小时才能跟 datetime('now') 的 UTC 比） */
+/** 取有效期内的待存内容（created_at 是东八区，减 8 小时才能跟 datetime('now') 的 UTC 比） */
 export async function readPendingMedia(db, userId) {
     if (!db || !userId) return null;
     const row = await db.prepare(
-        'SELECT media_url, content FROM bot_pending_media WHERE user_id = ?1 AND is_deleted = 0 '
+        'SELECT media_url, content, summary FROM bot_pending_media WHERE user_id = ?1 AND is_deleted = 0 '
         + "AND datetime(created_at, '-8 hours') >= datetime('now', ?2)"
     ).bind(Number(userId), '-' + PENDING_MEDIA_TTL_MINUTES + ' minutes').first();
-    return row && row.media_url && row.content ? row : null;
+    return row && row.content ? row : null;
 }
 
 /** 确认落库之后作废这一条（软删，用户数据永不物理删除） */

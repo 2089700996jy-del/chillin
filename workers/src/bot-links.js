@@ -1,0 +1,250 @@
+/**
+ * 微信 Bot 的小宇宙链接速览（v2.5.132）。
+ *
+ * 用户发来小宇宙链接时，服务端替她读一次页面的 og 元数据，回一条「标题 + 播客名 + 时长」的速览，
+ * 并把卡片元数据放进「待存位」——她回「记录」才写成随手记（与图片共用同一条确认路径）。
+ * 前端 public/js/feeds.js 早就支持结构化 quick_feeds.summary：只要把
+ * {title, description, cover, platform, icon} 写进 summary，花园里这条记录就自动渲染成富链接卡片；
+ * 封面转存 R2 后写自家 /api/file/... 地址，卡片不依赖第三方防盗链。
+ *
+ * 出站抓取是本模块唯一的对外动作，边界收得极紧（见 .agents/rules/security.md §3）：
+ * 只认小宇宙的页面域名与它的图床、强制 https + 443 端口、手动跟随重定向并逐跳复核域名、
+ * 6 秒超时、HTML 512KB / 封面 4MB 上限、IP 字面量与私网主机一律拒绝。
+ * 解析失败绝不假装成功：如实说明，并给出「记录：<链接>」的兜底路径。
+ */
+import { storeClawImage } from './bot-media.js';
+import { savePendingMedia, PENDING_CONFIRM_HINT } from './bot-memory.js';
+import { moderateText } from './llm.js';
+
+/** 出站超时与体积上限（小宇宙单集页实测 169529 字节、封面实测 184729 字节，留足余量） */
+export const LINK_FETCH_TIMEOUT_MS = 6000;
+export const LINK_HTML_MAX_BYTES = 512 * 1024;
+export const LINK_COVER_MAX_BYTES = 4 * 1024 * 1024;
+const LINK_MAX_REDIRECTS = 3;
+
+export const LINK_TITLE_MAX_CHARS = 120;
+export const LINK_DESC_MAX_CHARS = 160;
+export const LINK_MAX_CHARS = 4000;
+
+/** 出站白名单：页面只认小宇宙，图片只认它的图床 */
+const PAGE_HOST_SUFFIXES = ['xiaoyuzhoufm.com'];
+const IMAGE_HOST_SUFFIXES = ['xyzcdn.net'];
+
+const LINK_USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36 ChillinBot/1.0';
+
+const URL_IN_TEXT_RE = /https?:\/\/[^\s<>"'）)】\]]+/i;
+const TRAILING_PUNCT_RE = /[.,;:!?，。；：！？、）)】\]]+$/;
+const EPISODE_PATH_RE = /^\/episode\/([A-Za-z0-9]{6,40})\/?$/;
+const PODCAST_PATH_RE = /^\/podcast\/([A-Za-z0-9]{6,40})\/?$/;
+/** 私网 / 链路本地 / 云元数据网段的兜底（白名单之外再上一道锁） */
+const PRIVATE_HOST_RE = /(^|\.)(10|127|169\.254|172\.(1[6-9]|2\d|3[01])|192\.168)\./;
+
+/** 从一段文本里取第一个 http(s) 链接（微信转发过来的正文常常只有链接本身） */
+export function extractFirstUrl(text) {
+    const m = String(text || '').match(URL_IN_TEXT_RE);
+    return m ? m[0].replace(TRAILING_PUNCT_RE, '') : '';
+}
+
+function hostAllowed(host, suffixes) {
+    const h = String(host || '').toLowerCase().replace(/\.$/, '');       // FQDN 尾点归一化
+    if (!h) return false;
+    if (h.startsWith('[') || /^\d+(\.\d+){3}$/.test(h)) return false;  // IP 字面量
+    if (h === 'localhost' || h.endsWith('.localhost') || h.endsWith('.local')) return false;
+    if (PRIVATE_HOST_RE.test(h)) return false;
+    return suffixes.some((suffix) => h === suffix || h.endsWith('.' + suffix));
+}
+
+/** 出站抓取准入：https、443 端口、无 userinfo、域名命中白名单 */
+export function isAllowedOutboundUrl(rawUrl, options = {}) {
+    let u;
+    try { u = new URL(String(rawUrl)); } catch { return false; }
+    if (u.protocol !== 'https:') return false;
+    if (u.username || u.password) return false;
+    if (u.port && u.port !== '443') return false;
+    return hostAllowed(u.hostname, options && options.image ? IMAGE_HOST_SUFFIXES : PAGE_HOST_SUFFIXES);
+}
+
+/** 只认小宇宙的网页链接；短链 / App 分享链接暂不支持（解析不了就交回普通聊天） */
+export function parseXiaoyuzhouUrl(rawUrl) {
+    let u;
+    try { u = new URL(String(rawUrl)); } catch { return null; }
+    if (u.protocol !== 'https:' || !hostAllowed(u.hostname, PAGE_HOST_SUFFIXES)) return null;
+    const episode = u.pathname.match(EPISODE_PATH_RE);
+    if (episode) return { kind: 'episode', id: episode[1], url: u.toString() };
+    const podcast = u.pathname.match(PODCAST_PATH_RE);
+    if (podcast) return { kind: 'podcast', id: podcast[1], url: u.toString() };
+    return null;
+}
+
+/** 秒 → 1:49:52；超出合理区间（0 < s ≤ 4 天）返回空串 */
+export function formatDuration(seconds) {
+    const total = Math.floor(Number(seconds));
+    if (!Number.isFinite(total) || total <= 0 || total > 4 * 86400) return '';
+    const pad = (n) => String(n).padStart(2, '0');
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    return (h ? h + ':' + pad(m) : String(m)) + ':' + pad(s);
+}
+
+function decodeEntities(value) {
+    return String(value)
+        .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#0*39;/g, "'").replace(/&#x0*27;/gi, "'");
+}
+
+/** 逐个 <meta> 标签找属性值：property/name 与 content 的先后顺序都不挑 */
+function metaContent(html, prop) {
+    const tags = String(html || '').match(/<meta\s[^>]*>/gi) || [];
+    for (const tag of tags) {
+        const key = (tag.match(/(?:property|name)\s*=\s*["']([^"']+)["']/i) || [])[1];
+        if (!key || key.toLowerCase() !== prop.toLowerCase()) continue;
+        const value = (tag.match(/content\s*=\s*["']([^"']*)["']/i) || [])[1];
+        if (value) return decodeEntities(value.trim());
+    }
+    return '';
+}
+
+function tagTitle(html) {
+    const m = String(html || '').match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+    return m ? decodeEntities(m[1].replace(/\s+/g, ' ').trim()) : '';
+}
+
+/**
+ * 解析小宇宙单集页：og:title 是单集标题，<title> 里的第二段是播客名，
+ * 时长从页面内联 JSON 的 "duration" 抠（线上实测单集页第 104275 字节附近）。
+ */
+export function parseXiaoyuzhouPage(html) {
+    const text = String(html || '');
+    const segments = tagTitle(text).split(' - ');
+    const podcast = segments.length > 1 ? segments[1].split('|')[0].trim() : '';
+    const title = (metaContent(text, 'og:title') || metaContent(text, 'twitter:title') || segments[0] || '')
+        .trim().slice(0, LINK_TITLE_MAX_CHARS);
+    if (!title) return { ok: false, reason: '页面上没有标题' };
+    const durationMatch = text.match(/"duration"\s*:\s*(\d{1,7})/);
+    const duration = formatDuration(durationMatch ? durationMatch[1] : 0);
+    const description = [podcast, duration].filter(Boolean).join(' · ').slice(0, LINK_DESC_MAX_CHARS);
+    return {
+        ok: true,
+        title,
+        description,
+        cover: metaContent(text, 'og:image') || metaContent(text, 'twitter:image')
+    };
+}
+
+/** 读 body 并按上限截断（超限直接放弃，绝不无界读进内存） */
+async function readBodyCapped(res, maxBytes) {
+    if (!res.body || typeof res.body.getReader !== 'function') {
+        const buf = await res.arrayBuffer();
+        return buf.byteLength > maxBytes ? null : new Uint8Array(buf);
+    }
+    const reader = res.body.getReader();
+    const chunks = [];
+    let size = 0;
+    for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || !value.length) continue;
+        size += value.length;
+        if (size > maxBytes) {
+            if (typeof reader.cancel === 'function') { try { await reader.cancel(); } catch { /* 已断开则忽略 */ } }
+            return null;
+        }
+        chunks.push(value);
+    }
+    const out = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.length; }
+    return out;
+}
+
+/** 受限 GET：手动跟重定向，每一跳都重新过一遍准入判定 */
+async function fetchBounded(rawUrl, maxBytes, fetchImpl, options = {}) {
+    let current = String(rawUrl);
+    for (let hop = 0; hop <= LINK_MAX_REDIRECTS; hop++) {
+        if (!isAllowedOutboundUrl(current, options)) return { ok: false, reason: '域名不在白名单' };
+        let res;
+        try {
+            res = await fetchImpl(current, {
+                method: 'GET',
+                redirect: 'manual',
+                headers: {
+                    'User-Agent': LINK_USER_AGENT,
+                    Accept: options.image ? 'image/*' : 'text/html,application/xhtml+xml'
+                },
+                signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(LINK_FETCH_TIMEOUT_MS) : undefined
+            });
+        } catch (err) {
+            return { ok: false, reason: '请求失败' };
+        }
+        if (res.status >= 300 && res.status < 400) {
+            const location = (res.headers && typeof res.headers.get === 'function') ? res.headers.get('location') : '';
+            if (!location) return { ok: false, reason: '重定向缺少目标' };
+            try { current = new URL(location, current).toString(); } catch { return { ok: false, reason: '重定向目标非法' }; }
+            continue;
+        }
+        if (!res.ok) return { ok: false, reason: 'HTTP ' + res.status };
+        let bytes;
+        try { bytes = await readBodyCapped(res, maxBytes); } catch (err) { return { ok: false, reason: '读取失败' }; }
+        if (!bytes) return { ok: false, reason: '内容过大' };
+        return { ok: true, bytes, finalUrl: current };
+    }
+    return { ok: false, reason: '重定向过多' };
+}
+
+/** 封面转存 R2（复用既有上传通道：魔数嗅探 + 5MB 上限），失败返回空串由调用方回落远程地址 */
+async function storeClawCover(env, db, userId, coverUrl, fetchImpl) {
+    if (!coverUrl || !isAllowedOutboundUrl(coverUrl, { image: true })) return '';
+    const got = await fetchBounded(coverUrl, LINK_COVER_MAX_BYTES, fetchImpl, { image: true });
+    if (!got.ok) return '';
+    return await storeClawImage(env, db, userId, got.bytes, '');
+}
+
+/**
+ * 抓一次小宇宙页面，返回卡片元数据（封面已转存时写自家地址，否则回落远程地址）。
+ * 任何一步失败都返回 { ok: false, reason }，绝不抛给调用方。
+ */
+export async function previewXiaoyuzhouLink(env, db, userId, target, fetchImpl = fetch) {
+    const got = await fetchBounded(target && target.url, LINK_HTML_MAX_BYTES, fetchImpl, { image: false });
+    if (!got.ok) return { ok: false, reason: got.reason };
+    const parsed = parseXiaoyuzhouPage(new TextDecoder().decode(got.bytes));
+    if (!parsed.ok) return parsed;
+
+    const titleVerdict = moderateText(parsed.title, env);
+    if (!titleVerdict.ok) return { ok: false, reason: '标题未通过内容安全检查' };
+    const descVerdict = parsed.description ? moderateText(parsed.description, env) : { ok: true, text: '' };
+    if (!descVerdict.ok) return { ok: false, reason: '简介未通过内容安全检查' };
+
+    const stored = await storeClawCover(env, db, userId, parsed.cover, fetchImpl);
+    return {
+        ok: true,
+        meta: {
+            title: titleVerdict.text,
+            description: descVerdict.text,
+            cover: stored || parsed.cover || '',
+            platform: '小宇宙',
+            icon: '🎧'
+        }
+    };
+}
+
+/**
+ * 链接消息的统一入口：不是白名单链接返回空串（交回普通聊天，绝不出站抓取）。
+ * 抓到的卡片进「待存位」，她回「记录」才落库；正文里保留原始链接，前端就能渲染卡片。
+ */
+export async function handleClawLinkMessage(env, db, userId, text, fetchImpl = fetch) {
+    const url = extractFirstUrl(text);
+    if (!url) return '';
+    const target = parseXiaoyuzhouUrl(url);
+    if (!target) return '';
+
+    const card = await previewXiaoyuzhouLink(env, db, userId, target, fetchImpl);
+    if (!card.ok) {
+        return '这个链接我没能打开（' + card.reason + '）。想原样存成随手记，就发「记录：' + url + '」。';
+    }
+    const caption = String(text || '').replace(url, ' ').replace(/\s+/g, ' ').trim();
+    const content = [caption, url].filter(Boolean).join('\n').slice(0, LINK_MAX_CHARS);
+    await savePendingMedia(db, userId, card.meta.cover || '', content, JSON.stringify(card.meta));
+    const head = card.meta.icon + ' ' + card.meta.title;
+    return (card.meta.description ? head + '\n' + card.meta.description : head) + PENDING_CONFIRM_HINT;
+}

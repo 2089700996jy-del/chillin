@@ -53,6 +53,15 @@ import {
     PROFILE_MAX_ITEMS,
     savePendingMedia
 } from '../workers/src/bot-memory.js';
+import {
+    extractFirstUrl,
+    isAllowedOutboundUrl,
+    parseXiaoyuzhouUrl,
+    parseXiaoyuzhouPage,
+    formatDuration,
+    handleClawLinkMessage,
+    LINK_HTML_MAX_BYTES
+} from '../workers/src/bot-links.js';
 
 /**
  * 微信 ClawBot（官方 iLink 协议）：传输层纯函数 + D1 接入层 + 每分钟长轮询。
@@ -73,6 +82,7 @@ function stubFetch(routes) {
         for (const key of Object.keys(routes)) {
             if (u.includes(key)) {
                 const r = routes[key](u, body) || {};
+                if (r.response) return r.response;
                 if (r.bytes) return new Response(r.bytes, { status: r.status || 200 });
                 return new Response(JSON.stringify(r.json || {}), { status: r.status || 200 });
             }
@@ -1160,7 +1170,7 @@ integration('ClawBot - 图 + 配文时先把描述说给用户，回「记录」
     assert.equal(feed.type, 'image');
     assert.equal(feed.media_url, pending.media_url, '存的还是同一张图');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 0, '确认后待存位要作废');
-    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的图片/, '再确认一次要如实说明');
+    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的东西/, '再确认一次要如实说明');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1, '不能重复入库');
 });
 
@@ -1193,7 +1203,7 @@ integration('Bot - 待存图片过期后「记录」不会翻旧账，也不会�
     await savePendingMedia(db, 1, '/api/file/old-img?t=tok', '两个小时前那张图');
     await db.prepare("UPDATE bot_pending_media SET created_at = datetime('now', '+8 hours', '-2 hours') WHERE user_id = 1").run();
 
-    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的图片/);
+    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的东西/);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '过期图绝不能落库');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 1, '过期行仍在，只是读不到');
 });
@@ -1207,4 +1217,121 @@ integration('Bot - 「记录：内容」仍然直达随手记，不被待存确�
     const feed = await db.prepare('SELECT content FROM quick_feeds WHERE user_id = 1').first();
     assert.equal(feed.content, '明天买牛奶', '带内容的记录不能被待存图抢走');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 1, '待存图仍在等确认');
+});
+
+/* ---------- 小宇宙链接速览（v2.5.132） ---------- */
+
+const LZ_EPISODE = 'https://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74';
+const LZ_ROUTE = 'xiaoyuzhoufm.com/episode/';
+const LZ_COVER = 'image.xyzcdn.net/cover-abc';
+const LZ_HTML = '<!doctype html><html><head>'
+    + '<title>Ep204 未来生活指南｜刘德华给我发微信 - 基本无害 Mostly Harmless | 小宇宙 - 听播客，上小宇宙</title>'
+    + '<meta property="og:title" content="Ep204 未来生活指南｜刘德华给我发微信">'
+    + '<meta property="og:image" content="https://image.xyzcdn.net/cover-abc">'
+    + '</head><body><script>window.__DATA__ = {"duration":6592,"pid":"5eae66d1418a84a046472b4d"};</script></body></html>';
+
+test('Bot - 小宇宙链接只认白名单域名，标题与播客名从 og 与页面标题里取', () => {
+    assert.equal(extractFirstUrl('看这个 ' + LZ_EPISODE + '。'), LZ_EPISODE, '中文句号不该被当成链接的一部分');
+    assert.equal(extractFirstUrl('没有链接'), '');
+    assert.equal(formatDuration(6592), '1:49:52');
+    assert.equal(formatDuration(0), '');
+    const parsed = parseXiaoyuzhouPage(LZ_HTML);
+    assert.equal(parsed.ok, true);
+    assert.equal(parsed.title, 'Ep204 未来生活指南｜刘德华给我发微信');
+    assert.equal(parsed.description, '基本无害 Mostly Harmless · 1:49:52');
+    assert.equal(parsed.cover, 'https://image.xyzcdn.net/cover-abc');
+    assert.deepEqual(parseXiaoyuzhouUrl(LZ_EPISODE), { kind: 'episode', id: '6a76ebabc4079d62c57f3b74', url: LZ_EPISODE });
+    assert.equal(parseXiaoyuzhouUrl('https://example.com/episode/6a76ebabc4079d62c57f3b74'), null, '只认小宇宙域名');
+    assert.equal(isAllowedOutboundUrl(LZ_EPISODE), true);
+    assert.equal(isAllowedOutboundUrl('http://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74'), false, '非 https 一律拒绝');
+    assert.equal(isAllowedOutboundUrl('https://xiaoyuzhoufm.com.evil.example/episode/6a76ebabc4079d62c57f3b74'), false, '后缀伪造要拦住');
+    assert.equal(isAllowedOutboundUrl('https://www.xiaoyuzhoufm.com:8443/episode/6a76ebabc4079d62c57f3b74'), false, '非 443 端口拒绝');
+    assert.equal(isAllowedOutboundUrl('https://user@evil.example/?u=xiaoyuzhoufm.com'), false, '带 userinfo 拒绝');
+    assert.equal(isAllowedOutboundUrl('https://127.0.0.1/episode/6a76ebabc4079d62c57f3b74'), false, 'IP 字面量拒绝');
+    assert.equal(isAllowedOutboundUrl('https://image.xyzcdn.net/a.jpg', { image: true }), true, '图床只对图片通道开放');
+    assert.equal(isAllowedOutboundUrl('https://image.xyzcdn.net/a.jpg'), false);
+});
+
+integration('Bot - 小宇宙链接先给速览，回「记录」才落成带卡片的随手记', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const puts = [];
+    const st = stubFetch({
+        [LZ_ROUTE]: () => ({ bytes: LZ_HTML, status: 200 }),
+        [LZ_COVER]: () => ({ bytes: PNG_BYTES, status: 200 })
+    });
+    const reply = await handleClawLinkMessage(visionEnv(db, puts), db, 1, '这个不错 ' + LZ_EPISODE, st.impl);
+    assert.match(reply, /Ep204 未来生活指南/, '回信要给标题');
+    assert.match(reply, /基本无害 Mostly Harmless · 1:49:52/, '回信要给播客名与时长');
+    assert.match(reply, /记录/, '要告诉用户怎么确认');
+    assert.ok(!/已存入/.test(reply), '没确认就不能说已存');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
+
+    const pending = await db.prepare('SELECT content, media_url, summary FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.equal(pending.content, '这个不错' + '\n' + LZ_EPISODE, '配文与原始链接一起进待存位');
+    assert.match(pending.media_url, /^\/api\/file\//, '封面转存 R2 后写自家地址');
+    const meta = JSON.parse(pending.summary);
+    assert.equal(meta.platform, '小宇宙');
+    assert.equal(meta.icon, '🎧');
+    assert.equal(meta.cover, pending.media_url, '卡片封面用转存后的地址');
+    assert.ok(puts.length >= 1, '封面二进制进 R2');
+
+    assert.match(await buildBotReply({}, db, 1, '记录'), /已存入/);
+    const feed = await db.prepare('SELECT content, type, summary, media_url FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feed.type, 'link', '链接记录要用 link 类型');
+    assert.equal(feed.summary, pending.summary, '卡片 JSON 原样进 summary，前端据此渲染富链接卡片');
+    assert.ok(feed.content.includes(LZ_EPISODE), '正文保留原始链接');
+    assert.equal(feed.media_url, pending.media_url);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 0, '确认后待存位要作废');
+    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的东西/, '再确认一次要如实说明');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1, '不能重复入库');
+});
+
+integration('Bot - 聊天入口遇小宇宙链接走速览，其它链接一次都不出站', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const puts = [];
+    const st = stubFetch({
+        [LZ_ROUTE]: () => ({ bytes: LZ_HTML, status: 200 }),
+        [LZ_COVER]: () => ({ bytes: PNG_BYTES, status: 200 })
+    });
+    const original = globalThis.fetch;
+    globalThis.fetch = st.impl;
+    try {
+        const reply = await buildBotReply(visionEnv(db, puts), db, 1, LZ_EPISODE);
+        assert.match(reply, /Ep204 未来生活指南/, '聊天入口也要走速览');
+        st.calls.length = 0;
+        await buildBotReply(visionEnv(db, puts), db, 1, 'https://evil.example/episode/6a76ebabc4079d62c57f3b74');
+        assert.equal(st.calls.length, 0, '白名单之外的域名一次都不许出站');
+    } finally {
+        globalThis.fetch = original;
+    }
+});
+
+integration('Bot - 小宇宙页面抓不到时不占坑，并给出「记录：链接」兜底', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const down = stubFetch({ [LZ_ROUTE]: () => ({ status: 503 }) });
+    const reply = await handleClawLinkMessage({}, db, 1, LZ_EPISODE, down.impl);
+    assert.match(reply, /没能打开/, '失败要如实说');
+    assert.ok(reply.includes('记录：' + LZ_EPISODE), '给出原样保存的兜底路径');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media').first()).n, 0, '抓不到就不该占坑');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
+
+    const huge = stubFetch({ [LZ_ROUTE]: () => ({ bytes: new Uint8Array(LINK_HTML_MAX_BYTES + 1) }) });
+    const oversized = await handleClawLinkMessage({}, db, 1, LZ_EPISODE, huge.impl);
+    assert.match(oversized, /内容过大/, '超过体积上限直接放弃');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media').first()).n, 0);
+});
+
+integration('Bot - 小宇宙页面重定向到白名单之外时立刻停下，不跟过去', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const st = stubFetch({
+        [LZ_ROUTE]: () => ({ response: new Response('', { status: 302, headers: { location: 'https://evil.example/steal' } }) })
+    });
+    const reply = await handleClawLinkMessage({}, db, 1, LZ_EPISODE, st.impl);
+    assert.match(reply, /没能打开/);
+    assert.equal(st.calls.length, 1, '第二跳就该被拦下');
+    assert.ok(st.calls[0].init.redirect === 'manual', '必须手动跟重定向才能逐跳复核域名');
 });
