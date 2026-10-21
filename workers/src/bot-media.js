@@ -434,7 +434,7 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
     if (!pending) return '图片收到了，但没能暂存，稍后再发一次试试？';
     console.log('[bot-media] 图片已暂存 userId=' + userId + ' bytes=' + download.bytes.byteLength + ' descLen=' + desc.length + ' note=' + download.note);
     const reply = desc
-        ? '我看到：' + desc + CONFIRM_HINT
+        ? desc + CONFIRM_HINT
         : '图片我收好了，这次没能看清里面是什么。' + CONFIRM_HINT;
     // 图片消息也进对话上下文：用户接着说「这张图不错」这类话才有指代可继承
     await saveChatTurn(db, userId, 'user', text ? '[图片] ' + text : '[图片]');

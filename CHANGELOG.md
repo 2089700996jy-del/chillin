@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-21T13:47:04.653Z · 提交数：365
+> 生成时间：2026-10-21T13:57:41.624Z · 提交数：366
 
 ## 2026-10-21
 
@@ -11,6 +11,7 @@
 
 ### 🐛 缺陷修复
 
+- **bot**: make the image caption read like a friend, not a label
 - **bot**: describe chat images and only save them on confirmation
 - **bot**: decrypt WeChat media with AES-128-ECB
 - **bot**: probe every WeChat image url spelling and log each response shape

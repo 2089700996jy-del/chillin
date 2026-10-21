@@ -1121,7 +1121,8 @@ integration('ClawBot - 图 + 配文时先把描述说给用户，回「记录」
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
     const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
     const reply = send.body.msg.item_list[0].text_item.text;
-    assert.match(reply, /我看到：窗台上蹲着一只黑猫/, '回信要把看到的内容说给用户');
+    assert.match(reply, /^窗台上蹲着一只黑猫/, '回信直接把看到的内容说给用户，不加「我看到：」前缀');
+    assert.ok(!/我看到/.test(reply), '不要「我看到：」前缀');
     assert.match(reply, /记录/, '要告诉用户怎么确认');
     assert.ok(!/已存入/.test(reply), '没确认就不能说已存');
     assert.equal(send.body.msg.context_token, 'CTX-IMG');
