@@ -14,6 +14,7 @@
  *
  * 指令（确定性正则，先垫一层）：
  *   帮助 / 记录：X / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
+ *   光杆「记录」= 确认把刚才暂存的图片写进随手记（图片消息默认不落库，见 bot-media.js）
  * 其余一律走对话模型：温和、陪伴、多共情，不做任何持久化。
  */
 
@@ -24,7 +25,8 @@ import { checkRateLimitShared } from './security.js';
 import {
     saveChatTurn, loadChatContext, clearChatContext,
     addProfileItem, listProfile, forgetProfile, clearProfile, loadProfilePrompt, PROFILE_MAX_ITEMS,
-    PROFILE_ITEM_MAX_CHARS
+    PROFILE_ITEM_MAX_CHARS,
+    readPendingMedia, clearPendingMedia
 } from './bot-memory.js';
 
 /** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
@@ -44,6 +46,7 @@ export const BOT_HELP_TEXT = [
     '',
     '- 直接跟我说话：聊天、倾诉、问问题都行',
     '- 「记录：内容」：把内容存进**随手记**',
+    '- 发图片：我先说说看到什么，回「记录」才存进随手记',
     '- 「记住：内容」：写进「关于我」，以后都记得',
     '- 「搜 关键词」：翻花园里的历史记录',
     '- 「问 问题」：结合你的记忆回答',
@@ -81,6 +84,12 @@ export function wantsEvidence(text) {
 const PROFILE_VIEW_RE = /^(?:你记得我什么|你记住了我什么|我的档案|查看档案|\/profile)$/i;
 const RESET_RE = /^(?:重置对话|清空对话|重置上下文|清空上下文|\/reset|\/clear)$/i;
 const HELP_RE = /^(?:帮助|help|\/help|\?|？)$/i;
+/**
+ * 光杆「记录」= 确认存下刚才那张待存图片。
+ * 必须与 RECORD_RE 区分：RECORD_RE 需要跟内容或分隔符（防「记录了这件事」这类叙述被误判），
+ * 所以本式只匹配整条消息就是这个动作词的情况。
+ */
+const PENDING_COMMIT_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记录|记录一下|记一下|记下来|记下|存|存一下|存起来|保存|保存一下|存进随手记|存到随手记|存进花园)[\s。！!～~]*$/;
 
 export function parseRecordCommand(text) {
     const m = RECORD_RE.exec(String(text || '').trim());
@@ -249,6 +258,23 @@ async function runRecord(db, userId, content) {
     return '已存入**随手记** ✅\n\n> ' + preview.replace(/\n/g, '\n> ');
 }
 
+/**
+ * 光杆「记录」：把暂存的图片写进随手记。
+ * 图片消息默认不落库，所以这条路径必须存在；没有待存图时如实说明，
+ * 而不是把「记录」当成闲聊丢给模型——那会让用户以为已经存好了。
+ */
+async function runCommitPendingMedia(db, userId) {
+    const pending = await readPendingMedia(db, userId);
+    if (!pending) {
+        return '这会儿没有等着存的图片——发完图 1 小时内回我「记录」就行，超时我就放下了。要记文字直接发「记录：内容」。';
+    }
+    const content = String(pending.content).slice(0, MAX_FEED_CHARS);
+    if (!(await saveFeed(db, userId, content, pending.media_url))) return '保存失败了，稍后再试一次？';
+    await clearPendingMedia(db, userId);
+    const preview = content.length > 160 ? content.slice(0, 160) + '…' : content;
+    return '已存入**随手记** ✅（连图一起）\n\n> ' + preview.replace(/\n/g, '\n> ');
+}
+
 async function runRemember(db, userId, content) {
     const item = content.slice(0, PROFILE_ITEM_MAX_CHARS);
     const res = await addProfileItem(db, userId, item);
@@ -300,6 +326,9 @@ export async function runCommand(env, db, userId, content) {
 
     const record = parseRecordCommand(text);
     if (record) return runRecord(db, userId, record);
+
+    // 光杆「记录」：确认把刚才暂存的图片写进随手记（放在 RECORD_RE 之后，避免抢走「记录：X」）
+    if (PENDING_COMMIT_RE.test(text)) return runCommitPendingMedia(db, userId);
 
     const searchCmd = text.match(/^(?:搜|搜索|search|find)[\s:：]+([\s\S]+)$/i);
     if (searchCmd) return runSearch(db, userId, searchCmd[1].trim());

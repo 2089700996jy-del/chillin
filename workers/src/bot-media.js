@@ -11,14 +11,16 @@
  * 真实图片才认账」，绝不把密文写进 R2。任何一步失败都只记状态与字段形状，绝不记正文。
  */
 import { handleUpload } from './garden-media.js';
-import { saveFeed } from './bot-commands.js';
 import { describeClawImageContent } from './bot-vision.js';
+import { saveChatTurn, savePendingMedia } from './bot-memory.js';
 
 const IMAGE_ITEM_TYPE = 2;
 /** 与 garden-media 的上限保持一致：5MB */
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_CAPTION_CHARS = 2000;
 const DEFAULT_CONTENT = '来自微信的图片';
+/** 图片只暂存：回一句「记录」才落进随手记（默认无副作用） */
+const CONFIRM_HINT = '\n\n要存进随手记就回我「记录」。';
 const URL_FIELDS = ['media', 'url', 'hd_url', 'mid_url', 'thumb_url', 'download_url'];
 const NESTED_URL_FIELDS = ['url', 'download_url', 'full_url', 'cdn_url', 'src'];
 
@@ -410,7 +412,8 @@ export async function storeClawImage(env, db, userId, bytes, mime) {
 }
 
 /**
- * 图片消息 → 随手记（带图）。返回给用户的回复；没有图片 item 时返回空串（调用方按普通消息继续）。
+ * 图片消息 → 暂存待确认（不落库）。返回给用户的回复；没有图片 item 时返回空串（调用方按普通消息继续）。
+ * 默认无副作用：图只进 R2 与待存位，用户回一句「记录」才写成随手记（见 bot-commands.js）。
  * 存图不经过模型：秒回，也不占用对话限流桶。
  */
 export async function handleClawImageMessage(env, db, userId, msg, caption, fetchImpl = fetch) {
@@ -424,13 +427,17 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
     const src = await storeClawImage(env, db, userId, download.bytes, download.mime);
     if (!src) return '图片收到了，但没存住，稍后再发一次试试？';
     const text = String(caption || '').trim().slice(0, MAX_CAPTION_CHARS);
-    // 看一眼图片（可选）：失败只是没有描述，绝不阻塞存图
+    // 看一眼图片（可选）：失败只是没有描述，绝不阻塞暂存
     const desc = await describeClawImageContent(env, download.bytes, download.mime, fetchImpl);
     const content = [text, desc].filter(Boolean).join('\n\n') || DEFAULT_CONTENT;
-    const saved = await saveFeed(db, userId, content, src);
-    if (!saved) return '图片收到了，但没存进随手记，稍后再发一次试试？';
-    console.log('[bot-media] 图片已入随手记 userId=' + userId + ' bytes=' + download.bytes.byteLength + ' descLen=' + desc.length + ' note=' + download.note);
-    if (desc) return '收到图片，已存入**随手记** ✅\n\n> 我看到：' + desc;
-    const preview = content.length > 60 ? content.slice(0, 60) + '…' : content;
-    return '收到图片，已存入**随手记** ✅' + (text ? '' : '（没配文字，我按「' + DEFAULT_CONTENT + '」记的）') + '\n\n> ' + preview;
+    const pending = await savePendingMedia(db, userId, src, content);
+    if (!pending) return '图片收到了，但没能暂存，稍后再发一次试试？';
+    console.log('[bot-media] 图片已暂存 userId=' + userId + ' bytes=' + download.bytes.byteLength + ' descLen=' + desc.length + ' note=' + download.note);
+    const reply = desc
+        ? '我看到：' + desc + CONFIRM_HINT
+        : '图片我收好了，这次没能看清里面是什么。' + CONFIRM_HINT;
+    // 图片消息也进对话上下文：用户接着说「这张图不错」这类话才有指代可继承
+    await saveChatTurn(db, userId, 'user', text ? '[图片] ' + text : '[图片]');
+    await saveChatTurn(db, userId, 'assistant', reply);
+    return reply;
 }

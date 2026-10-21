@@ -6,6 +6,7 @@
  *   2. 个人档案（bot_profile）：用户自述的长期事实与偏好，只能由显式指令写入，可看 / 可改 / 可遗忘；
  *   3. 花园 RAG（rag.js）：历史记录本身，回答时作为证据引用。
  * 三者绝不合并——上下文会过期，档案要显式写入，花园是事实来源。
+ * 另有「待存图片」暂存位（bot_pending_media）：图片先描述、不落库，用户回「记录」才写成随手记。
  *
  * 写入全部软删（is_deleted），用户数据永不物理删除；聊天正文永不进日志。
  */
@@ -74,6 +75,52 @@ export async function clearChatContext(db, userId) {
     ).bind(Number(userId)).run();
     return (res && res.meta && res.meta.changes) || 0;
 }
+
+/** 待存图片的保留时长：超过这个时间还没被「记录」确认，就当用户不要了 */
+export const PENDING_MEDIA_TTL_MINUTES = 60;
+/** 待存图片正文上限（配文 ≤2000 字 + 看图描述 ≤120 字，留足余量） */
+const PENDING_MEDIA_MAX_CHARS = 2400;
+
+/**
+ * 暂存一张「待确认为随手记」的图片。
+ * 每人只留最新一张（user_id 主键 + UPSERT）：图片消息不再自动写进随手记，
+ * 而是等用户在有效期内回一句「记录」——默认无副作用，宁可少记不可错记。
+ */
+export async function savePendingMedia(db, userId, mediaUrl, content) {
+    const url = String(mediaUrl || '');
+    const body = String(content || '').trim();
+    if (!db || !userId || !url || !body) return false;
+    try {
+        await db.prepare(
+            'INSERT INTO bot_pending_media (user_id, media_url, content, is_deleted) VALUES (?1, ?2, ?3, 0) '
+            + "ON CONFLICT(user_id) DO UPDATE SET media_url = ?2, content = ?3, is_deleted = 0, created_at = datetime('now', '+8 hours')"
+        ).bind(Number(userId), url, clip(body, PENDING_MEDIA_MAX_CHARS)).run();
+        return true;
+    } catch (err) {
+        console.error('[bot-memory] 暂存图片失败: ' + (err && err.message));
+        return false;
+    }
+}
+
+/** 取有效期内的待存图片（created_at 是东八区，减 8 小时才能跟 datetime('now') 的 UTC 比） */
+export async function readPendingMedia(db, userId) {
+    if (!db || !userId) return null;
+    const row = await db.prepare(
+        'SELECT media_url, content FROM bot_pending_media WHERE user_id = ?1 AND is_deleted = 0 '
+        + "AND datetime(created_at, '-8 hours') >= datetime('now', ?2)"
+    ).bind(Number(userId), '-' + PENDING_MEDIA_TTL_MINUTES + ' minutes').first();
+    return row && row.media_url && row.content ? row : null;
+}
+
+/** 确认落库之后作废这一条（软删，用户数据永不物理删除） */
+export async function clearPendingMedia(db, userId) {
+    if (!db || !userId) return 0;
+    const res = await db.prepare(
+        'UPDATE bot_pending_media SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0'
+    ).bind(Number(userId)).run();
+    return (res && res.meta && res.meta.changes) || 0;
+}
+
 
 /** 读「关于我」档案（未软删、按写入顺序） */
 export async function listProfile(db, userId) {

@@ -50,7 +50,8 @@ import {
     updateProfileItem,
     forgetProfileById,
     handleBotProfileApi,
-    PROFILE_MAX_ITEMS
+    PROFILE_MAX_ITEMS,
+    savePendingMedia
 } from '../workers/src/bot-memory.js';
 
 /**
@@ -795,7 +796,7 @@ test('ClawBot - 线上实测形态：item aeskey（hex）+ ECB 密文，ECB 优�
     assert.equal(got.bytes.length, PNG_BYTES.length, '拿到的是解密后的明文');
 });
 
-integration('ClawBot - 微信发图片落成带图随手记并回复，不经模型', async () => {
+integration('ClawBot - 微信发图只暂存不落库，等「记录」才写成带图随手记', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedAccount(db);
@@ -807,11 +808,11 @@ integration('ClawBot - 微信发图片落成带图随手记并回复，不经模
     });
     await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
 
-    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
-    assert.ok(feed, '图片必须落成随手记');
-    assert.equal(feed.type, 'image');
-    assert.equal(feed.content, '来自微信的图片');
-    assert.match(feed.media_url, /^\/api\/file\/[0-9a-f-]+\?t=[0-9a-f-]+$/, '存的是可长期直读的 /api/file 地址');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '没确认之前绝不能落库');
+    const pending = await db.prepare('SELECT content, media_url FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.ok(pending, '图片必须进待存位');
+    assert.equal(pending.content, '来自微信的图片');
+    assert.match(pending.media_url, /^\/api\/file\/[0-9a-f-]+\?t=[0-9a-f-]+$/, '存的是可长期直读的 /api/file 地址');
     const files = await db.prepare('SELECT COUNT(*) AS n FROM files').first();
     assert.equal(files.n, 1, '二进制必须进 files 表');
     assert.equal(puts.length, 1, '二进制必须进 R2');
@@ -820,11 +821,13 @@ integration('ClawBot - 微信发图片落成带图随手记并回复，不经模
     assert.equal(puts[0].size, PNG_BYTES.length);
     const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
     assert.ok(send, '必须回一条消息');
-    assert.match(send.body.msg.item_list[0].text_item.text, /随手记/);
+    const reply = send.body.msg.item_list[0].text_item.text;
+    assert.match(reply, /记录/, '要告诉用户怎么确认');
+    assert.ok(!/已存入/.test(reply), '没确认就不能说已经存好');
     assert.equal(send.body.msg.context_token, 'CTX-IMG');
 });
 
-integration('ClawBot - 图 + 文字时文字成为随手记正文，AES 加密的图先解密再入库', async () => {
+integration('ClawBot - 图 + 文字时配文成为待存正文，AES 加密的图先解密再入库', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedAccount(db);
@@ -843,14 +846,14 @@ integration('ClawBot - 图 + 文字时文字成为随手记正文，AES 加密�
     });
     await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
 
-    const feed = await db.prepare('SELECT content, type FROM quick_feeds').first();
-    assert.equal(feed.content, '今晚的月亮', '配文优先于默认文案');
-    assert.equal(feed.type, 'image');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
+    const pending = await db.prepare('SELECT content FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.equal(pending.content, '今晚的月亮', '配文优先于默认文案');
     assert.equal(puts[0].size, PNG_BYTES.length, '进 R2 的必须是解密后的明文长度');
     assert.equal(puts[0].type, 'image/png');
 });
 
-integration('ClawBot - ECB 加密（线上真实形态）的微信图片照样落成带图随手记', async () => {
+integration('ClawBot - ECB 加密（线上真实形态）的微信图片先解密进待存位', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedAccount(db);
@@ -877,15 +880,17 @@ integration('ClawBot - ECB 加密（线上真实形态）的微信图片照样�
     });
     await pollClawAccounts(mediaEnv(db, puts), db, st.impl, { budgetMs: 0 });
 
-    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
-    assert.ok(feed, 'ECB 密文解出来后必须落成随手记');
-    assert.equal(feed.type, 'image');
-    assert.match(feed.media_url, /^\/api\/file\//);
+    const pending = await db.prepare('SELECT content, media_url FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.ok(pending, 'ECB 密文解出来后必须进待存位');
+    assert.equal(pending.content, '来自微信的图片');
+    assert.match(pending.media_url, /^\/api\/file\//);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
     assert.equal(puts.length, 1);
     assert.equal(puts[0].size, PNG_BYTES.length, '进 R2 的必须是解密后的明文长度');
     assert.equal(puts[0].type, 'image/png');
-    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
-    assert.match(send.body.msg.item_list[0].text_item.text, /已存入/);
+    const reply = st.calls.find(c => c.url.endsWith('/sendmessage')).body.msg.item_list[0].text_item.text;
+    assert.match(reply, /记录/);
+    assert.ok(!/已存入/.test(reply), '没确认就不能说已存');
 });
 
 integration('ClawBot - 原图取不到时如实告知，不写任何数据', async () => {
@@ -1092,7 +1097,7 @@ test('ClawBot - 看图：取回并压平描述、超长截断、没密钥不发�
     assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', soft.impl), '****看更多', '软违规词沿用既有替换策略');
 });
 
-integration('ClawBot - 图 + 配文时，看图描述与配文一起写进随手记并回读给用户', async () => {
+integration('ClawBot - 图 + 配文时先把描述说给用户，回「记录」才落库', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedAccount(db);
@@ -1110,17 +1115,29 @@ integration('ClawBot - 图 + 配文时，看图描述与配文一起写进随手
     });
     await pollClawAccounts(visionEnv(db, puts), db, st.impl, { budgetMs: 0 });
 
-    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
-    assert.equal(feed.content, '今晚的月亮\n\n窗台上蹲着一只黑猫', '描述要与配文一起落库');
-    assert.equal(feed.type, 'image');
-    assert.match(feed.media_url, /^\/api\/file\//);
+    const pending = await db.prepare('SELECT content, media_url FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.equal(pending.content, '今晚的月亮\n\n窗台上蹲着一只黑猫', '描述与配文一起进待存位');
+    assert.match(pending.media_url, /^\/api\/file\//);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
     const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
-    assert.match(send.body.msg.item_list[0].text_item.text, /我看到：窗台上蹲着一只黑猫/, '回信要把看到的内容说给用户');
-    assert.match(send.body.msg.item_list[0].text_item.text, /已存入/);
+    const reply = send.body.msg.item_list[0].text_item.text;
+    assert.match(reply, /我看到：窗台上蹲着一只黑猫/, '回信要把看到的内容说给用户');
+    assert.match(reply, /记录/, '要告诉用户怎么确认');
+    assert.ok(!/已存入/.test(reply), '没确认就不能说已存');
     assert.equal(send.body.msg.context_token, 'CTX-IMG');
+
+    // 回一句「记录」才真的落库；确认后待存位作废，再说一次不会重复入库
+    assert.match(await buildBotReply({}, db, 1, '记录'), /已存入/);
+    const feed = await db.prepare('SELECT content, type, media_url FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feed.content, '今晚的月亮\n\n窗台上蹲着一只黑猫');
+    assert.equal(feed.type, 'image');
+    assert.equal(feed.media_url, pending.media_url, '存的还是同一张图');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 0, '确认后待存位要作废');
+    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的图片/, '再确认一次要如实说明');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1, '不能重复入库');
 });
 
-integration('ClawBot - 看图失败绝不拖累存图：退回默认文案，回信不提描述', async () => {
+integration('ClawBot - 看图失败绝不连坐：图片仍暂存，回信也不编造描述', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedAccount(db);
@@ -1133,10 +1150,34 @@ integration('ClawBot - 看图失败绝不拖累存图：退回默认文案，回
     });
     await pollClawAccounts(visionEnv(db, puts), db, st.impl, { budgetMs: 0 });
 
-    const feed = await db.prepare('SELECT content FROM quick_feeds WHERE user_id = 1').first();
-    assert.equal(feed.content, '来自微信的图片', '拿不到描述也要照常落库');
+    const pending = await db.prepare('SELECT content FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.equal(pending.content, '来自微信的图片', '拿不到描述也要照常暂存');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
     assert.equal(puts.length, 1, '二进制照样进 R2');
-    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
-    assert.match(send.body.msg.item_list[0].text_item.text, /已存入/);
-    assert.ok(!/我看到/.test(send.body.msg.item_list[0].text_item.text), '没有描述就不能编一个');
+    const reply = st.calls.find(c => c.url.endsWith('/sendmessage')).body.msg.item_list[0].text_item.text;
+    assert.match(reply, /记录/);
+    assert.ok(!/我看到/.test(reply), '没有描述就不能编一个');
+    assert.ok(!/已存入/.test(reply), '没确认就不能说已存');
+});
+
+integration('Bot - 待存图片过期后「记录」不会翻旧账，也不会写库', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await savePendingMedia(db, 1, '/api/file/old-img?t=tok', '两个小时前那张图');
+    await db.prepare("UPDATE bot_pending_media SET created_at = datetime('now', '+8 hours', '-2 hours') WHERE user_id = 1").run();
+
+    assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的图片/);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '过期图绝不能落库');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 1, '过期行仍在，只是读不到');
+});
+
+integration('Bot - 「记录：内容」仍然直达随手记，不被待存确认抢走', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await savePendingMedia(db, 1, '/api/file/pending-img?t=tok', '一张还没确认的图');
+
+    assert.match(await buildBotReply({}, db, 1, '记录：明天买牛奶'), /已存入/);
+    const feed = await db.prepare('SELECT content FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feed.content, '明天买牛奶', '带内容的记录不能被待存图抢走');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 1, '待存图仍在等确认');
 });

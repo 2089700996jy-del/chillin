@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.127**（Worker 已部署、D1 迁移 0001–0026 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.128**（Worker 已部署、D1 迁移 0001–0027 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记**只做链接卡片展示，不解析**标题/封面（第三方抓取长期不可用；`/api/link/parse` 与补解析逻辑已于 v2.5.97 整体移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0026`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0027`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -65,12 +65,21 @@
 | `workers/src/bot-commands.js` | Bot 对话编排（chat-first）：默认只聊天不落库、显式「记录：…」才入随手记、「记住/忘记」维护档案、幂等排重、检索与 Echo AI 独立限流、来源脚注只在用户追问依据时附上（来源标签统一成 `[类型] YYYY-MM-DD`） |
 | `workers/src/bot-memory.js` | Bot 私人记忆：最近 8 轮对话上下文（字符预算截断）与「关于我」档案条目增删查（一律软删）+ 应用内 `/api/bot/profile` 读写接口（增/改/单条遗忘/清空） |
 | `workers/src/bot-claw.js` | 外部 IM 接入：微信 ClawBot（iLink 协议）扫码绑定、每分钟 Cron 长轮询与游标幂等、经 sendmessage 回发文本 |
-| `workers/src/bot-media.js` | Bot 图片接入：微信图片消息（`item.type=2`）→ 下载 → 明文魔数嗅探，嗅不出再用 `aeskey` 走 AES-128-CBC（IV 即密钥）解密 → 经既有上传通道写 R2 并落一条带图随手记；取不到原图只如实告知、绝不落库；全程不记正文 |
+| `workers/src/bot-media.js` | Bot 图片接入：微信图片消息（`item.type=2`）→ 下载 → 明文魔数嗅探，嗅不出再用 `aeskey` 走 AES-128-ECB + PKCS7 解密 → 经既有上传通道写 R2 并进「待存位」（默认不落库，用户回「记录」才写成带图随手记，见 `0027_bot_pending_media.sql`）；取不到原图只如实告知、绝不落库；全程不记正文 |
 | `workers/src/bot-outreach.js` | Bot 主动关怀：东八区 10:00–22:30 时窗内每天至多一次的随机开口、刚聊完 30 分钟内不插嘴（6 小时内聊过则不等当天固定时刻，改在聊完 30–120 分钟内把最近对话当背景）与只用 3–180 天前旧素材的门禁、模型 SKIP 与概率闸门、账号级开关与发送审计；主动发出的消息同时写进对话记忆（带出处），用户回一句就能对上 |
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
 
+### 微信 Bot 图片改为「先描述、说「记录」才入库」（v2.5.128）
+
+1. **默认无副作用**（用户要求：图片先描述，只有说「记录」才存进随手记）：图仍然下载、仍然进 R2 与 `files`（拿到稳定的 `/api/file/...` 地址），但**不再自动写 `quick_feeds`**，改为进「待存位」；回信把描述说给用户（`我看到：…`）并附一句「要存进随手记就回我『记录』」。
+2. **新增 `migrations/0027_bot_pending_media.sql`**：`bot_pending_media(user_id INTEGER PRIMARY KEY, media_url, content, created_at DEFAULT datetime('now','+8 hours'), is_deleted)`——每人只留最新一张（UPSERT 覆盖），**60 分钟**未确认即作废（读取时用 `datetime(created_at,'-8 hours') >= datetime('now', ?)`，东八区口径不能直接和 UTC 比）。该表不在 `garden-shared.js` 的 `OWNED_TABLES` 里，因此不进前端同步通道。
+3. **`workers/src/bot-memory.js`** 新增 `savePendingMedia` / `readPendingMedia` / `clearPendingMedia`（确认落库后软删，用户数据永不物理删除）；`workers/src/bot-media.js` 改走待存位，并把「图片 + 描述」这一轮也写进对话上下文（用户接着说「这张图不错」才有指代可继承）。
+4. **`workers/src/bot-commands.js`** 新增光杆「记录」确认指令 `PENDING_COMMIT_RE`：**必须排在 `RECORD_RE` 之后**，否则会抢走「记录：内容」；有待存图就落库并清位，没有就如实回「这会儿没有等着存的图片」，绝不丢给模型导致它误答「已存」。帮助文本与模块头注释同步更新。
+5. **测试**：`tests/bot-claw.test.mjs` 48 → **50 用例**（三条既有集成改为断言「未确认前 0 条随手记 + 待存位有图 + 回信不说已存」；新增两条：过期待存图不会翻旧账、「记录：内容」不被待存确认抢走）。
+
+**测试 238 → 240 用例（20 套件）**；README（迁移 26→27、`0001–0027`）、PROGRESS、架构报告同批更新。
 ### 微信 Bot 看懂图片：看图描述写进随手记并回读（v2.5.127）
 
 1. **线上探针先证可行性**（临时路由用完即撤）：用 `VISION_API_KEY` 打 DeepSeek 官方端点——`GET /v1/models` 只有 `deepseek-flash` / `deepseek-v4-pro`；R2 里那张 202614 字节 JPEG 以 data URL 发出，**`deepseek-chat` 1355ms 返回准确中文描述**（`prompt_tokens` 960）；`deepseek-flash` 是带 `reasoning_content` 的思考模型，max_tokens 被思考吃光后 `content` 为空——所以默认模型定为 `deepseek-chat`。
