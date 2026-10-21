@@ -13,7 +13,7 @@
 import { moderateText } from './llm.js';
 
 const VISION_TIMEOUT_MS = 8000;
-const VISION_MAX_TOKENS = 200;
+const VISION_MAX_TOKENS = 120; // 描述目标 ≤40 字，留一倍余量即可：少生成一点就快一点
 const VISION_PROMPT = '你是用户的朋友，刚看到这张图。用一句自然口语的中文说出图里最具体的东西（谁或什么、在做什么、什么氛围），'
     + '像随口聊到那样；只说你看到的，别猜是谁的、别用「你家」「你的」这类归属说法；不要罗列，不要用「这张图」「画面中」这类话，是截图就点出是什么应用、在讲什么；不超过 40 字，只输出这一句。';
 const MAX_DESC_CHARS = 120;

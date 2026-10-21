@@ -424,11 +424,13 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
         console.warn('[bot-media] 图片下载失败 note=' + download.note + ' probes=' + JSON.stringify(download.probes || []) + ' shape=' + JSON.stringify(describeClawImage(imageItems[0])));
         return '这张图我暂时拿不到原图，你换个方式再发一次试试？';
     }
-    const src = await storeClawImage(env, db, userId, download.bytes, download.mime);
-    if (!src) return '图片收到了，但没存住，稍后再发一次试试？';
     const text = String(caption || '').trim().slice(0, MAX_CAPTION_CHARS);
-    // 看一眼图片（可选）：失败只是没有描述，绝不阻塞暂存
-    const desc = await describeClawImageContent(env, download.bytes, download.mime, fetchImpl);
+    // 存图与看一眼图片并行：回信只等较慢的那个，省掉一段串行等待（看图失败只是没有描述，绝不阻塞暂存）
+    const [src, desc] = await Promise.all([
+        storeClawImage(env, db, userId, download.bytes, download.mime),
+        describeClawImageContent(env, download.bytes, download.mime, fetchImpl)
+    ]);
+    if (!src) return '图片收到了，但没存住，稍后再发一次试试？';
     const content = [text, desc].filter(Boolean).join('\n\n') || DEFAULT_CONTENT;
     const pending = await savePendingMedia(db, userId, src, content);
     if (!pending) return '图片收到了，但没能暂存，稍后再发一次试试？';

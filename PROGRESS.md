@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.130**（Worker 已部署、D1 迁移 0001–0027 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.131**（Worker 已部署、D1 迁移 0001–0027 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -71,6 +71,14 @@
 
 ## 近期已完成（摘要）
 
+### 图片回信提速：瞬时 5xx 不再丢收信窗口，存图与看图并行（v2.5.131）
+
+1. **实测延迟**（远端 D1 按去重键里的 `create_time_ms` 反推微信消息时刻）：三张图从发出到回信分别约 12s、13s，第三张 **54s**。拆分后一段是「取信 → 下载 / 解密 → 入 R2」（约 8–9s），另一段是「待存位 + 看图 + 回发」（约 2–4s）；54s 那次 `bot_claw_accounts.last_error` 正是 `getupdates http 520`。
+2. **根因（`workers/src/bot-claw.js`）**：`pollAccountUntilDeadline` 里 `fetchClawUpdates` 一抛错就冒出 `do…while`，`pollClawAccounts` 的 per-account try/catch 只记一笔 `last_error`，于是**整分钟的长轮询窗口被丢掉**，那条消息只能等下一个整分 cron（实测 22:00:46 → 22:01:30 才被取走）。
+3. **修复**：同一 deadline 内退避重试（`POLL_ERROR_BACKOFF_MS = 1000`、上限 5000，`sleep` 再用剩余预算封顶；单测用 `options.errorBackoffMs` 压到几毫秒），应用级 `ret !== 0` 仍照旧只记错；`workers/src/bot-media.js` 把 `storeClawImage` 与 `describeClawImageContent` 改为 `Promise.all` 并行——回信只等较慢的那个，不再串行等 R2；`workers/src/bot-vision.js` 的 `VISION_MAX_TOKENS` 200 → 120（描述目标 ≤40 字，留一倍余量）。
+4. **测试**：`tests/bot-claw.test.mjs` 50 → **51 用例**（新增「瞬时 5xx 不丢整分钟的收信窗口：退避后接着拉，消息当轮就回」——第一轮 503、第二轮交消息，断言至少两次 getupdates、当轮回信、对话上下文两条；既有「budgetMs 0 + 503 只记 last_error」用例不变）。
+
+**测试 240 → 241 用例（20 套件）**；PROGRESS、`.agents/rules/architecture.md` 与架构报告同批更新。
 ### 看图回信去掉「我看到：」前缀，且只描述不猜归属（v2.5.130）
 
 1. **用户反馈两点**（真机实拍）：不该用「我看到：」开头；也不该说「你家这只长毛猫」——她并没有告诉过 bot 家里有猫，那是模型看图时自己认了归属。

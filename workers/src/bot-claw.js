@@ -49,6 +49,11 @@ const POLL_RUN_BUDGET_MS = 55000;
 const POLL_MIN_SLICE_MS = 5000;
 /** 丢弃绑定前 1 分钟内积压的旧消息，避免重放写入花园 */
 const REPLAY_SLACK_MS = 60 * 1000;
+/** 瞬时错误（iLink 520 之类）后的退避：不能因为一次失败丢掉整分钟的收信窗口 */
+const POLL_ERROR_BACKOFF_MS = 1000;
+const POLL_ERROR_BACKOFF_MAX_MS = 5000;
+/** 等一会儿再拉；单测可把退避压到几毫秒 */
+const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 // ─────────────────────────── 传输层 ───────────────────────────
 
@@ -296,21 +301,40 @@ export async function handleClawApi(request, env, url, db, userId) {
  * 返回并推送。只要调用期间一直有在途长轮询，用户感知延迟就只剩「在途请求返回 + 回复
  * 往返」，而不是「等下一次 cron」。至少执行一轮，保证预算为 0 时也收一次信。
  */
-async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline) {
+async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline, errorBackoffMs) {
     const token = String(account.bot_token || '');
     if (!token) return;
     const userId = Number(account.user_id);
     const boundAt = Number(account.bound_at_ms) || 0;
     let cursor = String(account.cursor || '');
     let polls = 0;
+    let consecutiveErrors = 0;
     do {
         polls++;
-        const updates = await fetchClawUpdates({
-            token,
-            baseurl: account.baseurl,
-            cursor,
-            fetchImpl
-        });
+        let updates;
+        try {
+            updates = await fetchClawUpdates({
+                token,
+                baseurl: account.baseurl,
+                cursor,
+                fetchImpl
+            });
+            consecutiveErrors = 0;
+        } catch (err) {
+            // 瞬时错误（iLink 520 之类）绝不能丢掉整分钟的收信窗口：记一笔、退避一下，就在本次
+            // deadline 内接着拉——否则用户那条消息要干等到下一个整分的 cron 才有人来取。
+            consecutiveErrors++;
+            console.error('[bot-claw] 拉取失败第 ' + consecutiveErrors + ' 次 id=' + account.id + ': ' + (err && err.message));
+            await markAccountError(db, account.id, err && err.message);
+            const remaining = accountDeadline - Date.now();
+            if (remaining <= 0) break;
+            await sleep(Math.min(
+                Number.isFinite(errorBackoffMs) ? errorBackoffMs : POLL_ERROR_BACKOFF_MS,
+                POLL_ERROR_BACKOFF_MAX_MS,
+                remaining
+            ));
+            continue;
+        }
         if (updates.ret !== undefined && updates.ret !== null && Number(updates.ret) !== 0) {
             await markAccountError(db, account.id, 'ret=' + updates.ret + ' errcode=' + updates.errcode);
             return;
@@ -372,7 +396,8 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
 
 /**
  * 每分钟 cron 入口：在一次调用内尽量持续地长轮询收信。
- * options.budgetMs 只给单测收紧预算用（0 = 只拉一轮，不空转）。
+ * options.budgetMs 只给单测收紧预算用（0 = 只拉一轮，不空转）；
+ * options.errorBackoffMs 同样只给单测用（把瞬时错误的重试退避压到几毫秒）。
  */
 export async function pollClawAccounts(env, db, fetchImpl = fetch, options = {}) {
     if (!db) return;
@@ -388,7 +413,7 @@ export async function pollClawAccounts(env, db, fetchImpl = fetch, options = {})
     for (const account of accounts) {
         const accountDeadline = Math.min(runDeadline, Date.now() + slice);
         try {
-            await pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline);
+            await pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline, opts.errorBackoffMs);
         } catch (err) {
             console.error('[bot-claw] 轮询失败 id=' + account.id + ': ' + (err && err.message));
             await markAccountError(db, account.id, err && err.message);

@@ -457,6 +457,32 @@ integration('ClawBot - 上游 ret 非 0 或请求抛错时只记 last_error，�
     assert.match(row.last_error, /getupdates http 503/);
 });
 
+integration('ClawBot - 瞬时 5xx 不丢整分钟的收信窗口：退避后接着拉，消息当轮就回', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const inbound = clawMessage();
+    let round = 0;
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => {
+            round++;
+            // 第一轮模拟 iLink 520/503 这类瞬时错误，第二轮才把消息交出来
+            if (round === 1) return { status: 503, json: {} };
+            return { json: { ret: 0, get_updates_buf: 'CURSOR-R', msgs: [inbound] } };
+        },
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } })
+    });
+    // errorBackoffMs 把退避压到 5ms，用例不真等 1 秒；budgetMs 模拟本次调用剩下的时间
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 60, errorBackoffMs: 5 });
+
+    const polls = st.calls.filter(c => c.url.endsWith('/getupdates')).length;
+    assert.ok(polls >= 2, '一次 5xx 之后必须在同一分钟内接着拉，而不是把整个窗口丢掉：' + polls);
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.ok(send, '第二轮拉到的消息必须当轮就回信');
+    const turns = await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first();
+    assert.equal(turns.n, 2, '消息被正常处理并留下对话上下文');
+});
+
 integration('ClawBot - scheduled 按 cron 分流：每分钟只轮询，小时维护不碰长轮询', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
