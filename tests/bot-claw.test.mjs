@@ -61,6 +61,7 @@ import {
     parseXiaoyuzhouPage,
     formatDuration,
     handleClawLinkMessage,
+    buildManualLinkCard,
     LINK_HTML_MAX_BYTES,
     xiaoyuzhouHostOf
 } from '../workers/src/bot-links.js';
@@ -584,6 +585,22 @@ test('Bot - 记录/记住/忘记只认显式写法，含糊语气一律不判为
     assert.equal(normalizeCommandText('记录：他说「好的」'), '记录：他说「好的」', '没收尾包裹符就不剥，正文里的引号原样留着');
 });
 
+test('Bot - 自己写了标题的「记录：<标题> <链接>」也能做成真卡片（零出站兜底）', () => {
+    const url = 'https://www.xiaoyuzhoufm.com/episode/5e4a8c49418a84a046bb4fe2';
+    const card = buildManualLinkCard('Ep204 未来生活指南｜刘德华给我发微信 ' + url);
+    assert.equal(card.url, url);
+    assert.equal(card.meta.title, 'Ep204 未来生活指南｜刘德华给我发微信');
+    assert.equal(card.meta.platform, '小宇宙');
+    assert.equal(card.meta.icon, '🎧');
+    assert.equal(card.meta.cover, '', '抓不到封面就不编一个');
+    assert.equal(buildManualLinkCard(url), null, '只有链接交回默认的「域名当标题」卡片');
+    assert.equal(buildManualLinkCard('记录一下今天的会议'), null, '没有链接就不是链接卡片');
+    const other = buildManualLinkCard('一篇好文章 https://example.com/a');
+    assert.equal(other.meta.title, '一篇好文章');
+    assert.equal(other.meta.platform, undefined, '非小宇宙域名不硬贴平台标签');
+    assert.equal(buildManualLinkCard('x'.repeat(200) + ' ' + url).meta.title.length, 120, '标题按上限截断');
+});
+
 test('Bot - 帮助文案不再宣称「直接发文字存入随手记」', () => {
     assert.ok(!/直接发文字/.test(BOT_HELP_TEXT), '意图反转后帮助文案必须改写');
     assert.match(BOT_HELP_TEXT, /记录：/);
@@ -657,6 +674,22 @@ integration('Bot - 被引号包着的「记录：<链接>」也真的落库（20
     assert.equal(feed.content, url);
     assert.equal(feed.type, 'link', '裸链接按链接存');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1);
+});
+
+integration('Bot - 「记录：<标题> <链接>」落成带标题的链接卡片（抓不到元数据时的手写兜底）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const url = 'https://www.xiaoyuzhoufm.com/episode/6a76ebabc4079d62c57f3b74';
+
+    const reply = await buildBotReply({}, db, 1, '记录：Ep204 未来生活指南 ' + url);
+    assert.match(reply, /已存入\*\*随手记\*\*/);
+    const feed = await db.prepare('SELECT content, type, summary, media_url FROM quick_feeds').first();
+    assert.equal(feed.type, 'link');
+    assert.equal(feed.content, 'Ep204 未来生活指南 ' + url, '正文保留原文，标题照样能被检索到');
+    const meta = JSON.parse(feed.summary);
+    assert.equal(meta.title, 'Ep204 未来生活指南');
+    assert.equal(meta.platform, '小宇宙');
+    assert.ok(!feed.media_url, '没有封面就不写 media_url');
 });
 
 integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（全程软删）', async () => {

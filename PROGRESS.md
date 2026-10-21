@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.134**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.135**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -8,7 +8,7 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
+- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
@@ -70,6 +70,16 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 抓不到元数据也能出卡片：自己写标题的「记录：<标题> <链接>」落成真卡片（v2.5.135）
+
+1. **背景**：Cloudflare 出口 IP 被小宇宙 403 封（2026-10-21 边缘探针确证，见 `workers/src/bot-links.js` 文件头），服务端抓取只能当尽力而为——所以「抓不到就什么都没有」的手写路径必须自己撑起来。
+2. **实现**：`workers/src/bot-links.js` 新增纯函数 `buildManualLinkCard(text)`（零出站）——正文里有 http(s) 链接、且链接之外还有文字时，把那段文字当标题（截 120 字）做成卡片元数据；域名是小宇宙就补 `platform: 小宇宙 / icon: 🎧`，其它域名不硬贴平台标签。
+3. **接线**：`workers/src/bot-commands.js` 的 `runRecord` 改用它：命中就带 `summary` 与 `type=link` 调 `saveFeed`，于是前端 `public/js/feeds.js` 原样渲染出带标题的富链接卡片（没有封面就不放封面，绝不编一个）；正文仍保留「标题 + 链接」原文，标题照样能被 RAG 检索到。
+4. **文案**：抓取失败的兜底提示与「帮助」里的链接那一行都改成「读不到就自己写标题——记录：<标题> <链接>」。
+5. **测试**：`tests/bot-claw.test.mjs` 59 → **61 用例**（纯函数六种形态 + 端到端：`type=link`、summary 里 title/platform、无封面不写 `media_url`）。
+
+**测试 249 → 251 用例（20 套件）**；PROGRESS、`.agents/rules/architecture.md` 与架构报告同批更新。
 
 ### 微信 Bot：被引号包着的「记录：…」也认，且绝不再假装已存（v2.5.134）
 

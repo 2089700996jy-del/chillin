@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-21T15:29:49.723Z · 提交数：370
+> 生成时间：2026-10-21T15:38:37.284Z · 提交数：371
 
 ## 2026-10-21
 
@@ -12,6 +12,7 @@
 
 ### 🐛 缺陷修复
 
+- **bot**: treat quoted record commands as commands and never fake a save
 - **bot**: read podcast pages without a bogus duration and answer http links
 - **bot**: drop the caption prefix and stop guessing ownership
 - **bot**: make the image caption read like a friend, not a label

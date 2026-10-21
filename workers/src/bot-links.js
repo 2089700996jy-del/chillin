@@ -89,6 +89,22 @@ export function parseXiaoyuzhouUrl(rawUrl) {
     return null;
 }
 
+/**
+ * 手写兜底（纯字符串处理、零出站）：用户自己带标题的「记录：<标题> <链接>」也配拿到一张真卡片。
+ * Cloudflare 出口被小宇宙 403 封（见文件头），抓不到元数据时这是唯一能出卡片的路径；
+ * 只有链接、没有标题时返回 null，交回默认的「域名当标题」卡片。
+ */
+export function buildManualLinkCard(text) {
+    const raw = String(text || '');
+    const url = extractFirstUrl(raw);
+    if (!url) return null;
+    const leftover = raw.replace(url, ' ').replace(/\s+/g, ' ').trim();
+    if (!leftover) return null;
+    const meta = { title: leftover.slice(0, LINK_TITLE_MAX_CHARS), description: '', cover: '' };
+    if (xiaoyuzhouHostOf(url)) { meta.platform = '小宇宙'; meta.icon = '🎧'; }
+    return { url, meta };
+}
+
 /** 秒 → 1:49:52；超出合理区间（0 < s ≤ 4 天）返回空串 */
 export function formatDuration(seconds) {
     const total = Math.floor(Number(seconds));
@@ -272,7 +288,7 @@ export async function handleClawLinkMessage(env, db, userId, text, fetchImpl = f
     if (!card.ok) {
         return '这个链接我读不到内容（' + card.reason + '）。'
             + '想原样存进随手记，就发「记录：' + url + '」；'
-            + '想带上标题，把标题写在前面：记录：<标题> ' + url + '。';
+            + '想带上标题，把标题写在前面：记录：<标题> ' + url + '，我照样给你做成带标题的卡片。';
     }
     const caption = String(text || '').replace(url, ' ').replace(/\s+/g, ' ').trim();
     const content = [caption, url].filter(Boolean).join('\n').slice(0, LINK_MAX_CHARS);

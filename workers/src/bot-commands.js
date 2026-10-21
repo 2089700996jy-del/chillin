@@ -29,7 +29,7 @@ import {
     PROFILE_ITEM_MAX_CHARS,
     readPendingMedia, clearPendingMedia
 } from './bot-memory.js';
-import { handleClawLinkMessage } from './bot-links.js';
+import { handleClawLinkMessage, buildManualLinkCard } from './bot-links.js';
 
 /** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
 export const MAX_REPLY_BYTES = 20000;
@@ -49,7 +49,7 @@ export const BOT_HELP_TEXT = [
     '- 直接跟我说话：聊天、倾诉、问问题都行',
     '- 「记录：内容」：把内容存进**随手记**',
     '- 发图片：我先说说看到什么，回「记录」才存进随手记',
-    '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片',
+    '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片；读不到就自己写标题——「记录：<标题> <链接>」',
     '- 「记住：内容」：写进「关于我」，以后都记得',
     '- 「搜 关键词」：翻花园里的历史记录',
     '- 「问 问题」：结合你的记忆回答',
@@ -286,7 +286,12 @@ async function runChat(env, db, userId, text, history) {
 
 async function runRecord(db, userId, content) {
     const feed = content.slice(0, MAX_FEED_CHARS);
-    if (!(await saveFeed(db, userId, feed))) return '保存失败了，稍后再试一次？';
+    // 用户自己写了标题（「记录：<标题> <链接>」）就顺手做成真卡片：抓不到元数据时的兜底路径，零出站
+    const card = buildManualLinkCard(feed);
+    const ok = card
+        ? await saveFeed(db, userId, feed, '', JSON.stringify(card.meta), 'link')
+        : await saveFeed(db, userId, feed);
+    if (!ok) return '保存失败了，稍后再试一次？';
     const preview = feed.length > 160 ? feed.slice(0, 160) + '…' : feed;
     return '已存入**随手记** ✅\n\n> ' + preview.replace(/\n/g, '\n> ');
 }
