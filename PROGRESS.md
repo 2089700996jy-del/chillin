@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.136**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-21。供后续会话快速接续。当前前端/Worker：**v2.5.137**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -8,7 +8,7 @@
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
+- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓标题/封面做成卡片（单集另带播客名与时长，播客页带简介），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
 - 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
@@ -70,6 +70,15 @@
 | `workers/src/maintenance.js` | 定时任务编排：按 Cron 分流（每分钟只跑 ClawBot 轮询，整点第 13 分跑 UGC 扫描与清理） |
 
 ## 近期已完成（摘要）
+
+### 直连被出口封时可选用第三方读取服务代读（v2.5.137）
+
+1. **背景**：`r.jina.ai` 与 `api.microlink.io` 从 Cloudflare 边缘调都是 429（免费额度按出口 IP 计），而从本机住宅 IP 调 `https://r.jina.ai/<url>` 带 `X-Return-Format: html` 是 200 / 149464 字节，页面里的 `__NEXT_DATA__` 与 `og:title` 完整 → 第三方读取服务用它自己的出口能读到小宇宙，缺的只是一把 key。
+2. **实现**（`workers/src/bot-links.js`）：新增 `readerEndpoint(baseUrl, target)`（地址带 `?` 走查询参数形式，兼容 Microlink 的 `https://api.microlink.io/?url=`；其余路径拼接；只认 https、拒 userinfo）、`parseReaderMetadata(text)`（Microlink 形状 `{data:{title,description,image:{url}}}`，封面必须过图床白名单否则丢弃、不热链）与私有 `fetchViaReader`；`previewXiaoyuzhouLink` 改成「直连优先 → 失败且配了 `LINK_READER_API_KEY` 才代读一次」。密钥同时以 `Authorization: Bearer` 与 `x-api-key` 发出，Jina 与 Microlink 各取所需。
+3. **不配就不开**：没有 `LINK_READER_API_KEY` 时行为与之前完全一致、一次请求都不多发；两段都失败时把两边原因一起回给用户（例：`HTTP 403，代读也失败：读取服务 HTTP 429`），线上能一眼分清是出口被封还是读取服务额度用尽。
+4. **测试**：`tests/bot-claw.test.mjs` 62 → **66 用例**（地址两种拼法与非 https / userinfo 拒绝、JSON 元数据封面白名单、代读端到端三次调用与请求头、未配密钥零多发、代读 429 时两段原因都带）。
+
+**测试 252 → 256 用例（20 套件）**。
 
 ### 小宇宙页面解析改用页面自带的 __NEXT_DATA__（v2.5.136）
 

@@ -10,8 +10,10 @@
  *
  * **可用性事实（2026-10-21 Cloudflare 边缘探测）**：小宇宙按出口 IP/ASN 封了 Cloudflare，
  * www/static 主机一律 403（openresty），api 主机可达但要鉴权（401），图床 xyzcdn 正常（200），
- * 同一 URL 从住宅 IP 实测 200。所以本模块的抓取只当**尽力而为**：拿不到就如实说、绝不假装，
+ * 同一 URL 从住宅 IP 实测 200。所以本文件默认的直连只当**尽力而为**：拿不到就如实说、绝不假装，
  * 并给出「记录：<标题> <链接>」这条不依赖网络的兜底路径。
+ * v2.5.137 起多一条可选退路（方案 B，见下方 LINK_READER_*）：直连失败时改由第三方读取服务代读，
+ * 用它的出口绕开这道封锁；没配密钥就完全不走这条路。
  *
  * 出站抓取是本模块唯一的对外动作，边界收得极紧（见 .agents/rules/security.md §3）：
  * 只认小宇宙的页面域名与它的图床、强制 https + 443 端口、手动跟随重定向并逐跳复核域名、
@@ -27,6 +29,21 @@ export const LINK_FETCH_TIMEOUT_MS = 6000;
 export const LINK_HTML_MAX_BYTES = 512 * 1024;
 export const LINK_COVER_MAX_BYTES = 4 * 1024 * 1024;
 const LINK_MAX_REDIRECTS = 3;
+
+/**
+ * 第三方读取服务（v2.5.137，方案 B）：Cloudflare 出口被小宇宙按 IP/ASN 封成 403，
+ * 而 Jina Reader / Microlink 这类服务用它自己的出口代读没问题——2026-10-21 实测：
+ * `r.jina.ai` 带 `X-Return-Format: html` 从本机返回 200 / 149464 字节，页面里的 `__NEXT_DATA__` 完整，
+ * 可直接喂给本模块已有的解析器（从 CF 边缘调同一个地址则被按 IP 限流成 429）。
+ *
+ * 只有配了 `env.LINK_READER_API_KEY` 才启用：没配就一次都不多发请求，行为与之前完全一致；
+ * 地址默认 `https://r.jina.ai`，可用 `env.LINK_READER_URL` 换服务；地址里带 `?` 的走查询参数形式，
+ * 兼容 Microlink 的 `https://api.microlink.io/?url=`。密钥同时以 `Authorization: Bearer` 与 `x-api-key` 发出，
+ * 前者给 Jina、后者给 Microlink，两家各取所需。
+ */
+export const LINK_READER_DEFAULT_URL = 'https://r.jina.ai';
+export const LINK_READER_TIMEOUT_MS = 15000;
+const LINK_READER_MAX_BYTES = 2 * 1024 * 1024;
 
 export const LINK_TITLE_MAX_CHARS = 120;
 export const LINK_DESC_MAX_CHARS = 160;
@@ -267,16 +284,97 @@ async function storeClawCover(env, db, userId, coverUrl, fetchImpl) {
     return await storeClawImage(env, db, userId, got.bytes, '');
 }
 
+/** 拼读取服务地址：带 ? 的走查询参数形式（Microlink），否则路径拼接（Jina）；非 https 或带 userinfo 一律拒绝 */
+export function readerEndpoint(baseUrl, target) {
+    const base = String(baseUrl || '').trim();
+    if (!base) return '';
+    let u;
+    try { u = new URL(base); } catch { return ''; }
+    if (u.protocol !== 'https:' || u.username || u.password) return '';
+    const t = String(target || '');
+    if (!t) return '';
+    return base.includes('?') ? base + encodeURIComponent(t) : base.replace(/\/+$/, '') + '/' + t;
+}
+
+/**
+ * 读取服务返回 JSON（Microlink 形状）时的解析：`{data:{title,description,image:{url}}}`。
+ * 不是 JSON 或没有标题返回 null，交回 HTML 解析器；封面只认自家图床白名单，别的一律丢掉（不热链第三方）。
+ */
+export function parseReaderMetadata(text) {
+    const raw = String(text || '').trim();
+    if (!raw.startsWith('{')) return null;
+    let data;
+    try { data = JSON.parse(raw); } catch { return null; }
+    const d = (data && data.data) || data || {};
+    const title = String(d.title || '').trim().slice(0, LINK_TITLE_MAX_CHARS);
+    if (!title) return null;
+    const image = (d.image && (d.image.url || (typeof d.image === 'string' ? d.image : ''))) || d.cover || '';
+    return {
+        ok: true,
+        title,
+        description: String(d.description || d.desc || '').replace(/\s+/g, ' ').trim().slice(0, LINK_DESC_MAX_CHARS),
+        cover: isAllowedOutboundUrl(image, { image: true }) ? String(image) : ''
+    };
+}
+
+/** 让读取服务代读一次页面（走它的出口，不经过 Cloudflare 的 ASN） */
+async function fetchViaReader(env, key, target, fetchImpl) {
+    const endpoint = readerEndpoint((env && env.LINK_READER_URL) || LINK_READER_DEFAULT_URL, target);
+    if (!endpoint) return { ok: false, reason: '读取服务地址非法' };
+    let res;
+    try {
+        res = await fetchImpl(endpoint, {
+            method: 'GET',
+            redirect: 'follow',
+            headers: {
+                Accept: 'text/html,application/json',
+                'X-Return-Format': 'html',
+                Authorization: 'Bearer ' + key,
+                'x-api-key': key,
+                'User-Agent': LINK_USER_AGENT
+            },
+            signal: (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(LINK_READER_TIMEOUT_MS) : undefined
+        });
+    } catch (err) {
+        return { ok: false, reason: '读取服务请求失败' };
+    }
+    if (!res.ok) return { ok: false, reason: '读取服务 HTTP ' + res.status };
+    let bytes;
+    try { bytes = await readBodyCapped(res, LINK_READER_MAX_BYTES); } catch (err) { return { ok: false, reason: '读取服务读取失败' }; }
+    if (!bytes) return { ok: false, reason: '读取服务内容过大' };
+    return { ok: true, text: new TextDecoder().decode(bytes) };
+}
+
+/**
+ * 取一次页面正文并解析：直连优先，被封（线上常态是 403）再让读取服务代读一次。
+ * 两段都失败时把两边的原因都带回，线上好定位（是出口被封，还是读取服务额度用完了）。
+ */
+async function readXiaoyuzhouSource(env, target, fetchImpl) {
+    const url = target && target.url;
+    const kind = target && target.kind;
+    const direct = await fetchBounded(url, LINK_HTML_MAX_BYTES, fetchImpl, { image: false });
+    if (direct.ok) {
+        const parsed = parseXiaoyuzhouPage(new TextDecoder().decode(direct.bytes), { kind });
+        if (parsed.ok) return { ok: true, parsed };
+    }
+    const firstReason = direct.ok ? '页面上没有标题' : direct.reason;
+    const key = (env && env.LINK_READER_API_KEY) ? String(env.LINK_READER_API_KEY).trim() : '';
+    if (!key) return { ok: false, reason: firstReason };
+    const via = await fetchViaReader(env, key, url, fetchImpl);
+    if (!via.ok) return { ok: false, reason: firstReason + '，代读也失败：' + via.reason };
+    const parsed = parseReaderMetadata(via.text) || parseXiaoyuzhouPage(via.text, { kind });
+    if (!parsed.ok) return { ok: false, reason: firstReason + '，代读也没读出标题' };
+    return { ok: true, parsed };
+}
+
 /**
  * 抓一次小宇宙页面，返回卡片元数据（封面已转存时写自家地址，否则回落远程地址）。
  * 任何一步失败都返回 { ok: false, reason }，绝不抛给调用方。
  */
 export async function previewXiaoyuzhouLink(env, db, userId, target, fetchImpl = fetch) {
-    const got = await fetchBounded(target && target.url, LINK_HTML_MAX_BYTES, fetchImpl, { image: false });
-    if (!got.ok) return { ok: false, reason: got.reason };
-    const parsed = parseXiaoyuzhouPage(new TextDecoder().decode(got.bytes), { kind: target && target.kind });
-    if (!parsed.ok) return parsed;
-
+    const src = await readXiaoyuzhouSource(env, target, fetchImpl);
+    if (!src.ok) return { ok: false, reason: src.reason };
+    const parsed = src.parsed;
     const titleVerdict = moderateText(parsed.title, env);
     if (!titleVerdict.ok) return { ok: false, reason: '标题未通过内容安全检查' };
     const descVerdict = parsed.description ? moderateText(parsed.description, env) : { ok: true, text: '' };

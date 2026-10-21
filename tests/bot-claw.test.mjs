@@ -62,7 +62,10 @@ import {
     formatDuration,
     handleClawLinkMessage,
     buildManualLinkCard,
+    readerEndpoint,
+    parseReaderMetadata,
     LINK_HTML_MAX_BYTES,
+    LINK_READER_DEFAULT_URL,
     xiaoyuzhouHostOf
 } from '../workers/src/bot-links.js';
 
@@ -1473,3 +1476,86 @@ integration('Bot - 小宇宙页面重定向到白名单之外时立刻停下，�
     assert.equal(st.calls.length, 1, '第二跳就该被拦下');
     assert.ok(st.calls[0].init.redirect === 'manual', '必须手动跟重定向才能逐跳复核域名');
 });
+
+/* ---------- 第三方读取服务代读（v2.5.137，方案 B） ---------- */
+
+const LZ_READER = 'r.jina.ai';
+const LZ_READER_HTML = '<!doctype html><html><head>'
+    + '<title>Ep204 代读标题 - 基本无害 Mostly Harmless | 小宇宙 - 听播客，上小宇宙</title>'
+    + '<meta property="og:image" content="https://image.xyzcdn.net/cover-abc">'
+    + '</head><body><script>window.__DATA__ = {"duration":6592};</script></body></html>';
+
+test('Bot - 读取服务地址两种拼法，JSON 元数据只认白名单封面', () => {
+    assert.equal(readerEndpoint('https://r.jina.ai', LZ_EPISODE), 'https://r.jina.ai/' + LZ_EPISODE);
+    assert.equal(readerEndpoint('https://r.jina.ai/', LZ_EPISODE), 'https://r.jina.ai/' + LZ_EPISODE, '尾斜杠不该拼成双斜杠');
+    assert.equal(readerEndpoint('https://api.microlink.io/?url=', LZ_EPISODE), 'https://api.microlink.io/?url=' + encodeURIComponent(LZ_EPISODE), '带 ? 的走查询参数形式');
+    assert.equal(readerEndpoint(LINK_READER_DEFAULT_URL, LZ_EPISODE), LINK_READER_DEFAULT_URL + '/' + LZ_EPISODE);
+    assert.equal(readerEndpoint('http://r.jina.ai', LZ_EPISODE), '', '只认 https');
+    assert.equal(readerEndpoint('https://user:pass@r.jina.ai', LZ_EPISODE), '', '带 userinfo 拒绝');
+    assert.equal(readerEndpoint('https://r.jina.ai', ''), '');
+    const json = JSON.stringify({ status: 'success', data: { title: '  Ep204 代读  ', description: '基本无害\n· 1:49:52', image: { url: 'https://image.xyzcdn.net/cover-abc' } } });
+    assert.deepEqual(parseReaderMetadata(json), { ok: true, title: 'Ep204 代读', description: '基本无害 · 1:49:52', cover: 'https://image.xyzcdn.net/cover-abc' });
+    assert.equal(parseReaderMetadata(JSON.stringify({ data: { title: '', description: 'x' } })), null, '没有标题就当没读出');
+    assert.equal(parseReaderMetadata(JSON.stringify({ data: { title: 'T', image: { url: 'https://evil.example/x.jpg' } } })).cover, '', '不在图床白名单的封面一律丢掉');
+    assert.equal(parseReaderMetadata('<html><title>T</title></html>'), null, 'HTML 交回页面解析器');
+    assert.equal(parseReaderMetadata('{坏 JSON'), null);
+});
+
+integration('Bot - 直连被出口封时用配置好的读取服务代读（方案 B）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const puts = [];
+    const st = stubFetch({
+        [LZ_READER]: () => ({ bytes: LZ_READER_HTML, status: 200 }),
+        [LZ_ROUTE]: () => ({ status: 403 }),
+        [LZ_COVER]: () => ({ bytes: PNG_BYTES, status: 200 })
+    });
+    const env = visionEnv(db, puts, { LINK_READER_API_KEY: 'rk-1' });
+    const reply = await handleClawLinkMessage(env, db, 1, '这个不错 ' + LZ_EPISODE, st.impl);
+    assert.match(reply, /Ep204 代读标题/, '代读拿到的标题要进回信');
+    assert.match(reply, /基本无害 Mostly Harmless · 1:49:52/, '代读的页面照样解析出播客名与时长');
+    assert.match(reply, /记录/, '仍然要她回「记录」才落库');
+    assert.equal(st.calls.length, 3, '直连 403 → 代读 → 封面转存，一共三次');
+    assert.equal(st.calls[0].url, LZ_EPISODE, '先直连');
+    assert.equal(st.calls[1].url, 'https://r.jina.ai/' + LZ_EPISODE, '再用读取服务代读');
+    assert.equal(st.calls[1].init.headers.Authorization, 'Bearer rk-1');
+    assert.equal(st.calls[1].init.headers['X-Return-Format'], 'html');
+    const pending = await db.prepare('SELECT media_url, summary FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    assert.match(pending.media_url, /^\/api\/file\//, '代读拿到的封面同样要转存 R2');
+    assert.equal(JSON.parse(pending.summary).title, 'Ep204 代读标题');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
+});
+
+integration('Bot - 没配读取服务就绝不代读，失败原因如实带回', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const st = stubFetch({ [LZ_READER]: () => ({ bytes: LZ_READER_HTML, status: 200 }), [LZ_ROUTE]: () => ({ status: 403 }) });
+    const reply = await handleClawLinkMessage(visionEnv(db, []), db, 1, LZ_EPISODE, st.impl);
+    assert.match(reply, /HTTP 403/, '如实说出口被封，不假装');
+    assert.equal(st.calls.length, 1, '没配 key 时一次都不许多发');
+});
+
+integration('Bot - 读取服务返回 Microlink 形状的 JSON 也出卡片，额度用尽时两段原因都给', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const puts = [];
+    const st = stubFetch({
+        'api.microlink.io': () => ({ json: { status: 'success', data: { title: 'Ep204 Microlink 标题', description: '基本无害 · 1:49:52', image: { url: 'https://image.xyzcdn.net/cover-abc' } } } }),
+        [LZ_ROUTE]: () => ({ status: 403 }),
+        [LZ_COVER]: () => ({ bytes: PNG_BYTES, status: 200 })
+    });
+    const env = visionEnv(db, puts, { LINK_READER_API_KEY: 'mk-1', LINK_READER_URL: 'https://api.microlink.io/?url=' });
+    const reply = await handleClawLinkMessage(env, db, 1, LZ_EPISODE, st.impl);
+    assert.match(reply, /Ep204 Microlink 标题/);
+    assert.equal(st.calls[1].url, 'https://api.microlink.io/?url=' + encodeURIComponent(LZ_EPISODE));
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0);
+    const before = (await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media').first()).n;
+
+    const dead = stubFetch({ [LZ_READER]: () => ({ status: 429 }), [LZ_ROUTE]: () => ({ status: 403 }) });
+    const failed = await handleClawLinkMessage(visionEnv(db, puts, { LINK_READER_API_KEY: 'rk-1' }), db, 1, LZ_EPISODE, dead.impl);
+    assert.match(failed, /HTTP 403/);
+    assert.match(failed, /读取服务 HTTP 429/, '两段失败都要说清楚，线上才分得清是出口封还是额度尽');
+    assert.match(failed, /记录：<标题>/);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media').first()).n, before, '失败不占新待存位');
+});
+
