@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-22T00:38:15.916Z · 提交数：378
+> 生成时间：2026-10-22T11:27:28.168Z · 提交数：379
 
 ## 2026-10-22
 
@@ -18,6 +18,10 @@
 ### 📝 文档
 
 - prune PROGRESS into an archive, fix stale rules and single-source the report version
+
+### 🔧 杂务
+
+- **skills**: drop the vendored Cloudflare mirrors and record how to re-pull them
 
 ## 2026-10-21
 
