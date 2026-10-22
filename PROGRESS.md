@@ -17,6 +17,7 @@
 - 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 **8 处**：`public/js/version.js`、`public/version.json`、`workers/api.js`、`public/sw.js`、`public/index.html`、`package.json`、`PROGRESS.md`、架构报告（`tests/docs.test.mjs` 实跑 `--dry-run` 校验覆盖范围）
 - 测试：`npm test` 原生零依赖单测套件（`node --test`）
 - 形态：Web / PWA（Pages）；已移除 Capacitor Android 工程
+- **技能库**：`.agents/skills/` 只保留 12 个项目自研 / 第三方单文件技能；通用 Cloudflare 技能（`cloudflare` / `wrangler` / `workers-best-practices` 等）自 2026-10-22 起不再随仓库分发，改由本机全局技能目录提供（同名时仓库副本会遮蔽上游新版），来源、体积与重拉命令见 [`.agents/skills/SOURCES.md`](.agents/skills/SOURCES.md)
 
 ## 模块地图
 
