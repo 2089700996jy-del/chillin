@@ -17,6 +17,8 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8');
 const listDir = (dir, filter) => fs.readdirSync(path.join(root, dir)).filter(filter);
+// 注意：listDir 刻意**非递归**——docs/archive/ 里的冻结历史不参与任何门禁（既不校验链接可解析，
+// 也不校验反引号路径存在），否则归档会随着代码演进反复变红，逼人改写历史记录。
 
 const readme = read('README.md');
 const version = JSON.parse(read('package.json')).version;
@@ -205,6 +207,18 @@ test('Docs - 架构报告的套件数与用例数与 tests/ 一致', () => {
     assert.equal(Number(prose[1]), suites.length, '架构报告说 ' + prose[1] + ' 个测试套件，实际 ' + suites.length + ' 个——请同步文档');
     assert.equal(Number(heading[1]), suites.length, '架构报告标题说 ' + heading[1] + ' 套件，实际 ' + suites.length + ' 套——请同步文档');
     assert.equal(Number(heading[2]), staticCases, '架构报告标题说 ' + heading[2] + ' 用例，实际 ' + staticCases + ' 个——请同步文档');
+});
+
+test('Docs - PROGRESS.md 有体量预算（防止再膨胀成逐版本长散文）', () => {
+    // 背景：PROGRESS.md 曾长到 649 行 / 109 KB，正文是一整部逐版本史，与自动生成的
+    // CHANGELOG.md 职责重叠，也没人读得完。2026-10-22 精简为 88 行 / 7.8 KB，历史详情
+    // 归档到 docs/archive/PROGRESS-历史详情.md（该目录刻意不在门禁范围内）。
+    // 新版本只在「近期已完成」表里加一行；过程细节写进归档或 CHANGELOG。
+    const text = read('PROGRESS.md');
+    const lines = text.split('\n').length;
+    const bytes = Buffer.byteLength(text, 'utf8');
+    assert.ok(lines <= 220, 'PROGRESS.md 已 ' + lines + ' 行（预算 220）——请把历史详情搬去 docs/archive/ 或 CHANGELOG.md');
+    assert.ok(bytes <= 20 * 1024, 'PROGRESS.md 已 ' + bytes + ' 字节（预算 20 KB）——请把历史详情搬去 docs/archive/ 或 CHANGELOG.md');
 });
 
 test('Docs - README 技术栈写明 D1 + R2 双存储', () => {

@@ -33,7 +33,7 @@ Chillin 采用严格的静态缓存版本控制，每次发布新版本必须保
 4. [`public/sw.js`](../../../public/sw.js) 中的 `APP_V` 与 `CACHE_NAME`（触发 SW 激活更新）
 5. [`public/index.html`](../../../public/index.html) 中的资源静态引入 hash 与右下角版本 Badge
 6. [`workers/api.js`](../../../workers/api.js) 中的 `APP_VERSION` 探测常量
-7. [`PROGRESS.md`](../../../PROGRESS.md) 的版本头与当前版本段落
+7. [`PROGRESS.md`](../../../PROGRESS.md) 的版本头（`npm run bump` 只改写这一行，标题必须保留 `当前前端/Worker：**vX.Y.Z**` 句式）
 8. [架构报告](../../../docs/Chillin数字花园_产品全景与工程架构分析报告.md) 的报告版本、在线基准与 Service Worker 缓存版本
 
 ### 自动化版本递增工具：
@@ -70,7 +70,7 @@ npm run bump minor
 发布代码的标准端到端流水线如下：
 
 ```bash
-# 1. 运行完整单测套件 (全量 68 项通过)
+# 1. 运行完整单测套件 (npm test 零失败；当前 261 项)
 npm test
 
 # 2. 运行边缘部署演练 (Exit Code 0)

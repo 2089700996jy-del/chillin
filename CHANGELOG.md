@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-21T16:55:50.012Z · 提交数：376
+> 生成时间：2026-10-22T00:24:57.874Z · 提交数：377
 
 ## 2026-10-22
 
 ### ✨ 新功能
 
+- **bot**: put the episode detail on the link card instead of its duration
 - **bot**: let a keyed reader service fetch Xiaoyuzhou when the edge is blocked
 
 ### 🐛 缺陷修复

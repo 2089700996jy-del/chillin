@@ -14,7 +14,7 @@
      * ❌ 严禁引入 TailwindCSS、PostCSS、Sass、Less 等 CSS 编译预处理器。
 2. **轻量与依赖控制**：
    * 必须保持前端在浏览器中直接可见即可执行（所写即所得）；
-   * 如确需引入外部安全库（例如 DOMPurify），必须通过带有完整 SRI（Subresource Integrity）Hash 校验的公共 CDN，以 `<script>` 标签显式引入；
+   * 如确需引入外部安全库（例如 DOMPurify），必须**自托管**于 `public/vendor/`（现为 `public/vendor/dompurify.min.js` 3.1.7，其 SHA-384 已与官方发布版本逐一比对），**严禁依赖任何第三方 CDN**——`public/_headers` 的 CSP `script-src` 只放行 `'self'` 与三个内联脚本的 sha256 白名单，引入 CDN 会让脚本被浏览器直接拒绝执行；
    * 杜绝在 `package.json` 中随意添加客户端运行时 `dependencies`。
    * **首屏体积预算**：`public/` 下 JS 合计 gzip ≤ 160 KB、CSS 合计 gzip ≤ 48 KB、单文件 gzip ≤ 20 KB，由 `tests/architecture.test.mjs` 机器校验。上调预算必须是一次有意识的改动（改测试里的 `BUDGET` 并写明原因），不允许无声膨胀。
 
@@ -29,10 +29,8 @@
 * **代码行数约束**：`workers/api.js` 代码行数**严禁超过 300 行**，杜绝重新膨胀为两千行的单体巨石。
 
 ### 2.2 严格领域模块归档
-所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块：
+所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 
-| 模块文件 | 领域职责 | 约束说明 |
-| :--- | :--- | :--- |
 （`workers/src/` 共 **22 个模块**：3 个安全原语、1 个鉴权、6 个花园业务域、3 个智能与记忆模块、1 个审计、7 个 Bot 模块（对话编排 / 私人记忆 / 主动关怀 / 图片接入 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |

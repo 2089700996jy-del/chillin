@@ -27,7 +27,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           # CI 只跑当前提交的构建与测试，不需要完整历史——浅克隆省下绝大部分 checkout 时间。
-          # 仓库体积的历史评估与瘦身结论见 docs/仓库体积与历史瘦身评估.md。
+          # 仓库体积的历史评估与瘦身结论见 docs/archive/仓库体积与历史瘦身评估.md。
           fetch-depth: 1
 
       - uses: actions/setup-node@v4

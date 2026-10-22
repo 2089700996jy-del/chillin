@@ -103,7 +103,7 @@
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 约 9870 行、仍有 296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、41 条 `backdrop-filter` 声明、约 1210 处色值字面量（v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 9870 行、296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、42 条 `backdrop-filter` 声明、501 个裸 hex 与 850 处 `rgb()/rgba()` 字面量（v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
 
 ## 主题令牌纪律（v2.5.119 起）
 
