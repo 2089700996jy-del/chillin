@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-22T11:27:28.168Z · 提交数：379
+> 生成时间：2026-10-23T12:47:55.739Z · 提交数：380
 
 ## 2026-10-22
 
@@ -21,6 +21,7 @@
 
 ### 🔧 杂务
 
+- **release**: bump to 2.5.142 after the skills prune
 - **skills**: drop the vendored Cloudflare mirrors and record how to re-pull them
 
 ## 2026-10-21

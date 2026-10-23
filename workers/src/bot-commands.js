@@ -30,6 +30,11 @@ import {
     readPendingMedia, clearPendingMedia
 } from './bot-memory.js';
 import { handleClawLinkMessage, buildManualLinkCard } from './bot-links.js';
+import { maybeWebAnswer } from './bot-web.js';
+import {
+    parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
+    runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder
+} from './bot-reminders.js';
 
 /** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
 export const MAX_REPLY_BYTES = 20000;
@@ -56,6 +61,9 @@ export const BOT_HELP_TEXT = [
     '- 「依据是什么」：追问刚才那句话的来源',
     '- 「你记得我什么」：查看「关于我」档案',
     '- 「忘记 关键词」：从档案里删掉这一条',
+    '- 「提醒我 20:00 <事情>」：到点我在微信里叫你；回「完成」就把它记进随手记',
+    '- 「我的提醒」看列表；「取消提醒 <编号>」取消某一条',
+    '- 「查一下 <问题>」：上网找最新信息，回答里附来源',
     '- 「别主动找我 / 可以主动找我」：开关偶尔的主动关心',
     '- 「重置对话」：清空我们这次的对话上下文',
     '- 「帮助」：显示这条说明'
@@ -126,8 +134,7 @@ const PENDING_COMMIT_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记录|记�
 const REMEMBER_BARE_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记住|记牢|\/remember)[\s:：。！!？?～~]*$/i;
 const REMEMBER_BARE_REPLY = '要记什么？发「记住：<内容>」我就写进「关于我」档案，比如「记住：我喝咖啡会睡不着」。';
 /** 定点提醒请求：确实做不到就如实说清——不能让模型替系统承诺，它容易答成「我不能主动弹消息」（那也是错的） */
-const REMIND_ME_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:(?:等会|待会|一会儿|等下|早上|中午|下午|晚上|明早|明天|后天)\s*)?(?:(?:\d{1,2}\s*[点:：]\s*\d{0,2}\s*分?)|(?:\d{1,2}\s*[:：]\s*\d{2}))?\s*(?:记得)?\s*(?:提醒我|到(?:时|点)(?:候)?提醒我|提醒一下我)/;
-const REMIND_ME_REPLY = '我没法定点提醒你——我不是闹钟，不会在某个时刻自动弹消息（系统只是偶尔会主动找我聊一句，一天最多一次）。要不要我先把这件事存起来？发「记录：<事情>」，回头你翻到就想起来了。';
+
 
 export function parseRecordCommand(text) {
     const m = RECORD_RE.exec(normalizeCommandText(text));
@@ -249,13 +256,17 @@ const CHAT_SYSTEM_PROMPT = [
     '不要用「已完成任务」「已为您处理」这类机器人腔，也不要每次都总结或给建议。',
     '',
     '【边界，必须遵守】',
-    '1. 你自己没有写入能力和定时能力：不要在没看到系统回执时说「已保存 / 已记录 / 存好了 / 已经存进花园」，也不要承诺「到点提醒你」。这些动作真的发生了的话，系统会自己回执，不需要你替它说。',
-    '2. 【系统真的会做的事，要照实说，别答成「我没有写入能力」】写入由指令通道执行：'
+    '1. 你自己没有写入能力：不要在没看到系统回执时说「已保存 / 已记录 / 存好了 / 已经存进花园」。这些动作真的发生了的话，系统会自己回执，不需要你替它说。',
+    '2. 【系统真的会做的事，要照实说，别答成「我没有写入能力」】写入、提醒、上网都由指令通道执行：'
         + '「记录：<内容>」存进随手记、「记住：<内容>」写进「关于我」档案、「忘记 <关键词>」删掉档案里的条目、'
         + '「搜 <关键词>」翻花园历史记录、「问 <问题>」结合记忆回答、「你记得我什么」看档案、'
-        + '「记录」确认刚发的那张图片或那条链接、「别主动找我 / 可以主动找我」开关主动关心。'
+        + '「记录」确认刚发的那张图片或那条链接、'
+        + '「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
+        + '提醒过后回「完成」会把它记进随手记、'
+        + '「别主动找我 / 可以主动找我」开关主动关心、'
+        + '「查一下 <问题>」会上网找最新信息并附来源。'
         + '对方明显想做这些却没按格式发（例如只发「记住」），就把正确的发法告诉他——由他决定，你不要自己写。',
-    '3. 你确实会主动开口：系统会在合适的时候主动找你聊一句（一天最多一次，避开你刚聊完和深夜），但这**不是闹钟**，不能保证在某个具体时刻提醒。对方要定点提醒时如实说做不到。',
+    '3. 你确实会主动开口：系统会在合适的时候主动找他聊一句（一天最多一次，避开刚聊完和深夜）；他在指令里指定的定点提醒则是到点必达的，那是他自己设的——别把两件事混起来，也别在没看到回执时替他承诺。',
     '4. 只依据【花园记忆片段】陈述过去发生的事；片段没提到的就说没找到，绝不编造。',
     '5. 不了解、不确定的事就说不了解、不确定，不要假装知道。',
     '6. 对方倾诉时先共情，不急着评价、不急着给方案；对方没问的时候不要分析利弊。',
@@ -374,9 +385,30 @@ export async function runCommand(env, db, userId, content) {
     const forget = parseForgetCommand(text);
     if (forget) return runForget(db, userId, forget);
 
-    // 意图明确但没带内容（光杆「记住」）或系统根本做不到（定点提醒）：先答清楚，别丢给对话模型
+    // 意图明确但没带内容（光杆「记住」）：先答清楚，别丢给对话模型
     if (REMEMBER_BARE_RE.test(text)) return REMEMBER_BARE_REPLY;
-    if (REMIND_ME_RE.test(text)) return REMIND_ME_REPLY;
+
+    // 定点提醒：解析是纯同步的，执行要查库。
+    // 顺序讲究——「我的提醒 / 取消提醒 / 完成」都排在普通记录指令之前，否则「待办」会被当成闲聊。
+    const nowMs = Date.now();
+    const remind = parseRemindCommand(text, nowMs);
+    if (remind.matched) return runRemind(db, userId, remind, nowMs);
+    if (isReminderList(text)) return listReminders(db, userId, nowMs);
+    const cancelArg = parseCancelReminder(text);
+    if (cancelArg) return cancelReminder(db, userId, cancelArg.arg, nowMs);
+
+    // 「完成 / 还没」只对 12 小时内刚提醒过的那条生效；没有在等回执时它只是普通聊天，不能劫持
+    if (parseDoneReply(text) || parseNotYetReply(text)) {
+        const fired = await recentFiredReminder(db, userId, nowMs);
+        if (fired) {
+            if (parseDoneReply(text)) {
+                await completeReminder(db, userId, fired);
+                await saveFeed(db, userId, '✅ ' + fired.text);
+                return '记下了 ✅「' + fired.text + '」已经写进随手记。';
+            }
+            return '好，那就不催了。做完了随时跟我说一声，我记进花园。';
+        }
+    }
 
     const remember = parseRememberCommand(text);
     if (remember) return runRemember(db, userId, remember);
@@ -424,6 +456,15 @@ export async function buildBotReply(env, db, userId, content) {
             await saveChatTurn(db, userId, 'assistant', commandReply);
         }
         return commandReply;
+    }
+
+    // 联网检索：「查一下 X」这类显式请求，或带时效性的问题（今天/最新/赛程…）且问句形态明显。
+    // 花园类问题（「我记过什么」）由 bot-web 的 GARDEN_HINT_RE 拦下，仍走本地 RAG。
+    const webReply = await maybeWebAnswer(env, db, userId, text);
+    if (webReply) {
+        await saveChatTurn(db, userId, 'user', text);
+        await saveChatTurn(db, userId, 'assistant', webReply);
+        return webReply;
     }
 
     const history = await loadChatContext(db, userId);

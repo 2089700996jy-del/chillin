@@ -2,8 +2,9 @@
  * 定时任务编排：网关只保留一行 async scheduled，具体任务在这里分组。
  *
  * 两条 cron（见 wrangler.toml）：
- * - '* * * * *'  微信 ClawBot：先看要不要主动关怀（每天至多一次，绝大多数分钟只做几次廉价判断），
- *               再长轮询一次调用内在 55s 预算里持续拉取新消息并按指令回复
+ * - '* * * * *'  微信 ClawBot：先处理用户自己设的定点提醒（到点必达，单轮最多 5 条），
+ *               再看要不要主动关怀（每天至多一次，绝大多数分钟只做几次廉价判断），
+ *               最后长轮询一次调用内在 55s 预算里持续拉取新消息并按指令回复
  *               （服务端约 18s 无消息即返回，只拉一轮会让每分钟空转 42s）
  * - '13 * * * *' 每小时维护：UGC 扫描、Session 清理、限流窗口清理、R2 备份保留、审计日志保留
  *
@@ -17,6 +18,7 @@ import { cleanupRateLimits } from './security-network.js';
 import { pruneOldBackups } from './garden-media.js';
 import { pollClawAccounts } from './bot-claw.js';
 import { runOutreachChecks } from './bot-outreach.js';
+import { runReminderChecks } from './bot-reminders.js';
 
 /** 每分钟触发的那条 cron 表达式，与 wrangler.toml 保持一致 */
 export const CLAW_CRON = '* * * * *';
@@ -52,6 +54,9 @@ export async function runHourlyMaintenance(env) {
 /** pollOptions 透传给 pollClawAccounts，仅单测用来收紧时间预算 */
 export async function runScheduled(env, event, pollOptions) {
     if (event && event.cron === CLAW_CRON) {
+        // 用户自己设的提醒优先：他授权过的打扰，不参与主动关怀的日限/时窗/静默期
+        try { await runReminderChecks(env, env.DB, undefined, pollOptions); }
+        catch (err) { console.error('[scheduled] bot reminders failed:', err); }
         try { await runOutreachChecks(env, env.DB, undefined, pollOptions); }
         catch (err) { console.error('[scheduled] bot outreach failed:', err); }
         try { await pollClawAccounts(env, env.DB, undefined, pollOptions); }

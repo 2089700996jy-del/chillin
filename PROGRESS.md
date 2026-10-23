@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-22。供后续会话快速接续。当前前端/Worker：**v2.5.142**（Worker 已部署、D1 迁移 0001–0028 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-23。供后续会话快速接续。当前前端/Worker：**v2.5.143**（Worker 已部署、D1 迁移 0001–0030 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓封面/标题/详情做成卡片（单集详情取 `description`、缺失时用 `shownotes` 去标签，播客页取简介；v2.5.140 起不再抓时长），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0028`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0030`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -32,13 +32,13 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 22 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 24 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-echo.js`
 - 智能与记忆：`ai.js`、`rag.js`、`llm.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
-- Bot：`bot-commands.js`、`bot-memory.js`、`bot-claw.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
+- Bot：`bot-commands.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-web.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
 
 ## 近期已完成（摘要）
 
@@ -46,6 +46,7 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| 工作树 | Bot 定点提醒（到点主动开口、30 分钟追问一次、回「完成」沉淀成随手记）与联网检索（按来源作答附出处、6 小时缓存、每日 20 次上限） |
 | v2.5.140 | 微信链接速览只装封面/标题/详情，不再抓时长 |
 | v2.5.139 | 通道状态不再骗人，Bot 不再自称没有能力 |
 | v2.5.138 | 代读拿回 JSON 时也从 `data.html` 里捞封面 |

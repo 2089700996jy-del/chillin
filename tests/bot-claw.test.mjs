@@ -1062,9 +1062,9 @@ integration('Bot - 提示词带人格边界、档案与最近上下文（旧→�
     assert.match(messages[0].content, /关于我/, '必须注入个人档案块');
     assert.match(messages[0].content, /晚上写周记/);
     assert.match(messages[0].content, /东八区/, '必须给模型时间锚点');
-    assert.match(messages[0].content, /你自己没有写入能力和定时能力/, '人格边界必须进提示词：不许自称已保存、不许承诺到点提醒');
+    assert.match(messages[0].content, /你自己没有写入能力/, '人格边界必须进提示词：不许自称已保存');
     assert.match(messages[0].content, /记录：<内容>/, '必须把指令通道的真实能力列给它，否则它会答「我没有写入能力」');
-    assert.match(messages[0].content, /不是闹钟/, '主动开口与定点提醒的边界要说清');
+    assert.match(messages[0].content, /到点必达/, '主动开口与定点提醒的边界要说清：指令里的提醒不受日限约束');
     assert.equal(messages[messages.length - 1].content, '在吗');
     const roles = messages.slice(1, -1).map((m) => m.role);
     assert.deepEqual(roles, ['user', 'assistant', 'user', 'assistant'], '上下文按旧→新注入，实际：' + JSON.stringify(roles));
@@ -1097,15 +1097,26 @@ integration('Bot - 光杆「记住」直接要内容，不再答「我没有写�
     assert.equal((await listProfile(db, 1)).length, 0, '没带内容就什么都不写');
 });
 
-integration('Bot - 定点提醒如实说做不到，也不假装已经保存', async () => {
+integration('Bot - 定点提醒：解析成真实时刻并落库，回执写清「我理解的时间」', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
-    for (const text of ['等会6点30记得提醒我给电动牙刷充电', '记得提醒我给电动牙刷充电', '提醒我 6:30 充电']) {
-        const reply = await buildBotReply({}, db, 1, text);
-        assert.match(reply, /没法定点提醒/, text + ' 要如实说做不到：' + reply);
-        assert.ok(!/已保存|已记录|已存入/.test(reply), '不许假装保存：' + reply);
-    }
-    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '闲聊与做不到的请求都不落库');
+    await seedAccount(db);
+
+    const reply = await buildBotReply({}, db, 1, '等会6点30记得提醒我给电动牙刷充电');
+    assert.match(reply, /已记下/, '要给出明确回执：' + reply);
+    assert.match(reply, /06:30/, '回执里必须写清我理解的时间，用户看到不对可以立刻取消：' + reply);
+    assert.match(reply, /给电动牙刷充电/, '时间词与触发词都要从内容里剥掉：' + reply);
+
+    const row = await db.prepare('SELECT text, status, fire_at_ms FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.status, 'pending');
+    assert.equal(row.text, '给电动牙刷充电');
+    assert.ok(Number(row.fire_at_ms) > Date.now(), '必须是未来时刻');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '设提醒不是记录，绝不能落成随手记');
+
+    // 只说「提醒我」却没说几点：反问一轮，不落库
+    const asked = await buildBotReply({}, db, 1, '记得提醒我给电动牙刷充电');
+    assert.match(asked, /几点/, '缺时刻要反问：' + asked);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_reminders').first()).n, 1, '没解析出时刻就不能写库');
     assert.equal((await listProfile(db, 1)).length, 0);
 });
 
