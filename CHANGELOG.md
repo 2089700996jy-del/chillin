@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-23T12:47:55.739Z · 提交数：380
+> 生成时间：2026-10-23T14:25:10.204Z · 提交数：381
+
+## 2026-10-23
+
+### ✨ 新功能
+
+- **bot**: give the wechat bot point-in-time reminders and sourced web search
 
 ## 2026-10-22
 

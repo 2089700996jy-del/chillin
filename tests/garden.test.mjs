@@ -418,24 +418,91 @@ integration('Migration 0023 - 存量 weeklies/notes/bookmarks 的 UTC created_at
     assert.equal(again.created_at, '2026-10-18 02:00:00', '重放迁移不得再次平移');
 });
 
+integration('Migration 0031 - quick_feeds 重建后默认值走东八区，存量行逐列搬迁不丢', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 3001：普通存量行（远端 quick_feeds 的真实形态：字段齐全、时间为 CST）
+    await db.prepare(
+        "INSERT INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted) VALUES (3001, 1, '存量随手记', 'text', NULL, NULL, NULL, '2026-10-23 08:30:00', '2026-10-23 08:30:00', 0)"
+    ).run();
+    // 3002：链接卡片 + 已软删的墓碑行，重建最容易在这类行上丢字段
+    await db.prepare(
+        "INSERT INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted) VALUES (3002, 1, '小宇宙单集', 'link', 'https://x.example/e/1', '单集摘要', '[\"播客\",\"科技\"]', '2026-10-22 21:05:00', '2026-10-22 21:05:00', 1)"
+    ).run();
+
+    // createTestDb 只在空库上跑过迁移，这里重放 0031 以验证它对存量数据的语义
+    const sql = fs.readFileSync(new URL('../migrations/0031_quick_feeds_cst_default.sql', import.meta.url), 'utf8');
+    const replay = () => {
+        for (const stmt of sql.split(';')) {
+            const trimmed = stmt.trim();
+            if (trimmed) db.db.exec(trimmed);
+        }
+    };
+    replay();
+
+    const kept = await db.prepare('SELECT * FROM quick_feeds WHERE id = 3001').first();
+    assert.equal(kept.content, '存量随手记');
+    assert.equal(kept.created_at, '2026-10-23 08:30:00', '存量 created_at 不得被加减时间');
+    assert.equal(kept.updated_at, '2026-10-23 08:30:00');
+    assert.equal(kept.is_deleted, 0);
+
+    const card = await db.prepare('SELECT type, media_url, summary, tags, is_deleted FROM quick_feeds WHERE id = 3002').first();
+    // node:sqlite 返回的是 null 原型对象，assert/strict 的 deepEqual 会连原型一起比，必须先展开
+    assert.deepEqual(
+        { ...card },
+        { type: 'link', media_url: 'https://x.example/e/1', summary: '单集摘要', tags: '["播客","科技"]', is_deleted: 1 },
+        '重建必须逐列保留，墓碑行也不例外'
+    );
+
+    // 默认值现在是东八区：省略 created_at 时落「此刻（东八区）」而不是 UTC
+    await db.prepare("INSERT INTO quick_feeds (user_id, content, type, is_deleted) VALUES (1, '默认值探针', 'text', 0)").run();
+    const probe = await db.prepare("SELECT created_at FROM quick_feeds WHERE content = '默认值探针'").first();
+    const drift = Math.abs(Date.now() - Date.parse(String(probe.created_at).replace(' ', 'T') + '+08:00'));
+    assert.ok(drift < 120000, '省略 created_at 必须落东八区此刻：' + probe.created_at);
+
+    // 三个索引都要在重建后回来（少了索引，热力图与增量拉取会全表扫）
+    const idx = (await db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'quick_feeds'").all())
+        .results.map((r) => r.name);
+    for (const name of ['idx_quick_feeds_user_id', 'idx_quick_feeds_updated_at', 'idx_quick_feeds_is_deleted']) {
+        assert.ok(idx.includes(name), '重建后缺少索引 ' + name + '：' + idx.join(', '));
+    }
+
+    // 重放必须安全：不复制行、不改时间
+    replay();
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 3, '重放不得复制出行');
+    assert.equal(
+        (await db.prepare('SELECT created_at FROM quick_feeds WHERE id = 3001').first()).created_at,
+        '2026-10-23 08:30:00',
+        '重放不得再动存量时间'
+    );
+});
+
 
 test('时间基准 - 迁移文件的 created_at/updated_at 默认值不得再引入 UTC', async () => {
     // SQLite 的 datetime('now') 与 CURRENT_TIMESTAMP 都是 UTC，而本项目约定东八区。
-    // 0023 只搬迁了存量行，列默认值仍是 UTC（SQLite 改默认值必须重建表），
-    // 所以这里守住底线：新增的表不许再用 UTC 默认值；历史表进白名单（代码已显式写 CST）。
+    // 两条底线：
+    //   1) 新增表不许用 UTC 默认值；历史表进白名单（代码已显式写 CST，列默认值还欠着）；
+    //   2) 白名单只许缩小 —— 被重建过的表必须移出白名单，改为断言「最后一次定义已是东八区」。
     const fs = await import('node:fs');
     const path = await import('node:path');
     const url = await import('node:url');
     const root = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), '..');
     const LEGACY_UTC_TABLES = new Set([
-        'audit_log', 'bookmarks', 'echo_cards', 'files', 'files_r2', 'notes',
-        'push_subscriptions', 'quick_feeds', 'reader_progress', 'ugc_quarantine', 'users', 'weeklies'
+        // 注意：白名单按「当前 schema 里真实存在的表名」记。0020 用「建 files_r2 → 改名回 files」重建过 files，
+        // 所以这里只有 files，没有那个只存在于迁移过程中的临时名 files_r2（下面的断言会强制白名单项都能在 migrations/ 里找到定义）。
+        'audit_log', 'bookmarks', 'echo_cards', 'files', 'notes',
+        'push_subscriptions', 'reader_progress', 'ugc_quarantine', 'users', 'weeklies'
     ]);
+    // 已被后续迁移重建为东八区的表（0031 重建了 quick_feeds）。它从白名单里毕业，
+    // 换来更强的断言：必须真的出现过第二次定义，且最后一次是东八区。
+    const REBUILT_CST_TABLES = new Set(['quick_feeds']);
     const isUtc = (def) => def.toUpperCase().includes('CURRENT_TIMESTAMP')
         || (def.includes("datetime('now')") && !def.includes('+8 hours'));
 
     const dir = path.join(root, 'migrations');
-    const offenders = [];
+    /** table -> 按文件顺序排列的时间列默认值定义 */
+    const definitions = new Map();
     for (const name of fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()) {
         const sql = fs.readFileSync(path.join(dir, name), 'utf8');
         let table = null;
@@ -445,15 +512,36 @@ test('时间基准 - 迁移文件的 created_at/updated_at 默认值不得再引
             if (upper.startsWith('CREATE TABLE')) {
                 table = ((line.replace(/IF NOT EXISTS/i, '').split(/[\s(]+/)[2] || '')).replace(/["'\u0060]/g, '');
             } else if (upper.startsWith('ALTER TABLE')) {
-                table = ((line.split(/[\s]+/)[2] || '')).replace(/["'\u0060]/g, '');
+                // `ALTER TABLE a RENAME TO b` 是「重建表」迁移的标准收尾：把 a 名下的定义转到 b，
+                // 否则 quick_feeds 这类重建表在解析器眼里永远只有旧的一次 UTC 定义。
+                const rename = line.match(/ALTER\s+TABLE\s+["'\u0060]?([\w]+)["'\u0060]?\s+RENAME\s+TO\s+["'\u0060]?([\w]+)["'\u0060]?/i);
+                if (rename) {
+                    const moved = definitions.get(rename[1]) || [];
+                    definitions.set(rename[2], (definitions.get(rename[2]) || []).concat(moved));
+                    definitions.delete(rename[1]);
+                    table = rename[2];
+                } else {
+                    table = ((line.split(/[\s]+/)[2] || '')).replace(/["'\u0060]/g, '');
+                }
             }
             if (!table || !/^(created_at|updated_at)/i.test(line)) continue;
             const at = upper.indexOf('DEFAULT');
             if (at === -1) continue;
             const def = line.slice(at + 7).replace(/,$/, '').trim();
-            if (isUtc(def) && !LEGACY_UTC_TABLES.has(table)) {
-                offenders.push(name + ' → ' + table + '.' + line.split(/[\s]+/)[0] + ' DEFAULT ' + def);
-            }
+            if (!definitions.has(table)) definitions.set(table, []);
+            definitions.get(table).push({ file: name, column: line.split(/[\s]+/)[0], def, utc: isUtc(def) });
+        }
+    }
+
+    const offenders = [];
+    for (const [table, defs] of definitions) {
+        const last = defs[defs.length - 1];
+        for (const d of defs) {
+            if (!d.utc) continue;
+            if (LEGACY_UTC_TABLES.has(table)) continue;
+            // 重建过的表：旧定义允许带 UTC，但最后一次定义必须已改成东八区（下面单独断言）
+            if (REBUILT_CST_TABLES.has(table) && !last.utc) continue;
+            offenders.push(d.file + ' → ' + table + '.' + d.column + ' DEFAULT ' + d.def);
         }
     }
     assert.equal(
@@ -461,6 +549,20 @@ test('时间基准 - 迁移文件的 created_at/updated_at 默认值不得再引
         0,
         '新迁移给时间列用了 UTC 默认值（datetime(\'now\') / CURRENT_TIMESTAMP 都是 UTC，本项目用 +8 hours）：\n' + offenders.join('\n')
     );
+
+    for (const table of REBUILT_CST_TABLES) {
+        assert.ok(!LEGACY_UTC_TABLES.has(table), table + ' 不能同时待在「已重建」与「历史豁免」两个集合里');
+        const defs = definitions.get(table) || [];
+        assert.ok(defs.length > 1, table + ' 声称已重建，但 migrations/ 里只有一次定义：' + defs.map((d) => d.file).join(', '));
+        assert.equal(
+            defs[defs.length - 1].utc,
+            false,
+            table + ' 的最后一次定义仍是 UTC 默认值：' + defs[defs.length - 1].file + ' → ' + defs[defs.length - 1].def
+        );
+    }
+    for (const table of LEGACY_UTC_TABLES) {
+        assert.ok(definitions.has(table), '白名单中的 ' + table + ' 在 migrations/ 里找不到时间列定义，应删掉这一项');
+    }
 });
 
 integration('Security - 表名助手对未知表名 fail-closed（SQL 标识符不能靠调用方自觉）', async () => {

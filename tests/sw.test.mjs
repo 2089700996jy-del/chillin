@@ -120,3 +120,23 @@ test('PWA - _headers 的缓存策略维持「版本探测不缓存 / 静态资�
         '边缘缓存也必须 no-store，避免 Pages CDN 与浏览器策略分叉'
     );
 });
+
+test('PWA - 运行时缓存写入挂在 waitUntil 上（响应不等缓存落盘，但写入不会被回收）', async () => {
+    // 历史教训：fire-and-forget 的 cache.put 会被浏览器回收打断，用户下次离线发现这版没缓存住；
+    // 而把 await cache.put 塞进 respondWith 的 promise 里，又让每次请求白等一次磁盘写入。
+    const sw = await fs.readFile(path.join(root, SITE, 'sw.js'), 'utf8');
+    const start = sw.indexOf('const networkThenCache');
+    assert.notEqual(start, -1, 'sw.js 必须保留 networkThenCache 分支');
+    const end = sw.indexOf('// 1.', start);
+    assert.notEqual(end, -1, 'networkThenCache 之后必须紧跟模块分支');
+    const branch = sw.slice(start, end);
+
+    assert.match(branch, /const clone = res\.clone\(\)/, '写入前必须先 clone 响应体，原响应要还给页面');
+    assert.match(
+        branch,
+        /e\.waitUntil\(\s*caches\.open\(CACHE_NAME\)\s*\.then\(\(cache\) => cache\.put\(e\.request, clone\)\)/,
+        'cache.put 必须用 e.waitUntil 挂进 SW 生命周期'
+    );
+    assert.doesNotMatch(branch, /await\s+cache\.put/, '缓存写入不得再让 respondWith 的 promise 等它');
+    assert.match(branch, /catch\(/, 'waitUntil 与写入失败都要吞掉异常，不能影响本次响应');
+});

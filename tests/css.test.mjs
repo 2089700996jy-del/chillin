@@ -18,7 +18,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 // 基线：这里只许变小，不许变大
-const IMPORTANT_BASELINE = 296;
+const IMPORTANT_BASELINE = 230;
 
 test('CSS - 每个 @keyframes 都被 animation 引用（无死动画）', () => {
     const defs = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
@@ -65,6 +65,18 @@ test('CSS - !important 数量不再增长（基线棘轮）', () => {
     assert.ok(
         count <= IMPORTANT_BASELINE,
         `!important 从基线 ${IMPORTANT_BASELINE} 涨到 ${count}——先想想能不能靠更具体的选择器解决；确有必要时请更新 tests/css.test.mjs 里的基线并说明原因`
+    );
+});
+
+// 裸 hex 棘轮：v2.5.144 令牌化批次把它从 501 降到 126（阈值=同值出现 >=3 次才建令牌），
+// 剩余的是长尾一次性色值，不强行合并。
+const HEX_BASELINE = 126;
+
+test('CSS - 裸 hex 数量不再增长（基线棘轮）', () => {
+    const count = (css.replace(/\/\*[\s\S]*?\*\//g, '').match(/#[0-9a-fA-F]{3,8}\b/g) || []).length;
+    assert.ok(
+        count <= HEX_BASELINE,
+        `裸 hex 从基线 ${HEX_BASELINE} 涨到 ${count}——请优先复用 :root 令牌（--white / --ios-blue / --ios-grouped-bg …），确有必要时请更新 tests/css.test.mjs 里的基线并说明原因`
     );
 });
 

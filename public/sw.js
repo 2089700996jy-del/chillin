@@ -1,6 +1,6 @@
 // Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
-const CACHE_NAME = 'chillin-v190';
-const APP_V = '2.5.143';
+const CACHE_NAME = 'chillin-v191';
+const APP_V = '2.5.144';
 const ASSETS = [
     '/',
     '/index.html',
@@ -76,21 +76,26 @@ self.addEventListener('fetch', (e) => {
     if (url.pathname.startsWith('/api/') || url.pathname === '/version.json') return; // API 与版本探活直接穿透网络，绝不缓存
 
     /**
-     * 先写缓存、再返回响应。
+     * 先写缓存、再返回响应——但写入挂在 waitUntil 上，不让用户等它。
      *
-     * 以前是「拿到网络响应就 return，缓存写入丢到后台」——SW 随时可能被浏览器回收，
-     * 后台那次 put 可能来不及完成，用户下次离线就发现这一版没被缓存住。现在把写入
-     * 放进 respondWith 的 promise 里 await：响应到达页面时，缓存已经落盘。
-     * 写入失败（配额满等）只吞掉异常，绝不影响这次请求本身。
+     * 两个历史教训：拿到响应就直接 return、把 put 丢到后台 fire-and-forget，浏览器随时
+     * 可能回收 SW，那次写入来不及完成，用户下次离线就发现这一版没被缓存住；反过来把
+     * await cache.put 塞进 respondWith 的 promise 里，则每次请求都要多等一次缓存落盘。
+     * 现在响应立刻返回，写入用 e.waitUntil() 挂进 SW 生命周期——浏览器会保活到写完，
+     * 用户也不用等。写入失败（配额满等）只吞掉异常，绝不影响这次请求本身。
      */
     const networkThenCache = async (fallback) => {
         try {
             const res = await fetch(e.request);
             if (res && res.status === 200) {
+                const clone = res.clone();
                 try {
-                    const cache = await caches.open(CACHE_NAME);
-                    await cache.put(e.request, res.clone());
-                } catch (_) { /* 缓存写不进去也不能影响本次响应 */ }
+                    e.waitUntil(
+                        caches.open(CACHE_NAME)
+                            .then((cache) => cache.put(e.request, clone))
+                            .catch(() => { /* 配额满等：写入失败不能影响本次响应 */ })
+                    );
+                } catch (_) { /* 极少数引擎在事件失活后拒绝 waitUntil：退化为后台写入，总比抛错强 */ }
             }
             return res;
         } catch (_) {

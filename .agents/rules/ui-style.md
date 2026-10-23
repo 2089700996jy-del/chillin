@@ -103,7 +103,15 @@
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 9870 行、296 处 `!important`（多为 v2.5.30 之后叠加的覆写层，v2.5.118 清掉底栏的 4 处冗余 `!important`）、42 条 `backdrop-filter` 声明、501 个裸 hex 与 850 处 `rgb()/rgba()` 字面量（v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 9902 行、230 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 847 处 `rgb()/rgba()` 字面量（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+
+### `!important` 与覆写层的削减纪律（v2.5.144 起）
+
+`!important` 只能靠「真浏览器逐元素 computed style 对比」证明安全后才允许删。工具是 [`scripts/css-computed-audit.mjs`](../../scripts/css-computed-audit.mjs)（CDP 驱动：以线上 `style.css` 为基线，把候选 CSS 注入同一级联位置后比对 `body *` 的 615 项 computed style、全部令牌与元素矩形）。
+
+- **单条安全 ≠ 批量安全**：两条 `!important` 写同一个元素的同一个属性时会互相遮罩——单独删任何一条都测不出差异，一起删就会让下层旧值浮上来。所以逐条扫描只用来筛候选，**批量删除后必须把整份文件再跑一遍全矩阵（182 上下文：7 视口/媒体 × 13 状态 × 亮暗）验收**；v2.5.144 正是靠这一步才发现 90 个上下文回归（`.super-navbar` 底边、`.confirm-dialog-overlay`/`-card`/`-cancel`），据此回补了 12 条。
+- **回补判据**：某元素出现差异，就恢复「所有匹配该元素且已删的 `!important`」——只要不再有已删声明命中该元素，它的层叠结果就与基线恒等。
+- **已知覆盖上限**：审计只覆盖静态 DOM。JS 动态渲染的内容（笔记列表、阅读器正文、AI 会话气泡）不在初始 DOM 里，选择器从未匹配的候选一律**保留**，不得凭静态分析删除。
 
 ## 主题令牌纪律（v2.5.119 起）
 
