@@ -336,9 +336,33 @@ async function answerWithWeb(env, question, sources) {
     return String(answer || '').trim();
 }
 
+/** 合成失败时的占位文案：这时候来源就是内容本身，不能剥 */
+export const WEB_NO_ANSWER = '这条我没能整理出结论，来源在下面，你自己看一眼。';
+/** 出处脚注的起点：composeWebReply 是唯一产出方，取/剥都认这一处 */
+export const WEB_SOURCES_MARK = '\n---\n来源：';
+
+/** 取出回复里的出处脚注；没有返回空串 */
+export function sourcesFootnote(reply) {
+    const text = String(reply || '');
+    const i = text.indexOf(WEB_SOURCES_MARK);
+    return i < 0 ? '' : text.slice(i);
+}
+
+/**
+ * 默认回复只给结论：出处脚注按需附上（用户追问「依据 / 来源 / 怎么查的」时才给）。
+ * 合成失败时（没有答案，来源就是全部内容）原样返回，绝不剥成一句空话。
+ */
+export function stripSourcesFootnote(reply) {
+    const text = String(reply || '');
+    const foot = sourcesFootnote(text);
+    if (!foot) return text;
+    const body = text.slice(0, text.length - foot.length).trim();
+    return !body || body === WEB_NO_ANSWER ? text : body;
+}
+
 /** 回复组装：答案 + 最多 3 条来源（标题一行、链接一行，微信里好点开） */
 export function composeWebReply(answer, sources) {
-    const lines = [String(answer || '').trim() || '这条我没能整理出结论，来源在下面，你自己看一眼。'];
+    const lines = [String(answer || '').trim() || WEB_NO_ANSWER];
     const shown = (sources || []).slice(0, WEB_SEARCH_RESULTS_SHOWN);
     if (shown.length) {
         lines.push('');

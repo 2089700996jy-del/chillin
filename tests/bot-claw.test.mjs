@@ -616,6 +616,8 @@ test('Bot - 来源脚注按需触发：只有索要依据的问法才算', () =>
     assert.equal(wantsEvidence('这个依据是什么'), true);
     assert.equal(wantsEvidence('你怎么知道我上周在读那本书'), true);
     assert.equal(wantsEvidence('说说来源'), true);
+    assert.equal(wantsEvidence('刚才那些是哪查的'), true, '用户自己的说法必须认');
+    assert.equal(wantsEvidence('这条消息怎么来的'), true);
     assert.equal(wantsEvidence(''), false);
 });
 
@@ -645,6 +647,43 @@ integration('Bot - 默认聊天不附依据，追问来源时才带', async () =
     assert.match(asked, /依据：/, '追问来源时必须给出处');
     assert.match(asked, /\[随手记\]/);
     assert.match(asked, /依据：.随手记. \d{4}-\d{2}-\d{2}/, '脚注日期必须统一成 YYYY-MM-DD，实际：' + asked);
+});
+
+integration('Bot - 联网答案默认不带来源，追问时才给出处且不再出站', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const env = {
+        SEARCH_API_KEY: 'search-key',
+        AI: { run: async () => ({ response: '10 月 25 日周日主场迎战雄鹿。' }) }
+    };
+    const original = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = async () => {
+        calls += 1;
+        return new Response(JSON.stringify({
+            results: [{
+                title: '费城 76 人赛程', url: 'https://sports.example/sixers',
+                summary: '10月25日周日，主场迎战雄鹿', site_name: 'sports.example', date: '2026-10-23'
+            }]
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    try {
+        const plain = await buildBotReply(env, db, 1, '查一下这周周六周日 NBA 有没有 76 人的比赛');
+        assert.match(plain, /雄鹿/, '结论照常给，实际：' + plain);
+        assert.ok(!plain.includes('来源：'), '默认回复不许附出处，实际：' + plain);
+        assert.ok(!plain.includes('sports.example'), '默认回复连链接都不给');
+        assert.equal(calls, 1, '这一次真的出站了');
+
+        const asked = await buildBotReply(env, db, 1, '这个依据是什么');
+        assert.match(asked, /sports\.example/, '追问时必须给出处，实际：' + asked);
+        assert.equal(calls, 1, '追问走上下文里的出处，不许再出站一次');
+
+        const again = await buildBotReply(env, db, 1, '刚才那些是哪查的');
+        assert.match(again, /sports\.example/, '换个问法也要认，实际：' + again);
+        assert.equal(calls, 1, '追问永不触发出站');
+    } finally {
+        globalThis.fetch = original;
+    }
 });
 
 integration('Bot - 显式「记录：…」才落随手记，闲聊只留对话上下文', async () => {

@@ -30,7 +30,7 @@ import {
     readPendingMedia, clearPendingMedia
 } from './bot-memory.js';
 import { handleClawLinkMessage, buildManualLinkCard } from './bot-links.js';
-import { maybeWebAnswer } from './bot-web.js';
+import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
     runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder
@@ -63,7 +63,7 @@ export const BOT_HELP_TEXT = [
     '- 「忘记 关键词」：从档案里删掉这一条',
     '- 「提醒我 20:00 <事情>」：到点我在微信里叫你；回「完成」就把它记进随手记',
     '- 「我的提醒」看列表；「取消提醒 <编号>」取消某一条',
-    '- 「查一下 <问题>」：上网找最新信息，回答里附来源',
+    '- 「查一下 <问题>」：上网找最新信息；默认只给结论，要出处就说「来源」',
     '- 「别主动找我 / 可以主动找我」：开关偶尔的主动关心',
     '- 「重置对话」：清空我们这次的对话上下文',
     '- 「帮助」：显示这条说明'
@@ -116,7 +116,7 @@ const FORGET_ALL_RE = /^(?:忘记全部|清空档案|清空关于我|\/forgetall
  * 来源脚注按需附上：默认回复一律不带「依据：」，只有用户主动追问来源时才给。
  * 判据是「问句里出现了索要来源的词」，纯关键词匹配，不做意图模型调用。
  */
-const EVIDENCE_RE = /(依据|来源|出处|根据什么|凭什么|怎么知道|哪里知道|哪儿知道|哪看到的|哪来的|证据|原始记录|引用|source|references?)/i;
+const EVIDENCE_RE = /(依据|来源|出处|根据什么|凭什么|怎么知道|怎么查|怎么来|哪里知道|哪儿知道|哪看到的|哪来的|哪查的|证据|原始记录|引用|source|references?)/i;
 export function wantsEvidence(text) {
     return EVIDENCE_RE.test(String(text || ''));
 }
@@ -267,7 +267,7 @@ const CHAT_SYSTEM_PROMPT = [
         + '「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
         + '提醒过后回「完成」会把它记进随手记、'
         + '「别主动找我 / 可以主动找我」开关主动关心、'
-        + '「查一下 <问题>」会上网找最新信息并附来源。'
+        + '「查一下 <问题>」会上网找最新信息（默认只给结论，他追问「来源 / 依据」时才把出处列出来）。'
         + '对方明显想做这些却没按格式发（例如只发「记住」），就把正确的发法告诉他——由他决定，你不要自己写。',
     '3. 你确实会主动开口：系统会在合适的时候主动找他聊一句（一天最多一次，避开刚聊完和深夜）；他在指令里指定的定点提醒则是到点必达的，那是他自己设的——别把两件事混起来，也别在没看到回执时替他承诺。',
     '4. 只依据【花园记忆片段】陈述过去发生的事；片段没提到的就说没找到，绝不编造。',
@@ -465,9 +465,25 @@ export async function buildBotReply(env, db, userId, content) {
     // 花园类问题（「我记过什么」）由 bot-web 的 GARDEN_HINT_RE 拦下，仍走本地 RAG。
     const webReply = await maybeWebAnswer(env, db, userId, text);
     if (webReply) {
+        // 出处按需：默认只给结论；上下文里仍存全量，下一句追问时不必再查一次
+        const shown = wantsEvidence(text) ? webReply : stripSourcesFootnote(webReply);
         await saveChatTurn(db, userId, 'user', text);
         await saveChatTurn(db, userId, 'assistant', webReply);
-        return webReply;
+        return shown;
+    }
+
+    // 追问上一句的出处（「依据是什么 / 哪查的」）：上一轮如果是联网回答，把它的来源原样还给他。
+    // 不再出站、不花检索额度，也不让模型转述——免得它自己编一个链接出来。
+    if (wantsEvidence(text)) {
+        const history = await loadChatContext(db, userId);
+        const lastAssistant = [...history].reverse().find(t => t.role === 'assistant');
+        const foot = lastAssistant ? sourcesFootnote(lastAssistant.content) : '';
+        if (foot) {
+            const reply = '刚才那条我查到的出处：' + foot;
+            await saveChatTurn(db, userId, 'user', text);
+            await saveChatTurn(db, userId, 'assistant', reply);
+            return reply;
+        }
     }
 
     const history = await loadChatContext(db, userId);

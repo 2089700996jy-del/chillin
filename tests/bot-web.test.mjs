@@ -14,6 +14,8 @@ import {
     parseSearchPayload,
     runWebSearch,
     composeWebReply,
+    sourcesFootnote,
+    stripSourcesFootnote,
     webFailureText,
     maybeWebAnswer,
     WEB_CACHE_TTL_MS,
@@ -272,6 +274,24 @@ test('联网 - 回复组装：来源最多 3 条；失败文案按原因给下�
     assert.match(webFailureText('timeout'), /超时/);
     assert.match(webFailureText('empty'), /换个说法/);
     assert.match(webFailureText('http-403'), /不让我进/);
+});
+
+test('联网 - 出处脚注按需：默认剥掉，追问时取出；合成失败时来源就是内容，不许剥成空话', () => {
+    const sources = [{ title: '费城 76 人赛程', url: 'https://sports.example/nba' }];
+    const full = composeWebReply('10 月 25 日主场打雄鹿。', sources);
+    assert.match(full, /来源：/, '缓存里始终存全量，追问时才不必再查一次');
+
+    const foot = sourcesFootnote(full);
+    assert.match(foot, /来源：/);
+    assert.match(foot, /https:\/\/sports\.example\/nba/);
+
+    const body = stripSourcesFootnote(full);
+    assert.equal(body, '10 月 25 日主场打雄鹿。', '默认回复只留结论，实际：' + body);
+    assert.equal(sourcesFootnote(body), '', '剥过之后取不到脚注');
+    assert.equal(stripSourcesFootnote('纯聊天回复。'), '纯聊天回复。', '没有脚注的回复原样返回');
+
+    const failed = composeWebReply('', sources);
+    assert.equal(stripSourcesFootnote(failed), failed, '合成失败时来源就是内容本身，剥离只会剩一句空话');
 });
 
 sqliteTest('联网 - 端到端：检索+合成+来源，第二次同一句走缓存不再请求', async () => {
