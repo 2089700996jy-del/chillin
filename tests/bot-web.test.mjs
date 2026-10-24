@@ -1,5 +1,6 @@
 /**
  * 联网检索（v2.5.143）：分类闸门 + 上游解析 + 端到端（含缓存与日配额）。
+ * v2.5.149 起：请求带 need_content（正文优先于 summary）、相对时间问句并进具体日期。
  *
  * 这一能力的风险不对称：多发一次检索只花一次额度，但把「我记过的那个想法」交给搜索引擎，
  * 等于把第二大脑降级成搜索引擎。所以用例盯的是**别乱发**，而不是多发。
@@ -11,8 +12,6 @@ import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
     wantsWebSearch,
     extractWebQuery,
-    parseSearchPayload,
-    runWebSearch,
     composeWebReply,
     sourcesFootnote,
     stripSourcesFootnote,
@@ -21,9 +20,14 @@ import {
     WEB_CACHE_TTL_MS,
     WEB_DAILY_LIMIT,
     WEB_BURST_LIMIT,
-    WEB_SEARCH_TIMEOUT_MS,
     WEB_ANSWER_TIMEOUT_MS
 } from '../workers/src/bot-web.js';
+import {
+    parseSearchPayload,
+    runWebSearch,
+    dateHints,
+    WEB_SEARCH_TIMEOUT_MS
+} from '../workers/src/bot-search.js';
 
 const NOW = Date.parse('2026-10-23T12:19:00+00:00');
 const SEARCH_JSON = JSON.stringify({
@@ -167,8 +171,11 @@ test('联网 - 默认上游是 DeepSeek 官方 Search：POST + JSON 体 + 复用
     assert.equal(init.headers['Content-Type'], 'application/json');
     assert.equal(init.headers.Authorization, 'Bearer sk-1', '复用同一把 LLM_API_KEY，零新增密钥');
     const body = JSON.parse(init.body);
-    assert.equal(body.query, '今天 76 人有比赛吗');
-    assert.equal(body.count, 5, '取 5 条候选，展示仍只给 3 条');
+    const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
+    assert.ok(body.query.startsWith('今天 76 人有比赛吗'), body.query);
+    assert.ok(body.query.includes(today), '「今天」要并成具体日期再发：检索端没有「现在」是哪天的语境');
+    assert.equal(body.count, 8, '取 8 条候选，展示仍只给 3 条');
+    assert.equal(body.need_content, true, '要正文：赛程表、比分这类事实只在 content 里，光给 summary 会退化成「只有标题」');
     assert.equal(body.ori_question, '帮我查一下今天 76 人有比赛吗', 'ori_question 给用户原话，帮上游理解「这周六」这类指代');
 });
 
@@ -190,6 +197,28 @@ test('联网 - query / ori_question 超过文档上限 128 字符先截断再发
     const body = JSON.parse(st.inits[0].body);
     assert.equal(body.query.length, 128, '文档规定 query 1–128 字符');
     assert.equal(body.ori_question.length, 128);
+});
+
+test('联网 - 相对时间问句并进具体日期（东八区）：今天 / 明天 / 这周六周日 / 周末', () => {
+    const wed = Date.parse('2026-10-21T04:00:00Z'); // 东八区 2026-10-21 周三 12:00
+    assert.deepEqual(dateHints('今天有什么新闻吗', wed), ['2026-10-21']);
+    assert.deepEqual(dateHints('明天会下雨吗', wed), ['2026-10-22']);
+    assert.deepEqual(dateHints('这周六周日 NBA 有 76 人吗', wed), ['2026-10-24', '2026-10-25']);
+    assert.deepEqual(dateHints('周末有什么比赛', wed), ['2026-10-24', '2026-10-25']);
+    assert.deepEqual(dateHints('那家店好吃吗', wed), [], '解析不出就一个字都不加，绝不塞猜出来的日期');
+});
+
+test('联网 - need_content 的正文优先于 summary，正文太短才回落（短正文多半是导航残渣）', () => {
+    const long = 'x'.repeat(300);
+    const items = parseSearchPayload(JSON.stringify({
+        results: [
+            { title: 'A', url: 'https://a.example/1', summary: '摘要甲', content: long },
+            { title: 'B', url: 'https://b.example/2', summary: '摘要乙', content: '首页 赛程' }
+        ]
+    }));
+    assert.equal(items.length, 2);
+    assert.match(items[0].snippet, /^x+$/, '正文够长就用正文，赛程表这类事实只在这里');
+    assert.equal(items[1].snippet, '摘要乙', '正文太短（这里是导航残渣）回落到 summary');
 });
 
 test('联网 - 解析 DeepSeek 形状：summary 优先于 snippet，日期换算东八区并带上站点', () => {

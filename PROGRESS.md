@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-24。供后续会话快速接续。当前前端/Worker：**v2.5.148**（Worker 已部署、D1 迁移 0001–0031 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-24。供后续会话快速接续。当前前端/Worker：**v2.5.149**（Worker 已部署、D1 迁移 0001–0031 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -32,13 +32,13 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 24 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 25 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-echo.js`
 - 智能与记忆：`ai.js`、`rag.js`、`llm.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
-- Bot：`bot-commands.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-web.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
+- Bot：`bot-commands.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
 
 ## 近期已完成（摘要）
 
@@ -46,10 +46,11 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
-| 工作树 | 联网检索上游从 Jina 换成 DeepSeek 官方 Search：`POST /v1/tools/search` 复用 `LLM_API_KEY`，`ori_question` 带用户原话，`summary` 与站点/东八区日期进提示词（实测 417ms 出 5 条；Jina 同查询 1533ms 且无日期站点）；Jina 保留为回落开关，半截 JSON 仍一律当没有来源；限流改成只拦真正出站（缓存命中不再扣额度），日上限 20→100 且 `WEB_DAILY_LIMIT` 可配，新增每分钟 2 次突发闸 `WEB_BURST_LIMIT`；联网答案默认不再附来源，追问「来源 / 依据 / 哪查的」时才把上一轮存下的出处原样还给他（不再出站），缓存里仍存全量；`EVIDENCE_RE` 补上「怎么查 / 怎么来 / 哪查的」 |
+| 工作树 | 联网答案更像 DeepSeek 应用：请求带 `need_content`（赛程表/比分这类事实只在网页正文里，实测 8 条约 50 KB、耗时 485ms→524ms 几乎不变），候选 5→8、单条上限 1200→3000 字、提示词上下文 5000→12000 字；相对时间（今天 / 这周周六周日）解析成具体日期并进查询词——检索端没有「现在」是哪天的语境，这是「明明有赛程却答没查到」的真凶；新增时区规则（网页多给当地时区，NBA 默认美东，换算成北京时间并说明差异）；上游适配层拆到 `workers/src/bot-search.js`，给 `workers/src/*` ≤500 行红线留出余量 |
+| v2.5.146–148 | 联网检索上游从 Jina 换成 DeepSeek 官方 Search：`POST /v1/tools/search` 复用 `LLM_API_KEY`，`ori_question` 带用户原话，`summary` 与站点/东八区日期进提示词（实测 417ms 出 5 条；Jina 同查询 1533ms 且无日期站点）；Jina 保留为回落开关，半截 JSON 仍一律当没有来源；限流改成只拦真正出站（缓存命中不再扣额度），日上限 20→100 且 `WEB_DAILY_LIMIT` 可配，新增每分钟 2 次突发闸 `WEB_BURST_LIMIT`；联网答案默认不再附来源，追问「来源 / 依据 / 哪查的」时才把上一轮存下的出处原样还给他（不再出站），缓存里仍存全量；`EVIDENCE_RE` 补上「怎么查 / 怎么来 / 哪查的」 |
 | v2.5.145 | 联网检索不再「超时」：上游改摘要模式（`X-Respond-With: no-content`）+ 10s 服务端超时，客户端两道死线（检索/合成各 20s）合计不占满收信预算，半截 JSON 一律当没有来源；时间锚点补星期；自测提醒留下的噪声已从对话/提醒/缓存三表软删 |
 | v2.5.144 | 工程债清零批次：`!important` 用真浏览器逐元素 computed style 审计（182 上下文）证明零回归后删 66 处（296→230）、裸 hex 令牌化 501→126 并加棘轮、`quick_feeds.created_at` 默认值改东八区（0031）、SW 缓存写入改挂 `waitUntil` |
-| 工作树 | Bot 定点提醒（到点主动开口、30 分钟追问一次、回「完成」沉淀成随手记）与联网检索（按来源作答附出处、6 小时缓存、每日 20 次上限） |
+| v2.5.143 | Bot 定点提醒（到点主动开口、30 分钟追问一次、回「完成」沉淀成随手记）与联网检索（按来源作答附出处、6 小时缓存、每日 20 次上限） |
 | v2.5.140 | 微信链接速览只装封面/标题/详情，不再抓时长 |
 | v2.5.139 | 通道状态不再骗人，Bot 不再自称没有能力 |
 | v2.5.138 | 代读拿回 JSON 时也从 `data.html` 里捞封面 |
