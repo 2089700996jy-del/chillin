@@ -25,8 +25,12 @@ import { checkRateLimitShared } from './security.js';
 
 /** 默认检索端点（Jina Search，路径拼接查询词） */
 export const WEB_SEARCH_DEFAULT_URL = 'https://s.jina.ai';
-export const WEB_SEARCH_TIMEOUT_MS = 15000;
-export const WEB_SEARCH_MAX_BYTES = 512 * 1024;
+/** 客户端上限：上游侧还有 X-Timeout: 10 兜底，这里留出慢查询的余量，同时不拖垮整轮收信预算（55s） */
+export const WEB_SEARCH_TIMEOUT_MS = 20000;
+/** 合成答案的上限：模型慢到超时就退化成「只给来源」，绝不把整轮收信拖死 */
+export const WEB_ANSWER_TIMEOUT_MS = 20000;
+/** 应答体积上限：no-content 模式实测只有约 3 KB；这里只是防上游失控（全文模式单次 600–750 KB，旧值 512 KB 会把 JSON 拦腰截断） */
+export const WEB_SEARCH_MAX_BYTES = 1024 * 1024;
 export const WEB_SEARCH_RESULTS = 5;
 export const WEB_SEARCH_RESULTS_SHOWN = 3;
 export const WEB_SNIPPET_MAX_CHARS = 1200;
@@ -124,7 +128,8 @@ function parseTextPayload(text) {
 export function parseSearchPayload(body) {
     const text = String(body || '').trim();
     let items = [];
-    if (text.startsWith('{') || text.startsWith('[')) {
+    const looksJson = text.startsWith('{') || text.startsWith('[');
+    if (looksJson) {
         try {
             const json = JSON.parse(text);
             const data = Array.isArray(json) ? json : (json.data || json.results || []);
@@ -134,10 +139,13 @@ export function parseSearchPayload(body) {
                 snippet: it.description || it.content || it.text || ''
             }));
         } catch (err) {
-            items = [];
+            // 半截 JSON（回包被截断）绝不能掉进下面的 markdown 解析：那样会把 JSON 片段当成
+            // 「标题 + 摘要」喂给模型（2026-10-24 实测：截断后只解析出 1 条假来源，标题是整段 JSON）。
+            // 宁可当没有来源，让上层诚实地说「没搜到」。
+            return [];
         }
     }
-    if (!items.length) items = parseTextPayload(text);
+    if (!items.length && !looksJson) items = parseTextPayload(text);
     const seen = new Set();
     const out = [];
     for (const it of items) {
@@ -168,6 +176,11 @@ export async function runWebSearch(env, query, fetchImpl = fetch) {
                 Accept: 'application/json',
                 Authorization: 'Bearer ' + key,
                 'x-api-key': key,
+                // 只要标题+摘要：Jina 的全文模式会为每条结果抓取渲染网页（实测 600–750 KB、耗时 2–15s 抖动，
+                // 15s 上限下经常整条超时）；摘要里已带着「Sat, 10 …」这类事实，且回包只有约 3 KB / 约 2.5s。
+                // X-Timeout 交给上游自己设服务端死线，双保险。
+                'X-Respond-With': 'no-content',
+                'X-Timeout': '10',
                 'User-Agent': 'ChillinBot/1.0'
             },
             signal: ctrl.signal
@@ -183,9 +196,13 @@ export async function runWebSearch(env, query, fetchImpl = fetch) {
     }
 }
 
+const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** 时间锚点要带星期：2026-10-24 线上实测，只给日期时模型会把「这周六」算错一天（答成 25、26 日） */
 function nowInEast8Text() {
-    const s = new Date(Date.now() + 8 * 3600 * 1000).toISOString();
-    return s.slice(0, 10) + ' ' + s.slice(11, 16);
+    const d = new Date(Date.now() + 8 * 3600 * 1000);
+    const s = d.toISOString();
+    return s.slice(0, 10) + ' ' + s.slice(11, 16) + ' ' + WEEKDAY_CN[d.getUTCDay()];
 }
 
 function sourcesBlock(sources) {
@@ -219,11 +236,25 @@ async function answerWithWeb(env, question, sources) {
         { role: 'system', content: blocks.join('\n\n') },
         { role: 'user', content: question }
     ];
+    // 合成也要有死线：模型慢/挂住时退化成「只给来源」，绝不让一次检索把整轮收信（55s 预算）拖死。
+    // 环境里可以覆盖（单测把 20s 压到几十毫秒）。
+    const limit = Number((env && env.WEB_ANSWER_TIMEOUT_MS) || 0) || WEB_ANSWER_TIMEOUT_MS;
+    let timer = 0;
     let answer = '';
-    try {
-        answer = await callCustomLlmWithMessages(env, messages);
-    } catch (err) {
+    const call = callCustomLlmWithMessages(env, messages).catch((err) => {
         console.error('[web] 检索合成失败: ' + (err && err.message));
+        return '';
+    });
+    const guard = new Promise((resolve) => {
+        timer = setTimeout(() => {
+            console.error('[web] 检索合成超时 ' + limit + 'ms，只回来源');
+            resolve('');
+        }, limit);
+    });
+    try {
+        answer = await Promise.race([call, guard]);
+    } finally {
+        clearTimeout(timer);
     }
     return String(answer || '').trim();
 }

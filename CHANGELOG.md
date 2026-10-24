@@ -1,13 +1,17 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-23T14:25:10.204Z · 提交数：381
+> 生成时间：2026-10-24T02:20:35.023Z · 提交数：382
 
 ## 2026-10-23
 
 ### ✨ 新功能
 
 - **bot**: give the wechat bot point-in-time reminders and sourced web search
+
+### ♻️ 重构
+
+- **css**: drop 66 !important overrides after a computed-style audit and tokenize 403 hex colors
 
 ## 2026-10-22
 

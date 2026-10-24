@@ -207,10 +207,13 @@ export async function saveFeed(db, userId, content, mediaUrl, summary, type) {
     return res.ok;
 }
 
-/** 东八区当前时间（提示词里给模型一个时间锚点） */
+const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+/** 东八区当前时间 + 星期（提示词里的时间锚点；缺了星期，「这周六」会被模型算错一天） */
 function nowInEast8() {
-    const s = new Date(Date.now() + 8 * 3600 * 1000).toISOString();
-    return s.slice(0, 10) + ' ' + s.slice(11, 16);
+    const d = new Date(Date.now() + 8 * 3600 * 1000);
+    const s = d.toISOString();
+    return s.slice(0, 10) + ' ' + s.slice(11, 16) + ' ' + WEEKDAY_CN[d.getUTCDay()];
 }
 
 function formatSources(sources) {

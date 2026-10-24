@@ -17,7 +17,9 @@ import {
     webFailureText,
     maybeWebAnswer,
     WEB_CACHE_TTL_MS,
-    WEB_DAILY_LIMIT
+    WEB_DAILY_LIMIT,
+    WEB_SEARCH_TIMEOUT_MS,
+    WEB_ANSWER_TIMEOUT_MS
 } from '../workers/src/bot-web.js';
 
 const NOW = Date.parse('2026-10-23T12:19:00+00:00');
@@ -28,17 +30,19 @@ const SEARCH_JSON = JSON.stringify({
     ]
 });
 
-/** 检索替身：记录 URL，返回 JSON；可指定失败形态 */
+/** 检索替身：记录 URL 与 init，返回 JSON；可指定失败形态 */
 function searchStub(mode = 'ok') {
     const calls = [];
-    const impl = async (url) => {
+    const inits = [];
+    const impl = async (url, init) => {
         calls.push(String(url));
+        inits.push(init || {});
         if (mode === 'http-403') return new Response('{}', { status: 403 });
         if (mode === 'empty') return new Response('[]', { status: 200 });
         if (mode === 'abort') { const e = new Error('aborted'); e.name = 'AbortError'; throw e; }
         return new Response(SEARCH_JSON, { status: 200 });
     };
-    return { impl, calls };
+    return { impl, calls, inits };
 }
 
 function webEnv() {
@@ -96,6 +100,24 @@ test('联网 - 解析上游应答：JSON 与 markdown 两种形态、去重、�
     assert.deepEqual(parseSearchPayload('{ 坏掉的 json'), [], '解析不了就当没有来源，绝不编');
 });
 
+test('联网 - 回包被截断（半截 JSON）时必须当没有来源，绝不把 JSON 片段当标题摘要', () => {
+    // 2026-10-24 线上实测：全文模式回包 618–728 KB，被 512 KB 上限拦腰截断 → JSON.parse 失败
+    // → 旧逻辑掉进 markdown 兜底 → 只解析出 1 条「来源」，title/snippet 就是整段 JSON 碎片。
+    const full = JSON.stringify({
+        code: 200,
+        data: [{
+            title: 'Philadelphia 76ers Schedule',
+            url: 'https://sports.example/nba',
+            description: 'Regular Season home Saturday Oct 24 7:30 PM EDT. Sunday Oct 25 6:00 PM EDT.'
+        }]
+    });
+    const truncated = full.slice(0, Math.floor(full.length * 0.7));
+    assert.ok(truncated.includes('https://sports.example/nba'), '构造的截断样本要含 URL：' + truncated);
+    assert.throws(() => JSON.parse(truncated), '样本必须是坏 JSON');
+    assert.deepEqual(parseSearchPayload(truncated), [], '半截 JSON 只能当没有来源');
+    assert.deepEqual(parseSearchPayload(full).map((it) => it.url), ['https://sports.example/nba'], '完整 JSON 照常解析');
+});
+
 test('联网 - 上游失败分类：无密钥 / 无结果 / HTTP 错误 / 超时', async () => {
     const noKey = await runWebSearch({}, '今天有比赛吗', searchStub().impl);
     assert.deepEqual(noKey, { ok: false, reason: 'no-key' });
@@ -120,6 +142,21 @@ test('联网 - 检索走 GET 且带令牌，链接复用只做拼接', async () 
     assert.equal(st.calls.length, 1);
     assert.ok(st.calls[0].startsWith('https://s.jina.ai/'), st.calls[0]);
     assert.ok(st.calls[0].includes(encodeURIComponent('今天 76 人有比赛吗')));
+});
+
+test('联网 - 上游请求要摘要模式（no-content）并交给上游设超时，避免全文渲染拖到整条超时', async () => {
+    const st = searchStub();
+    await runWebSearch({ SEARCH_API_KEY: 'k', SEARCH_API_URL: 'https://s.jina.ai' }, '今天 76 人有比赛吗', st.impl);
+    const headers = st.inits[0].headers;
+    assert.equal(headers['X-Respond-With'], 'no-content', '全文模式实测 618-728 KB / 2-15s 抖动；摘要模式约 3 KB / 2.5s 且已含事实');
+    assert.equal(headers['X-Timeout'], '10', '上游自己也要设服务端死线');
+    assert.equal(headers.Authorization, 'Bearer k');
+    assert.equal(headers['x-api-key'], 'k');
+});
+
+test('联网 - 两道超时加起来必须装进一轮收信预算（55s，workers/src/bot-claw.js:47）', () => {
+    const sum = WEB_SEARCH_TIMEOUT_MS + WEB_ANSWER_TIMEOUT_MS;
+    assert.equal(Math.max(0, sum - 40000), 0, '检索 ' + WEB_SEARCH_TIMEOUT_MS + 'ms + 合成 ' + WEB_ANSWER_TIMEOUT_MS + 'ms 若逼近 55s，一次检索就会拖垮整轮 cron 收信');
 });
 
 test('联网 - 回复组装：来源最多 3 条；失败文案按原因给下一步', () => {
@@ -149,6 +186,10 @@ sqliteTest('联网 - 端到端：检索+合成+来源，第二次同一句走缓
     assert.ok(reply.includes('https://sports.example/nba'));
     assert.equal(st.calls.length, 1);
     assert.equal(said.length, 1, '合成必须带检索结果走模型');
+    const CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+    const today = CN[new Date(Date.now() + 8 * 3600 * 1000).getUTCDay()];
+    assert.ok(said[0][0].content.includes(today), '时间锚点必须带星期（缺了它「这周六」会算错一天）：' + today);
+    assert.match(said[0][0].content, /现在是 \d{4}-\d{2}-\d{2} \d{2}:\d{2} 周[一二三四五六日]（东八区）/);
 
     const again = await maybeWebAnswer(env, db, 1, '查一下今天76人有比赛吗', st.impl, NOW + 60 * 1000);
     assert.equal(again, reply, '同一句话 6 小时内直接回缓存');
@@ -202,4 +243,21 @@ sqliteTest('联网 - 合成失败也要给来源；检索失败不落缓存', as
     const failed = await maybeWebAnswer(broken, db, 4, '查一下明天天气怎么样', st.impl, NOW);
     assert.match(failed, /不让我进/);
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM bot_web_cache WHERE query LIKE '%天气%'").first()).n, 0, '失败结果不进缓存，否则 6 小时内都答不了');
+});
+
+sqliteTest('联网 - 模型合成卡住时按死线退化为只给来源，不拖死整轮收信', async () => {
+    const db = createTestDb();
+    // 独立用户：限流桶按 user_id 在模块内共享，避免被上一组的 21 次打满
+    await seedUser(db, 5);
+    const env = {
+        SEARCH_API_KEY: 'k',
+        WEB_ANSWER_TIMEOUT_MS: 40,
+        AI: { run: () => new Promise(() => {}) }
+    };
+    const started = Date.now();
+    const reply = await maybeWebAnswer(env, db, 5, '查一下今天76人有比赛吗', searchStub().impl, NOW);
+    const elapsed = Date.now() - started;
+    assert.ok(reply.includes('https://sports.example/nba'), '超时也要把来源原样给用户：' + reply);
+    assert.match(reply, /没能整理出结论/);
+    assert.equal(Math.max(0, elapsed - 3000), 0, '死线必须生效，实测 ' + elapsed + 'ms');
 });
