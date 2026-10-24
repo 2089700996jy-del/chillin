@@ -10,6 +10,9 @@
  * summary（600–800 字，给模型读）、date、authority 与 rerank_score。
  * v2.5.149 起请求带 need_content：网页正文（赛程表/比分这类事实只在正文里）随包回来——实测 8 条约
  * 50 KB，耗时几乎不变（485ms → 524ms）；只给 summary 时，遇到表格页就会退化成「只看到标题」。
+ * v2.5.150 起支持多检索词并行（runWebSearchMulti）：自然语言问句直接丢给上游常常只能捞到新闻，
+ * 「76人下次比赛是什么时间」在 2026-10-24 就退化成「只有虎扑赛程表的标题」；改由 bot-web.js 先规划 1–3 条
+ * 关键词再并行搜、按 rerank_score 合并去重后，同一句话命中直播吧的赛程正文（10月25日主场雄鹿 / 10月26日活塞）。
  * 相对时间在检索端没有语境（上游不知道「现在」是哪天），所以 dateHints 把能确定的日期并进查询词：
  * 2026-10-24 实测「76人 赛程 10月24日 10月25日」直接命中官方赛程页，而「这周 周六 周日 76人」只捞到新闻。
  *
@@ -26,12 +29,17 @@ export const WEB_SEARCH_DEFAULT_URL = 'https://api.deepseek.com/v1/tools/search'
 export const JINA_SEARCH_DEFAULT_URL = 'https://s.jina.ai';
 /** DeepSeek Search 文档规定 query / ori_question 上限 128 字符，超了先截断再发 */
 export const WEB_SEARCH_QUERY_MAX_CHARS = 128;
-/** 客户端上限：上游侧还有 X-Timeout: 10 兜底，这里留出慢查询的余量，同时不拖垮整轮收信预算（55s） */
-export const WEB_SEARCH_TIMEOUT_MS = 20000;
+/**
+ * 客户端上限：DeepSeek Search 实测 330–530ms（need_content 几乎不加耗时），12s 已是 20 倍余量。
+ * v2.5.150 起从 20s 收到 12s：一轮 cron 收信预算 55s，加上检索词规划 4s 与合成 20s 必须留出余量。
+ */
+export const WEB_SEARCH_TIMEOUT_MS = 12000;
 
 /** 应答体积上限：no-content 模式实测只有约 3 KB；这里只是防上游失控（全文模式单次 600–750 KB，旧值 512 KB 会把 JSON 拦腰截断） */
 export const WEB_SEARCH_MAX_BYTES = 1024 * 1024;
 export const WEB_SEARCH_RESULTS = 8;
+/** 一次问答最多并行搜几条检索词（规划出来的变体）；再多只是重复付费 */
+export const WEB_SEARCH_MAX_QUERIES = 3;
 
 /** 单条来源正文上限：need_content 会把网页正文一起带回来（实测 0.5–10 KB/条），截到 3000 字留事实、丢噪声 */
 export const WEB_SNIPPET_MAX_CHARS = 3000;
@@ -118,7 +126,9 @@ export function parseSearchPayload(body) {
                 // Jina 等旧形态仍按 description → content → text 回落。结果本身已按 rerank_score 从高到低排。
                 snippet: pickSnippet(it),
                 site: it.site_name || it.site || '',
-                date: dateInEast8(it.date || it.published_time || '')
+                date: dateInEast8(it.date || it.published_time || ''),
+                // 相关性分（DeepSeek 的 rerank_score）：多查询合并时用它决定谁进最终 8 条
+                score: Number(it.rerank_score || it.score || 0) || 0
             }));
         } catch (err) {
             // 半截 JSON（回包被截断）绝不能掉进下面的 markdown 解析：那样会把 JSON 片段当成
@@ -139,7 +149,8 @@ export function parseSearchPayload(body) {
             url: url.slice(0, 300),
             snippet: cleanText(it.snippet, WEB_SNIPPET_MAX_CHARS),
             site: cleanText(it.site, 60),
-            date: String(it.date || '').slice(0, 10)
+            date: String(it.date || '').slice(0, 10),
+            score: Number(it.score || 0) || 0
         });
         if (out.length >= WEB_SEARCH_RESULTS) break;
     }
@@ -265,4 +276,37 @@ export function dateHints(text, nowMs) {
     if (/周末|周[六6]|星期[六6]/.test(t)) push(day((6 - wd + 7) % 7));
     if (/周末|周[日天]|星期[日天]/.test(t)) push(day((0 - wd + 7) % 7));
     return seen.slice(0, 3);
+}
+
+/**
+ * 多检索词并行搜索（v2.5.150）：一条查询打不中就再没有机会，所以规划出 1–3 条一起搜，
+ * 按 URL 去重、按 rerank_score 排序后取前 WEB_SEARCH_RESULTS 条。
+ * 部分查询失败不影响整体（只要有一条成功就给结果）；全部失败时把第一条的原因带回去。
+ */
+export async function runWebSearchMulti(env, queries, fetchImpl = fetch, oriQuestion = '') {
+    const list = [];
+    const seen = new Set();
+    for (const raw of (Array.isArray(queries) ? queries : [queries])) {
+        const q = String(raw || '').trim();
+        if (!q || seen.has(q)) continue;
+        seen.add(q);
+        list.push(q);
+        if (list.length >= WEB_SEARCH_MAX_QUERIES) break;
+    }
+    if (!list.length) return { ok: false, reason: 'empty' };
+    const results = await Promise.all(list.map((q) => runWebSearch(env, q, fetchImpl, oriQuestion)));
+    const okOnes = results.filter((r) => r && r.ok);
+    if (!okOnes.length) return { ok: false, reason: (results[0] && results[0].reason) || 'empty' };
+    const byUrl = new Map();
+    for (const r of okOnes) {
+        for (const s of r.sources) {
+            const prev = byUrl.get(s.url);
+            if (!prev || Number(s.score || 0) > Number(prev.score || 0)) byUrl.set(s.url, s);
+        }
+    }
+    const sources = [...byUrl.values()]
+        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+        .slice(0, WEB_SEARCH_RESULTS);
+    if (!sources.length) return { ok: false, reason: 'empty' };
+    return { ok: true, sources, provider: okOnes[0].provider, queries: list };
 }

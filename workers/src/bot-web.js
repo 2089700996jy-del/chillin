@@ -22,10 +22,13 @@
 
 import { callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
-import { runWebSearch } from './bot-search.js';
+import { runWebSearchMulti, WEB_SEARCH_MAX_QUERIES } from './bot-search.js';
 
 /** 合成答案的上限：模型慢到超时就退化成「只给来源」，绝不把整轮收信拖死 */
 export const WEB_ANSWER_TIMEOUT_MS = 20000;
+
+/** 检索词规划的上限（v2.5.150）：一次便宜的小调用，超时就退回只用清洗过的那句 */
+export const WEB_QUERY_PLAN_TIMEOUT_MS = 4000;
 
 export const WEB_SEARCH_RESULTS_SHOWN = 3;
 
@@ -39,16 +42,16 @@ export const WEB_DAILY_LIMIT = { limit: 100, windowMs: 24 * 3600 * 1000 };
 export const WEB_BURST_LIMIT = { limit: 2, windowMs: 60 * 1000 };
 
 /** 显式检索词：出现就是明确要求上网 */
-const EXPLICIT_WEB_RE = /(?:上网|网上|联网|在线)\s*(?:查|搜|搜索)|(?:^|[\s，,。！!？?：:])(?:帮我|麻烦(?:你)?|请|给我)?\s*(?:查一下|查一查|查下|查查|搜一下|搜一搜|搜下|搜搜|搜索一下|搜索下)/;
+const EXPLICIT_WEB_RE = /(?:上网|网上|联网|在线)\s*(?:查|搜|搜索)|(?:^|[\s，,。！!？?：:])(?:帮我|麻烦(?:你)?|请|给我)?\s*(?:查看一下|查看下|查看|查一下|查一查|查下|查查|搜一下|搜一搜|搜下|搜搜|搜索一下|搜索下)/;
 /** 花园线索：只要提到自己的记录，就绝不外发（宁可回本地搜不到，也不把私人记性交给搜索引擎） */
 const GARDEN_HINT_RE = /花园|随手记|周记|笔记|收藏|档案|我的记录|我(?:之前|以前|上次|上周|上个月)?(?:写过|记过|记的|写的|存的|说的)/;
 /** 时间敏感话题：只有外部此刻才知道的事 */
-const FRESH_TOPIC_RE = /今天|今日|今晚|明天|明日|明晚|昨天|昨日|现在|目前|当前|实时|最新|最近|这几天|本周|这周|赛程|赛事|比分|赛果|战绩|战报|排名|榜单|票房|豆瓣|评分|股价|收盘|汇率|天气|气温|下雨|台风|新闻|头条|开奖|中奖|发布会|上映|新片|票价|航班|高铁|几点|谁赢了|谁胜|谁输|多少比|几比几|有没有(?:比赛|直播|活动|新)|是否(?:有|开始|发布)/;
+const FRESH_TOPIC_RE = /今天|今日|今晚|明天|明日|明晚|昨天|昨日|现在|目前|当前|实时|最新|最近|这几天|本周|这周|赛程|赛事|比分|赛果|战绩|战报|排名|榜单|票房|豆瓣|评分|股价|收盘|汇率|天气|气温|下雨|台风|新闻|头条|开奖|中奖|发布会|上映|新片|票价|航班|高铁|几点|比赛|开赛|下一场|下次|接下来|谁赢了|谁胜|谁输|多少比|几比几|有没有(?:比赛|直播|活动|新)|是否(?:有|开始|发布)/;
 /** 疑问形状：光有「今天」不算问题（「今天有点累」要交给聊天，不要交给搜索引擎） */
-const QUESTION_SHAPE_RE = /[吗呢吧?？]$|是不是|有没有|有吗|怎么(?:样|了)|多少|几点|谁|哪儿|哪里|什么时候|能不能|可以吗/;
+const QUESTION_SHAPE_RE = /[吗呢吧?？]$|是不是|有没有|有吗|怎么(?:样|了)|多少|几点|什么时间|哪一场|哪场|第几场|谁|哪儿|哪里|什么时候|能不能|可以吗/;
 
 /** 查询词清洗：去掉「帮我查一下」这类噪声，留真正要查的东西 */
-const QUERY_PREFIX_NOISE_RE = /^(?:帮我|麻烦(?:你)?|请|给我|能不能|可以)?\s*(?:上网|网上|联网|在线)?\s*(?:查一下|查一查|查下|查查|查|搜一下|搜一搜|搜下|搜搜|搜索一下|搜索|搜|看一下|看看)\s*[，,：:]?\s*/;
+const QUERY_PREFIX_NOISE_RE = /^(?:帮我|麻烦(?:你)?|请|给我|能不能|可以)?\s*(?:上网|网上|联网|在线)?\s*(?:查看一下|查看下|查看|查一下|查一查|查下|查查|查|搜一下|搜一搜|搜下|搜搜|搜索一下|搜索|搜|看一下|看看)\s*[，,：:]?\s*/;
 const QUERY_SUFFIX_NOISE_RE = /\s*(?:帮我|麻烦(?:你)?|请)?\s*(?:上网|网上|联网|在线)?\s*(?:查一下|查一查|查下|帮我查|搜一下|搜一搜|搜下|帮我搜|看一下|看看)\s*[。！!？?]*$/;
 
 /** 是否需要联网检索（纯函数，便于单测） */
@@ -77,6 +80,63 @@ function nowInEast8Text() {
     return s.slice(0, 10) + ' ' + s.slice(11, 16) + ' ' + WEEKDAY_CN[d.getUTCDay()];
 }
 
+/** 检索词规划（v2.5.150）：把一句自然语言问题改写成更像搜索框里的话的检索词 */
+const QUERY_PLAN_PROMPT = [
+    '你是检索词规划器。把用户的问题改写成 1–2 条更适合搜索引擎的检索词，每行一条。',
+    '规则：保留专有名词（球队/公司/作品/地名/人名）；「下次」「接下来」「最近」这类相对时间换成具体日期，换不了就删掉；',
+    '不要编号、引号、解释或标点结尾；每行不超过 40 字。只输出检索词本身。'
+].join('\n');
+
+/** 解析规划结果：一行一条，剥掉编号/引号/项目符号，过长或重复的丢掉 */
+export function parseQueryLines(raw, limit = 2) {
+    const out = [];
+    const seen = new Set();
+    for (const line of String(raw || '').split('\n')) {
+        const s = line.trim()
+            // 只剥真正的编号「1.」「2、」与项目符号：不能连数字开头的检索词一起吃掉（'76ers next game schedule'）
+            .replace(/^(?:[-*·•]+\s*|\d{1,2}\s*[.、)）:：]\s*)/, '')
+            .replace(/^["'「『]/, '').replace(/["'」』]$/, '')
+            .trim();
+        if (!s || s.length > 60 || seen.has(s)) continue;
+        seen.add(s);
+        out.push(s);
+        if (out.length >= limit) break;
+    }
+    return out;
+}
+
+/**
+ * 规划检索词：清洗后的原句永远排第一条（规划失败也不至于退步），后面补关键词变体。
+ * 没有 LLM_API_KEY 就跳过规划——不为此多花一次调用（Workers AI 回落只做合成）。
+ */
+async function planWebQueries(env, question, base, chatFn) {
+    const list = [base];
+    if (!String((env && env.LLM_API_KEY) || '').trim()) return list;
+    let timer = 0;
+    try {
+        const call = chatFn(env, [
+            { role: 'system', content: QUERY_PLAN_PROMPT },
+            { role: 'user', content: '今天是 ' + nowInEast8Text() + '（东八区）。用户问题：' + question }
+        ]).catch((err) => {
+            console.error('[web] 检索词规划失败: ' + (err && err.message));
+            return '';
+        });
+        const guard = new Promise((resolve) => {
+            timer = setTimeout(() => resolve(''), WEB_QUERY_PLAN_TIMEOUT_MS);
+        });
+        let raw = '';
+        try {
+            raw = await Promise.race([call, guard]);
+        } finally {
+            clearTimeout(timer);
+        }
+        for (const q of parseQueryLines(raw, WEB_SEARCH_MAX_QUERIES - 1)) list.push(q);
+    } catch (err) {
+        console.error('[web] 检索词规划失败: ' + (err && err.message));
+    }
+    return list.slice(0, WEB_SEARCH_MAX_QUERIES);
+}
+
 function sourcesBlock(sources) {
     let out = '';
     sources.forEach((s, i) => {
@@ -98,7 +158,9 @@ const WEB_SYSTEM_PROMPT = [
     '4. 用中文、口语化，先说结论再补一两个关键细节，150 字以内；',
     '5. 不同来源互相矛盾时，把矛盾说出来，不要替用户挑一个；',
     '6. 与用户本人有关的私人问题（他的记录、心情、笔记）不要用检索结果回答，那是花园的事。',
-    '7. 网页上的比赛/活动时间多是当地时区（NBA 赛程默认美国东部时间 ET，比东八区晚 12–13 小时）。给用户的结论换算成东八区并注明「北京时间」；一家站点给 ET、另一家给北京时间时那是时区差，不是数据矛盾，要解释清楚而不是当成冲突。'
+    '7. 时间换算要同时改日期和钟点，不能只改一个：NBA 赛程的 19:30 是美东时间，10 月比东八区晚 12 小时 → 北京时间是次日 07:30（11 月起晚 13 小时 → 次日 08:30）。绝不能把美东的「晚上 7 点半」说成北京时间，也不能日期取一边、钟点取另一边。中文站点（直播吧 / 腾讯体育 / 球迷屋 / 懂球帝）给出的日期时间通常本来就是北京时间，直接采用、不要再换算；只有外文来源（StatMuse、nba.com 等）才需要换算，换算后注明「北京时间」。',
+    '8. 资料里若有明确的日期、时间、场次、比分，就直接列出来（时区按第 7 条处理）；只有标题没有正文时才说「没查到」，不要明明有事实却回一句「只有标题」。',
+    '9. 与问题无关的来源不要写进结论（问 76 人赛程就别扯别的球队球员的伤情新闻）；来源之间矛盾时按第 5 条说出来。'
 ].join('\n');
 
 async function answerWithWeb(env, question, sources) {
@@ -229,7 +291,7 @@ async function gateLimit(db, key, limit, windowMs) {
  * 只有这里会花上游额度，所以两道闸（日上限 + 突发）都卡在真正出站之前；
  * 但它们都排在缓存之后——同一句话问第二遍是免费的，不该扣额度。
  */
-export async function maybeWebAnswer(env, db, userId, text, fetchImpl = fetch, nowMs = Date.now()) {
+export async function maybeWebAnswer(env, db, userId, text, fetchImpl = fetch, nowMs = Date.now(), chatFn = callCustomLlmWithMessages) {
     if (!wantsWebSearch(text)) return '';
     const query = extractWebQuery(text);
     if (!query) return '';
@@ -247,7 +309,9 @@ export async function maybeWebAnswer(env, db, userId, text, fetchImpl = fetch, n
     }
     const burstWait = await gateLimit(db, 'bot-web-burst:' + userId, envLimit(env && env.WEB_BURST_LIMIT, WEB_BURST_LIMIT.limit), WEB_BURST_LIMIT.windowMs);
     if (burstWait) return '你问得有点急，' + burstWait + ' 秒后再问我一次？花园里的记录我随时能翻——发「搜 关键词」。';
-    const search = await runWebSearch(env, query, fetchImpl, text);
+    // 一条查询打不中就没有第二次机会：先用规划出来的 1–3 条检索词并行搜，再按相关性合并去重（v2.5.150）
+    const queries = await planWebQueries(env, text, query, chatFn);
+    const search = await runWebSearchMulti(env, queries, fetchImpl, text);
     if (!search.ok) return webFailureText(search.reason);
     const answer = await answerWithWeb(env, query, search.sources);
     const moderated = moderateText(answer || composeWebReply('', search.sources), env);

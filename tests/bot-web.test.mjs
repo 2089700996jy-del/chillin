@@ -20,13 +20,17 @@ import {
     WEB_CACHE_TTL_MS,
     WEB_DAILY_LIMIT,
     WEB_BURST_LIMIT,
-    WEB_ANSWER_TIMEOUT_MS
+    WEB_ANSWER_TIMEOUT_MS,
+    WEB_QUERY_PLAN_TIMEOUT_MS,
+    parseQueryLines
 } from '../workers/src/bot-web.js';
 import {
     parseSearchPayload,
     runWebSearch,
     dateHints,
-    WEB_SEARCH_TIMEOUT_MS
+    runWebSearchMulti,
+    WEB_SEARCH_TIMEOUT_MS,
+    WEB_SEARCH_MAX_QUERIES
 } from '../workers/src/bot-search.js';
 
 const NOW = Date.parse('2026-10-23T12:19:00+00:00');
@@ -74,6 +78,9 @@ test('联网 - 三档分类：显式检索、时效性问句、闲聊与花园�
     assert.equal(wantsWebSearch('我上周记的那个想法是什么'), false, '花园线索一出现就强制走本地');
     assert.equal(wantsWebSearch('花园里我写过关于咖啡的吗'), false);
     assert.equal(wantsWebSearch('搜 咖啡'), false, '「搜」是花园检索指令，不是上网');
+    // 2026-10-24 线上：这句落在闸门外，走聊天路径复述了上一轮的旧来源，看着像检索结果
+    assert.equal(wantsWebSearch('查看一下76人下次比赛是什么时间'), true, '「查看一下」+「下次/比赛」+「什么时间」必须放行');
+    assert.equal(wantsWebSearch('查看一下今天天气怎么样'), true);
     assert.equal(wantsWebSearch(''), false);
 });
 
@@ -82,6 +89,7 @@ test('联网 - 检索词清洗去掉「帮我查一下」噪声', () => {
     assert.equal(extractWebQuery('今天有比赛吗'), '今天有比赛吗');
     assert.equal(extractWebQuery('今天有比赛吗 帮我查一下'), '今天有比赛吗');
     assert.equal(extractWebQuery('查一下'), '查一下', '只剩下噪声时原样返回，交给上游去空搜');
+    assert.equal(extractWebQuery('查看一下76人下次比赛是什么时间'), '76人下次比赛是什么时间');
 });
 
 test('联网 - 解析上游应答：JSON 与 markdown 两种形态、去重、只留 http(s)', () => {
@@ -285,9 +293,88 @@ sqliteTest('联网 - 站点与东八区日期随来源进合成提示词，模�
     assert.match(prompt, /（zhibo8.com，2026-10-23）/, '站点与东八区日期要进提示词：' + prompt.slice(0, 300));
 });
 
-test('联网 - 两道超时加起来必须装进一轮收信预算（55s，workers/src/bot-claw.js:47）', () => {
-    const sum = WEB_SEARCH_TIMEOUT_MS + WEB_ANSWER_TIMEOUT_MS;
-    assert.equal(Math.max(0, sum - 40000), 0, '检索 ' + WEB_SEARCH_TIMEOUT_MS + 'ms + 合成 ' + WEB_ANSWER_TIMEOUT_MS + 'ms 若逼近 55s，一次检索就会拖垮整轮 cron 收信');
+test('联网 - 检索词规划：解析规划结果（剥编号/引号，丢过长与重复）', () => {
+    const raw = '1. 76人 下一场比赛 赛程' + String.fromCodePoint(10) + '2. "76ers next game schedule"' + String.fromCodePoint(10)
+        + '- 76人 下一场比赛 赛程' + String.fromCodePoint(10) + 'x'.repeat(80) + String.fromCodePoint(10) + '76ers next game schedule';
+    assert.deepEqual(parseQueryLines(raw, 3), ['76人 下一场比赛 赛程', '76ers next game schedule'], '编号/引号/项目符号要剥掉，重复与超长丢掉');
+    assert.deepEqual(parseQueryLines('', 2), []);
+    assert.deepEqual(parseQueryLines('甲' + String.fromCodePoint(10) + '乙' + String.fromCodePoint(10) + '丙', 2), ['甲', '乙'], '最多拿 limit 条变体');
+});
+
+test('联网 - 多检索词并行：部分失败不影响整体，同一 URL 留高分副本并排序', async () => {
+    const calls = [];
+    const impl = async (url, init) => {
+        const q = JSON.parse(init.body).query;
+        calls.push(q);
+        if (q.includes('坏')) return new Response('{}', { status: 500 });
+        const rows = q.includes('乙')
+            ? [{ title: '乙', url: 'https://b.example/2', rerank_score: 2.5 }, { title: '甲低分副本', url: 'https://a.example/1', rerank_score: 0.4 }]
+            : [{ title: '甲', url: 'https://a.example/1', rerank_score: 3.0 }];
+        return new Response(JSON.stringify({ results: rows }), { status: 200 });
+    };
+    const merged = await runWebSearchMulti({ LLM_API_KEY: 'k' }, ['甲', '乙', '坏', '甲', '第四'], impl);
+    assert.equal(WEB_SEARCH_MAX_QUERIES, 3);
+    assert.equal(merged.ok, true, '一条坏查询不该拖垮整次检索');
+    assert.deepEqual(merged.queries, ['甲', '乙', '坏'], '最多 3 条并行，重复的丢掉');
+    assert.deepEqual(merged.sources.map((s) => s.url), ['https://a.example/1', 'https://b.example/2'], '按相关性降序');
+    assert.equal(merged.sources[0].title, '甲', '同一 URL 保留高分那条（3.0 而不是 0.4）');
+
+    const allFail = await runWebSearchMulti({ LLM_API_KEY: 'k' }, ['坏'], impl);
+    assert.deepEqual(allFail, { ok: false, reason: 'http-500' }, '全失败时把原因带回去');
+    assert.deepEqual(await runWebSearchMulti({ LLM_API_KEY: 'k' }, [], impl), { ok: false, reason: 'empty' });
+});
+
+sqliteTest('联网 - 端到端多查询：规划出关键词变体一起搜，合并去重后交给模型（v2.5.150）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 9); // 独立用户：内存突发闸按 user_id 共享，别被上面的用例打满
+    const planLines = ['76人 下一场比赛 赛程', '76ers next game schedule'].join(String.fromCodePoint(10));
+    const synth = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init = {}) => {
+        const u = String(url);
+        assert.ok(u.includes('/chat/completions'), '只允许模型调用出站，实际：' + u);
+        const body = JSON.parse(init.body);
+        const sys = body.messages[0].content;
+        if (sys.includes('检索词规划器')) {
+            assert.match(body.messages[1].content, /查看一下76人下次比赛是什么时间/, '规划要看用户原话');
+            return new Response(JSON.stringify({ choices: [{ message: { content: planLines } }] }), { status: 200 });
+        }
+        synth.push(body.messages);
+        return new Response(JSON.stringify({ choices: [{ message: { content: '10月25日周日主场打雄鹿，10月26日周一主场打活塞。' } }] }), { status: 200 });
+    };
+    const calls = [];
+    const search = async (url, init) => {
+        assert.equal(url, 'https://api.deepseek.com/v1/tools/search');
+        const q = JSON.parse(init.body).query;
+        calls.push(q);
+        const rows = /76ers/i.test(q)
+            ? [{ title: 'D', url: 'https://d.example/4', rerank_score: 0.5 }, { title: 'C 低分副本', url: 'https://c.example/3', rerank_score: 1.0 }]
+            : q.includes('下一场比赛')
+                ? [{ title: 'C', url: 'https://c.example/3', rerank_score: 2.5 }, { title: 'A 低分副本', url: 'https://a.example/1', rerank_score: 1.2 }]
+                : [{ title: 'A', url: 'https://a.example/1', rerank_score: 3.0 }, { title: 'B', url: 'https://b.example/2', rerank_score: 1.0 }];
+        return new Response(JSON.stringify({ results: rows }), { status: 200 });
+    };
+    let reply = '';
+    try {
+        reply = await maybeWebAnswer({ LLM_API_KEY: 'sk-plan', SEARCH_API_KEY: 'k' }, db, 9, '查看一下76人下次比赛是什么时间', search, NOW);
+    } finally {
+        globalThis.fetch = realFetch;
+    }
+    assert.match(reply, /10月25日周日主场打雄鹿/);
+    assert.equal(calls.length, WEB_SEARCH_MAX_QUERIES, '一个原句 + 两条规划变体：' + JSON.stringify(calls));
+    assert.ok(calls[0].startsWith('76人下次比赛是什么时间'), calls[0]);
+    assert.ok(calls[1].includes('下一场比赛'), calls[1]);
+    assert.ok(/76ers/i.test(calls[2]), calls[2]);
+    assert.equal(synth.length, 1);
+    const prompt = synth[0].map((m) => m.content).join(String.fromCodePoint(10));
+    const order = ['https://a.example/1', 'https://c.example/3', 'https://b.example/2', 'https://d.example/4'].map((u) => prompt.indexOf(u));
+    assert.ok(order.every((i) => i >= 0), '四条唯一来源都要进提示词：' + JSON.stringify(order));
+    assert.deepEqual(order.slice().sort((x, y) => x - y), order, '按相关性排序：' + JSON.stringify(order));
+});
+
+test('联网 - 三道超时加起来必须装进一轮收信预算（55s，workers/src/bot-claw.js:47）', () => {
+    const sum = WEB_QUERY_PLAN_TIMEOUT_MS + WEB_SEARCH_TIMEOUT_MS + WEB_ANSWER_TIMEOUT_MS;
+    assert.equal(Math.max(0, sum - 40000), 0, '规划 ' + WEB_QUERY_PLAN_TIMEOUT_MS + 'ms + 检索 ' + WEB_SEARCH_TIMEOUT_MS + 'ms + 合成 ' + WEB_ANSWER_TIMEOUT_MS + 'ms 若逼近 55s，一次检索就会拖垮整轮 cron 收信');
 });
 
 test('联网 - 回复组装：来源最多 3 条；失败文案按原因给下一步', () => {

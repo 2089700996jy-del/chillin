@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-24T04:43:59.161Z · 提交数：386
+> 生成时间：2026-10-24T05:03:46.970Z · 提交数：387
 
 ## 2026-10-24
 
 ### ✨ 新功能
 
+- **bot**: make web answers concrete with need_content and date anchors
 - **bot**: give web sources only when the user asks
 - **bot**: search the web with the DeepSeek Search API instead of Jina
 
