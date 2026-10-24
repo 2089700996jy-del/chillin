@@ -18,6 +18,7 @@ import {
     maybeWebAnswer,
     WEB_CACHE_TTL_MS,
     WEB_DAILY_LIMIT,
+    WEB_BURST_LIMIT,
     WEB_SEARCH_TIMEOUT_MS,
     WEB_ANSWER_TIMEOUT_MS
 } from '../workers/src/bot-web.js';
@@ -314,19 +315,45 @@ sqliteTest('联网 - 花园问题不触发联网，返回空串交给本地 RAG'
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_web_cache').first()).n, 0);
 });
 
-sqliteTest('联网 - 每人每天上限，超出后明说并给本地替代', async () => {
+sqliteTest('联网 - 缓存命中不扣额度：同一句话问三次只算一次，换问题才被日上限拦下', async () => {
     const db = createTestDb();
-    await seedUser(db, 1);
+    await seedUser(db, 7);
     const st = searchStub();
     const { env } = webEnv();
+    const e = { ...env, WEB_DAILY_LIMIT: 1, WEB_BURST_LIMIT: 0 };
+    assert.equal(WEB_DAILY_LIMIT.limit, 100, '默认日上限已从 20 提到 100');
 
-    let last = '';
-    for (let i = 0; i <= WEB_DAILY_LIMIT.limit; i++) {
-        last = await maybeWebAnswer(env, db, 1, '今天有比赛吗', st.impl, NOW);
-    }
-    assert.match(last, /查得有点多/, '第 ' + (WEB_DAILY_LIMIT.limit + 1) + ' 次要明说上限：' + last);
-    assert.match(last, /搜 关键词/, '被限流时给本地替代路径');
-    assert.equal(st.calls.length, 1, '前 20 次里只有第一次真的发了请求，其余命中缓存');
+    const first = await maybeWebAnswer(e, db, 7, '今天有比赛吗', st.impl, NOW);
+    assert.match(first, /来源：/);
+    const second = await maybeWebAnswer(e, db, 7, '今天有比赛吗', st.impl, NOW + 60 * 1000);
+    const third = await maybeWebAnswer(e, db, 7, '今天有比赛吗', st.impl, NOW + 120 * 1000);
+    assert.equal(second, first, '同一句话直接回缓存');
+    assert.equal(third, first);
+    assert.equal(st.calls.length, 1, '缓存命中既不出站、也不该扣掉日额度');
+
+    const other = await maybeWebAnswer(e, db, 7, '查一下明天天气怎么样', st.impl, NOW + 180 * 1000);
+    assert.match(other, /查得有点多/, '额度只被真正出站的那 1 次用掉，下一个新问题就该被拦：' + other);
+    assert.match(other, /上限 1 次/);
+    assert.match(other, /搜 关键词/, '被限流时给本地替代路径');
+    assert.equal(st.calls.length, 1, '被拦下的请求一次都不许出站');
+});
+
+sqliteTest('联网 - 突发闸：同一分钟最多 2 次出站，第 3 次让你等一下（护的是一轮 cron 的 55s）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 8);
+    const st = searchStub();
+    const { env } = webEnv();
+    const e = { ...env, WEB_DAILY_LIMIT: 100, WEB_BURST_LIMIT: 2 };
+    assert.equal(WEB_BURST_LIMIT.limit, 2);
+
+    const r1 = await maybeWebAnswer(e, db, 8, '查一下今天76人有比赛吗', st.impl, NOW);
+    const r2 = await maybeWebAnswer(e, db, 8, '查一下明天天气怎么样', st.impl, NOW + 1000);
+    const r3 = await maybeWebAnswer(e, db, 8, '查一下昨天晚上比分是多少', st.impl, NOW + 2000);
+    assert.match(r1, /来源：/);
+    assert.match(r2, /来源：/);
+    assert.equal(st.calls.length, 2, '前两次真的出站');
+    assert.match(r3, /有点急/, '第 3 次必须被突发闸挡下：' + r3);
+    assert.equal(st.calls.length, 2, '挡下的请求不许出站');
 });
 
 sqliteTest('联网 - 合成失败也要给来源；检索失败不落缓存', async () => {

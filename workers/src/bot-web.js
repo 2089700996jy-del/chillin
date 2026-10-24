@@ -43,8 +43,10 @@ export const WEB_SEARCH_RESULTS_SHOWN = 3;
 export const WEB_SNIPPET_MAX_CHARS = 1200;
 export const WEB_CONTEXT_MAX_CHARS = 5000;
 export const WEB_CACHE_TTL_MS = 6 * 3600 * 1000;
-/** 每人每天最多 20 次联网检索（一次检索约等于一次搜索 + 一次模型合成） */
-export const WEB_DAILY_LIMIT = { limit: 20, windowMs: 24 * 3600 * 1000 };
+/** 每人每天最多 100 次联网检索（一次检索 = 一次搜索 + 一次模型合成；可用环境变量 WEB_DAILY_LIMIT 覆盖，0 表示不限） */
+export const WEB_DAILY_LIMIT = { limit: 100, windowMs: 24 * 3600 * 1000 };
+/** 突发闸：每窗口最多 2 次真正出站的检索（用 WEB_BURST_LIMIT 覆盖，0 表示关掉）——护的是一轮 cron 的 55s 收信预算，不是日常用量 */
+export const WEB_BURST_LIMIT = { limit: 2, windowMs: 60 * 1000 };
 
 /** 显式检索词：出现就是明确要求上网 */
 const EXPLICIT_WEB_RE = /(?:上网|网上|联网|在线)\s*(?:查|搜|搜索)|(?:^|[\s，,。！!？?：:])(?:帮我|麻烦(?:你)?|请|给我)?\s*(?:查一下|查一查|查下|查查|搜一下|搜一搜|搜下|搜搜|搜索一下|搜索下)/;
@@ -386,24 +388,43 @@ async function writeWebCache(db, userId, key, query, payload, nowMs) {
         .bind(userId, key, query, payload, nowMs + WEB_CACHE_TTL_MS).run();
 }
 
+/** 环境变量覆盖上限：合法的非负数字才认，其余回落默认值（0 表示关掉这道闸） */
+function envLimit(value, fallback) {
+    if (value === undefined || value === null || value === '') return fallback;
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+/** 返回 0 表示放行，否则是还需等待的秒数；limit 为 0 时直接放行 */
+async function gateLimit(db, key, limit, windowMs) {
+    if (!(Number(limit) > 0)) return 0;
+    const r = await checkRateLimitShared(db, key, Number(limit), windowMs);
+    return r.ok ? 0 : Math.max(1, Math.ceil(Number(r.retryAfter || 60)));
+}
+
 /**
  * 对话默认路径上的联网分流：不适用返回空串（上层继续走聊天），适用则返回完整回复。
- * 只有这里会花上游额度，所以限流放在最前面：一天 20 次，超了就明说。
+ * 只有这里会花上游额度，所以两道闸（日上限 + 突发）都卡在真正出站之前；
+ * 但它们都排在缓存之后——同一句话问第二遍是免费的，不该扣额度。
  */
 export async function maybeWebAnswer(env, db, userId, text, fetchImpl = fetch, nowMs = Date.now()) {
     if (!wantsWebSearch(text)) return '';
-    const limit = await checkRateLimitShared(db, 'bot-web:' + userId, WEB_DAILY_LIMIT.limit, WEB_DAILY_LIMIT.windowMs);
-    if (!limit.ok) {
-        const mins = Math.max(1, Math.ceil(Number(limit.retryAfter || 60) / 60));
-        return '今天查得有点多（上限 ' + WEB_DAILY_LIMIT.limit + ' 次），约 ' + mins + ' 分钟后再问我吧。花园里的记录我随时能翻——发「搜 关键词」。';
-    }
     const query = extractWebQuery(text);
     if (!query) return '';
     const key = queryKey(query);
     const now = Number(nowMs) || Date.now();
     await pruneWebCache(db, userId, now);
+    // 两道闸都在缓存之后：只有真要出站的动作才扣额度（同一句话问第二遍免费）
     const cached = await readWebCache(db, userId, key, now);
     if (cached) return cached;
+    const dailyMax = envLimit(env && env.WEB_DAILY_LIMIT, WEB_DAILY_LIMIT.limit);
+    const dailyWait = await gateLimit(db, 'bot-web:' + userId, dailyMax, WEB_DAILY_LIMIT.windowMs);
+    if (dailyWait) {
+        const mins = Math.max(1, Math.ceil(dailyWait / 60));
+        return '今天查得有点多（上限 ' + dailyMax + ' 次），约 ' + mins + ' 分钟后再问我吧。花园里的记录我随时能翻——发「搜 关键词」。';
+    }
+    const burstWait = await gateLimit(db, 'bot-web-burst:' + userId, envLimit(env && env.WEB_BURST_LIMIT, WEB_BURST_LIMIT.limit), WEB_BURST_LIMIT.windowMs);
+    if (burstWait) return '你问得有点急，' + burstWait + ' 秒后再问我一次？花园里的记录我随时能翻——发「搜 关键词」。';
     const search = await runWebSearch(env, query, fetchImpl, text);
     if (!search.ok) return webFailureText(search.reason);
     const answer = await answerWithWeb(env, query, search.sources);
