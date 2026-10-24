@@ -89,6 +89,16 @@
    * 纵向热区必须有容器空间，**两个真实踩过的坑**：`overflow-x: auto` 会连带裁剪纵向溢出，横向滚动行必须补 `padding: 8px 0`；`flex-wrap: wrap` 的容器必须把 `row-gap` 提到 `16px`，否则换行后上下两行热区重叠（320px 窄屏实测会换行）；
    * 横向滚动的胶囊行必须补右缘渐隐 `mask-image`，否则被裁切的末位胶囊会让用户完全不知道它存在。
 
+### 3.5 固定栏取色同源：顶栏 / 底栏必须与页面浑然一体（v2.5.151 起）
+
+iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独立的板。本项目真实踩过两种断层：顶栏静止态铺不透明的 `--bg-color`，把页面 hero 光晕挡在栏下，栏底留下 ΔR≈20 的台阶；底栏铺另一套 `--nav-bg`（`#F2F2F7`），比页面 `#F8F9FA` 低 6/7/3。
+
+* **分量同源**：页面底色必须同时提供 `--ios-bg`（hex）与 `--bg-rgb`（`R, G, B` 分量），两套主题各自定义；导航玻璃层（`--nav-glass-scrolled` / `--nav-scrolled-bg`）与底栏一律由 `rgba(var(--bg-rgb), α)` 或 `var(--bg-color)` 派生，**不允许再定义第二套导航取色**（`--nav-glass` 已因此删除）。`tests/css.test.mjs` 用 hex→rgb 反解机器校验两者同值，并断言静止态顶栏透明、底栏跟随 `--bg-color`。
+* **顶栏静止态透明**：`background: transparent`，让页面 hero 光晕一直铺到状态栏；只有 `.scrolled` 才升玻璃底（`--nav-scrolled-bg`）。iOS PWA（`html.ios-pwa`）下同样不得常驻玻璃底，否则状态栏区域会变成一条白带。
+* **底栏跟随页面**：`background: var(--bg-color)`，与顶栏同一套取色；分隔感只靠柔和上投影 `0 -1px 0 rgba(var(--label-rgb), 0.06), 0 -10px 24px rgba(16,24,40,0.04)`，不靠顶边硬线。
+* **禁止用 `!important` 压死阅读器覆盖**：`body.dark-reader-body / body.eyecare-reader-body .mobile-bottom-nav` 是更具体、故意写在文件后部的覆盖；底栏基础规则一旦加 `!important`，夜间/护眼阅读器的底栏底色就永远不生效。
+* **深色投影只在滚动后出现**：深色层（`:root[data-theme="dark"]`）的栏底分界与投影必须写在 `.super-navbar.scrolled` 上；静止态保持「零线零影」，否则透明顶栏底下会留下一道深色接缝。
+
 ---
 
 ## 4. 设计令牌 (Design Tokens)
@@ -103,7 +113,7 @@
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 9902 行、230 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 847 处 `rgb()/rgba()` 字面量（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。
+> 现状债务：`public/style.css` 9910 行、229 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`，见 §3.5。）
 
 ### `!important` 与覆写层的削减纪律（v2.5.144 起）
 

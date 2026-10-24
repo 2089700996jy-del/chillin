@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-24T05:03:46.970Z · 提交数：387
+> 生成时间：2026-10-24T09:45:02.179Z · 提交数：388
 
 ## 2026-10-24
 
@@ -13,6 +13,7 @@
 
 ### 🐛 缺陷修复
 
+- **bot**: widen the web gate and plan better search queries
 - **bot**: count only real search egress against the daily limit
 - **bot**: make the web search fast and honest
 

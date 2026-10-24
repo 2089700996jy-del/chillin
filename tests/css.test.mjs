@@ -18,7 +18,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 // 基线：这里只许变小，不许变大
-const IMPORTANT_BASELINE = 230;
+const IMPORTANT_BASELINE = 229;
 
 test('CSS - 每个 @keyframes 都被 animation 引用（无死动画）', () => {
     const defs = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
@@ -156,6 +156,24 @@ test('CSS - 应用级深色主题层：RGB 令牌反转 + 五类主表面打底'
     }
     // 分段控件的选中胶囊必须比轨道更亮，否则深色下会出现「选中的比未选中的更暗」
     assert.match(dark, /--segment-active-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.16\)/, '深色层必须把分段控件选中胶囊改为半透明白，否则选中态比轨道更暗');
+});
+
+test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静止态顶栏透明、底栏跟随页面', () => {
+    const toRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ');
+    const pick = (source, name) => ((source.match(new RegExp(name + '\\s*:\\s*(#[0-9a-fA-F]{6})')) || [''])[1]);
+    const lightBg = pick(css, '--ios-bg');
+    const lightRgb = (css.match(/--bg-rgb:\s*([\d,\s]+);/) || [''])[1].replace(/\s+/g, ' ').trim();
+    assert.ok(lightBg && lightRgb, '缺少 --ios-bg 或 --bg-rgb：固定栏（顶栏/底栏）取色必须由页面底色分量派生，否则会和 hero 光晕出现色阶断层');
+    assert.equal(lightRgb, toRgb(lightBg), '--bg-rgb 与亮色 --ios-bg 不同步（' + lightRgb + ' vs ' + toRgb(lightBg) + '）：导航玻璃层/底栏会再次和页面底色出现色阶断层');
+    const dark = (css.match(/:root\[data-theme="dark"\]\s*\{[\s\S]*?\n\}/) || [''])[0];
+    const darkBg = pick(dark, '--ios-bg');
+    const darkRgb = (dark.match(/--bg-rgb:\s*([\d,\s]+);/) || [''])[1].replace(/\s+/g, ' ').trim();
+    assert.ok(darkBg && darkRgb, '深色层缺少 --ios-bg 或 --bg-rgb');
+    assert.equal(darkRgb, toRgb(darkBg), '--bg-rgb 与深色 --ios-bg 不同步：深色底栏会再次和页面底色出现色阶断层');
+    // 静止态顶栏不铺不透明底色，页面 hero 光晕才能从固定栏后面透出来
+    assert.match(css, /\.super-navbar\s*\{[^}]*background:\s*transparent/, '顶栏静止态必须 background: transparent，否则会挡住页面 hero 光晕、在栏底留下色阶断层');
+    // 底栏底色与页面同源（而非另一套 --nav-bg），上下固定栏才不会各自成板
+    assert.match(css, /\.mobile-bottom-nav\s*\{[^}]*background:\s*var\(--bg-color\)/, '底栏底色必须跟随页面 --bg-color（与顶栏同一套取色），不要写回 --nav-bg');
 });
 
 test('CSS - 灰度色值一律走 RGB 分量令牌（禁止再写回 rgba(60,60,67,α) 字面量）', () => {

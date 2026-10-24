@@ -34,9 +34,12 @@
   --surface-hairline: rgba(var(--label-rgb), 0.06);
   /* 批次 A：应用级深色主题的亮色基线（深色覆盖在文件末尾的 :root[data-theme="dark"] 里） */
   --nav-bg: #F2F2F7;
-  --nav-glass: rgba(248, 249, 250, 0.82);
-  --nav-glass-scrolled: rgba(255, 255, 255, 0.94);
-  --nav-scrolled-bg: rgba(242, 242, 247, 0.88);
+  /* 导航/底栏取色同源：玻璃层与底栏填充都由页面底色分量派生，
+     固定栏与页面 hero 光晕之间才不会有色阶断层（见 .agents/rules/ui-style.md §3.5）。
+     --bg-rgb 必须与 --ios-bg 同值，由 tests/css.test.mjs 机器校验。 */
+  --bg-rgb: 248, 249, 250;
+  --nav-glass-scrolled: rgba(var(--bg-rgb), 0.94);
+  --nav-scrolled-bg: rgba(var(--bg-rgb), 0.88);
   --input-bg: rgba(255, 255, 255, 0.75);
   --input-bg-focus: #ffffff;
   --hover-bg: rgba(0, 0, 0, 0.04);
@@ -230,7 +233,7 @@ body.eyecare-reader-body {
   width: 100%; 
   max-width: 100%;
   height: 54px;
-  background: var(--nav-glass); 
+  background: transparent; 
   backdrop-filter: blur(20px) saturate(180%); 
   -webkit-backdrop-filter: blur(20px) saturate(180%);
   border: none;
@@ -2612,8 +2615,9 @@ body.hide-bottom-nav .nav-brand-mobile {
     border-top: none ;
     border-bottom: none !important;
     outline: none;
-    /* Match page gray seamlessly with zero lines or shadows when at top */
-    background: var(--bg-color, var(--ios-grouped-bg));
+    /* 静止态不铺任何底色：让页面 hero 光晕从固定栏后面直接透出来，界面才浑然一体
+       （原先铺的是不透明 --bg-color，光晕被挡在栏下，栏底形成 ΔR≈20 的色阶断层） */
+    background: transparent;
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     box-shadow: none;
@@ -2732,13 +2736,16 @@ body.hide-bottom-nav .nav-brand-mobile {
     right: 0;
     height: auto;
     min-height: 56px;
-    background: var(--nav-bg) !important;
+    /* 底色跟随页面（--bg-color），与顶栏同一套取色，消除上下断层；
+       不再用 !important：阅读器夜间/护眼模式那两条更具体的覆盖（--black / --mint-200）
+       本来就写在文件后面，之前一直被 !important 压死（见 ui-style.md §3.5）。 */
+    background: var(--bg-color);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
     /* 路线 B：顶边线太硬，改柔和上投影；底色仍保持不透明（见对 Redmi 手势区色带的修复说明）。
        这几条原先写在文件末尾的顶层 .mobile-bottom-nav 里，合到这里以免同一组件在多处重复定义。 */
     border-top: 1px solid transparent;
-    box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.05);
+    box-shadow: 0 -1px 0 rgba(var(--label-rgb), 0.06), 0 -10px 24px rgba(16, 24, 40, 0.04);
     z-index: var(--z-nav);
     padding-top: 4px;
     padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
@@ -4976,8 +4983,8 @@ html.ios-pwa .super-navbar.scrolled {
   height: calc(52px + var(--ios-sat)) !important;
   padding-top: var(--ios-sat) !important;
   box-sizing: border-box;
-  /* Extend white bar under status icons */
-  background: var(--nav-glass-scrolled) !important;
+  /* 静止态交给基础规则的透明底，让页面 hero 光晕一直铺到状态栏下面（见 ui-style.md §3.5）；
+     滚动后 .scrolled 的玻璃底会把状态栏垫实，所以这里不再强制不透明底色。 */
 }
 
 html.ios-pwa .super-navbar__content {
@@ -4988,11 +4995,6 @@ html.ios-pwa .super-navbar__content {
 html.ios-pwa .notion-app {
   padding-top: calc(66px + var(--ios-sat)) !important;
   padding-bottom: calc(72px + var(--ios-sab)) !important;
-}
-
-html.ios-pwa .super-navbar,
-html.ios-pwa .super-navbar.scrolled {
-  background: var(--nav-scrolled-bg) !important;
 }
 
 html.ios-pwa .mobile-bottom-nav {
@@ -7251,7 +7253,7 @@ body.dark-reader-body .sheet-pull-handle {
     border-radius: 0;
     border: none;
     border-bottom: 0.5px solid rgba(0, 0, 0, 0.08);
-    background: var(--nav-glass);
+    background: transparent;
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
@@ -9819,9 +9821,9 @@ body.dark-reader-body .k-directory-arrow {
   --card-hover-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);
   --surface-hairline: rgba(255, 255, 255, 0.08);
   --nav-bg: #14161b;
-  --nav-glass: rgba(20, 22, 27, 0.82);
-  --nav-glass-scrolled: rgba(20, 22, 27, 0.94);
-  --nav-scrolled-bg: rgba(20, 22, 27, 0.88);
+  --bg-rgb: 15, 17, 21;
+  --nav-glass-scrolled: rgba(var(--bg-rgb), 0.94);
+  --nav-scrolled-bg: rgba(var(--bg-rgb), 0.88);
   --input-bg: rgba(255, 255, 255, 0.08);
   --input-bg-focus: rgba(255, 255, 255, 0.14);
   --hover-bg: rgba(255, 255, 255, 0.08);
@@ -9847,9 +9849,15 @@ body.dark-reader-body .k-directory-arrow {
 }
 
 /* 顶栏/底部编辑坞的分隔线在深底上要反过来用白色叠加 */
+/* 深色下的分界线反过来用白色叠加。投影只在滚动后出现：
+   静止态顶栏是透明的（见 ui-style.md §3.5），若这里仍带投影，
+   会在栏底留下一道深色接缝，与亮色静止态「零线零影」不对称。 */
 :root[data-theme="dark"] .super-navbar,
 :root[data-theme="dark"] .super-navbar.scrolled {
   border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:root[data-theme="dark"] .super-navbar.scrolled {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
