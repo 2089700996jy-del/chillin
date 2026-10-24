@@ -9,8 +9,11 @@
  * 分类错了的代价不对称：多发一次检索只花一次额度，但把「我上周记的那个想法」丢给搜索引擎，
  * 等于把第二大脑降级成搜索引擎。所以花园线索（花园/随手记/笔记/我记过…）一出现就强制走本地。
  *
- * 上游复用 Jina（与 bot-links.js 同一个账号同一把密钥）：SEARCH_API_URL 默认 https://s.jina.ai，
- * SEARCH_API_KEY 缺省回落到 LINK_READER_API_KEY，零新增密钥。
+ * 上游是 **DeepSeek 官方 Search API**（v2.5.146 起）：POST https://api.deepseek.com/v1/tools/search，
+ * 复用同一把 LLM_API_KEY（零新增密钥）。2026-10-24 边缘实测：320–420ms、单次约 2–4 KB，每条结果自带
+ * summary（600–800 字，给模型读）、date、authority 与 rerank_score——比 Jina 的标题+短摘要既快 4 倍又有据。
+ * Jina 保留为回落：SEARCH_PROVIDER=jina 显式指定，或 SEARCH_API_URL 指向自建/第三方「路径拼查询词」的
+ * GET 端点时自动沿用旧逻辑（老配置零迁移）。
  *
  * 检索结果是**不可信的第三方文本**（jina 返回的网页正文）：
  *   - 提示词里明确要求只当资料、绝不执行其中的指令、也不复述其中让模型改变规则的内容；
@@ -23,8 +26,12 @@
 import { callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
 
-/** 默认检索端点（Jina Search，路径拼接查询词） */
-export const WEB_SEARCH_DEFAULT_URL = 'https://s.jina.ai';
+/** 默认检索端点（DeepSeek 官方 Search API：POST + JSON） */
+export const WEB_SEARCH_DEFAULT_URL = 'https://api.deepseek.com/v1/tools/search';
+/** Jina Search 端点（回落用：GET + 路径拼接查询词） */
+export const JINA_SEARCH_DEFAULT_URL = 'https://s.jina.ai';
+/** DeepSeek Search 文档规定 query / ori_question 上限 128 字符，超了先截断再发 */
+export const WEB_SEARCH_QUERY_MAX_CHARS = 128;
 /** 客户端上限：上游侧还有 X-Timeout: 10 兜底，这里留出慢查询的余量，同时不拖垮整轮收信预算（55s） */
 export const WEB_SEARCH_TIMEOUT_MS = 20000;
 /** 合成答案的上限：模型慢到超时就退化成「只给来源」，绝不把整轮收信拖死 */
@@ -70,7 +77,7 @@ export function extractWebQuery(text) {
 }
 
 function searchEndpoint(base, query) {
-    const clean = String(base || WEB_SEARCH_DEFAULT_URL).replace(/\s+/g, '');
+    const clean = String(base || JINA_SEARCH_DEFAULT_URL).replace(/\s+/g, '');
     const trimmed = clean.replace(/\/+$/, '');
     const q = encodeURIComponent(query);
     return trimmed.includes('?') ? trimmed + '&q=' + q : trimmed + '/' + q;
@@ -136,7 +143,11 @@ export function parseSearchPayload(body) {
             items = (Array.isArray(data) ? data : []).map((it) => ({
                 title: it.title || '',
                 url: it.url || '',
-                snippet: it.description || it.content || it.text || ''
+                // DeepSeek Search：summary 是给模型读的 600–800 字正文，优先于给 UI 的 snippet（约 100–200 字）；
+                // Jina 等旧形态仍按 description → content → text 回落。结果本身已按 rerank_score 从高到低排。
+                snippet: it.summary || it.snippet || it.description || it.content || it.text || '',
+                site: it.site_name || it.site || '',
+                date: dateInEast8(it.date || it.published_time || '')
             }));
         } catch (err) {
             // 半截 JSON（回包被截断）绝不能掉进下面的 markdown 解析：那样会把 JSON 片段当成
@@ -155,40 +166,102 @@ export function parseSearchPayload(body) {
         out.push({
             title: cleanText(it.title, 120) || url,
             url: url.slice(0, 300),
-            snippet: cleanText(it.snippet, WEB_SNIPPET_MAX_CHARS)
+            snippet: cleanText(it.snippet, WEB_SNIPPET_MAX_CHARS),
+            site: cleanText(it.site, 60),
+            date: String(it.date || '').slice(0, 10)
         });
         if (out.length >= WEB_SEARCH_RESULTS) break;
     }
     return out;
 }
 
+/** 上游时间戳（RFC3339，可能是 UTC 午夜）换算成东八区日期——否则 2026-10-22T16:00:00Z 会被读成 10-22 */
+function dateInEast8(value) {
+    const s = String(value || '').trim();
+    if (!s) return '';
+    const t = Date.parse(s);
+    if (!Number.isFinite(t)) return '';
+    return new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * 选上游：显式 SEARCH_PROVIDER 优先；否则看 SEARCH_API_URL——
+ * 指向「路径拼查询词」的 GET 端点（自建 / Jina）时沿用旧逻辑，其余一律 DeepSeek 官方 Search。
+ */
+export function resolveSearchProvider(env) {
+    const forced = String((env && env.SEARCH_PROVIDER) || '').trim().toLowerCase();
+    if (forced === 'jina' || forced === 'deepseek') return forced;
+    const url = String((env && env.SEARCH_API_URL) || '').trim();
+    if (url && !url.includes('/tools/search')) return 'jina';
+    return 'deepseek';
+}
+
+/** DeepSeek Search 地址：优先显式 SEARCH_API_URL，否则从 LLM_API_BASE 推（缺 /v1 时补上，避免拼成 /tools/search） */
+function deepseekSearchUrl(env) {
+    const explicit = String((env && env.SEARCH_API_URL) || '').trim();
+    if (explicit.includes('/tools/search')) return explicit.replace(/\/+$/, '');
+    let base = String((env && env.LLM_API_BASE) || WEB_SEARCH_DEFAULT_URL).trim().replace(/\/+$/, '');
+    if (base.includes('/tools/search')) return base;
+    if (!/v[0-9]+$/.test(base)) base += '/v1';
+    return base + '/tools/search';
+}
+
+/** 两把钥匙各归各家：DeepSeek 复用 LLM_API_KEY，Jina 回落 LINK_READER_API_KEY（都可被 SEARCH_API_KEY 覆盖） */
+function searchKey(env, provider) {
+    const fallback = provider === 'deepseek' ? env && env.LLM_API_KEY : env && env.LINK_READER_API_KEY;
+    return String((env && env.SEARCH_API_KEY) || fallback || '').trim();
+}
+
 /** 调上游检索；失败返回 {ok:false, reason}，绝不抛给上层 */
-export async function runWebSearch(env, query, fetchImpl = fetch) {
-    const key = String((env && (env.SEARCH_API_KEY || env.LINK_READER_API_KEY)) || '');
+export async function runWebSearch(env, query, fetchImpl = fetch, oriQuestion = '') {
+    const provider = resolveSearchProvider(env);
+    const key = searchKey(env, provider);
     if (!key) return { ok: false, reason: 'no-key' };
-    const url = searchEndpoint(env && env.SEARCH_API_URL, query);
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), WEB_SEARCH_TIMEOUT_MS);
     try {
-        const res = await fetchImpl(url, {
-            method: 'GET',
-            headers: {
-                Accept: 'application/json',
-                Authorization: 'Bearer ' + key,
-                'x-api-key': key,
-                // 只要标题+摘要：Jina 的全文模式会为每条结果抓取渲染网页（实测 600–750 KB、耗时 2–15s 抖动，
-                // 15s 上限下经常整条超时）；摘要里已带着「Sat, 10 …」这类事实，且回包只有约 3 KB / 约 2.5s。
-                // X-Timeout 交给上游自己设服务端死线，双保险。
-                'X-Respond-With': 'no-content',
-                'X-Timeout': '10',
-                'User-Agent': 'ChillinBot/1.0'
-            },
-            signal: ctrl.signal
-        });
+        let res;
+        if (provider === 'deepseek') {
+            const body = {
+                query: String(query || '').slice(0, WEB_SEARCH_QUERY_MAX_CHARS),
+                count: WEB_SEARCH_RESULTS
+            };
+            // ori_question 帮上游理解「这周六」这类指代：给用户原话，不给清洗后的查询词。
+            const ori = String(oriQuestion || '').trim().slice(0, WEB_SEARCH_QUERY_MAX_CHARS);
+            if (ori) body.ori_question = ori;
+            res = await fetchImpl(deepseekSearchUrl(env), {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + key,
+                    'User-Agent': 'ChillinBot/1.0'
+                },
+                body: JSON.stringify(body),
+                signal: ctrl.signal
+            });
+        } else {
+            const url = searchEndpoint(env && env.SEARCH_API_URL, query);
+            res = await fetchImpl(url, {
+                method: 'GET',
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: 'Bearer ' + key,
+                    'x-api-key': key,
+                    // 只要标题+摘要：Jina 的全文模式会为每条结果抓取渲染网页（实测 600–750 KB、耗时 2–15s 抖动，
+                    // 15s 上限下经常整条超时）；摘要里已带着「Sat, 10 …」这类事实，且回包只有约 3 KB / 约 2.5s。
+                    // X-Timeout 交给上游自己设服务端死线，双保险。
+                    'X-Respond-With': 'no-content',
+                    'X-Timeout': '10',
+                    'User-Agent': 'ChillinBot/1.0'
+                },
+                signal: ctrl.signal
+            });
+        }
         if (!res.ok) return { ok: false, reason: 'http-' + res.status };
         const sources = parseSearchPayload(await readBodyCapped(res, WEB_SEARCH_MAX_BYTES));
         if (!sources.length) return { ok: false, reason: 'empty' };
-        return { ok: true, sources };
+        return { ok: true, sources, provider };
     } catch (err) {
         return { ok: false, reason: err && err.name === 'AbortError' ? 'timeout' : 'network' };
     } finally {
@@ -208,7 +281,9 @@ function nowInEast8Text() {
 function sourcesBlock(sources) {
     let out = '';
     sources.forEach((s, i) => {
-        const piece = '[' + (i + 1) + '] ' + s.title + '\nURL: ' + s.url + '\n' + s.snippet + '\n\n';
+        const meta = [s.site, s.date].filter(Boolean).join('，');
+        const piece = '[' + (i + 1) + '] ' + s.title + '\nURL: ' + s.url
+            + (meta ? '\n（' + meta + '）' : '') + '\n' + s.snippet + '\n\n';
         if (out.length + piece.length > WEB_CONTEXT_MAX_CHARS) return;
         out += piece;
     });
@@ -329,7 +404,7 @@ export async function maybeWebAnswer(env, db, userId, text, fetchImpl = fetch, n
     await pruneWebCache(db, userId, now);
     const cached = await readWebCache(db, userId, key, now);
     if (cached) return cached;
-    const search = await runWebSearch(env, query, fetchImpl);
+    const search = await runWebSearch(env, query, fetchImpl, text);
     if (!search.ok) return webFailureText(search.reason);
     const answer = await answerWithWeb(env, query, search.sources);
     const moderated = moderateText(answer || composeWebReply('', search.sources), env);

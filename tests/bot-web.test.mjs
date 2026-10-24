@@ -154,6 +154,105 @@ test('联网 - 上游请求要摘要模式（no-content）并交给上游设超�
     assert.equal(headers['x-api-key'], 'k');
 });
 
+test('联网 - 默认上游是 DeepSeek 官方 Search：POST + JSON 体 + 复用 LLM_API_KEY', async () => {
+    const st = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'sk-1' }, '今天 76 人有比赛吗', st.impl, '帮我查一下今天 76 人有比赛吗');
+    assert.equal(st.calls.length, 1);
+    assert.equal(st.calls[0], 'https://api.deepseek.com/v1/tools/search');
+    const init = st.inits[0];
+    assert.equal(init.method, 'POST');
+    assert.equal(init.headers['Content-Type'], 'application/json');
+    assert.equal(init.headers.Authorization, 'Bearer sk-1', '复用同一把 LLM_API_KEY，零新增密钥');
+    const body = JSON.parse(init.body);
+    assert.equal(body.query, '今天 76 人有比赛吗');
+    assert.equal(body.count, 5, '取 5 条候选，展示仍只给 3 条');
+    assert.equal(body.ori_question, '帮我查一下今天 76 人有比赛吗', 'ori_question 给用户原话，帮上游理解「这周六」这类指代');
+});
+
+test('联网 - DeepSeek 端点：LLM_API_BASE 缺 /v1 时补上，显式 SEARCH_API_URL 优先且尾斜杠不双拼', async () => {
+    const a = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'k', LLM_API_BASE: 'https://api.deepseek.com' }, '今天有比赛吗', a.impl);
+    assert.equal(a.calls[0], 'https://api.deepseek.com/v1/tools/search');
+    const b = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'k', LLM_API_BASE: 'https://proxy.example/v1/' }, '今天有比赛吗', b.impl);
+    assert.equal(b.calls[0], 'https://proxy.example/v1/tools/search', '尾斜杠不能拼成双斜杠');
+    const c = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'k', SEARCH_API_URL: 'https://search.example/v1/tools/search' }, '今天有比赛吗', c.impl);
+    assert.equal(c.calls[0], 'https://search.example/v1/tools/search');
+});
+
+test('联网 - query / ori_question 超过文档上限 128 字符先截断再发', async () => {
+    const st = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'k' }, 'x'.repeat(200), st.impl, 'y'.repeat(200));
+    const body = JSON.parse(st.inits[0].body);
+    assert.equal(body.query.length, 128, '文档规定 query 1–128 字符');
+    assert.equal(body.ori_question.length, 128);
+});
+
+test('联网 - 解析 DeepSeek 形状：summary 优先于 snippet，日期换算东八区并带上站点', () => {
+    const items = parseSearchPayload(JSON.stringify({
+        results: [{
+            title: '76 人接下来的赛程',
+            url: 'https://news.example/nba',
+            snippet: '短摘要（给 UI）',
+            summary: '长摘要（给模型读）：10月25日周日主场迎战雄鹿',
+            site_name: 'zhibo8.com',
+            date: '2026-10-22T16:00:00+00:00',
+            authority: 3,
+            rerank_score: 2.21
+        }]
+    }));
+    assert.equal(items.length, 1);
+    assert.match(items[0].snippet, /10月25日周日/, '给模型读的是 summary，不是给 UI 的 snippet');
+    assert.equal(items[0].site, 'zhibo8.com');
+    assert.equal(items[0].date, '2026-10-23', 'UTC 午夜 16:00Z 属于次日东八区，不能读成 10-22');
+});
+
+test('联网 - Jina 回落：显式 SEARCH_PROVIDER，或 SEARCH_API_URL 指向自建 GET 端点时沿用旧逻辑', async () => {
+    const forced = searchStub();
+    await runWebSearch({ SEARCH_PROVIDER: 'jina', SEARCH_API_KEY: 'k' }, '今天 76 人有比赛吗', forced.impl);
+    assert.ok(forced.calls[0].startsWith('https://s.jina.ai/'), forced.calls[0]);
+    assert.equal(forced.inits[0].method, 'GET');
+    assert.equal(forced.inits[0].headers['X-Respond-With'], 'no-content');
+    assert.equal(forced.inits[0].headers['x-api-key'], 'k', 'Jina 回落用 LINK_READER_API_KEY（此处被 SEARCH_API_KEY 覆盖）');
+
+    const legacy = searchStub();
+    await runWebSearch({ SEARCH_API_KEY: 'k', SEARCH_API_URL: 'https://search.example' }, '今天有比赛吗', legacy.impl);
+    assert.ok(legacy.calls[0].startsWith('https://search.example/'), '老配置（SEARCH_API_URL 指向 GET 端点）零迁移');
+});
+
+test('联网 - 无密钥按各自上游判定：DeepSeek 看 LLM_API_KEY，Jina 看 LINK_READER_API_KEY', async () => {
+    assert.deepEqual(await runWebSearch({ SEARCH_PROVIDER: 'deepseek' }, '今天有比赛吗', searchStub().impl), { ok: false, reason: 'no-key' });
+    assert.deepEqual(await runWebSearch({ SEARCH_PROVIDER: 'jina' }, '今天有比赛吗', searchStub().impl), { ok: false, reason: 'no-key' });
+});
+
+sqliteTest('联网 - 站点与东八区日期随来源进合成提示词，模型才能判断新鲜度', async () => {
+    const db = createTestDb();
+    await seedUser(db, 6);
+    const said = [];
+    const env = {
+        SEARCH_API_KEY: 'k',
+        AI: { run: async (model, opts) => { said.push(opts.messages); return { response: '10月25日周日主场打雄鹿。' }; } }
+    };
+    const stub = async (url, init) => {
+        assert.equal(JSON.parse(init.body).ori_question, '查一下这周周六周日NBA有没有76人的比赛', '入口把用户原话传给了上游');
+        return new Response(JSON.stringify({
+            results: [{
+                title: '76 人赛程',
+                url: 'https://news.example/nba',
+                summary: '10月25日周日，主场迎战雄鹿',
+                site_name: 'zhibo8.com',
+                date: '2026-10-22T16:00:00+00:00'
+            }]
+        }), { status: 200 });
+    };
+    const reply = await maybeWebAnswer(env, db, 6, '查一下这周周六周日NBA有没有76人的比赛', stub, NOW);
+    assert.match(reply, /雄鹿/);
+    assert.equal(said.length, 1);
+    const prompt = said[0][0].content;
+    assert.match(prompt, /（zhibo8.com，2026-10-23）/, '站点与东八区日期要进提示词：' + prompt.slice(0, 300));
+});
+
 test('联网 - 两道超时加起来必须装进一轮收信预算（55s，workers/src/bot-claw.js:47）', () => {
     const sum = WEB_SEARCH_TIMEOUT_MS + WEB_ANSWER_TIMEOUT_MS;
     assert.equal(Math.max(0, sum - 40000), 0, '检索 ' + WEB_SEARCH_TIMEOUT_MS + 'ms + 合成 ' + WEB_ANSWER_TIMEOUT_MS + 'ms 若逼近 55s，一次检索就会拖垮整轮 cron 收信');
