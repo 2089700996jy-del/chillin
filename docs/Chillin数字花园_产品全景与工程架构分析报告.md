@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.151 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.152 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v198`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0031 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v199`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0031 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -171,7 +171,7 @@ mindmap
 * **全屏手势图片灯箱 (Lightbox Gallery)**：点击随手记图片弹出全屏沉浸画廊，支持多图滑动切换、双指缩放、原图下载与下拉手势关闭。
 * **半屏抽屉 (Bottom Sheet) 交互**：全面淘汰居中 Modal 弹窗，新建随手记、批注、专栏全览均采用大拇指热区友好的半屏底部抽屉。
 * **软键盘智能避让与顶底栏联动**：唤起虚拟键盘时，底部导航栏（Bottom Nav）与悬浮按钮（FAB）自动平滑淡出，视口回弹平顺，防止遮挡光标视线。
-* **固定栏取色同源（浑然一体）**：顶栏与底部 Tab 栏都由页面底色分量 `--bg-rgb` 派生（底栏直接 `var(--bg-color)`），静止态顶栏透明、深色下也不留接缝；阅读器夜间/护眼模式的底栏底色不再被 `!important` 压死。
+* **固定栏取色同源（浑然一体）**：顶栏与底部 Tab 栏都由页面底色分量 `--bg-rgb` 派生，静止态顶栏透明；**底栏与「滚动后的顶栏」共用同一块毛玻璃材质**（`--nav-scrolled-bg` + `backdrop-filter: blur(20px) saturate(180%)`），不铺不透明底、不画 1px 分割线或上投影，内容滚到栏下时被柔化出「通透」底纹；深色下也不留接缝；阅读器夜间/护眼模式的底栏底色不再被 `!important` 压死。
 * **Apple Spring 原生触感动效**：按钮绑定 `active: scale(0.96)` 阻尼微缩放，消除传统移动 Web 页面的滞涩感。
 
 ### 4.3 桌面端沉浸工作台 (Desktop Widescreen Workspace)

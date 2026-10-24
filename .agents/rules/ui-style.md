@@ -12,11 +12,11 @@
    * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 只为保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时用 `--surface-hairline`；
    * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并微升 `transform: translateY(-2px)`；
    * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#007AFF`，对齐 iOS 系统蓝），不得再引入第二个蓝；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
-   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏顶边线也一律取消，改用柔和上投影）；
+   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏的顶边线与上投影一律取消，边界交给材质本身，见 §3.5）；
    * 首屏柔光：亮色主题 `body` 顶部铺两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作 hero 光晕，卡片保持纯白浮在其上；深色与护眼主题必须显式 `background-image: none`（深底上会发脏蓝，由 `tests/css.test.mjs` 看住）。
 
 3. **模糊层 (backdrop-filter) 与层级纪律**：
-   * `backdrop-filter` 只允许「浮在内容之上」的表面使用：顶部导航 `.super-navbar`、阅读器底栏 `.reader-nav-bottom`、弹层遮罩 `.modal-overlay` / `.confirm-dialog-overlay` / `.wikilink-autocomplete-popup`、压在图片上的悬浮图标按钮；总数由 `tests/css.test.mjs` 的棘轮看住（基线 41 条声明，含 `-webkit-` 配对）；
+   * `backdrop-filter` 只允许「浮在内容之上」的表面使用：顶部导航 `.super-navbar`、底部 Tab 栏 `.mobile-bottom-nav`、阅读器底栏 `.reader-nav-bottom`、弹层遮罩 `.modal-overlay` / `.confirm-dialog-overlay` / `.wikilink-autocomplete-popup`、压在图片上的悬浮图标按钮；总数由 `tests/css.test.mjs` 的棘轮看住（基线 41 条声明，含 `-webkit-` 配对）；
    * 判断标准是**背后有没有可模糊的内容**：父级不透明（如 `#FFFFFF` 卡片里的 `.search-input`）或背板只是纯色加平缓渐变（如 `.note-annotations-section` 之后的 `body`）时，模糊是零收益的合成层，应删除；固定栏上的模糊是**肉眼可见**的（0.88 alpha 下高对比条纹仍会透出，可用 `backups/_blur_on.html` 这类条纹页截图复验），必须保留；
    * 顶层层级一律走 `:root` 的 `--z-nav` / `--z-modal` / `--z-toast` / `--z-auth` / `--z-alert` 令牌，禁止裸 `z-index`（否则「关闭按钮盖住确认弹窗」这类顺序错误会重现）；
    * 过渡只允许显式属性列表，禁止 `transition: all`（会连带 `width`/`height` 触发布局重排）。
@@ -91,11 +91,12 @@
 
 ### 3.5 固定栏取色同源：顶栏 / 底栏必须与页面浑然一体（v2.5.151 起）
 
-iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独立的板。本项目真实踩过两种断层：顶栏静止态铺不透明的 `--bg-color`，把页面 hero 光晕挡在栏下，栏底留下 ΔR≈20 的台阶；底栏铺另一套 `--nav-bg`（`#F2F2F7`），比页面 `#F8F9FA` 低 6/7/3。
+iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独立的板。本项目真实踩过三种断层：① 顶栏静止态铺不透明的 `--bg-color`，把页面 hero 光晕挡在栏下，栏底留下 ΔR≈20 的台阶；② 底栏铺另一套 `--nav-bg`（`#F2F2F7`），比页面 `#F8F9FA` 低 6/7/3；③ 修完 ①② 后底栏改成不透明 `--bg-color` 并加了一条 `0 -1px 0` 顶边线，用户仍反馈「有条线分割视觉卡在还不够通透统一」——**不透明板 + 一条线本身就是「卡」**，与页面同色不等于浑然一体。
 
-* **分量同源**：页面底色必须同时提供 `--ios-bg`（hex）与 `--bg-rgb`（`R, G, B` 分量），两套主题各自定义；导航玻璃层（`--nav-glass-scrolled` / `--nav-scrolled-bg`）与底栏一律由 `rgba(var(--bg-rgb), α)` 或 `var(--bg-color)` 派生，**不允许再定义第二套导航取色**（`--nav-glass` 已因此删除）。`tests/css.test.mjs` 用 hex→rgb 反解机器校验两者同值，并断言静止态顶栏透明、底栏跟随 `--bg-color`。
+* **分量同源**：页面底色必须同时提供 `--ios-bg`（hex）与 `--bg-rgb`（`R, G, B` 分量），两套主题各自定义；导航玻璃层（`--nav-glass-scrolled` / `--nav-scrolled-bg`）与底栏一律由 `rgba(var(--bg-rgb), α)` 或 `var(--bg-color)` 派生，**不允许再定义第二套导航取色**（`--nav-glass` 已因此删除）。`tests/css.test.mjs` 用 hex→rgb 反解机器校验两者同值，并断言静止态顶栏透明、底栏复用滚动顶栏的材质令牌。
 * **顶栏静止态透明**：`background: transparent`，让页面 hero 光晕一直铺到状态栏；只有 `.scrolled` 才升玻璃底（`--nav-scrolled-bg`）。iOS PWA（`html.ios-pwa`）下同样不得常驻玻璃底，否则状态栏区域会变成一条白带。
-* **底栏跟随页面**：`background: var(--bg-color)`，与顶栏同一套取色；分隔感只靠柔和上投影 `0 -1px 0 rgba(var(--label-rgb), 0.06), 0 -10px 24px rgba(16,24,40,0.04)`，不靠顶边硬线。
+* **底栏 = 与滚动顶栏同一块毛玻璃材质（不是另一块板）**：`background: var(--nav-scrolled-bg)` + `backdrop-filter: blur(20px) saturate(180%)`（含 `-webkit-` 配对），与 `.super-navbar.scrolled` 逐字同源；**不画上边线、不加投影**（`box-shadow: none`），边界完全由材质给出。底栏一旦铺不透明底或补 `0 -1px 0` 之类分割线，就会被读成「一条线把界面切断」（v2.5.152 用户反馈原话）。`tests/css.test.mjs` 三条机器校验：材质令牌、模糊参数、禁止 `0 -1px 0`。
+* **毛玻璃要真的有东西可透**：底栏必须允许内容滚到它下面（页面底部留 `104px` 内边距，滚动中卡片会从栏下经过，隔着 88% 同源底色被柔化成底纹）；若某页内容永远到不了栏下，该页的「通透」是看不出来的。
 * **禁止用 `!important` 压死阅读器覆盖**：`body.dark-reader-body / body.eyecare-reader-body .mobile-bottom-nav` 是更具体、故意写在文件后部的覆盖；底栏基础规则一旦加 `!important`，夜间/护眼阅读器的底栏底色就永远不生效。
 * **深色投影只在滚动后出现**：深色层（`:root[data-theme="dark"]`）的栏底分界与投影必须写在 `.super-navbar.scrolled` 上；静止态保持「零线零影」，否则透明顶栏底下会留下一道深色接缝。
 
@@ -113,7 +114,7 @@ iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独�
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 9910 行、229 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`，见 §3.5。）
+> 现状债务：`public/style.css` 9910 行、229 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。）
 
 ### `!important` 与覆写层的削减纪律（v2.5.144 起）
 
@@ -128,7 +129,7 @@ iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独�
 `html[data-theme="light"|"dark"]` 是**唯一**的应用级主题开关（`public/js/utils.js` 的 `applyAppTheme()` 写属性、`initAppTheme()` 跟随系统；`public/index.html` head 里的内联脚本在首帧之前落属性，避免深色用户先看到一帧白屏）。`prefers-color-scheme` 只允许出现在 `auto` 模式的判定分支里，**不得**再写 `@media (prefers-color-scheme: dark)` 覆盖规则。
 
 - **灰度一律走 RGB 分量令牌**：文字与细边框用 `rgba(var(--label-rgb), α)`，中性表面用 `rgba(var(--neutral-rgb), α)`。亮色基线 `--label-rgb: 60, 60, 67`、`--neutral-rgb: 120, 120, 128`；深色层只反转分量（`235, 235, 245` / `255, 255, 255`），alpha 语义不变。这样 131 处灰度自动跟随主题，不必逐条写深色覆盖。**禁止**再写回 `rgba(60, 60, 67, α)` / `rgba(120, 120, 128, α)`（`tests/css.test.mjs` 有门禁）。
-- **五类主表面在深色层必须有令牌**：导航与底栏（`--nav-bg` / `--nav-glass` / `--nav-glass-scrolled` / `--nav-scrolled-bg`）、卡片（`--card-bg` / `--ios-card-bg`）、文字（`--text-color` / `--ios-label` / `--ios-secondary-label`）、输入框（`--input-bg` / `--input-bg-focus` / `--hairline`）、悬浮与选中（`--hover-bg` / `--segment-active-bg`）。
+- **五类主表面在深色层必须有令牌**：导航与底栏（`--nav-bg` / `--bg-rgb` / `--nav-glass-scrolled` / `--nav-scrolled-bg`）、卡片（`--card-bg` / `--ios-card-bg`）、文字（`--text-color` / `--ios-label` / `--ios-secondary-label`）、输入框（`--input-bg` / `--input-bg-focus` / `--hairline`）、悬浮与选中（`--hover-bg` / `--segment-active-bg`）。
 - **分段控件的选中胶囊必须比轨道更亮**：深色下 `--segment-active-bg: rgba(255, 255, 255, 0.16)`，轨道是半透明白。曾出现「选中的比未选中的更暗」的实现缺陷。
 - **深色红色用 `--danger-color`**（深色层切到 `#FF453A`），不要再写 `#ff3b30` 字面量。
 - **禁止写死 Tailwind 色阶**：`#0f172a` / `#1e293b` / `#334155` / `#475569` / `#64748b` / `#94a3b8` 都是浅色专用灰，不跟随 `data-theme` 反转（v2.5.120 修掉的 `.rich-link-title` 就曾在深色卡片上隐形）。正文链接统一走 `--link-color`（亮 `var(--ios-blue)` / 深 `#0A84FF`）；**不要在 JS 模板里拼内联 `style="color:#007AFF"`**——内联样式优先于样式表，深色层覆盖不掉（`tests/css.test.mjs` 对以上两者都有门禁）。

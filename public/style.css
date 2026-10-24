@@ -2727,7 +2727,9 @@ body.hide-bottom-nav .nav-brand-mobile {
     opacity: 0.55;
   }
 
-  /* Mobile bottom tab: opaque page gray fills gesture/nav inset (fixes Redmi color band) */
+  /* Mobile bottom tab: 与「滚动后的顶栏」共用同一块毛玻璃材质（--nav-scrolled-bg + blur(20px) saturate(180%)）。
+     不再铺不透明底色、不再画 1px 上边线/上投影：内容滚到栏下时隔着 88% 同源底色被柔化，才叫「通透」，
+     也才能和顶栏、页面浑然一体（见 ui-style.md §3.5）。底色仍由 --bg-rgb 页面分量派生，Redmi 手势区不会出色带。 */
   .mobile-bottom-nav {
     display: flex !important;
     position: fixed;
@@ -2736,16 +2738,14 @@ body.hide-bottom-nav .nav-brand-mobile {
     right: 0;
     height: auto;
     min-height: 56px;
-    /* 底色跟随页面（--bg-color），与顶栏同一套取色，消除上下断层；
-       不再用 !important：阅读器夜间/护眼模式那两条更具体的覆盖（--black / --mint-200）
-       本来就写在文件后面，之前一直被 !important 压死（见 ui-style.md §3.5）。 */
-    background: var(--bg-color);
-    backdrop-filter: none;
-    -webkit-backdrop-filter: none;
-    /* 路线 B：顶边线太硬，改柔和上投影；底色仍保持不透明（见对 Redmi 手势区色带的修复说明）。
-       这几条原先写在文件末尾的顶层 .mobile-bottom-nav 里，合到这里以免同一组件在多处重复定义。 */
+    /* 与 .super-navbar.scrolled 同一个令牌、同一组模糊参数：上下固定栏是同一块材质，不是两块板。
+       这里刻意不加 !important：阅读器夜间/护眼那两条更具体的覆盖（--black / --mint-200）写在文件后部，
+       一旦加 !important 就永远不生效（见 ui-style.md §3.5）。 */
+    background: var(--nav-scrolled-bg);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
     border-top: 1px solid transparent;
-    box-shadow: 0 -1px 0 rgba(var(--label-rgb), 0.06), 0 -10px 24px rgba(16, 24, 40, 0.04);
+    box-shadow: none;
     z-index: var(--z-nav);
     padding-top: 4px;
     padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));

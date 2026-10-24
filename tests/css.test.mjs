@@ -158,7 +158,7 @@ test('CSS - 应用级深色主题层：RGB 令牌反转 + 五类主表面打底'
     assert.match(dark, /--segment-active-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.16\)/, '深色层必须把分段控件选中胶囊改为半透明白，否则选中态比轨道更暗');
 });
 
-test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静止态顶栏透明、底栏跟随页面', () => {
+test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静止态顶栏透明、底栏复用滚动顶栏的毛玻璃材质', () => {
     const toRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ');
     const pick = (source, name) => ((source.match(new RegExp(name + '\\s*:\\s*(#[0-9a-fA-F]{6})')) || [''])[1]);
     const lightBg = pick(css, '--ios-bg');
@@ -172,8 +172,11 @@ test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静�
     assert.equal(darkRgb, toRgb(darkBg), '--bg-rgb 与深色 --ios-bg 不同步：深色底栏会再次和页面底色出现色阶断层');
     // 静止态顶栏不铺不透明底色，页面 hero 光晕才能从固定栏后面透出来
     assert.match(css, /\.super-navbar\s*\{[^}]*background:\s*transparent/, '顶栏静止态必须 background: transparent，否则会挡住页面 hero 光晕、在栏底留下色阶断层');
-    // 底栏底色与页面同源（而非另一套 --nav-bg），上下固定栏才不会各自成板
-    assert.match(css, /\.mobile-bottom-nav\s*\{[^}]*background:\s*var\(--bg-color\)/, '底栏底色必须跟随页面 --bg-color（与顶栏同一套取色），不要写回 --nav-bg');
+    // 底栏与「滚动后的顶栏」共用同一块毛玻璃材质，而不是再铺一块不透明板
+    // （v2.5.152：用户反馈「有条线分割视觉卡在还不够通透统一」——不透明底 + 0 -1px 0 顶边线是根因）
+    assert.match(css, /\.mobile-bottom-nav\s*\{[^}]*background:\s*var\(--nav-scrolled-bg\)/, '底栏底色必须复用 --nav-scrolled-bg（与 .super-navbar.scrolled 同一块材质），不要再铺不透明 --bg-color / --nav-bg');
+    assert.match(css, /\.mobile-bottom-nav\s*\{[^}]*backdrop-filter:\s*blur\(20px\)\s*saturate\(180%\)/, '底栏必须做 blur(20px) saturate(180%) 毛玻璃，否则内容滚到栏下时是一块死板、不够通透');
+    assert.ok(!/\.mobile-bottom-nav[^{]*\{[^}]*box-shadow:\s*0 -1px 0/.test(css), '底栏不得再画 0 -1px 0 分割线（见 .agents/rules/ui-style.md §3.5：边界由材质本身给出，不靠线/靠投影）');
 });
 
 test('CSS - 灰度色值一律走 RGB 分量令牌（禁止再写回 rgba(60,60,67,α) 字面量）', () => {
