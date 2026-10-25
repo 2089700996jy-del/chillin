@@ -23,7 +23,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：**Cloudflare D1**（SQLite，31 个迁移 0001–0031，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
+* **数据**：**Cloudflare D1**（SQLite，32 个迁移 0001–0032，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -40,13 +40,13 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        25 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        26 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
                     garden-echo / rag / llm / ai / audit / bot-commands /
-                    bot-claw / bot-memory / bot-outreach / bot-reminders /
+                    bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-vision / bot-links /
                     maintenance）
-migrations/         D1 迁移 0001–0031（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建）
+migrations/         D1 迁移 0001–0032（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
@@ -172,6 +172,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌、深色下会失明的 Tailwind 色阶与链接色令牌 |
 | [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用 |
 | [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、长轮询游标持久化与排重、**默认只聊天不落库**、显式「记录：…」才写入随手记、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」，联网答案默认也不带「来源：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误、**微信发图落成带图随手记（`item.type=2` 识别 → 明文魔数 → **AES-128-ECB + PKCS7** 解密（`aeskey` 32 位 hex，另兼容 `media.aes_key` 与「hex 再 base64」中间层，CBC 两种 IV 兜底），直链与带授权参数的地址都试，图取不到就如实告知且不落库）** |
+| [`tests/bot-health.test.mjs`](tests/bot-health.test.mjs) | 健康打卡：一句话解析出步数/睡眠/中高强度/静息心率/体重（斤折半、千分位）、越界值点名不写库、只认显式格式不劫持聊天、一天一行 UPSERT 只覆盖本次字段、日期一律东八区、汇总只统计真的记过该字段的天（真实 SQLite） |
 | [`tests/bot-outreach.test.mjs`](tests/bot-outreach.test.mjs) | Bot 主动关怀：东八区时窗与当天唯一开口时刻、每天至多一次、刚聊完 30 分钟内不插嘴、6 小时内聊过时把最近对话当背景、只用 3 天前旧素材、随机频率闸门、模型 SKIP 否决权、内容安全、发送失败与开关接口、**主动消息写进对话记忆（带出处）**（真实 SQLite） |
 | [`tests/bot-reminders.test.mjs`](tests/bot-reminders.test.mjs) | 定点提醒：中文数字与相对/绝对时刻解析、越界与「已经过去」一律反问不猜、只软删的取消、到点必达与 30 分钟只追问一次、超 2 小时不补发、发送失败退回 pending、同一分钟幂等（真实 SQLite） |
 | [`tests/bot-web.test.mjs`](tests/bot-web.test.mjs) | 联网检索：三档分流闸门（花园线索强制回本地）、上游 DeepSeek/Jina 双形态 JSON 与 markdown 解析去重、`need_content` 正文优先于 summary、相对时间并成具体日期（东八区）、半截 JSON 一律不当来源、失败分类与文案、6 小时缓存与每人每天 100 次上限（命中缓存不扣额度）与每分钟 2 次突发闸、合成死线退化与出处按需（真实 SQLite）；v2.5.150 起先做 4s 死线的检索词规划（`planWebQueries`）再多条并行检索（最多 3 条、按 `rerank_score` 去重排序、部分失败不影响整体）；上游适配层在同名的 `workers/src/bot-search.js` |

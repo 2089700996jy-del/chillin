@@ -1,9 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-25T02:05:32.215Z · 提交数：391
+> 生成时间：2026-10-25T03:27:51.487Z · 提交数：392
 
 ## 2026-10-25
+
+### ✨ 新功能
+
+- **ui**: use filled tab glyphs and unblock theme colors
 
 ### ⚡ 性能优化
 

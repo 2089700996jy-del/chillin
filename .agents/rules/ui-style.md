@@ -120,6 +120,15 @@ iOS 的 Tab 选中态是**字形由描边变实心 + 主题色 + 标签加粗**�
 * **深色主题选中色必须是 `var(--ios-blue-dark)`**（#0A84FF）：深色底上对比度 5.18，优于 `--ios-blue`（#007AFF）的 4.70；深色层不覆盖 `--accent-color`，必须显式写 `:root[data-theme="dark"] .mobile-tab-item.active { color: var(--ios-blue-dark) }`。
 * **无障碍同步**：底栏 `nav` 必须有 `aria-label`（本项目为「主导航」），选中项必须暴露 `aria-current="page"`——由 `public/js/router.js` 在切换视图时同步 `removeAttribute` / `setAttribute`，只改 `.active` 类读屏完全感知不到；FAB 的 `aria-label` 也要随视图更新（视觉文本在移动端被隐藏）。
 
+### 3.8 无需登录的公开静态页（隐私政策 / 用户协议）
+
+`public/privacy.html` 与 `public/terms.html` 是本站**唯一不经过鉴权**的页面（第三方开放平台申请要求提供 https 链接，应用内入口在设置弹层的「关于」，样式类为 `.legal-links`）：
+
+* **必须自包含**：不引 `public/style.css`、不引任何第三方资源（含字体与图标 CDN）、**不含任何脚本**，只靠 `prefers-color-scheme` 跟随系统深浅色；
+* **与主应用同一条纪律**：无内联事件处理器、无 `javascript:` URL、外链一律 `target="_blank" rel="noopener"`，由 `tests/security.test.mjs` 静态守住；
+* **必须互链并回得去**：两页互相引用，且都能回到 `/`；
+* **政策不能是空壳**：隐私政策必须如实交代数据存放位置（Cloudflare Pages / Workers / D1 / R2、PBKDF2 口令哈希、删除方式）与第三方服务清单（AI、搜索、微信、小米运动健康）。
+
 ---
 
 ## 4. 设计令牌 (Design Tokens)
@@ -134,7 +143,7 @@ iOS 的 Tab 选中态是**字形由描边变实心 + 主题色 + 标签加粗**�
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 9999 行、226 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。v2.5.153 的长列表批次只加密度与滚动策略（`content-visibility` / 紧凑行 / 回到顶部），未增减 `!important` 与裸 hex，见 §3.6。v2.5.154 删掉底栏那组重复覆写（含 3 处 `!important`：`.active` 的选中色与两条 `.tab-icon` 缩放），229 → 226，裸 hex 不变，见 §3.7。）
+> 现状债务：`public/style.css` 10013 行、226 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。v2.5.153 的长列表批次只加密度与滚动策略（`content-visibility` / 紧凑行 / 回到顶部），未增减 `!important` 与裸 hex，见 §3.6。v2.5.154 删掉底栏那组重复覆写（含 3 处 `!important`：`.active` 的选中色与两条 `.tab-icon` 缩放），229 → 226，裸 hex 不变，见 §3.7；v2.5.155 的 Bot 健康打卡与法务页面批次只新增 3 条 `.legal-links` 规则（+14 行，`.legal-links` / `.legal-links .btn-text` / `:hover`，全部走 `var(--accent-color, var(--ios-blue))`），`!important` 与裸 hex 两条棘轮均不变，见 §3.8。）
 
 ### `!important` 与覆写层的削减纪律（v2.5.144 起）
 

@@ -8162,6 +8162,20 @@ body.dark-reader-body .bot-outreach-row {
   border-top: 0.5px solid rgba(var(--label-rgb), 0.12);
 }
 
+/* 公开法务页面（隐私政策 / 用户协议）在设置里的入口：只是两个静态链接，不占用按钮语义 */
+.legal-links {
+  justify-content: flex-start;
+  gap: 24px;
+}
+.legal-links .btn-text {
+  margin-left: 0;
+  text-decoration: none;
+  color: var(--accent-color, var(--ios-blue));
+}
+.legal-links .btn-text:hover {
+  text-decoration: underline;
+}
+
 #btn-enable-push {
   display: inline-flex;
   align-items: center;

@@ -34,7 +34,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.154">
+    <link rel="stylesheet" href="style.css?v=2.5.155">
 </head>
 <body>
 
@@ -291,7 +291,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.155</button>
         </section>
 
         <!-- ========================================== -->
@@ -515,7 +515,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.155</button>
         </section>
 
         <!-- ========================================== -->
@@ -660,7 +660,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.155</button>
         </section>
 
         <!-- ========================================== -->
@@ -808,7 +808,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.155</button>
         </section>
 
         <!-- ========================================== -->
@@ -905,7 +905,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.155</button>
         </section>
 
     </main>
@@ -1213,6 +1213,13 @@
                 <div class="security-actions">
                     <button type="button" class="btn-text text-danger" id="btn-security-logout-all">退出所有设备</button>
                 </div>
+
+                <!-- 法务页面入口：/privacy.html 与 /terms.html 是公开静态页（第三方开放平台申请要求 https 链接） -->
+                <div class="security-section-title" style="margin-top: 24px;">关于</div>
+                <div class="security-actions legal-links">
+                    <a class="btn-text" href="/privacy.html" target="_blank" rel="noopener">隐私政策</a>
+                    <a class="btn-text" href="/terms.html" target="_blank" rel="noopener">用户协议</a>
+                </div>
             </div>
         </div>
     </div>
@@ -1437,7 +1444,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.154"></script>
-    <script type="module" src="app.js?v=2.5.154"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.155"></script>
+    <script type="module" src="app.js?v=2.5.155"></script>
 </body>
 </html>

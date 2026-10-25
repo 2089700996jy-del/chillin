@@ -35,6 +35,7 @@ import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
     runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder
 } from './bot-reminders.js';
+import { maybeRunHealthCommand } from './bot-health.js';
 
 /** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
 export const MAX_REPLY_BYTES = 20000;
@@ -63,6 +64,7 @@ export const BOT_HELP_TEXT = [
     '- 「忘记 关键词」：从档案里删掉这一条',
     '- 「提醒我 20:00 <事情>」：到点我在微信里叫你；回「完成」就把它记进随手记',
     '- 「我的提醒」看列表；「取消提醒 <编号>」取消某一条',
+    '- 「健康：昨晚睡了 6 小时 20 分，8500 步」：记一条健康打卡；「健康」看最近 7 天',
     '- 「查一下 <问题>」：上网找最新信息；默认只给结论，要出处就说「来源」',
     '- 「别主动找我 / 可以主动找我」：开关偶尔的主动关心',
     '- 「重置对话」：清空我们这次的对话上下文',
@@ -133,8 +135,6 @@ const PENDING_COMMIT_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记录|记�
 /** 光杆「记住」：意图明确但没带内容，直接要内容——丢给对话模型它会答成「我没有写入能力」 */
 const REMEMBER_BARE_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记住|记牢|\/remember)[\s:：。！!？?～~]*$/i;
 const REMEMBER_BARE_REPLY = '要记什么？发「记住：<内容>」我就写进「关于我」档案，比如「记住：我喝咖啡会睡不着」。';
-/** 定点提醒请求：确实做不到就如实说清——不能让模型替系统承诺，它容易答成「我不能主动弹消息」（那也是错的） */
-
 
 export function parseRecordCommand(text) {
     const m = RECORD_RE.exec(normalizeCommandText(text));
@@ -265,7 +265,7 @@ const CHAT_SYSTEM_PROMPT = [
         + '「搜 <关键词>」翻花园历史记录、「问 <问题>」结合记忆回答、「你记得我什么」看档案、'
         + '「记录」确认刚发的那张图片或那条链接、'
         + '「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
-        + '提醒过后回「完成」会把它记进随手记、'
+        + '提醒过后回「完成」会把它记进随手记、「健康：<数值>」记一天的步数 / 睡眠 / 心率 / 体重（发「健康」看最近 7 天汇总）、'
         + '「别主动找我 / 可以主动找我」开关主动关心、'
         + '「查一下 <问题>」会上网找最新信息（默认只给结论，他追问「来源 / 依据」时才把出处列出来）。'
         + '对方明显想做这些却没按格式发（例如只发「记住」），就把正确的发法告诉他——由他决定，你不要自己写。',
@@ -412,6 +412,10 @@ export async function runCommand(env, db, userId, content) {
             return '好，那就不催了。做完了随时跟我说一声，我记进花园。';
         }
     }
+
+    // 健康打卡：一天一行，重复打卡是合并而不是新增（判别与执行都在 bot-health）
+    const healthReply = await maybeRunHealthCommand(db, userId, text, nowMs);
+    if (healthReply !== null) return healthReply;
 
     const remember = parseRememberCommand(text);
     if (remember) return runRemember(db, userId, remember);

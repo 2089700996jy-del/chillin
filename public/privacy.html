@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="description" content="Chillin 数字花园的隐私政策：收集哪些数据、存在哪里、如何使用与删除。">
+    <title>隐私政策 · Chillin 数字花园</title>
+    <link rel="icon" href="/favicon.ico">
+    <style>
+        :root { color-scheme: light dark; --fg:#1c1c1e; --muted:#6b7280; --bg:#f8f9fa; --card:#ffffff; --line:rgba(60,60,67,0.12); --accent:#007aff; }
+        @media (prefers-color-scheme: dark) { :root { --fg:#f2f2f7; --muted:#9ca3af; --bg:#0f1115; --card:#171a20; --line:rgba(235,235,245,0.14); --accent:#0a84ff; } }
+        * { box-sizing: border-box; }
+        body { margin:0; padding:32px 18px 64px; background:var(--bg); color:var(--fg); font:15px/1.7 -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", sans-serif; }
+        main { max-width:720px; margin:0 auto; }
+        h1 { font-size:26px; line-height:1.3; margin:0 0 6px; letter-spacing:-0.01em; }
+        h2 { font-size:17px; margin:32px 0 10px; }
+        p, li { margin:8px 0; }
+        ul { padding-left:20px; }
+        .meta { color:var(--muted); font-size:13px; margin-bottom:4px; }
+        .note { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin:16px 0; }
+        table { width:100%; border-collapse:collapse; margin:12px 0; font-size:14px; }
+        th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); vertical-align:top; }
+        th { color:var(--muted); font-weight:600; }
+        a { color:var(--accent); text-decoration:none; }
+        a:hover { text-decoration:underline; }
+        footer { margin-top:40px; color:var(--muted); font-size:13px; }
+    </style>
+</head>
+<body>
+<main>    <h1>隐私政策</h1>
+    <p class="meta">生效日期：2026-10-25　|　适用产品：Chillin 数字花园（https://chillin-bfc.pages.dev）</p>
+
+    <div class="note">
+        <p><strong>一句话概括：</strong>Chillin 是<b>个人自建、自用</b>的数字花园。你写下的内容存放在你自己名下的 Cloudflare 账户里，不出售、不共享、不做广告画像、不用于训练模型。你随时可以导出或删除。</p>
+    </div>
+
+    <h2>1. 这份政策管什么</h2>
+    <p>本政策说明 Chillin 数字花园（以下简称「本服务」）在你使用网页版 PWA 与微信助手时，收集哪些信息、为什么收集、存放在哪里、保留多久，以及你有哪些权利。本服务由个人开发者自建自用，不面向公众提供商业服务。</p>
+
+    <h2>2. 收集哪些数据</h2>
+    <table>
+        <tr><th>类别</th><th>具体内容</th><th>用途</th></tr>
+        <tr><td>账户</td><td>用户名与口令（口令以 PBKDF2 加盐哈希存储，服务端不保存明文）、会话令牌</td><td>登录与身份校验</td></tr>
+        <tr><td>你写下的内容</td><td>周记、随手记、笔记、收藏链接、提示词、阅读进度与书籍信息</td><td>个人知识管理、检索与 AI 回响</td></tr>
+        <tr><td>媒体文件</td><td>你主动上传的图片、封面等</td><td>随内容一起展示</td></tr>
+        <tr><td>微信助手记录</td><td>你发给助手账号的消息、助手回复、以及你明确要求「记住」的个人档案条目</td><td>让助手理解上下文、回答你的提问</td></tr>
+        <tr><td>健康打卡</td><td>你主动记录的步数、睡眠、中高强度时长、心率、体重等</td><td>仅用于回显与汇总；本服务<b>不</b>提供医疗建议</td></tr>
+        <tr><td>设备与运行信息</td><td>通知订阅端点（用于发送你开启的提醒）、必要的请求日志（时间、接口、结果）</td><td>保障服务可用性与安全审计</td></tr>
+    </table>
+    <p>本服务不使用第三方统计、广告或行为追踪脚本，也不读取你的通讯录、照片库以外的文件或剪贴板内容。</p>
+
+    <h2>3. 数据存放在哪里</h2>
+    <ul>
+        <li><b>服务端</b>：Cloudflare 平台——静态页面托管于 Cloudflare Pages，接口运行于 Cloudflare Workers，结构化数据存于 Cloudflare D1，媒体文件存于 Cloudflare R2。这些资源位于<b>本服务所有者本人</b>的 Cloudflare 账户下。</li>
+        <li><b>你的设备上</b>：网页版会把内容缓存在浏览器 IndexedDB / localStorage，并注册 Service Worker 以支持离线使用；登录凭证以 HttpOnly Cookie 形式保存，页面脚本无法读取。</li>
+        <li><b>传输</b>：所有请求均通过 HTTPS 加密；口令校验使用恒定时间比较以抵御时序攻击。</li>
+    </ul>
+
+    <h2>4. 我们不会做的事</h2>
+    <ul>
+        <li>不出售、出租或与第三方共享你的内容；</li>
+        <li>不使用你的内容做广告投放或用户画像；</li>
+        <li>不使用你的内容训练第三方模型；</li>
+        <li>不擅自把内容发布到公开渠道。</li>
+    </ul>
+
+    <h2>5. 第三方服务</h2>
+    <p>为实现功能，本服务会在必要范围内调用以下第三方，仅传递完成该次请求所需的最小内容：</p>
+    <table>
+        <tr><th>第三方</th><th>触发时机</th><th>传递内容</th></tr>
+        <tr><td>Cloudflare（Pages / Workers / D1 / R2）</td><td>始终</td><td>托管与存储本服务的全部数据</td></tr>
+        <tr><td>DeepSeek / Cloudflare Workers AI</td><td>仅当你主动使用「AI 回响」「问答」「联网检索」时</td><td>你的问题与检索命中的内容片段</td></tr>
+        <tr><td>微信（ClawBot 助手通道）</td><td>仅当你向助手账号发消息时</td><td>你发送的消息内容</td></tr>
+        <tr><td>网页搜索服务（如 Jina）</td><td>仅当你明确要求联网查询时</td><td>你的检索词</td></tr>
+        <tr><td>小米运动健康云服务</td><td>仅在（未来）你完成 OAuth 授权后</td><td>只读拉取你授权范围内的健康数据，不回写</td></tr>
+    </table>
+    <p>上述第三方各自的数据处理规则由其隐私政策约定。你可以随时停止使用相关功能，从而不再产生对应传递。</p>
+
+    <h2>6. 保留与删除</h2>
+    <p>内容保存在你的账户下，直至你主动删除。为保证多设备一致，删除采用「软删除 + 同步墓碑」机制：删除标记会同步到各端并从界面与检索中移除。你可以随时停止使用本服务，并删除我们在 Cloudflare 账户中的数据；如需协助删除，请通过下方方式联系。</p>
+
+    <h2>7. 你的权利</h2>
+    <ul>
+        <li><b>查看与更正</b>：在应用内随时查看、编辑全部内容与「关于我」档案；</li>
+        <li><b>导出</b>：应用内提供数据备份与导出；</li>
+        <li><b>删除</b>：应用内删除单条或全部数据；</li>
+        <li><b>撤回授权</b>：可随时关闭通知订阅、解除微信助手绑定，或在对应的第三方平台（例如小米运动健康 App）撤销数据授权；</li>
+        <li><b>提问</b>：对数据处理方式有疑问，可通过下方方式联系。</li>
+    </ul>
+
+    <h2>8. 安全措施</h2>
+    <ul>
+        <li>口令 PBKDF2 加盐哈希（迭代 10 万次以上），恒定时间比较；</li>
+        <li>会话令牌与服务端密钥仅存于加密的 HttpOnly Cookie 与 Worker 密钥中；</li>
+        <li>接口按账户隔离并做速率限制，审计日志记录关键写操作；</li>
+        <li>渲染前对用户内容做白名单清洗，防止脚本注入。</li>
+    </ul>
+    <p>请注意：没有任何系统能保证绝对安全。请妥善保管你的口令。</p>
+
+    <h2>9. 未成年人</h2>
+    <p>本服务不面向未成年人，也不会有意收集未成年人的个人信息。</p>
+
+    <h2>10. 政策变更</h2>
+    <p>本政策如有更新，将修改本页顶部的生效日期。继续使用即表示接受更新后的政策。</p>
+
+    <h2>11. 联系方式</h2>
+    <p>邮箱：<a href="mailto:2089700996jy@gmail.com">2089700996jy@gmail.com</a></p>
+
+    <footer>
+        <p><a href="/">返回 Chillin</a>　·　<a href="/terms.html">用户协议</a></p>
+    </footer>
+</main>
+</body>
+</html>

@@ -413,3 +413,38 @@ test('Security - readJsonCapped 限长并区分 413 / 400', async () => {
     assert.equal(bad.ok, false);
     assert.equal(bad.status, 400);
 });
+test('Security - 法务页面（隐私政策 / 用户协议）是自洽的公开静态页', async () => {
+    // 背景：第三方开放平台（如小米运动健康）申请时必须提供 https 的隐私政策与用户协议链接。
+    // 这两页是公开可访问的静态文件，必须和主应用守同一条纪律：无脚本、无内联事件处理器、
+    // 无 javascript: URL、不引用任何第三方资源——它们是唯一不需要登录就能打开的页面。
+    const fsMod = await import('node:fs/promises');
+    const pathMod = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const root = pathMod.resolve(pathMod.dirname(fileURLToPath(import.meta.url)), '..');
+    const pages = ['public/privacy.html', 'public/terms.html'];
+    const index = await fsMod.readFile(pathMod.join(root, 'public', 'index.html'), 'utf8');
+    for (const rel of pages) {
+        let text = '';
+        await assert.doesNotReject(
+            (async () => { text = await fsMod.readFile(pathMod.join(root, rel), 'utf8'); })(),
+            `${rel} 必须存在（申请表的两个链接就指向它）`
+        );
+        assert.match(text, /<meta charset="UTF-8">/, `${rel} 缺少 charset 声明`);
+        assert.match(text, /name="viewport"/, `${rel} 缺少移动端 viewport`);
+        assert.ok(!/<script[\s>]/i.test(text), `${rel} 不应包含任何脚本`);
+        assert.ok(!/\son[a-z]+\s*=\s*["\']/i.test(text), `${rel} 不应包含内联事件处理器`);
+        assert.ok(!/javascript:/i.test(text), `${rel} 不应包含 javascript: URL`);
+        assert.ok(!/(src|href)="https?:\/\//i.test(text), `${rel} 不应引用第三方资源`);
+        const slug = rel.split('/')[1];
+        assert.ok(index.includes(`href="/${slug}"`), `index.html 应在设置里挂上 ${slug} 的入口`);
+    }
+    // 两页互相交叉引用，且都能回到应用
+    const privacy = await fsMod.readFile(pathMod.join(root, 'public', 'privacy.html'), 'utf8');
+    const terms = await fsMod.readFile(pathMod.join(root, 'public', 'terms.html'), 'utf8');
+    assert.ok(privacy.includes('href="/terms.html"'), '隐私政策应指向用户协议');
+    assert.ok(terms.includes('href="/privacy.html"'), '用户协议应指向隐私政策');
+    // 政策必须如实交代数据存放与删除方式，否则只是空壳
+    for (const needle of ['Cloudflare', 'PBKDF2', '删除', '第三方']) {
+        assert.ok(privacy.includes(needle), `隐私政策应提到 ${needle}`);
+    }
+});
