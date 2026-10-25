@@ -144,11 +144,25 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (mode === 'hide') el.style.display = 'none';
     }, true);
 
-    // Navbar scroll affordance
+    // Navbar scroll affordance + 回到顶部浮钮
     const navbar = document.getElementById('navbar');
+    const backToTopBtn = document.getElementById('btn-back-to-top');
+    const fabBtn = document.getElementById('btn-create-new');
+    if (backToTopBtn) {
+        backToTopBtn.addEventListener('click', () => {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
     window.addEventListener('scroll', () => {
         if (window.scrollY > 20) navbar.classList.add('scrolled');
         else navbar.classList.remove('scrolled');
+        if (!backToTopBtn) return;
+        // 滚过约一屏半才值得给一个「回去」的入口（列表越长越有用，首屏不要多一个浮钮）
+        const shouldShow = window.scrollY > window.innerHeight * 1.5;
+        backToTopBtn.classList.toggle('is-visible', shouldShow);
+        if (!shouldShow) return;
+        const fabVisible = !!fabBtn && fabBtn.style.display !== 'none' && !fabBtn.classList.contains('hidden');
+        backToTopBtn.classList.toggle('above-fab', fabVisible);
     });
 
 

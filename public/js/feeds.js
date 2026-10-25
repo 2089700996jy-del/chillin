@@ -12,6 +12,15 @@ import {
 } from './api.js';
 import { setHtml } from './trusted-types.js';
 
+// 紧凑行（A1）：纯文字、且短（≤60 字）的随手记用紧凑密度渲染——一句话的碎片不该占一整张画廊卡片。
+// 带图/带链接速览的卡片保持原密度（它们本来就有更多要展示的东西）。
+// 必须放在模块顶层（initFeeds 之外）：整个 feeds.js 都写在 initFeeds 函数体里，函数体内不允许 export。
+export const COMPACT_FEED_MAX_CHARS = 60;
+
+export function shouldRenderCompactFeed(feed, linkHtml, contentText) {
+    if (feed.media_url || linkHtml) return false;
+    return String(contentText || '').trim().length <= COMPACT_FEED_MAX_CHARS;
+}
 export function initFeeds() {
 // 1. Render Feeds Stream (随手记流)
 function extractUrlFromText(text) {
@@ -26,13 +35,54 @@ function extractUrlFromText(text) {
     return { raw, normalized };
 }
 
-// 分页渲染：首屏 100 条，点击「加载更多」再追加 100 条（不再硬截断）
+// 分页渲染：首屏 100 条，滚到底自动续载下一批（不再硬截断）。
+// 兜底：没有 IntersectionObserver 的浏览器仍渲染「加载更多」按钮，可以手动点。
 const FEEDS_PAGE_SIZE = 100;
 let feedsVisibleCount = FEEDS_PAGE_SIZE;
+let loadMoreObserver = null;
+
+
+function loadMoreFeeds() {
+    if (loadMoreObserver) {
+        loadMoreObserver.disconnect();
+        loadMoreObserver = null;
+    }
+    if (feedsVisibleCount >= state.feedsDatabase.length) return;
+    feedsVisibleCount += FEEDS_PAGE_SIZE;
+    renderFeeds();
+}
+
+// 把「加载更多」按钮变成滚到底自动续载的哨兵；不支持 IO 时它就是普通按钮
+function observeLoadMore(el) {
+    if (typeof IntersectionObserver !== 'function') return;
+    el.classList.add('list-load-more--auto');
+    loadMoreObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreFeeds();
+    }, { rootMargin: '600px 0px' });
+    loadMoreObserver.observe(el);
+}
+
+// 搜索跳转用：目标条目可能落在分页窗口之外（首屏只渲染 100 条），
+// 先把它所在的整批纳入渲染窗口，再由 search.js 重新查询选择器。
+function ensureFeedRendered(selector) {
+    const matched = /data-feed-id="([^"]+)"/.exec(String(selector || ''));
+    if (!matched) return false;
+    const targetId = matched[1];
+    const index = state.feedsDatabase.findIndex((feed) => String(feed.id) === targetId);
+    if (index === -1 || index < feedsVisibleCount) return false;
+    feedsVisibleCount = Math.ceil((index + 1) / FEEDS_PAGE_SIZE) * FEEDS_PAGE_SIZE;
+    renderFeeds();
+    return true;
+}
 
 function renderFeeds() {
     const container = document.getElementById('feeds-stream-container');
     if (!container) return;
+
+    if (loadMoreObserver) {
+        loadMoreObserver.disconnect();
+        loadMoreObserver = null;
+    }
 
     const totalFeeds = state.feedsDatabase.length;
     const displayFeeds = state.feedsDatabase.slice(0, feedsVisibleCount);
@@ -146,8 +196,10 @@ function renderFeeds() {
             textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
         }
 
+        const compact = shouldRenderCompactFeed(feed, linkHtml, contentText);
+
         return `
-            <div class="feed-item-card" data-feed-id="${feed.id}">
+            <div class="feed-item-card${compact ? ' feed-item-card--compact' : ''}" data-feed-id="${feed.id}">
                 <div class="feed-header">
                     <div class="feed-tags">${tagHtml}</div>
                     <div class="feed-actions">
@@ -172,11 +224,9 @@ function renderFeeds() {
         more.type = 'button';
         more.className = 'list-load-more';
         more.textContent = `加载更多（还有 ${totalFeeds - displayFeeds.length} 条）`;
-        more.addEventListener('click', () => {
-            feedsVisibleCount += FEEDS_PAGE_SIZE;
-            renderFeeds();
-        });
+        more.addEventListener('click', loadMoreFeeds);
         container.appendChild(more);
+        observeLoadMore(more);
     }
 }
 
@@ -475,6 +525,7 @@ function renderHeatmap() {
 
     actions.renderFeeds = renderFeeds;
     actions.renderHeatmap = renderHeatmap;
+    actions.ensureItemRendered = ensureFeedRendered;
 
     return { renderFeeds, renderHeatmap, sendFeed };
 }

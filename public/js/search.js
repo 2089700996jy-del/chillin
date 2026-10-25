@@ -440,7 +440,12 @@ export function initSearch() {
         }
         if (!selector) return;
         setTimeout(() => {
-            const el = document.querySelector(selector);
+            let el = document.querySelector(selector);
+            if (!el && typeof actions.ensureItemRendered === 'function') {
+                // 目标可能还没被渲染（随手记首屏只渲染 100 条）：以前这里会静默什么都不发生。
+                // 先让列表把目标所在的整批纳入渲染窗口，再重新查询。
+                if (actions.ensureItemRendered(selector)) el = document.querySelector(selector);
+            }
             if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });
                 el.classList.remove('highlight-flash');

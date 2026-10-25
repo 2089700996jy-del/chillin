@@ -100,6 +100,16 @@ iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独�
 * **禁止用 `!important` 压死阅读器覆盖**：`body.dark-reader-body / body.eyecare-reader-body .mobile-bottom-nav` 是更具体、故意写在文件后部的覆盖；底栏基础规则一旦加 `!important`，夜间/护眼阅读器的底栏底色就永远不生效。
 * **深色投影只在滚动后出现**：深色层（`:root[data-theme="dark"]`）的栏底分界与投影必须写在 `.super-navbar.scrolled` 上；静止态保持「零线零影」，否则透明顶栏底下会留下一道深色接缝。
 
+### 3.6 长列表的密度、渲染与回顶（v2.5.153 起）
+
+列表变长时的问题不在「条数多」，而在**碎片内容用了画廊卡的视觉重量**，以及**每一张屏外卡片都在参与布局**。实测 51 条真实随手记（390×844）：列表 10.3 屏，而正文长度中位数只有 48 字。
+
+* **紧凑行（短碎片）**：纯文字且 ≤60 字的条目走紧凑密度（内边距 `18/20 → 10/14`、标签与日期各降一档、正文 `15px/1.6 → 14px/1.5`、圆角 `14 → 12`）。判定在 JS（`public/js/feeds.js` 的 `shouldRenderCompactFeed`），样式必须是**双类选择器** `.feed-item-card.feed-item-card--compact`（0,2,0）——文件后部另有一条同优先级的 `.feed-item-card { padding: 18px 20px }`，只写单类会被它按「后来者胜」改回原密度。**带图 / 带链接速览的条目保持原密度**（它们本来就有更多要展示的东西）。`tests/css.test.mjs` 有门禁。
+* **屏外卡片不参与布局**：列表卡用 `content-visibility: auto` + `contain-intrinsic-size: auto <真实卡高>`（随手记 `auto 150px`、紧凑行 `auto 76px`）。`auto` 关键字会记住元素首次渲染的真实高度；**占位估错会让滚动条虚胖**（实测 160px 占位把列表从 10.3 屏撑到 12.9 屏），所以占位值必须按真实卡高给。**周记画廊（`.notion-collection-card`）刻意不加**：桌面 ≥768px 是 `column-count: 2` 的多列容器，尺寸 containment 有分列布局风险。
+* **自动续载必须保留手动兜底**：分页列表用 `IntersectionObserver`（`rootMargin: '600px 0px'`，提前 600px 预取）观察「加载更多」按钮；`typeof IntersectionObserver !== 'function'` 时必须原样保留可点按钮（`.list-load-more--auto` 只把它退化成一条低调提示条），否则旧浏览器会抛错、整个列表渲染不出来。
+* **回到顶部**：滚动超过 1.5 屏浮出 44pt 圆钮（`.back-to-top`，触控热区底线见 §3.4）。默认必须 `opacity: 0` **且** `visibility: hidden` 双关闭——只写 `opacity` 的话，隐形按钮仍留在 Tab 序列与读屏里。它与 FAB 同在右下角，FAB 在场时必须加 `.above-fab` 上移一格（`bottom: calc(134px + env(safe-area-inset-bottom))`），两个圆钮不得叠角（实测间距 12px）。**横向要对齐同一根竖轴**：FAB 是 48px 宽、`right: 20px`（圆心 x=346），本钮 44px 宽，所以 `right` 取 22px 才是同一个圆心；照抄 FAB 的 `right: 20px` 会偏 2px（CDP 实测过）。
+* **分页列表里的跳转**：任何「按选择器跳到某条目」的功能（Cmd+K 搜索跳转）都必须先确认目标在渲染窗口内。`public/js/feeds.js` 通过 `actions.ensureItemRendered` 暴露「把目标所在整页纳入窗口」，`public/js/search.js` 查不到元素时先用它扩窗口再重查；否则超过一页后搜索跳转会**静默什么都不发生**。
+
 ---
 
 ## 4. 设计令牌 (Design Tokens)
@@ -114,7 +124,7 @@ iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独�
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 9910 行、229 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。）
+> 现状债务：`public/style.css` 10009 行、229 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。v2.5.153 的长列表批次只加密度与滚动策略（`content-visibility` / 紧凑行 / 回到顶部），未增减 `!important` 与裸 hex，见 §3.6。）
 
 ### `!important` 与覆写层的削减纪律（v2.5.144 起）
 

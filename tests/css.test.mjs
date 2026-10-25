@@ -200,3 +200,30 @@ test('CSS - 深色下会失明的旧 Tailwind 色阶不得回归，链接色走 
     assert.match(css, /\.rich-link-title\s*\{[^}]*color:\s*var\(--text-color\)/, '链接速览卡标题必须用 var(--text-color)，不要再写死深色字');
     assert.match(css, /\.feed-content-text a\s*\{[^}]*color:\s*var\(--link-color\)/, '随手记正文里的自动链接必须有 .feed-content-text a 规则（不要用 JS 内联 style，内联样式无法被深色层覆盖）');
 });
+
+test('CSS - 长列表密度与滚动（A1 紧凑行 / B1 content-visibility / C1 回到顶部）', () => {
+    // A1：紧凑行必须是「双类」选择器（0,2,0）——文件后部另有一条同优先级的
+    // .feed-item-card { padding: 18px 20px }，只写单类会被它按「后来者胜」改回原密度，
+    // 肉眼看是「紧凑样式没生效」，但静态检查完全发现不了。
+    assert.match(css, /\.feed-item-card\.feed-item-card--compact\s*\{[^}]*padding:\s*10px\s+14px/,
+        '紧凑行必须用 .feed-item-card.feed-item-card--compact（0,2,0）并给出更紧的内边距，否则会被后部的 .feed-item-card 覆写回原密度');
+    // B1：屏外卡片不参与布局与绘制；占位高度必须按真实卡高给，否则滚动条会虚胖
+    // （实测 160px 占位 → 列表从 10.3 屏变 12.9 屏；实测 510 条强制布局 103ms → 5.8ms）
+    assert.match(css, /\.feed-item-card\s*\{[^}]*content-visibility:\s*auto/,
+        '.feed-item-card 缺少 content-visibility: auto——长列表会为屏外卡片白白付出布局与绘制成本');
+    assert.match(css, /\.feed-item-card\s*\{[^}]*contain-intrinsic-size:\s*auto\s+150px/,
+        '.feed-item-card 的 contain-intrinsic-size 必须按真实卡高（auto 150px）给，估错会让滚动条虚胖');
+    // 周记画廊刻意不做：>=768px 是 column-count: 2 的多列容器，多列里做尺寸 containment 有布局风险
+    assert.ok(!/\.notion-collection-card\s*\{[^}]*content-visibility:\s*auto/.test(css),
+        '不要给 .notion-collection-card 加 content-visibility——周记画廊在桌面是多列容器（column-count: 2），尺寸 containment 会破坏分列');
+    // C1：回到顶部按钮默认 opacity + visibility 双关闭。只写 opacity 的话，
+    // 一个「看不见」的按钮仍留在 Tab 序列与读屏里（用户 Tab 过去会停在空气上）。
+    assert.match(css, /\.back-to-top\s*\{[^}]*opacity:\s*0/, '回到顶部按钮默认必须 opacity: 0');
+    assert.match(css, /\.back-to-top\s*\{[^}]*visibility:\s*hidden/, '回到顶部按钮默认必须 visibility: hidden（只写 opacity 的话隐形按钮仍在键盘与读屏序列里）');
+    assert.match(css, /\.back-to-top\.is-visible\s*\{[^}]*visibility:\s*visible/, '缺少 .back-to-top.is-visible 的显示态');
+    assert.match(css, /\.back-to-top\.above-fab\s*\{[^}]*bottom:\s*calc\(134px\s*\+\s*env\(safe-area-inset-bottom/,
+        '回到顶部按钮需要 .above-fab 上移一格，否则会和 FAB 圆钮叠在一起（两个 44px 圆钮同角）');
+    // B2：自动续载后「加载更多」退化成一条低调提示条，但兜底按钮仍要能用（无 IntersectionObserver 的浏览器）
+    assert.match(css, /\.list-load-more--auto\s*\{[^}]*background:\s*transparent/,
+        '.list-load-more--auto 必须是一条低调提示条，否则滚到底会自动闪出一颗实体按钮');
+});

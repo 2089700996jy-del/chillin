@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-24T10:19:23.907Z · 提交数：389
+> 生成时间：2026-10-25T01:46:19.884Z · 提交数：390
 
 ## 2026-10-24
 
@@ -13,6 +13,7 @@
 
 ### 🐛 缺陷修复
 
+- **ui**: make the bottom nav share the top bar glass material
 - **ui**: make the nav bars share the page background
 - **bot**: widen the web gate and plan better search queries
 - **bot**: count only real search egress against the daily limit

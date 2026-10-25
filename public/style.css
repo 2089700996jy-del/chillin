@@ -710,6 +710,51 @@ body.eyecare-reader-body #btn-back {
   display: none; 
 }
 
+/* 回到顶部（C1）：只有滚过约一屏半才浮出（class 由 app.js 的滚动监听切换）。
+   44px 是触控热区底线；与 FAB 同层（z-index 990），刻意不给它 backdrop-filter
+   （模糊层只留给固定栏与浮层，见 ui-style.md §2）。
+   默认 opacity+visibility 双关闭：只写 opacity 的话隐形按钮仍留在读屏与 Tab 序列里。
+   right 取 22px（而非 FAB 的 20px）：本钮 44px、FAB 48px，差 4px 由外边距补回，
+   两者圆心才落在同一条 346px 竖轴上；实测 FAB 中心 x=346、本钮 x=346。 */
+.back-to-top {
+  position: fixed;
+  right: 22px;
+  bottom: calc(74px + env(safe-area-inset-bottom, 0px));
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(var(--label-rgb), 0.08);
+  background: var(--card-bg);
+  color: var(--text-color-light);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--card-shadow);
+  cursor: pointer;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(10px) scale(0.96);
+  transition: opacity 0.22s var(--ease-spring), transform 0.22s var(--ease-spring), visibility 0s linear 0.22s;
+  z-index: 990;
+}
+
+.back-to-top.is-visible {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition: opacity 0.22s var(--ease-spring), transform 0.22s var(--ease-spring), visibility 0s linear 0s;
+}
+
+/* FAB 在场时上移一格：桌面 FAB 是 40/40 的胶囊、移动端是 74/20 的圆钮，两个圆钮不能叠在一起 */
+.back-to-top.above-fab {
+  bottom: calc(134px + env(safe-area-inset-bottom, 0px));
+}
+
+.back-to-top:active {
+  transform: scale(0.92);
+}
+
 /* ========================================== */
 /* LAYOUT & VIEWS */
 /* ========================================== */
@@ -4008,11 +4053,49 @@ body.keyboard-open .fab-btn {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.02);
   border: 1px solid rgba(0, 0, 0, 0.04);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  /* B1 屏外卡片不参与布局与绘制：实测 510 条随手记一次性强制布局 103ms → 5.8ms。
+     contain-intrinsic-size 必须按真实卡高给（配合 auto 关键字记住首次渲染的高度），
+     否则占位估错会让滚动条虚胖（160px 占位 → 列表从 10.3 屏变 12.9 屏）。 */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 150px;
 }
 
 .feed-item-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.05);
+}
+
+/* A1 紧凑行：纯文字、≤60 字的随手记（随手记流里一半以上是这种一句话碎片）。
+   密度差异 = 内边距 18/20 → 10/14、正文 15px/1.6 → 14px/1.5、标签与日期各降一档。
+   选择器必须写成 .feed-item-card.feed-item-card--compact（0,2,0）：文件后部还有一条同优先级的
+   .feed-item-card { padding: 18px 20px }，只写单类会被它按「后来者胜」改回原密度。 */
+.feed-item-card.feed-item-card--compact {
+  padding: 10px 14px;
+  border-radius: 12px;
+  contain-intrinsic-size: auto 76px;
+}
+
+.feed-item-card.feed-item-card--compact:hover {
+  transform: translateY(-1px);
+}
+
+.feed-item-card.feed-item-card--compact .feed-header {
+  margin-bottom: 4px;
+}
+
+.feed-item-card.feed-item-card--compact .feed-tag-pill {
+  font-size: 10.5px;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+.feed-item-card.feed-item-card--compact .feed-date {
+  font-size: 11px;
+}
+
+.feed-item-card.feed-item-card--compact .feed-content-text {
+  font-size: 14px;
+  line-height: 1.5;
 }
 
 .feed-header {
@@ -7456,6 +7539,22 @@ body.dark-reader-body .skeleton-line {
 
 .list-load-more:active { transform: scale(0.985); }
 .list-load-more:hover { background: rgba(0, 102, 204, 0.08); }
+
+/* 自动续载哨兵（B2）：滚到附近就自动追加下一批（IntersectionObserver），
+   所以它不该看起来像主 CTA——降成一行低调的提示，仍可点击。
+   没有 IntersectionObserver 的浏览器不会加这个类，按钮保持上面的可点样式。 */
+.list-load-more--auto {
+  border: none;
+  background: transparent;
+  color: var(--text-color-light);
+  font-size: 13px;
+  font-weight: 500;
+  padding: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+
+.list-load-more--auto:hover { background: transparent; }
+.list-load-more--auto:active { transform: none; }
 
 body.dark-reader-body .list-load-more {
   background: #1c1f24;
