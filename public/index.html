@@ -34,7 +34,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.153">
+    <link rel="stylesheet" href="style.css?v=2.5.154">
 </head>
 <body>
 
@@ -205,7 +205,7 @@
     </aside>
 
     <!-- 悬浮添加按钮 (FAB) -->
-    <button class="fab-btn" id="btn-create-new">
+    <button class="fab-btn" id="btn-create-new" aria-label="记录新片段">
         <span class="fab-icon" style="font-size: 20px;">+</span> <span class="fab-label" id="fab-label">记录新片段</span>
     </button>
 
@@ -291,7 +291,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.153</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
         </section>
 
         <!-- ========================================== -->
@@ -515,7 +515,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.153</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
         </section>
 
         <!-- ========================================== -->
@@ -660,7 +660,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.153</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
         </section>
 
         <!-- ========================================== -->
@@ -808,7 +808,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.153</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
         </section>
 
         <!-- ========================================== -->
@@ -905,7 +905,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.153</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.154</button>
         </section>
 
     </main>
@@ -1376,47 +1376,52 @@
     <input type="file" id="global-image-uploader" accept="image/*,image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp,.bmp,.jfif" style="position: fixed; top: -9999px; left: -9999px; opacity: 0; width: 1px; height: 1px; pointer-events: none;" aria-label="上传图片">
 
     <!-- 移动端 App 式底部导航栏 -->
-    <nav class="mobile-bottom-nav" id="mobile-bottom-nav">
-        <a href="#" class="mobile-tab-item active" data-view="home">
+    <nav class="mobile-bottom-nav" id="mobile-bottom-nav" aria-label="主导航">
+        <a href="#" class="mobile-tab-item active" data-view="home" aria-current="page">
             <span class="tab-icon">
-                <svg class="tab-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="tab-svg tab-svg-outline" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M3 9.5L12 3l9 6.5V20a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
                     <polyline points="9 22 9 12 15 12 15 22"></polyline>
                 </svg>
+                <svg class="tab-svg tab-svg-fill" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path fill-rule="evenodd" d="M12 2.7 2.55 9.55A2.4 2.4 0 0 0 1.5 11.5V19.6A2.4 2.4 0 0 0 3.9 22h4.6v-6.4h7V22h4.6a2.4 2.4 0 0 0 2.4-2.4v-8.1a2.4 2.4 0 0 0-1.05-1.95zM9.6 14.6h4.8V22H9.6z"/></svg>
             </span>
             <span class="tab-label">首页</span>
         </a>
         <a href="#" class="mobile-tab-item" data-view="feeds">
             <span class="tab-icon">
-                <svg class="tab-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="tab-svg tab-svg-outline" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                 </svg>
+                <svg class="tab-svg tab-svg-fill" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M13.2 1.6 2.6 14.1a.7.7 0 0 0 .54 1.15h7.1l-1.3 7.1a.7.7 0 0 0 1.23.6L20.8 10.4a.7.7 0 0 0-.54-1.15h-7.1l1.3-7.1a.7.7 0 0 0-1.23-.55z"/></svg>
             </span>
             <span class="tab-label">随手记</span>
         </a>
         <a href="#" class="mobile-tab-item" data-view="notes">
             <span class="tab-icon">
-                <svg class="tab-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="tab-svg tab-svg-outline" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
                     <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
                 </svg>
+                <svg class="tab-svg tab-svg-fill" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path fill-rule="evenodd" d="M5.6 2h8.3l6.1 6.1V21a1 1 0 0 1-1 1H5.6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1zm7.6 1.7v5.4h5.4z"/></svg>
             </span>
             <span class="tab-label">笔记</span>
         </a>
         <a href="#" class="mobile-tab-item" data-view="bookmarks">
             <span class="tab-icon">
-                <svg class="tab-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="tab-svg tab-svg-outline" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path>
                 </svg>
+                <svg class="tab-svg tab-svg-fill" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M19 21.4a.8.8 0 0 1-1.26.65L12 17.6l-5.74 4.45A.8.8 0 0 1 5 21.4V5a2.6 2.6 0 0 1 2.6-2.6h8.8A2.6 2.6 0 0 1 19 5z"/></svg>
             </span>
             <span class="tab-label">收藏</span>
         </a>
         <a href="#" class="mobile-tab-item" data-view="reader">
             <span class="tab-icon">
-                <svg class="tab-svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <svg class="tab-svg tab-svg-outline" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
                     <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
                 </svg>
+                <svg class="tab-svg tab-svg-fill" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" stroke="none" aria-hidden="true"><path d="M11 7.3A4.8 4.8 0 0 0 7.2 4H3.4A1.4 1.4 0 0 0 2 5.4v13.2A1.4 1.4 0 0 0 3.4 20h5.2a3.4 3.4 0 0 1 2.4 1zM13 7.3A4.8 4.8 0 0 1 16.8 4h3.8A1.4 1.4 0 0 1 22 5.4v13.2A1.4 1.4 0 0 1 20.6 20h-5.2a3.4 3.4 0 0 0-2.4 1z"/></svg>
             </span>
             <span class="tab-label">阅读</span>
         </a>
@@ -1432,7 +1437,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.153"></script>
-    <script type="module" src="app.js?v=2.5.153"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.154"></script>
+    <script type="module" src="app.js?v=2.5.154"></script>
 </body>
 </html>

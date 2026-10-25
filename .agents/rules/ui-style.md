@@ -110,6 +110,16 @@ iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独�
 * **回到顶部**：滚动超过 1.5 屏浮出 44pt 圆钮（`.back-to-top`，触控热区底线见 §3.4）。默认必须 `opacity: 0` **且** `visibility: hidden` 双关闭——只写 `opacity` 的话，隐形按钮仍留在 Tab 序列与读屏里。它与 FAB 同在右下角，FAB 在场时必须加 `.above-fab` 上移一格（`bottom: calc(134px + env(safe-area-inset-bottom))`），两个圆钮不得叠角（实测间距 12px）。**横向要对齐同一根竖轴**：FAB 是 48px 宽、`right: 20px`（圆心 x=346），本钮 44px 宽，所以 `right` 取 22px 才是同一个圆心；照抄 FAB 的 `right: 20px` 会偏 2px（CDP 实测过）。
 * **分页列表里的跳转**：任何「按选择器跳到某条目」的功能（Cmd+K 搜索跳转）都必须先确认目标在渲染窗口内。`public/js/feeds.js` 通过 `actions.ensureItemRendered` 暴露「把目标所在整页纳入窗口」，`public/js/search.js` 查不到元素时先用它扩窗口再重查；否则超过一页后搜索跳转会**静默什么都不发生**。
 
+### 3.7 底栏选中态 = Apple「实心字形」(filled variant)，不靠缩放（v2.5.154 起）
+
+iOS 的 Tab 选中态是**字形由描边变实心 + 主题色 + 标签加粗**，不是把图标放大再顶上去。缩放式选中在本项目真实踩过三个坑：按下与选中叠成双重动画、选中图标比未选中大 12%（实测 26.88px vs 24px）、选中色被 `!important` 锁死导致夜间/护眼主题失效。
+
+* **成对提供两组字形**：每个 Tab 必须在 `public/index.html` 里同时给出描边字形 `svg.tab-svg.tab-svg-outline`（`fill="none"` + `stroke="currentColor"`）与实心字形 `svg.tab-svg.tab-svg-fill`（`fill="currentColor"` + `stroke="none"` + `aria-hidden="true"`），由 `.mobile-tab-item.active .tab-svg-fill { display: block }` / `.mobile-tab-item.active .tab-svg-outline { display: none }` 切换；两者同为 22×22 / `viewBox="0 0 24 24"`（`tests/a11y.test.mjs` 校验 5 组成对存在）。
+* **禁止给选中图标加 `transform`**：按下反馈由 `public/style.css` 的 `.mobile-tab-item:active { transform: scale(0.95) !important }`（全局按下规则）统一提供，图标上再叠 `scale(0.85)`/`translateY(-2px) scale(1.12)` 会变成「按住发软、松手浮起」的双重动画，并让选中图标比未选中大一圈。选中与未选中的图标盒必须同尺寸、同基线。
+* **选中色严禁加 `!important`**：`body.dark-reader-body / body.eyecare-reader-body .mobile-tab-item.active` 是更具体、故意写在文件后部的主题覆盖；一旦给基础 `.active` 加 `!important`，夜间阅读器的 `--ios-blue-dark` 与护眼模式的 `--garden-green` 就永远不生效（与 §3.5 同一条纪律）。同理禁止再建「重复覆写组」——同一选择器在文件后部又写一遍并加 `!important`。
+* **深色主题选中色必须是 `var(--ios-blue-dark)`**（#0A84FF）：深色底上对比度 5.18，优于 `--ios-blue`（#007AFF）的 4.70；深色层不覆盖 `--accent-color`，必须显式写 `:root[data-theme="dark"] .mobile-tab-item.active { color: var(--ios-blue-dark) }`。
+* **无障碍同步**：底栏 `nav` 必须有 `aria-label`（本项目为「主导航」），选中项必须暴露 `aria-current="page"`——由 `public/js/router.js` 在切换视图时同步 `removeAttribute` / `setAttribute`，只改 `.active` 类读屏完全感知不到；FAB 的 `aria-label` 也要随视图更新（视觉文本在移动端被隐藏）。
+
 ---
 
 ## 4. 设计令牌 (Design Tokens)
@@ -124,7 +134,7 @@ iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独�
 | 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
 | 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 10009 行、229 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。v2.5.153 的长列表批次只加密度与滚动策略（`content-visibility` / 紧凑行 / 回到顶部），未增减 `!important` 与裸 hex，见 §3.6。）
+> 现状债务：`public/style.css` 9999 行、226 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。v2.5.153 的长列表批次只加密度与滚动策略（`content-visibility` / 紧凑行 / 回到顶部），未增减 `!important` 与裸 hex，见 §3.6。v2.5.154 删掉底栏那组重复覆写（含 3 处 `!important`：`.active` 的选中色与两条 `.tab-icon` 缩放），229 → 226，裸 hex 不变，见 §3.7。）
 
 ### `!important` 与覆写层的削减纪律（v2.5.144 起）
 

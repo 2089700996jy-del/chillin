@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-25T01:46:19.884Z · 提交数：390
+> 生成时间：2026-10-25T02:05:32.215Z · 提交数：391
+
+## 2026-10-25
+
+### ⚡ 性能优化
+
+- **lists**: compact short feeds and cut offscreen layout
 
 ## 2026-10-24
 

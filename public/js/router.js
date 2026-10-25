@@ -113,9 +113,9 @@ const switchView = (targetViewId, opts = {}) => {
     
     if (MAIN_VIEWS.has(targetViewId)) {
         ui.currentActiveNavView = targetViewId;
-        navItems.forEach(item => item.classList.remove('active'));
+        navItems.forEach(item => { item.classList.remove('active'); item.removeAttribute('aria-current'); });
         const activeNavs = document.querySelectorAll(`.nav-item[data-view="${targetViewId}"], .mobile-tab-item[data-view="${targetViewId}"]`);
-        activeNavs.forEach(nav => nav.classList.add('active'));
+        activeNavs.forEach(nav => { nav.classList.add('active'); nav.setAttribute('aria-current', 'page'); });
         // Always leave reader chrome when on a main tab (fixes swipe-back theme leak)
         document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
         document.documentElement.classList.remove('in-reader-book');
@@ -136,6 +136,8 @@ const switchView = (targetViewId, opts = {}) => {
     const fabLabel = document.getElementById('fab-label');
     const fabLabels = { home: '记录新片段', feeds: '记录随手记', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
     if (fabLabel && fabLabels[targetViewId]) fabLabel.textContent = fabLabels[targetViewId];
+    // 无障碍：可见文本之外的按钮也要能被读屏叫出准确动作
+    if (fabBtn && fabLabels[targetViewId]) fabBtn.setAttribute('aria-label', fabLabels[targetViewId]);
 
     if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'prompt-editor' || targetViewId === 'reader-book') {
         navMenu.style.display = 'none';

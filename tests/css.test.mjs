@@ -18,7 +18,10 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
 
 // 基线：这里只许变小，不许变大
-const IMPORTANT_BASELINE = 229;
+// v2.5.154：底栏选中态改实心字形时删掉 3 处——.mobile-tab-item.active 的 color !important
+// 会永久压死阅读器夜间/护眼那两条更具体的选择器，:active .tab-icon 的 transform/transition
+// 两条 !important 也已被全局 scale(0.95) 的按下反馈取代。
+const IMPORTANT_BASELINE = 226;
 
 test('CSS - 每个 @keyframes 都被 animation 引用（无死动画）', () => {
     const defs = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
@@ -226,4 +229,29 @@ test('CSS - 长列表密度与滚动（A1 紧凑行 / B1 content-visibility / C1
     // B2：自动续载后「加载更多」退化成一条低调提示条，但兜底按钮仍要能用（无 IntersectionObserver 的浏览器）
     assert.match(css, /\.list-load-more--auto\s*\{[^}]*background:\s*transparent/,
         '.list-load-more--auto 必须是一条低调提示条，否则滚到底会自动闪出一颗实体按钮');
+});
+test('CSS - 底栏选中态是实心字形而非缩放，且主题覆盖不再被 !important 压死', () => {
+    // Konsta §2C：iOS 的 Tab 选中是 filled variant（实心字形 + tint），不是把描边图标放大。
+    // 描边字形与实心字形同时存在于 DOM，靠 display 切换，这样 fill 能跟随 color 一起过渡。
+    assert.match(css, /\.mobile-tab-item \.tab-svg-fill\s*\{[^}]*display:\s*none/,
+        '实心字形默认必须 display: none，否则未选中的 Tab 会显示两份叠在一起的图标');
+    assert.match(css, /\.mobile-tab-item\.active \.tab-svg-fill\s*\{[^}]*display:\s*block/,
+        '选中态必须显示实心字形（.active .tab-svg-fill { display: block }）');
+    assert.match(css, /\.mobile-tab-item\.active \.tab-svg-outline\s*\{[^}]*display:\s*none/,
+        '选中态必须隐藏描边字形，否则实心与描边会重叠成毛边');
+    assert.ok(!/\.mobile-tab-item\.active \.tab-icon\s*\{[^}]*transform/.test(css),
+        '选中态不得再用 scale/translateY——那会和按下时的全局 scale(0.95) 叠加成「选中反而更小」的错觉（v2.5.154 已删）');
+    // 选中色一旦带 !important，就会压死后面更具体的阅读器/深色覆盖（选择器再具体也没用）
+    const activeColorBlocks = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+        .filter((m) => m[1].split(',').some((s) => /\.mobile-tab-item\.active$/.test(s.trim())));
+    assert.ok(activeColorBlocks.length > 0, '找不到 .mobile-tab-item.active 的规则块');
+    for (const m of activeColorBlocks) {
+        assert.ok(!/!important/.test(m[2]), '底栏选中色又写上了 !important：' + m[1].trim() + '（会永久压死阅读器夜间/护眼底色）');
+    }
+    assert.match(css, /body\.dark-reader-body \.mobile-tab-item\.active\s*\{[^}]*color:\s*var\(--ios-blue-dark\)/,
+        '夜间阅读器底栏选中色必须生效（--ios-blue-dark），v2.5.154 前它被 !important 压死过');
+    assert.match(css, /body\.eyecare-reader-body \.mobile-tab-item\.active\s*\{[^}]*color:\s*var\(--garden-green\)/,
+        '护眼阅读器底栏选中色必须生效（--garden-green）');
+    assert.match(css, /:root\[data-theme="dark"\] \.mobile-tab-item\.active\s*\{[^}]*color:\s*var\(--ios-blue-dark\)/,
+        '应用级深色主题的底栏选中色必须切到 #0A84FF（--ios-blue-dark）：#007AFF 在深色玻璃上对比度只有 4.70');
 });

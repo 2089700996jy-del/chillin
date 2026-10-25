@@ -2808,7 +2808,7 @@ body.hide-bottom-nav .nav-brand-mobile {
     color: var(--tab-inactive);
     font-size: 10.5px;
     font-weight: 500;
-    transition: color 0.18s ease;
+    transition: color 0.18s ease, transform 0.18s var(--ease-spring), opacity 0.12s ease;
     padding: 5px 0 0;
     min-height: 48px;
     -webkit-tap-highlight-color: transparent;
@@ -2827,31 +2827,32 @@ body.hide-bottom-nav .nav-brand-mobile {
     width: 24px;
     height: 24px;
     margin-bottom: 2px;
-    transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
   .mobile-tab-item .tab-svg {
     display: block;
     stroke: currentColor;
-    transition: stroke 0.18s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: stroke 0.18s ease;
+  }
+
+  /* 选中态靠「实心字形 + 品牌色」表达：iOS 的 Tab 选中是 filled variant，不做缩放/位移。
+     描边与实心两份字形同时在 DOM 里，用 display 切换，让实心字形跟随 color 一起过渡。 */
+  .mobile-tab-item .tab-svg-fill {
+    display: none;
+    stroke: none;
+  }
+
+  .mobile-tab-item.active .tab-svg-fill {
+    display: block;
+  }
+
+  .mobile-tab-item.active .tab-svg-outline {
+    display: none;
   }
 
   .mobile-tab-item.active {
-    color: var(--accent-color, var(--ios-blue)) ;
+    color: var(--accent-color, var(--ios-blue));
     font-weight: 600;
-  }
-
-  .mobile-tab-item.active .tab-svg {
-    stroke: var(--accent-color, var(--ios-blue));
-    stroke-width: 2.2px;
-  }
-
-  .mobile-tab-item.active .tab-icon {
-    transform: translateY(-2px) scale(1.08);
-  }
-
-  .mobile-tab-item:active .tab-icon {
-    transform: scale(0.85);
   }
 
   /* Hide bottom nav bar when reading or editing */
@@ -6515,23 +6516,6 @@ body.eyecare-reader-body .reader-sync-info {
 }
 
 /* 2. Mobile Tabbar & Top Navbar iOS HIG Alignment */
-.mobile-tab-item {
-  transition: color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.mobile-tab-item:active .tab-icon {
-  transform: scale(0.82) !important;
-  transition: transform 0.12s cubic-bezier(0.16, 1, 0.3, 1) !important;
-}
-
-.mobile-tab-item.active {
-  color: var(--ios-blue) !important;
-}
-
-.mobile-tab-item.active .tab-icon {
-  transform: translateY(-2px) scale(1.12);
-}
-
 @media (max-width: 768px) {
   .super-navbar,
   .super-navbar.scrolled,
@@ -9958,6 +9942,12 @@ body.dark-reader-body .k-directory-arrow {
 
 :root[data-theme="dark"] .super-navbar.scrolled {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* 深色下底栏选中色用 iOS 系统深色蓝 #0A84FF：
+   底栏玻璃上的对比度 5.18，优于亮色蓝 #007AFF 的 4.70（wcag 小字标准 4.5）。 */
+:root[data-theme="dark"] .mobile-tab-item.active {
+  color: var(--ios-blue-dark);
 }
 
 :root[data-theme="dark"] .editor-actions-dock {

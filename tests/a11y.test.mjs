@@ -63,3 +63,18 @@ test('A11y - 外观主题控件有可访问名称与三个可辨认选项，且�
     assert.match(html, /documentElement\.setAttribute\('data-theme'/, '首帧前必须在 head 内联脚本里落 data-theme，否则深色用户会先看到一帧白屏');
     assert.match(html, /chillin_theme/, 'head 内联脚本必须读同一个 localStorage 键，否则手动选择会在刷新后闪回系统主题');
 });
+
+test('A11y - 底部 Tab 栏有主导航名、选中项暴露 aria-current，FAB 有随视图更新的可访问名称', () => {
+    const routerJs = fs.readFileSync(path.join(root, 'public/js/router.js'), 'utf8');
+    const nav = (html.match(/<nav class="mobile-bottom-nav"[\s\S]*?<\/nav>/) || [''])[0];
+    assert.match(nav, /aria-label="主导航"/, '底栏 <nav> 缺少 aria-label：读屏只会念出一串孤立链接');
+    assert.equal((nav.match(/data-view="/g) || []).length, 5, '底栏应有 5 个主视图入口');
+    assert.equal((nav.match(/aria-current="page"/g) || []).length, 1, '静态外壳里只允许一个 aria-current="page"，由 router 在切视图时转移');
+    assert.match(nav, /class="mobile-tab-item active" data-view="home" aria-current="page"/, '首屏默认视图（home）必须同时带 active 与 aria-current');
+    assert.equal((nav.match(/tab-svg-outline/g) || []).length, 5, '每个 Tab 都要有描边字形（未选中态）');
+    assert.equal((nav.match(/tab-svg-fill/g) || []).length, 5, '每个 Tab 都要有配对的实心字形（选中态）');
+    assert.match(html, /<button class="fab-btn" id="btn-create-new" aria-label="记录新片段">/, 'FAB 必须自带 aria-label：移动端 .fab-label 是 display:none，读屏只能念出「+」');
+    assert.match(routerJs, /removeAttribute\('aria-current'\)/, 'router 切视图时必须清除上一个 aria-current，否则多个 Tab 会同时宣称是当前页');
+    assert.match(routerJs, /setAttribute\('aria-current', 'page'\)/, 'router 必须给新的当前视图补上 aria-current');
+    assert.match(routerJs, /fabBtn\.setAttribute\('aria-label'/, 'FAB 的 aria-label 必须随视图更新（fabLabel 是 display:none，CSS 改不了可访问名称）');
+});
