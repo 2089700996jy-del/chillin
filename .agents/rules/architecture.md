@@ -31,17 +31,18 @@
 ### 2.2 严格领域模块归档
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 
-（`workers/src/` 共 **26 个模块**：3 个安全原语、1 个鉴权、6 个花园业务域、3 个智能与记忆模块、1 个审计、11 个 Bot 模块（对话编排 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **27 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、3 个智能与记忆模块、1 个审计、11 个 Bot 模块（对话编排 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
 | [`workers/src/security.js`](../../workers/src/security.js) | 安全门面 | 只做再导出（network + crypto），保证各子域从单一入口取安全能力，避免循环依赖。 |
 | [`workers/src/security-network.js`](../../workers/src/security-network.js) | 网络与输入防线 | CORS / 安全响应头、跨实例共享限流、客户端 IP 取信、图片二进制魔数嗅探、输入校验、`jsonResponse` 与 SSE 包装。 |
-| [`workers/src/security-crypto.js`](../../workers/src/security-crypto.js) | 密码学原语 | PBKDF2-SHA256 强哈希（10 万次 + 动态盐）、`timingSafeEqualStr` 恒定时间比对、口令强度校验。 |
-| [`workers/src/auth.js`](../../workers/src/auth.js) | 账号鉴权与会话 | 注册 / 登录 / 登出、Cookie + Bearer 双轨会话签发与轮换（库内只存令牌摘要）、设备列表与吊销、Web Push 订阅。 |
+| [`workers/src/security-crypto.js`](../../workers/src/security-crypto.js) | 密码学原语 | PBKDF2-SHA256 强哈希（60 万次 + 动态盐，旧哈希登录时透明升级）、`timingSafeEqualStr` 恒定时间比对、口令强度校验。 |
+| [`workers/src/auth.js`](../../workers/src/auth.js) | 账号鉴权与会话 | 注册 / 登录 / 登出、Cookie + Bearer 双轨会话签发与轮换（库内只存令牌摘要）、设备列表与吊销、自助改密（验旧密码 + 吊销其它会话）、Web Push 订阅。 |
 | [`workers/src/garden-shared.js`](../../workers/src/garden-shared.js) | 花园公共设施 | 行格式化、归属与软删校验、墓碑 id 集合查询、惰性 schema 守卫。 |
 | [`workers/src/garden-resources.js`](../../workers/src/garden-resources.js) | 数字花园资产领域 | 周记、笔记、随手记、收藏、提示词 CRUD 与软删、阅读进度同步。 |
-| [`workers/src/garden-sync.js`](../../workers/src/garden-sync.js) | 增量同步与统计 | 聚合增量拉取 `/api/sync/pull`、脏数据批量推送（D1 分片）、热力图、备份邮件。 |
+| [`workers/src/garden-sync.js`](../../workers/src/garden-sync.js) | 增量同步与统计 | 聚合增量拉取 `/api/sync/pull`、脏数据批量推送（D1 分片）、热力图、备份邮件（每人每小时 3 封 + 可选收件人白名单 + 文件名净化）。 |
+| [`workers/src/garden-export.js`](../../workers/src/garden-export.js) | 全量数据导出 | `GET /api/export`：把只存在 D1 的阅读进度、云端书库元数据、健康打卡、Bot 档案/提醒/近期对话与五类花园资产一并导出；显式字段白名单，**绝不含会话、Bot 令牌与轮询游标**；R2 图片与书籍正文不进 JSON，`omissions` 写明范围。 |
 | [`workers/src/garden-media.js`](../../workers/src/garden-media.js) | 媒体存储领域 | 图片上传（二进制写 R2，D1 只存元数据）、带访问令牌与 Range 的下发、R2 备份快照保留策略。 |
 | [`workers/src/garden-books.js`](../../workers/src/garden-books.js) | 阅读器云书库 | 书籍正文存 R2（对象键为书籍指纹的 SHA-256）、书目元数据 CRUD、跨设备下载与软删墓碑。 |
 | [`workers/src/garden-echo.js`](../../workers/src/garden-echo.js) | 回响、通知与审计入口 | AI 回响卡片、周期回顾、Web Push 通知派发、UGC 审计入口。 |

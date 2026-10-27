@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-25。供后续会话快速接续。当前前端/Worker：**v2.5.155**（Worker 已部署、D1 迁移 0001–0032 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-27。供后续会话快速接续。当前前端/Worker：**v2.5.157**（Worker 已部署、D1 迁移 0001–0032 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -32,10 +32,10 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 26 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 27 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
-- 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-echo.js`
+- 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
 - 智能与记忆：`ai.js`、`rag.js`、`llm.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
 - Bot：`bot-commands.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
@@ -46,6 +46,8 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.157 | 安全收口批次：①PBKDF2 10 万 → **60 万次**（OWASP 2023 建议；旧哈希在登录成功后就地升级，用户无感）；②备份邮件每人**每小时 3 封** + 可选 `BACKUP_EMAIL_ALLOWLIST` 收件人白名单 + 附件文件名净化（去 `../`、引号与控制字符）；③所有 JSON 接口默认 `Cache-Control: no-store`；④toast 容器加 polite live region、错误提示用 `role="alert"`；⑤`theme-color`/manifest 底色对齐页面 `#F8F9FA`（消除 iOS 状态栏色带）；测试 310 → **316** |
+| v2.5.156 | 账号安全与备份补齐：①新增 `POST /api/auth/password`（验旧密码 → PBKDF2 重哈希 → 只保留当前会话，限流 5 次/15 分钟；旧密码输错返回 400 而不是 401，避免前端把失败当登录过期直接登出），账号弹层新增「修改密码」三输入 + 回车提交；②新增 `GET /api/export` 与 `workers/src/garden-export.js`（阅读进度、云端书库元数据、健康打卡、Bot 档案/提醒/近 200 轮对话 + 五类花园资产；显式字段白名单，绝不含会话、Bot 令牌与游标；R2 图片与书籍正文不进 JSON）；客户端 ZIP 合并 `chillin-server-backup.json` 并附 README 说明范围，离线自动降级；测试 306→**310**（auth +2 / garden +1 / backup +1），`workers/src` 26→**27** 模块 |
 | v2.5.151 | 顶栏/底栏与页面「浑然一体」：新增 `--bg-rgb` 分量令牌（亮 `248, 249, 250` / 暗 `15, 17, 21`），导航玻璃层与底栏全部由它派生（删掉第二套取色 `--nav-glass`）；顶栏静止态改透明，让 hero 光晕一直铺到状态栏、滚动才升玻璃底，iOS PWA 不再常驻玻璃底（原先状态栏区域是一条白带）；底栏改 `var(--bg-color)` 并去掉 `!important`——夜间/护眼阅读器的底栏覆盖（`--black` / `--mint-200`）终于生效；深色投影只在 `.scrolled` 出现，静止态「零线零影」。headless 逐像素复测：改前栏底 ΔR≈20 台阶、底栏比页面低 6/7/3，改后亮色 y=106→108 是 228/239/246→228/240/247（无台阶）、底栏与页面同为 248/249/250，深色底栏 15/17/21；新增 `--bg-rgb` 与 `--ios-bg` 同值静态门禁，`!important` 棘轮 230→229 |
 | v2.5.152 | 底栏「去线 + 毛玻璃通透」（用户反馈「有条线分割视觉卡在还不够通透统一」）：根因是上一版把底栏做成**不透明 `var(--bg-color)` 板 + 一条 `0 -1px 0` 顶边线**——与页面同色不等于浑然一体，那条线就是把界面切断的「卡」；现底栏直接复用**滚动后顶栏的同一块材质** `--nav-scrolled-bg`（88% 页面分量）+ `backdrop-filter: blur(20px) saturate(180%)`，`box-shadow: none`、不再画任何分割线（保留不可见的 `border-top: 1px solid transparent` 供阅读器覆盖改色），不新增任何令牌。真机逐像素（390×844 dsf2，纯 stylesheet 无行内覆盖）：静止态栏上 y=780 与栏内 y=781 都是 248/249/250（连续无台阶，旧态此处是 227/229/234 的线）；滚动 150px 后卡片从栏下经过被柔化成底纹（`backups/_nav_real_scrolled.png`）；6 档材质（不透明 / 88% / 80% / 72% / 有无投影）对照图 `backups/_nav_glass_stack.png` 选定 88% 无投影。门禁同步：`tests/css.test.mjs` 把「底栏必须铺 `var(--bg-color)`」换成三条断言（材质令牌、模糊参数、禁止 `0 -1px 0`），`!important` 229 与 `backdrop-filter` 41 两条棘轮均不变 |
 | v2.5.153 | 长列表「滑到底」批次（用户反馈周记/随手记越来越多、往下滑很久）：①**A1 紧凑行**——纯文字 ≤60 字的随手记密度收窄（内边距 18/20→10/14、正文 14px/1.5、双类选择器 `.feed-item-card.feed-item-card--compact` 避开后部同优先级覆写），51 条真实列表 **8679px → 7759px（10.3 屏 → 9.2 屏）**；②**B1** 卡片 `content-visibility: auto` + `contain-intrinsic-size: auto 150px`（紧凑 76px），510 条一次性强制布局 **103ms → 11ms**，周记画廊因桌面 `column-count: 2` 刻意不加；③**B2**「加载更多」改 `IntersectionObserver`（提前 600px）自动续载、保留无 IO 浏览器的手动兜底；④**C1** 滚过 1.5 屏浮出 44pt「回到顶部」圆钮，FAB 在场时 `.above-fab` 上移一格不叠角；⑤**C3** 修搜索跳转失联——随手记首屏只渲染 100 条，命中条目落在窗口外时旧的 `document.querySelector` 查不到、点了搜索**静默无反应**，现由 `actions.ensureItemRendered` 先扩整页窗口再重查。测试 295 → **298 用例**（css +1、search +2）。**未达此前口头估算的 ~5 屏**：阈值只命中 32/51 条，其余 19 条带图/带链接仍是 217px 卡片 |

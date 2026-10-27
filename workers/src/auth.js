@@ -220,6 +220,51 @@ export async function handleLogoutAll(request, db, userId) {
     );
 }
 
+/**
+ * 修改密码：校验当前密码 → 重哈希 → 吊销其它设备会话。
+ *
+ * 当前会话保留（用户刚证明了自己掌握密码）；旧密码输错返回 400 而不是 401——
+ * 前端 apiRequest 把 401 当作「登录过期」会直接登出，改密失败不该把人踢下线。
+ */
+export async function handleChangePassword(request, db, userId) {
+    const limit = await checkRateLimitShared(db, `password:${userId}`, 5, 15 * 60 * 1000);
+    if (!limit.ok) {
+        return rateLimitedResponse(limit.retryAfter, '修改密码过于频繁，请稍后再试');
+    }
+
+    const parsed = await readJsonCapped(request, MAX_AUTH_BODY_BYTES);
+    if (!parsed.ok) {
+        return jsonResponse({ error: parsed.status === 413 ? parsed.error : '请求格式错误，请重试' }, parsed.status);
+    }
+
+    const body = parsed.value || {};
+    const currentPassword = typeof body.currentPassword === 'string' ? body.currentPassword : '';
+    const newPassword = typeof body.newPassword === 'string' ? body.newPassword : '';
+    if (!currentPassword) return jsonResponse({ error: '请输入当前密码' }, 400);
+
+    const invalid = validatePassword(newPassword);
+    if (invalid) return jsonResponse({ error: invalid }, 400);
+    if (newPassword === currentPassword) return jsonResponse({ error: '新密码不能与当前密码相同' }, 400);
+
+    const user = await db.prepare('SELECT id, password_hash FROM users WHERE id = ?1').bind(userId).first();
+    if (!user) return jsonResponse({ error: '账号不存在' }, 400);
+
+    const verify = await verifyPassword(currentPassword, user.password_hash);
+    if (!verify.valid) return jsonResponse({ error: '当前密码不正确' }, 400);
+
+    const nextHash = await hashPassword(newPassword);
+    await db.prepare('UPDATE users SET password_hash = ?1 WHERE id = ?2').bind(nextHash, userId).run();
+
+    // 只保留发起此次修改的会话，其它设备一律吊销（与「退出所有设备」的语义对齐）；
+    // 当前令牌的哈希行与可能遗留的明文行都保留（老版本会话未升级时不能把人踢下线）
+    const keepToken = extractSessionToken(request) || '';
+    const keepHash = keepToken ? await tokenHash(keepToken) : '';
+    const revoked = await db.prepare('DELETE FROM sessions WHERE user_id = ?1 AND token NOT IN (?2, ?3)')
+        .bind(userId, keepHash, keepToken).run();
+
+    return jsonResponse({ success: true, revokedSessions: (revoked.meta && revoked.meta.changes) || 0 }, 200);
+}
+
 /** 人类可读的设备描述（纯函数，便于单测） */
 export function describeUserAgent(ua) {
     const s = String(ua || '');

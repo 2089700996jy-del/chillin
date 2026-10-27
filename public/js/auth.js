@@ -303,6 +303,16 @@ export function initAuthUI() {
         }
         await sendBackupByEmail(email);
     });
+    document.getElementById('btn-change-password')?.addEventListener('click', changePassword);
+    // 改密区顺便支持回车提交，移动端少一次点击
+    for (const id of ['pwd-current', 'pwd-new', 'pwd-confirm']) {
+        document.getElementById(id)?.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                changePassword();
+            }
+        });
+    }
     document.getElementById('backup-guard-segmented')?.addEventListener('click', (e) => {
         const btn = e.target instanceof Element ? e.target.closest('[data-days]') : null;
         if (!btn) return;
@@ -460,6 +470,72 @@ export async function logoutAllDevices() {
     showToast('已退出所有设备', 'info');
 }
 
+
+/** 修改密码：校验一致性后提交，成功后清空输入并刷新设备列表 */
+async function changePassword() {
+    const currentEl = document.getElementById('pwd-current');
+    const newEl = document.getElementById('pwd-new');
+    const confirmEl = document.getElementById('pwd-confirm');
+    const btn = document.getElementById('btn-change-password');
+    const currentPassword = currentEl?.value || '';
+    const newPassword = newEl?.value || '';
+    const confirmPassword = confirmEl?.value || '';
+
+    if (!currentPassword) {
+        showToast('请输入当前密码', 'warn');
+        currentEl?.focus();
+        return;
+    }
+    if (newPassword.length < 8 || newPassword.length > 128) {
+        showToast('新密码需为 8–128 位', 'warn');
+        newEl?.focus();
+        return;
+    }
+    if (!/[A-Za-z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {
+        showToast('新密码需同时包含字母和数字', 'warn');
+        newEl?.focus();
+        return;
+    }
+    if (newPassword !== confirmPassword) {
+        showToast('两次输入的新密码不一致', 'warn');
+        confirmEl?.focus();
+        return;
+    }
+    if (newPassword === currentPassword) {
+        showToast('新密码不能与当前密码相同', 'warn');
+        newEl?.focus();
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = '更新中…';
+    }
+    try {
+        const res = await apiRequest('/api/auth/password', {
+            method: 'POST',
+            body: JSON.stringify({ currentPassword, newPassword })
+        });
+        if (res && res.success) {
+            for (const el of [currentEl, newEl, confirmEl]) {
+                if (el) el.value = '';
+            }
+            showToast(res.revokedSessions > 0
+                ? `密码已更新，已在 ${res.revokedSessions} 台其它设备上退出登录`
+                : '密码已更新', 'ok');
+            try {
+                renderSessions(await apiRequest('/api/auth/sessions'));
+            } catch (_) { /* 设备列表刷新失败不影响改密结果 */ }
+        }
+    } catch (err) {
+        showToast(err?.message || '修改密码失败，请稍后再试', 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = '更新密码';
+        }
+    }
+}
 
 /** 滑动续期：启动时静默换新令牌（Cookie 模式），避免固定 7 天到期被强制登出 */
 export async function refreshSession() {

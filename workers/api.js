@@ -13,6 +13,7 @@ import {
     handleLogin,
     handleLogout,
     handleLogoutAll,
+    handleChangePassword,
     handleRefreshSession,
     handleListSessions,
     handleRevokeSession,
@@ -75,13 +76,14 @@ import {
     handleAiReview,
     handleAuditScan
 } from './src/garden-echo.js';
+import { handleExport } from './src/garden-export.js';
 import { handleClawApi } from './src/bot-claw.js';
 import { handleBotProfileApi } from './src/bot-memory.js';
 import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.155';
+const APP_VERSION = '2.5.157';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -152,6 +154,7 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/auth/logout' && method === 'POST') return handleLogout(request, db);
     if (path === '/api/auth/logout-all' && method === 'POST') return handleLogoutAll(request, db, userId);
     if (path === '/api/auth/refresh' && method === 'POST') return handleRefreshSession(request, env, db, userId);
+    if (path === '/api/auth/password' && method === 'POST') return handleChangePassword(request, db, userId);
     if (path === '/api/auth/sessions' && method === 'GET') return handleListSessions(request, db, userId);
     const sessionMatch = path.match(/^\/api\/auth\/sessions\/([0-9a-zA-Z_-]{16,128})$/);
     if (sessionMatch && method === 'DELETE') return handleRevokeSession(request, db, userId, sessionMatch[1]);
@@ -205,6 +208,9 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/sync/pull' && method === 'GET') return handleSyncPull(url, db, userId);
     if (path === '/api/sync/batch' && method === 'POST') return handleSyncBatch(request, db, userId);
 
+    // ── 服务端全量导出（补充客户端拿不到的 D1 数据） ──
+    if (path === '/api/export' && method === 'GET') return handleExport(db, userId);
+
     // ── 统计 ──
     if (path === '/api/stats/heatmap' && method === 'GET') return handleHeatmap(db, userId);
 
@@ -222,7 +228,7 @@ async function router(path, method, request, env, ctx) {
     if (path === '/api/audit/scan' && method === 'POST') return handleAuditScan(db, userId);
 
     // ── 全量数据备份邮件直发 ──
-    if (path === '/api/backup/email' && method === 'POST') return handleBackupEmail(request, env, userId);
+    if (path === '/api/backup/email' && method === 'POST') return handleBackupEmail(request, env, userId, db);
 
     return jsonResponse({ error: 'Not found' }, 404);
 }

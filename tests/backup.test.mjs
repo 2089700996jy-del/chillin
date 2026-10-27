@@ -29,6 +29,7 @@ const {
     crc32,
     createZip,
     buildBackupFiles,
+    buildFullBackupFiles,
     recordBackupSuccess,
     getLastBackupMeta,
     getBackupGuardSettings,
@@ -38,6 +39,7 @@ const {
     STORAGE_KEY_GUARD_INTERVAL
 } = await import('../public/js/backup.js');
 const { handleBackupEmail } = await import('../workers/src/garden-sync.js');
+const { rateLimitBuckets } = await import('../workers/src/security-network.js');
 const { state } = await import('../public/js/state.js');
 
 test('Backup - crc32 calculates standard IEEE 802.3 checksums', () => {
@@ -106,6 +108,7 @@ test('Backup - buildBackupFiles bundles notes, weeklies, feeds, bookmarks, promp
 });
 
 test('Backup - handleBackupEmail returns NO_RESEND_KEY when env is missing key', async () => {
+    rateLimitBuckets.clear();
     const request = new Request('http://localhost/api/backup/email', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -120,6 +123,7 @@ test('Backup - handleBackupEmail returns NO_RESEND_KEY when env is missing key',
 });
 
 test('Backup - handleBackupEmail sends email via Resend when configured', async () => {
+    rateLimitBuckets.clear();
     let fetchCalled = false;
     let requestPayload = null;
 
@@ -242,6 +246,7 @@ test('Backup Guard - computeBackupGuardStatus handles all states accurately', ()
     assert.equal(sOverdue.daysSince, 20);
 });
 test('Backup - 备份邮件请求体超过 12MB 上限时返回 413', async () => {
+    rateLimitBuckets.clear();
     const stream = new ReadableStream({ start(c) { c.enqueue(new TextEncoder().encode('{}')); c.close(); } });
     const req = new Request('https://x/api/backup/email', {
         method: 'POST', body: stream, duplex: 'half',
@@ -249,4 +254,92 @@ test('Backup - 备份邮件请求体超过 12MB 上限时返回 413', async () =
     });
     const res = await handleBackupEmail(req, { RESEND_API_KEY: 'test' }, 1);
     assert.equal(res.status, 413);
+});
+
+test('Backup - 服务端导出并入 ZIP，离线时降级并写明原因', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalToken = state.authToken;
+    const originalCookie = state.cookieSession;
+    try {
+        state.authToken = 'test-token';
+        state.cookieSession = false;
+        let calls = 0;
+        globalThis.fetch = async () => {
+            calls++;
+            return new Response(JSON.stringify({ format: 'chillin-export-v1', counts: { notes: 2 } }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        };
+
+        const files = await buildFullBackupFiles();
+        const server = files.find((f) => f.name === 'chillin-server-backup.json');
+        const readme = files.find((f) => f.name === 'README.md');
+        assert.ok(server, '应包含服务端导出 JSON');
+        assert.equal(JSON.parse(server.data).format, 'chillin-export-v1');
+        assert.match(readme.data, /chillin-server-backup\.json/);
+        assert.match(readme.data, /不在包里的内容/);
+        assert.ok(files.some((f) => f.name === 'chillin-full-backup.json'), '本地全量 JSON 仍要保留');
+
+        // 未登录/离线：不发请求，README 说明降级原因
+        state.authToken = '';
+        state.cookieSession = false;
+        calls = 0;
+        const offline = await buildFullBackupFiles();
+        assert.equal(calls, 0, '未登录时不应请求导出接口');
+        assert.ok(!offline.some((f) => f.name === 'chillin-server-backup.json'));
+        assert.match(offline.find((f) => f.name === 'README.md').data, /本次未包含服务端数据/);
+    } finally {
+        globalThis.fetch = originalFetch;
+        state.authToken = originalToken;
+        state.cookieSession = originalCookie;
+    }
+});
+
+test('Backup - 备份邮件同一用户每小时最多 3 封，第 4 封返回 429', async () => {
+    rateLimitBuckets.clear();
+    const make = () => new Request('http://localhost/api/backup/email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: 'user@example.com', zipBase64: 'UEsDBBQ=' })
+    });
+    for (let i = 0; i < 3; i++) {
+        assert.equal((await handleBackupEmail(make(), {}, 42)).status, 200, '第 ' + (i + 1) + ' 封应放行');
+    }
+    const blocked = await handleBackupEmail(make(), {}, 42);
+    assert.equal(blocked.status, 429);
+    assert.match((await blocked.json()).error, /频繁/);
+});
+
+test('Backup - 备份邮件支持收件人白名单并净化附件文件名', async () => {
+    rateLimitBuckets.clear();
+    const originalFetch = globalThis.fetch;
+    let payload = null;
+    globalThis.fetch = async (url, opts) => {
+        payload = JSON.parse(opts.body);
+        return new Response(JSON.stringify({ id: 'ok' }), {
+            status: 200, headers: { 'Content-Type': 'application/json' }
+        });
+    };
+    try {
+        const req = (body) => new Request('http://localhost/api/backup/email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const env = { RESEND_API_KEY: 're_test', BACKUP_EMAIL_ALLOWLIST: 'me@example.com' };
+
+        const denied = await handleBackupEmail(req({ email: 'other@example.com', zipBase64: 'UEsDBBQ=' }), env, 43);
+        assert.equal(denied.status, 403, '白名单之外的收件人必须拒绝');
+
+        // 大小写不敏感；文件名里的 ../ 与引号必须被净化
+        const allowed = await handleBackupEmail(req({
+            email: 'ME@example.com', zipBase64: 'UEsDBBQ=', filename: '../evil".zip'
+        }), env, 44);
+        assert.equal(allowed.status, 200);
+        assert.equal(payload.attachments[0].filename, '.._evil_.zip');
+        assert.ok(!payload.attachments[0].filename.includes('/'));
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });

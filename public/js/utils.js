@@ -45,6 +45,9 @@ export function showToast(msg, type = 'info') {
     }
     const toast = document.createElement('div');
     toast.className = `toast toast-${type}`;
+    // 让读屏能听到提示：错误用 alert（打断），其余走容器里的 polite live region
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    toast.setAttribute('aria-atomic', 'true');
     const icon = type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warn' ? '⚠️' : 'ℹ️';
     setHtml(toast, `<span>${icon}</span> <span>${escapeHtml(msg)}</span>`);
     container.appendChild(toast);
@@ -303,7 +306,7 @@ export function isSyncingNow() {
 // <head> 的内联预绘脚本已经先落过一次 data-theme（避免深色偏好用户首帧闪白），
 // 这里负责后续读写：持久化偏好、同步 <meta name="theme-color">、跟随系统外观切换。
 const APP_THEME_KEY = 'chillin_theme';
-const APP_THEME_COLOR = { dark: '#0f1115', light: '#F2F2F7' };
+const APP_THEME_COLOR = { dark: '#0f1115', light: '#F8F9FA' };
 
 export function getAppThemeMode() {
     try {

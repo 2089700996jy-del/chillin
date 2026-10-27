@@ -6,7 +6,8 @@ import {
     validatePassword,
     isValidRecordId,
     readTextCapped,
-    readJsonCapped
+    readJsonCapped,
+    jsonResponse
 } from '../workers/src/security.js';
 
 test('Security - sniffImageMime accurately detects image headers', () => {
@@ -37,6 +38,14 @@ test('Security - sniffImageMime accurately detects image headers', () => {
 });
 
 
+
+test('Security - API JSON 响应默认带 Cache-Control: no-store', async () => {
+    const res = jsonResponse({ ok: true });
+    assert.equal(res.headers.get('Cache-Control'), 'no-store', '私人数据接口不能被浏览器/中间层缓存');
+    // 显式 extraHeaders 仍然可以覆盖（例如需要特殊缓存策略的接口）
+    const overridden = jsonResponse({ ok: true }, 200, { 'Cache-Control': 'private, max-age=60' });
+    assert.equal(overridden.headers.get('Cache-Control'), 'private, max-age=60');
+});
 
 test('Security - timingSafeEqualStr timing-safe string comparison', () => {
     assert.equal(timingSafeEqualStr('token12345', 'token12345'), true);

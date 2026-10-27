@@ -16,6 +16,7 @@ import {
     handlePostReaderProgress
 } from '../workers/src/garden-resources.js';
 import { handleSyncPull, handleSyncBatch, handleHeatmap } from '../workers/src/garden-sync.js';
+import { handleExport } from '../workers/src/garden-export.js';
 import { scanAndAudit } from '../workers/src/audit.js';
 import { isOwnedRecord } from '../workers/src/garden-shared.js';
 
@@ -580,4 +581,47 @@ integration('Security - 表名助手对未知表名 fail-closed（SQL 标识符�
     assert.equal(await isOwnedRecord(db, 'notes', null, 1), true, '白名单内的表照常工作（id 为空视为新建）');
     const other = await db.prepare("INSERT INTO notes (id, title, content, date, user_id) VALUES (77, 't', 'c', '2026-10-18', 2)").run();
     assert.equal(await isOwnedRecord(db, 'notes', 77, 1), false, '已存在的他人记录必须判为无权限');
+});
+
+integration('Garden export - 覆盖 D1 专属数据且不泄露凭据或越权数据', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    await handlePostNote(jsonRequest('https://x/api/notes', { title: '导出验证', content: '正文', date: '2026-10-20' }), db, 1);
+    await handlePostNote(jsonRequest('https://x/api/notes', { title: '别人的笔记', content: '不该出现', date: '2026-10-20' }), db, 2);
+
+    await db.prepare("INSERT INTO echo_cards (user_id, title, summary, topic, related_feed_ids) VALUES (1,'回响','摘要','成长','[1]')").run();
+    await db.prepare("INSERT INTO reader_progress (user_id, book_key, book_title, chapter_index, chapter_title, scroll_percentage) VALUES (1,'book-1','长夜',3,'第三章',42)").run();
+    await db.prepare("INSERT INTO reader_books (user_id, book_key, title, author, total_chapters, size, r2_key) VALUES (1,'book-1','长夜','某人',12,2048,'books/1/x.txt')").run();
+    await db.prepare("INSERT INTO health_daily (user_id, date, steps, sleep_min, source) VALUES (1,'2026-10-24',8000,420,'manual')").run();
+    await db.prepare("INSERT INTO bot_profile (user_id, label, content) VALUES (1,'饮食','不吃香菜')").run();
+    await db.prepare("INSERT INTO bot_reminders (user_id, text, fire_at_ms) VALUES (1,'喝水', 1700000000000)").run();
+    await db.prepare("INSERT INTO bot_claw_accounts (user_id, status, bot_token, cursor, outreach_enabled) VALUES (1,'bound','SECRET_BOT_TOKEN','SECRET_CURSOR',1)").run();
+
+    const res = await handleExport(db, 1);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    const data = await res.json();
+
+    assert.equal(data.format, 'chillin-export-v1');
+    assert.equal(data.counts.notes, 1);
+    assert.equal(data.notes[0].title, '导出验证');
+    assert.equal(data.counts.echoCards, 1);
+    assert.equal(data.counts.readerProgress, 1);
+    assert.equal(data.reader.progress[0].bookKey, 'book-1');
+    assert.equal(data.reader.books[0].title, '长夜');
+    assert.equal(data.reader.books[0].contentInR2, true);
+    assert.equal(data.counts.healthDays, 1);
+    assert.equal(data.health[0].steps, 8000);
+    assert.equal(data.bot.profile[0].content, '不吃香菜');
+    assert.equal(data.bot.reminders[0].text, '喝水');
+    assert.equal(data.bot.claw.status, 'bound');
+    assert.equal(data.bot.outreachEnabled, true);
+    assert.equal(data.omissions.length, 2);
+
+    const raw = JSON.stringify(data);
+    assert.ok(!raw.includes('SECRET_BOT_TOKEN'), '访问令牌不得进入导出');
+    assert.ok(!raw.includes('SECRET_CURSOR'), '轮询游标不得进入导出');
+    assert.ok(!raw.includes('别人的笔记'), '导出必须按用户隔离');
 });

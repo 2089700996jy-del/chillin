@@ -229,19 +229,84 @@ export function buildBackupFiles() {
     return files;
 }
 
-/** 生成 ZIP Blob */
-export function generateBackupZipBlob() {
+const SERVER_EXPORT_FILE = 'chillin-server-backup.json';
+
+/**
+ * 服务端导出：补齐只存在 D1 的数据（阅读进度、健康打卡、微信助手档案与提醒等）。
+ * 离线或接口异常时返回 ok:false，备份自动降级为「本地那部分」，不阻断下载。
+ */
+async function fetchServerExport() {
+    if (!state.authToken && !state.cookieSession) {
+        return { ok: false, reason: '当前未登录或处于离线状态' };
+    }
+    try {
+        const data = await apiRequest('/api/export', { timeout: 20000 });
+        return { ok: true, data };
+    } catch (err) {
+        return { ok: false, reason: err?.message || '云端导出不可用' };
+    }
+}
+
+function buildBackupReadme(server) {
+    const lines = [
+        '# Chillin 数字花园 · 备份包说明',
+        '',
+        `导出时间：${new Date().toLocaleString('zh-CN')}`,
+        '',
+        '## 包含内容',
+        '- notes/：笔记的独立 Markdown 文件',
+        '- weeklies/：周记的独立 Markdown 文件',
+        '- feeds/feeds.md：随手记时间线',
+        '- bookmarks/：Markdown 与 Netscape HTML 两种书签',
+        '- prompts/prompts.md：提示词库',
+        '- chillin-full-backup.json：客户端全量结构化数据（离线可读的那部分）',
+        '- README.md：本说明',
+        ''
+    ];
+    if (server.ok) {
+        lines.push(
+            '- chillin-server-backup.json：服务端导出，含阅读进度、云端书库元数据、健康打卡、微信助手档案/提醒/近期对话，以及上述五类数据的权威副本',
+            '',
+            '## 不在包里的内容',
+            '- R2 里的图片二进制与书籍正文（单本可达 20MB）；书籍元数据已包含，正文可在阅读器里重新下载',
+            '- 账号密码、会话令牌与微信助手访问令牌（凭据永不导出）'
+        );
+    } else {
+        lines.push(
+            '',
+            '## 本次未包含服务端数据',
+            `原因：${server.reason}。`,
+            '重新联网后再次导出即可补齐阅读进度、健康打卡与微信助手档案。'
+        );
+    }
+    return lines.join('\n');
+}
+
+/** 完整备份文件列表：本地 Markdown/JSON + 服务端导出 + 范围说明 */
+export async function buildFullBackupFiles() {
     const files = buildBackupFiles();
+    const server = await fetchServerExport();
+    if (server.ok) {
+        files.push({ name: SERVER_EXPORT_FILE, data: JSON.stringify(server.data, null, 2) });
+    }
+    files.push({ name: 'README.md', data: buildBackupReadme(server) });
+    return files;
+}
+
+/** 生成 ZIP Blob（含服务端导出；离线时自动降级为本地部分） */
+export async function generateBackupZipBlob() {
+    const files = await buildFullBackupFiles();
     const zipBytes = createZip(files);
     return new Blob([zipBytes], { type: 'application/zip' });
 }
 
 /** 本地触发一键下载 */
-export function downloadBackupZip() {
+export async function downloadBackupZip() {
     try {
+        showToast('正在打包全量数据…', 'info');
         const timestamp = new Date().toISOString().slice(0, 10);
         const filename = `chillin-backup-${timestamp}.zip`;
-        const blob = generateBackupZipBlob();
+        const blob = await generateBackupZipBlob();
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
@@ -284,7 +349,7 @@ export async function sendBackupByEmail(email) {
     try {
         const timestamp = new Date().toISOString().slice(0, 10);
         const filename = `chillin-backup-${timestamp}.zip`;
-        const blob = generateBackupZipBlob();
+        const blob = await generateBackupZipBlob();
         const zipBase64 = await blobToBase64(blob);
 
         showToast('正在通过云端发送邮件...', 'info');

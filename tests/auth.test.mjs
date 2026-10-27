@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestDb, sqliteTest } from './fake-d1.mjs';
+import { rateLimitBuckets } from '../workers/src/security-network.js';
+import { hashPassword, PBKDF2_ITERATIONS } from '../workers/src/security-crypto.js';
 import {
     handleRegister,
     handleLogin,
@@ -8,15 +10,19 @@ import {
     handleListSessions,
     handleRevokeSession,
     handleLogoutAll,
+    handleChangePassword,
     tokenHash,
 } from '../workers/src/auth.js';
 
 const integration = sqliteTest;
 const env = { ALLOW_REGISTRATION: 'true', PROXY_SHARED_SECRET: 'test-secret' };
 
+// 每个请求给一个独立来源 IP：注册限流是 5 次/小时（内存桶跨用例共享），
+// 固定 IP 会让后面新增的用例莫名吃到 429。
+let ipSeq = 0;
 const jsonRequest = (url, body) => new Request(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': `10.9.0.${++ipSeq}` },
     body: JSON.stringify(body),
 });
 const cookieRequest = (url, token, method = 'GET') => new Request(url, {
@@ -111,6 +117,92 @@ integration('Auth - logout-all revokes every session of the account only', async
     assert.equal(remaining.length, 1);
     assert.equal(remaining[0].token, await tokenHash(b.token));
 });
+const passwordRequest = (token, body) => new Request('https://x/api/auth/password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: `chillin_session=${token}` },
+    body: JSON.stringify(body),
+});
+
+integration('Auth - 修改密码校验旧密码、重哈希并只保留当前会话', async () => {
+    rateLimitBuckets.clear(); // 内存限流桶跨用例共享，按 userId 计数
+    const db = createTestDb();
+    const registered = await handleRegister(
+        jsonRequest('https://x/api/auth/register', { username: 'tester', password: 'passw0rd1' }),
+        env, db
+    );
+    const { userId, token } = await registered.json();
+    assert.equal((await handleLogin(
+        jsonRequest('https://x/api/auth/login', { username: 'tester', password: 'passw0rd1' }), env, db
+    )).status, 200);
+    assert.equal((await sessionRows(db)).length, 2);
+
+    const before = await db.prepare('SELECT password_hash FROM users WHERE id = ?1').bind(userId).first();
+
+    // 旧密码输错：400（不是 401，避免前端把它当登录过期直接登出），且不吊销任何会话
+    const wrong = await handleChangePassword(
+        passwordRequest(token, { currentPassword: 'not-the-password', newPassword: 'newpassw0rd9' }),
+        db, userId
+    );
+    assert.equal(wrong.status, 400);
+    assert.match((await wrong.json()).error, /当前密码/);
+    assert.equal((await sessionRows(db)).length, 2, '失败的改密不能吊销会话');
+    const unchanged = await db.prepare('SELECT password_hash FROM users WHERE id = ?1').bind(userId).first();
+    assert.equal(unchanged.password_hash, before.password_hash);
+
+    const ok = await handleChangePassword(
+        passwordRequest(token, { currentPassword: 'passw0rd1', newPassword: 'newpassw0rd9' }),
+        db, userId
+    );
+    assert.equal(ok.status, 200);
+    const result = await ok.json();
+    assert.equal(result.success, true);
+    assert.equal(result.revokedSessions, 1);
+
+    // 只留下发起改密的这个会话
+    const sessions = await sessionRows(db);
+    assert.equal(sessions.length, 1);
+    assert.equal(sessions[0].token, await tokenHash(token));
+
+    const after = await db.prepare('SELECT password_hash FROM users WHERE id = ?1').bind(userId).first();
+    assert.notEqual(after.password_hash, before.password_hash);
+    assert.match(after.password_hash, /^pbkdf2\$600000\$/);
+
+    // 旧密码立刻失效，新密码可以登录
+    assert.equal((await handleLogin(
+        jsonRequest('https://x/api/auth/login', { username: 'tester', password: 'passw0rd1' }), env, db
+    )).status, 401);
+    assert.equal((await handleLogin(
+        jsonRequest('https://x/api/auth/login', { username: 'tester', password: 'newpassw0rd9' }), env, db
+    )).status, 200);
+});
+
+integration('Auth - 修改密码拒绝弱密码、相同密码与空字段', async () => {
+    rateLimitBuckets.clear();
+    const db = createTestDb();
+    const registered = await handleRegister(
+        jsonRequest('https://x/api/auth/register', { username: 'tester', password: 'passw0rd1' }),
+        env, db
+    );
+    const { userId, token } = await registered.json();
+    const before = await db.prepare('SELECT password_hash FROM users WHERE id = ?1').bind(userId).first();
+
+    const cases = [
+        [{ currentPassword: 'passw0rd1', newPassword: 'short' }, /至少 8 位/],
+        [{ currentPassword: 'passw0rd1', newPassword: 'onlyletters' }, /字母和数字/],
+        [{ currentPassword: 'passw0rd1', newPassword: 'passw0rd1' }, /不能与当前密码相同/],
+        [{ currentPassword: '', newPassword: 'newpassw0rd9' }, /当前密码/]
+    ];
+    for (const [body, pattern] of cases) {
+        const res = await handleChangePassword(passwordRequest(token, body), db, userId);
+        assert.equal(res.status, 400, JSON.stringify(body));
+        assert.match((await res.json()).error, pattern);
+    }
+
+    const after = await db.prepare('SELECT password_hash FROM users WHERE id = ?1').bind(userId).first();
+    assert.equal(after.password_hash, before.password_hash, '被拒绝的改密不能写库');
+    assert.equal((await sessionRows(db)).length, 1);
+});
+
 integration('Auth - 注册请求体超过 8KB 上限时返回 413', async () => {
     const db = createTestDb();
     const req = new Request('https://x/api/auth/register', {
@@ -119,4 +211,25 @@ integration('Auth - 注册请求体超过 8KB 上限时返回 413', async () => 
         body: JSON.stringify({ username: 'x'.repeat(9000), password: 'y' })
     });
     assert.equal((await handleRegister(req, env, db)).status, 413);
+});
+
+integration('Auth - 旧的 10 万次哈希在登录成功后就地升级到当前迭代数', async () => {
+    rateLimitBuckets.clear();
+    assert.equal(PBKDF2_ITERATIONS, 600000, '当前标准是 OWASP 2023 的 60 万次');
+    const db = createTestDb();
+    const oldHash = await hashPassword('passw0rd1', 100000);
+    assert.match(oldHash, /^pbkdf2\$100000\$/);
+    await db.prepare('INSERT INTO users (username, password_hash) VALUES (?1, ?2)')
+        .bind('legacy', oldHash).run();
+
+    const login = await handleLogin(
+        jsonRequest('https://x/api/auth/login', { username: 'legacy', password: 'passw0rd1' }), env, db
+    );
+    assert.equal(login.status, 200);
+
+    const row = await db.prepare('SELECT password_hash FROM users WHERE username = ?1').bind('legacy').first();
+    assert.match(row.password_hash, /^pbkdf2\$600000\$/, '登录成功后应透明升级到 60 万次');
+    assert.equal((await handleLogin(
+        jsonRequest('https://x/api/auth/login', { username: 'legacy', password: 'passw0rd1' }), env, db
+    )).status, 200, '升级后旧密码仍可登录');
 });

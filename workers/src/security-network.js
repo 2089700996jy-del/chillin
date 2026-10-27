@@ -66,7 +66,9 @@ export function corsResponse(body, status) {
         'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
         'Access-Control-Allow-Headers': 'Content-Type, Authorization',
         'Access-Control-Allow-Credentials': 'true',
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        // 接口返回的都是私人数据（含导出、设备列表），任何中间层都不许缓存
+        'Cache-Control': 'no-store'
     }));
     if (!body) return new Response(null, { status, headers });
     return new Response(JSON.stringify(body), { status, headers });

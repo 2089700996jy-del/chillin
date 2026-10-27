@@ -78,3 +78,11 @@ test('A11y - 底部 Tab 栏有主导航名、选中项暴露 aria-current，FAB 
     assert.match(routerJs, /setAttribute\('aria-current', 'page'\)/, 'router 必须给新的当前视图补上 aria-current');
     assert.match(routerJs, /fabBtn\.setAttribute\('aria-label'/, 'FAB 的 aria-label 必须随视图更新（fabLabel 是 display:none，CSS 改不了可访问名称）');
 });
+
+test('A11y - toast 容器是 polite live region，错误提示用 alert 角色', () => {
+    const container = (html.match(/<div class="toast-container" id="toast-container"[^>]*>/) || [''])[0];
+    assert.match(container, /aria-live="polite"/, 'toast 容器需要 live region，否则读屏用户听不到操作反馈');
+    const utilsJs = fs.readFileSync(path.join(root, 'public/js/utils.js'), 'utf8');
+    assert.match(utilsJs, /setAttribute\('role', type === 'error' \? 'alert' : 'status'\)/, '错误提示用 alert，其余用 status');
+    assert.match(utilsJs, /aria-atomic/, '整条提示应作为一个整体播报');
+});

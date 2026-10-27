@@ -16,12 +16,24 @@ import { fileURLToPath } from 'node:url';
  */
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const css = fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8');
+const indexHtml = fs.readFileSync(path.join(root, 'public', 'index.html'), 'utf8');
+const manifest = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.json'), 'utf8'));
 
 // 基线：这里只许变小，不许变大
 // v2.5.154：底栏选中态改实心字形时删掉 3 处——.mobile-tab-item.active 的 color !important
 // 会永久压死阅读器夜间/护眼那两条更具体的选择器，:active .tab-icon 的 transform/transition
 // 两条 !important 也已被全局 scale(0.95) 的按下反馈取代。
 const IMPORTANT_BASELINE = 226;
+
+test('CSS - theme-color / manifest 与页面底色一致（iOS 状态栏不出现色带）', () => {
+    const bg = (css.match(/--ios-bg:\s*(#[0-9A-Fa-f]{6})/) || [])[1];
+    assert.ok(bg, 'style.css 应定义 --ios-bg');
+    const meta = (indexHtml.match(/<meta name="theme-color" content="(#[0-9A-Fa-f]{6})"/) || [])[1];
+    assert.equal(meta && meta.toUpperCase(), bg.toUpperCase(), 'index.html 的 theme-color 必须等于 --ios-bg（原先 #F2F2F7 与页面 #F8F9FA 有色差）');
+    assert.equal(manifest.theme_color.toUpperCase(), bg.toUpperCase(), 'manifest.theme_color 必须等于 --ios-bg');
+    assert.equal(manifest.background_color.toUpperCase(), bg.toUpperCase(), 'manifest.background_color 必须等于 --ios-bg');
+    assert.match(indexHtml, /dark \? '#0f1115' : '#F8F9FA'/, 'head 内联脚本的浅色 theme-color 也要同步');
+  });
 
 test('CSS - 每个 @keyframes 都被 animation 引用（无死动画）', () => {
     const defs = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);

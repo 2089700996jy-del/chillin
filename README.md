@@ -40,9 +40,9 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        26 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        27 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
-                    garden-echo / rag / llm / ai / audit / bot-commands /
+                    garden-export / garden-echo / rag / llm / ai / audit / bot-commands /
                     bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-vision / bot-links /
                     maintenance）
@@ -82,6 +82,8 @@ npx wrangler d1 migrations apply DB --remote
 # 2) 密钥（不要写入仓库）
 npx wrangler secret put LLM_API_KEY        # DeepSeek 密钥；缺失时回退内置规则回复
 npx wrangler secret put VAPID_PRIVATE_KEY  # Web Push 私钥
+npx wrangler secret put RESEND_API_KEY     # 可选：备份邮件直发（缺失时前端自动降级为本地下载）
+# 可选：BACKUP_EMAIL_ALLOWLIST="me@example.com,backup@example.com"（逗号分隔，不配则不限收件人）
 
 # 3) 发布后端
 npx wrangler deploy
@@ -154,23 +156,23 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 
 | 文件 | 覆盖范围 |
 | :--- | :--- |
-| [`tests/security.test.mjs`](tests/security.test.mjs) | 密码/令牌哈希、CSP 哈希与第三方域、共享限流与降级、代理 IP 取信、响应限长 |
+| [`tests/security.test.mjs`](tests/security.test.mjs) | 密码/令牌哈希、CSP 哈希与第三方域、共享限流与降级、代理 IP 取信、响应限长、**接口默认 no-store** |
 | [`tests/sync.test.mjs`](tests/sync.test.mjs) | 时间格式解析、LWW 合并、脏数据选择与 id 补全 |
 | [`tests/rag.test.mjs`](tests/rag.test.mjs) | 分词、停用词、时间范围解析、打分 |
 | [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
 | [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、模块请求绝不回退 index.html |
 | [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开、前端首屏体积预算 |
 | [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、热力图（真实 SQLite） |
-| [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出（真实 SQLite） |
+| [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出、**改密校验旧密码并只保留当前会话**（真实 SQLite） |
 | [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
 | [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象、删书连带清进度 |
 | [`tests/router.test.mjs`](tests/router.test.mjs) | 网关级接线：书库 CRUD、图片上传与令牌下发、未知子路径 404（走真实会话 Cookie） |
-| [`tests/backup.test.mjs`](tests/backup.test.mjs) | crc32 校验、ZIP 结构、备份打包内容、Resend 邮件降级、备份守卫状态机 |
+| [`tests/backup.test.mjs`](tests/backup.test.mjs) | crc32 校验、ZIP 结构、备份打包内容、**服务端导出并入与离线降级**、Resend 邮件降级、**备份邮件限流/收件人白名单/文件名净化**、备份守卫状态机 |
 | [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
 | [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码（UTF-8 优先、GBK 兜底）、阅读进度写入保护（更旧写入被拒）、百分比夹紧与跨用户隔离 |
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
 | [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌、深色下会失明的 Tailwind 色阶与链接色令牌 |
-| [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用 |
+| [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用、**toast live region 与错误 alert 角色** |
 | [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、长轮询游标持久化与排重、**默认只聊天不落库**、显式「记录：…」才写入随手记、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」，联网答案默认也不带「来源：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误、**微信发图落成带图随手记（`item.type=2` 识别 → 明文魔数 → **AES-128-ECB + PKCS7** 解密（`aeskey` 32 位 hex，另兼容 `media.aes_key` 与「hex 再 base64」中间层，CBC 两种 IV 兜底），直链与带授权参数的地址都试，图取不到就如实告知且不落库）** |
 | [`tests/bot-health.test.mjs`](tests/bot-health.test.mjs) | 健康打卡：一句话解析出步数/睡眠/中高强度/静息心率/体重（斤折半、千分位）、越界值点名不写库、只认显式格式不劫持聊天、一天一行 UPSERT 只覆盖本次字段、日期一律东八区、汇总只统计真的记过该字段的天（真实 SQLite） |
 | [`tests/bot-outreach.test.mjs`](tests/bot-outreach.test.mjs) | Bot 主动关怀：东八区时窗与当天唯一开口时刻、每天至多一次、刚聊完 30 分钟内不插嘴、6 小时内聊过时把最近对话当背景、只用 3 天前旧素材、随机频率闸门、模型 SKIP 否决权、内容安全、发送失败与开关接口、**主动消息写进对话记忆（带出处）**（真实 SQLite） |
@@ -189,9 +191,9 @@ npm run bump:minor
 
 ## 安全要点
 
-* **密码**：PBKDF2-SHA256，10 万次迭代 + 每用户 16 字节随机盐
+* **密码**：PBKDF2-SHA256，60 万次迭代（OWASP 2023 建议）+ 每用户 16 字节随机盐；旧哈希在登录成功后就地升级；登录后可自助改密（先验旧密码，成功后只保留当前会话、其它设备立即失效）
 * **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
-* **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 上传 / AI 问答），D1 异常时自动降级不阻断业务
+* **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 上传 / AI 问答 / 改密 / 导出 / 备份邮件 3 封每小时），D1 异常时自动降级不阻断业务
 * **输入**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探；**所有 JSON 入口都经 `readJsonCapped` 限长**（书籍 20MB、备份邮件 12MB、批量同步 4MB + 每种资源 200 条 + 单条 200KB、资源 CRUD 512KB、阅读进度 8KB、账号接口 8KB、AI 问答 256KB + 问题 ≤4000 字 + 历史 ≤20 条），网关另有一道 **21MB 声明长度兜底**（新入口忘了设上限也不会被撑爆）——超限在**读取过程中**就中止，不会先把超大请求读进内存
 * **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`public/_headers`](public/_headers) 与 `workers/src/security.js`
 * **HTML 注入收口**：全站 `innerHTML` 写入统一经过 [`public/js/trusted-types.js`](public/js/trusted-types.js) 的 `setHtml()`（Trusted Types 策略 `chillin#html`，测试会拦截绕过行为）；CSP **已强制启用** `require-trusted-types-for 'script'`，绕过 `setHtml()` 的赋值会被浏览器直接拒绝
