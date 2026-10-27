@@ -193,7 +193,8 @@ async function upsertQrcode(db, userId, qrcode) {
         + "datetime('now', '+8 hours'), datetime('now', '+8 hours')) "
         + "ON CONFLICT(user_id) DO UPDATE SET status = 'pending', qrcode = ?2, "
         + "qr_expires_at = datetime('now', '+8 hours', '+" + QR_TTL_SECONDS + " seconds'), "
-        + "last_error = '', updated_at = datetime('now', '+8 hours')"
+        + "bot_token = '', cursor = '', ilink_bot_id = '', ilink_user_id = '', bound_at_ms = 0, "
+        + "is_deleted = 0, last_error = '', updated_at = datetime('now', '+8 hours')"
     ).bind(userId, qrcode).run();
 }
 
@@ -209,6 +210,7 @@ async function markBound(db, userId, info) {
 async function markUnBound(db, userId) {
     await db.prepare(
         "UPDATE bot_claw_accounts SET status = 'unbound', bot_token = '', cursor = '', qrcode = '', "
+        + "qr_expires_at = NULL, ilink_bot_id = '', ilink_user_id = '', bound_at_ms = 0, last_error = '', "
         + "is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE user_id = ?1 AND is_deleted = 0"
     ).bind(userId).run();
 }
@@ -289,6 +291,11 @@ export async function handleClawApi(request, env, url, db, userId) {
             return jsonResponse(publicStatus(await readAccount(db, userId)), 200);
         }
         if (path === '/api/bot/claw/qrcode' && request.method === 'POST') {
+            // 已绑定用户必须先显式解绑：否则一张新二维码会把可用令牌置为 pending，旧绑定静默失效
+            const current = await readAccount(db, userId);
+            if (current && current.status === 'bound') {
+                return jsonResponse({ error: '微信已绑定，请先解绑再重新绑定' }, 409);
+            }
             return jsonResponse(await startClawLogin(env, db, userId), 200);
         }
         if (path === '/api/bot/claw/check' && request.method === 'POST') {

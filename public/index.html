@@ -34,7 +34,7 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.162">
+    <link rel="stylesheet" href="style.css?v=2.5.163">
 </head>
 <body>
 
@@ -291,7 +291,7 @@
                 <div class="k-memory-card" id="serendipity-capsule-card"></div>
             </header>
             <div class="notion-collection-gallery" id="gallery-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.162</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.163</button>
         </section>
 
         <!-- ========================================== -->
@@ -515,7 +515,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.162</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.163</button>
         </section>
 
         <!-- ========================================== -->
@@ -660,7 +660,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.162</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.163</button>
         </section>
 
         <!-- ========================================== -->
@@ -808,7 +808,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.162</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.163</button>
         </section>
 
         <!-- ========================================== -->
@@ -905,7 +905,7 @@
 
             <!-- 随手记流时间轴 -->
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.162</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.163</button>
         </section>
 
     </main>
@@ -1189,6 +1189,25 @@
                     <button type="button" class="segment-btn" data-app-theme="dark">深色</button>
                 </div>
 
+                <!-- 微信 ClawBot：应用内扫码绑定 / 解绑（二维码由 Worker 向 iLink 申请，浏览器只负责展示与轮询） -->
+                <div class="security-section-title" style="margin-top: 24px;">微信 ClawBot</div>
+                <div class="bot-claw-card">
+                    <div class="bot-claw-main">
+                        <div class="bot-claw-title" id="bot-claw-title">正在读取绑定状态…</div>
+                        <div class="bot-claw-hint" id="bot-claw-hint" aria-live="polite">绑定后可以在微信里直接记笔记、问问题、设提醒。</div>
+                    </div>
+                    <div class="bot-claw-actions">
+                        <button type="button" class="btn-text" id="btn-bot-claw-bind" disabled>读取中…</button>
+                        <button type="button" class="btn-text text-danger" id="btn-bot-claw-unbind" hidden>解绑</button>
+                    </div>
+                </div>
+                <div class="bot-claw-qr" id="bot-claw-qr" hidden>
+                    <img id="bot-claw-qr-img" alt="微信扫码绑定 ClawBot 的二维码" width="180" height="180" decoding="async" referrerpolicy="no-referrer">
+                    <div class="bot-claw-qr-hint" id="bot-claw-qr-hint">请用微信扫码，二维码 90 秒内有效。</div>
+                    <div class="bot-claw-qr-note" id="bot-claw-qr-note" aria-live="polite" hidden></div>
+                    <button type="button" class="btn-text" id="btn-bot-claw-cancel" hidden>取消扫码</button>
+                </div>
+
                 <!-- 「关于我」个人档案：应用内查看/编辑/遗忘（与微信端共用同一份记忆） -->
                 <div class="security-section-title" style="margin-top: 24px;">关于我（微信助手档案）</div>
                 <div id="bot-profile-list" class="session-list"></div>
@@ -1453,7 +1472,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.162"></script>
-    <script type="module" src="app.js?v=2.5.162"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.163"></script>
+    <script type="module" src="app.js?v=2.5.163"></script>
 </body>
 </html>

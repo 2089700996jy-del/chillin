@@ -8170,6 +8170,90 @@ body.dark-reader-body .bot-outreach-row {
   border-color: rgba(255, 255, 255, 0.12);
 }
 
+/* 微信 ClawBot 绑定卡片：与「主动关怀」同一材质，二维码单独一块白底保证可扫 */
+.bot-claw-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 10px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: rgba(var(--neutral-rgb), 0.06);
+  border: 1px solid transparent;
+}
+
+.bot-claw-main { flex: 1 1 180px; min-width: 0; }
+
+.bot-claw-title { font-size: 14.5px; font-weight: 500; }
+
+.bot-claw-hint {
+  margin-top: 2px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary, rgba(var(--label-rgb), 0.6));
+  overflow-wrap: anywhere;
+}
+
+.bot-claw-actions { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+
+.bot-claw-actions .btn-text {
+  margin-left: 0;
+  font-size: 13.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+#btn-bot-claw-bind { color: var(--accent-text, var(--accent-color)); }
+#btn-bot-claw-unbind { color: var(--danger-color); }
+#btn-bot-claw-bind:disabled,
+#btn-bot-claw-unbind:disabled { opacity: 0.45; }
+
+.bot-claw-qr {
+  margin-top: 10px;
+  padding: 14px;
+  border-radius: 14px;
+  background: rgba(var(--neutral-rgb), 0.06);
+  text-align: center;
+}
+
+.bot-claw-qr img {
+  display: block;
+  width: 180px;
+  height: 180px;
+  margin: 0 auto;
+  padding: 8px;
+  border-radius: 12px;
+  background: var(--white);
+  object-fit: contain;
+}
+
+.bot-claw-qr-hint,
+.bot-claw-qr-note {
+  margin-top: 8px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--text-secondary, rgba(var(--label-rgb), 0.6));
+}
+
+.bot-claw-qr-note { color: var(--accent-text, var(--accent-color)); }
+
+/* .btn-text 自带 display:inline-flex，会盖掉浏览器对 [hidden] 的 display:none——
+   绑定/解绑/取消三个按钮必须显式收口，否则未绑定时也会露出「解绑」。 */
+.bot-claw-card .btn-text[hidden],
+.bot-claw-qr .btn-text[hidden],
+.bot-claw-qr[hidden] { display: none; }
+.bot-claw-qr .btn-text { margin-top: 8px; margin-left: 0; font-size: 13.5px; }
+
+body.dark-reader-body .bot-claw-card,
+body.dark-reader-body .bot-claw-qr {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.12);
+}
+
 .security-actions {
   display: flex;
   justify-content: space-between;

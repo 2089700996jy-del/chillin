@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createCipheriv, randomBytes } from 'node:crypto';
+import fs from 'node:fs';
 import api from '../workers/api.js';
 import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
@@ -342,6 +343,61 @@ integration('ClawBot - 解绑软删账号并清空令牌，状态回到未绑定
     assert.equal(row.is_deleted, 1, '用户数据只能软删');
     assert.equal(row.status, 'unbound');
     assert.equal(row.bot_token, '');
+    assert.equal(row.ilink_bot_id, '', '解绑后不应继续保留上一台机器人的身份');
+    assert.equal(row.ilink_user_id, '', '解绑后不应继续保留微信侧身份');
+    assert.equal(Number(row.bound_at_ms), 0, '解绑后绑定时刻应清零');
+});
+
+integration('ClawBot - 已绑定时拒绝重新取二维码，旧令牌不被清空', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const before = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+
+    const res = await handleClawApi(
+        new Request('https://chillin.example/api/bot/claw/qrcode', { method: 'POST' }),
+        {}, new URL('https://chillin.example/api/bot/claw/qrcode'), db, 1
+    );
+    assert.equal(res.status, 409);
+    const body = await res.json();
+    assert.match(body.error, /先解绑/);
+
+    const after = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+    assert.equal(after.status, 'bound');
+    assert.equal(after.bot_token, before.bot_token, '拒绝请求时不得动现有令牌');
+    assert.equal(after.qrcode, before.qrcode);
+});
+
+integration('ClawBot - 解绑后可重新扫码绑定（软删行必须复活）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    await unbindClaw(db, 1);
+
+    const st = stubFetch({
+        '/ilink/bot/get_bot_qrcode': () => ({ json: { qrcode: 'QR-AGAIN', qrcode_img_content: 'https://x/qr2.png' } }),
+        '/ilink/bot/get_qrcode_status': () => ({
+            json: {
+                status: 'confirmed', bot_token: 'TOKEN-2', baseurl: OFFICIAL,
+                ilink_bot_id: 'bot2@im.bot', ilink_user_id: 'owner2@im.wechat'
+            }
+        })
+    });
+
+    const started = await startClawLogin({}, db, 1, st.impl);
+    assert.equal(started.qrcode, 'QR-AGAIN');
+    const pending = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+    assert.equal(pending.is_deleted, 0, '重新绑定必须先复活软删行，否则 check 永远查不到它');
+    assert.equal(pending.status, 'pending');
+    assert.equal(pending.bot_token, '', '生成新二维码时不得沿用旧令牌');
+
+    const bound = await checkClawLogin({}, db, 1, st.impl);
+    assert.equal(bound.bound, true, '复活后的 pending 行必须能完成确认');
+    const row = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+    assert.equal(row.is_deleted, 0);
+    assert.equal(row.status, 'bound');
+    assert.equal(row.bot_token, 'TOKEN-2');
+    assert.equal(row.ilink_bot_id, 'bot2@im.bot');
 });
 
 integration('ClawBot - 路由只认四个端点，上游故障回落 502', async () => {
@@ -1701,5 +1757,24 @@ integration('Bot - 读取服务返回 Microlink 形状的 JSON 也出卡片，�
     assert.match(failed, /读取服务 HTTP 429/, '两段失败都要说清楚，线上才分得清是出口封还是额度尽');
     assert.match(failed, /记录：<标题>/);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media').first()).n, before, '失败不占新待存位');
+});
+
+test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭弹层会停轮询', () => {
+    const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+    const auth = fs.readFileSync(new URL('../public/js/auth.js', import.meta.url), 'utf8');
+
+    for (const id of ['bot-claw-title', 'bot-claw-hint', 'btn-bot-claw-bind', 'btn-bot-claw-unbind', 'bot-claw-qr', 'bot-claw-qr-img', 'bot-claw-qr-hint', 'btn-bot-claw-cancel']) {
+        assert.ok(html.includes('id="' + id + '"'), 'index.html 缺少绑定卡片节点 #' + id);
+    }
+    assert.match(html, /referrerpolicy="no-referrer"/, '二维码图片必须不带 Referer，避免 CDN 拒绝');
+
+    assert.ok(auth.includes("apiRequest('/api/bot/claw/status')"), '打开设置时必须读取绑定状态');
+    assert.ok(auth.includes("apiRequest('/api/bot/claw/qrcode', { method: 'POST' })"), '绑定按钮必须申请二维码');
+    assert.ok(auth.includes("apiRequest('/api/bot/claw/check', { method: 'POST' })"), '展示二维码后必须轮询扫码状态');
+    assert.ok(auth.includes("apiRequest('/api/bot/claw', { method: 'DELETE' })"), '解绑必须走 DELETE 端点');
+    assert.ok(auth.includes('data:image'), '二维码地址必须支持 data:image 兜底');
+    assert.ok(auth.includes('stopBotClawPolling'), '关闭弹层/取消时必须能停掉轮询');
+    assert.match(auth, /MutationObserver/, '弹层关闭要靠 class 变化停轮询');
+    assert.ok(auth.includes('确认后自动完成绑定'), '扫码后要告诉用户去手机上确认');
 });
 
