@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-27。供后续会话快速接续。当前前端/Worker：**v2.5.158**（Worker 已部署、D1 迁移 0001–0032 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-27。供后续会话快速接续。当前前端/Worker：**v2.5.157**（Worker 已部署、D1 迁移 0001–0032 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓封面/标题/详情做成卡片（单集详情取 `description`、缺失时用 `shownotes` 去标签，播客页取简介；v2.5.140 起不再抓时长），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0033`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0032`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -46,7 +46,6 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
-| v2.5.158 | 图片访问令牌过期（迁移 0033）：令牌 30 天有效，过期后匿名/转发链接返回 403，但**文件所有者本人登录仍可读**（否则历史笔记图片会集体裂开）；历史令牌回填 180 天过渡期；不改 HMAC 签名——读图本来就要查 D1 拿 mime/r2_key，无状态签名省不掉查询。`tests/media.test.mjs` 新增过期/本人/他人三方用例，测试 316 → **317** |
 | v2.5.157 | 安全收口批次：①PBKDF2 10 万 → **60 万次**（OWASP 2023 建议；旧哈希在登录成功后就地升级，用户无感）；②备份邮件每人**每小时 3 封** + 可选 `BACKUP_EMAIL_ALLOWLIST` 收件人白名单 + 附件文件名净化（去 `../`、引号与控制字符）；③所有 JSON 接口默认 `Cache-Control: no-store`；④toast 容器加 polite live region、错误提示用 `role="alert"`；⑤`theme-color`/manifest 底色对齐页面 `#F8F9FA`（消除 iOS 状态栏色带）；测试 310 → **316** |
 | v2.5.156 | 账号安全与备份补齐：①新增 `POST /api/auth/password`（验旧密码 → PBKDF2 重哈希 → 只保留当前会话，限流 5 次/15 分钟；旧密码输错返回 400 而不是 401，避免前端把失败当登录过期直接登出），账号弹层新增「修改密码」三输入 + 回车提交；②新增 `GET /api/export` 与 `workers/src/garden-export.js`（阅读进度、云端书库元数据、健康打卡、Bot 档案/提醒/近 200 轮对话 + 五类花园资产；显式字段白名单，绝不含会话、Bot 令牌与游标；R2 图片与书籍正文不进 JSON）；客户端 ZIP 合并 `chillin-server-backup.json` 并附 README 说明范围，离线自动降级；测试 306→**310**（auth +2 / garden +1 / backup +1），`workers/src` 26→**27** 模块 |
 | v2.5.151 | 顶栏/底栏与页面「浑然一体」：新增 `--bg-rgb` 分量令牌（亮 `248, 249, 250` / 暗 `15, 17, 21`），导航玻璃层与底栏全部由它派生（删掉第二套取色 `--nav-glass`）；顶栏静止态改透明，让 hero 光晕一直铺到状态栏、滚动才升玻璃底，iOS PWA 不再常驻玻璃底（原先状态栏区域是一条白带）；底栏改 `var(--bg-color)` 并去掉 `!important`——夜间/护眼阅读器的底栏覆盖（`--black` / `--mint-200`）终于生效；深色投影只在 `.scrolled` 出现，静止态「零线零影」。headless 逐像素复测：改前栏底 ΔR≈20 台阶、底栏比页面低 6/7/3，改后亮色 y=106→108 是 228/239/246→228/240/247（无台阶）、底栏与页面同为 248/249/250，深色底栏 15/17/21；新增 `--bg-rgb` 与 `--ios-bg` 同值静态门禁，`!important` 棘轮 230→229 |

@@ -14,9 +14,6 @@ import {
 
 const MAX_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
-// URL 里的访问令牌 30 天有效。图片会长期留在笔记正文里，过期后不删图：
-// 所有者本人登录仍可看，只有被转发的裸链接会失效。
-export const MEDIA_TOKEN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** R2 对象键：按用户分目录，便于日后按用户整目录清理 */
 function mediaObjectKey(userId, fileId) {
@@ -59,7 +56,6 @@ export async function handleUpload(request, env, db, userId) {
 
         const id = crypto.randomUUID();
         const accessToken = crypto.randomUUID();
-        const tokenExpiresAt = Date.now() + MEDIA_TOKEN_TTL_MS;
         const r2Key = mediaObjectKey(userId, id);
 
         if (env && env.MEDIA) {
@@ -67,12 +63,12 @@ export async function handleUpload(request, env, db, userId) {
             await env.MEDIA.put(r2Key, arrayBuffer, {
                 httpMetadata: { contentType: sniffed, cacheControl: 'private, max-age=86400' }
             });
-            await db.prepare("INSERT INTO files (id, mime_type, r2_key, size, access_token, token_expires_at, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'))")
-                .bind(id, sniffed, r2Key, arrayBuffer.byteLength, accessToken, tokenExpiresAt, userId).run();
+            await db.prepare("INSERT INTO files (id, mime_type, r2_key, size, access_token, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))")
+                .bind(id, sniffed, r2Key, arrayBuffer.byteLength, accessToken, userId).run();
         } else {
             // 兜底：尚未绑定 R2 的部署仍按老办法写 D1（0020 之后 data 列可空）
-            await db.prepare("INSERT INTO files (id, mime_type, data, access_token, token_expires_at, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'))")
-                .bind(id, sniffed, new Uint8Array(arrayBuffer), accessToken, tokenExpiresAt, userId).run();
+            await db.prepare("INSERT INTO files (id, mime_type, data, access_token, user_id, created_at) VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours'))")
+                .bind(id, sniffed, new Uint8Array(arrayBuffer), accessToken, userId).run();
         }
 
         return jsonResponse([{ src: `/api/file/${id}?t=${accessToken}` }], 201);
@@ -84,22 +80,21 @@ export async function handleUpload(request, env, db, userId) {
 
 export async function handleFileView(fileId, request, env, db, authenticate) {
     if (!fileId) return new Response('Not Found', { status: 404 });
-    const row = await db.prepare('SELECT mime_type, data, r2_key, access_token, token_expires_at, user_id FROM files WHERE id = ?1').bind(fileId).first();
+    const row = await db.prepare('SELECT mime_type, data, r2_key, access_token, user_id FROM files WHERE id = ?1').bind(fileId).first();
     if (!row) return new Response('Not Found', { status: 404 });
 
-    // 读图有两条路：① 有效的访问令牌（分享/外链/导出后仍可看）；② 文件所有者本人登录。
-    // 令牌过期后不再给匿名访问，但本人登录仍能看——否则历史笔记里的图片会集体裂开。
+    // 访问令牌校验（与历史行为一致：带令牌直读，无令牌则要求本人登录）
     const fileToken = new URL(request.url).searchParams.get('t') || '';
-    const tokenValid = row.access_token != null && row.access_token !== ''
-        && timingSafeEqualStr(row.access_token, fileToken)
-        && (row.token_expires_at == null || Number(row.token_expires_at) > Date.now());
-
-    if (!tokenValid) {
+    if (row.access_token != null && row.access_token !== '') {
+        if (!timingSafeEqualStr(row.access_token, fileToken)) {
+            return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
+        }
+    } else {
         const viewerId = await authenticate(request, db);
         if (!viewerId || row.user_id == null || Number(row.user_id) !== Number(viewerId)) {
             return new Response('Forbidden', { status: 403, headers: applySecurityHeaders(new Headers()) });
         }
-        if (!row.access_token) {
+        if (!fileToken) {
             const newToken = crypto.randomUUID().replace(/-/g, '');
             await db.prepare('UPDATE files SET access_token = ?1 WHERE id = ?2 AND access_token IS NULL')
                 .bind(newToken, fileId).run();

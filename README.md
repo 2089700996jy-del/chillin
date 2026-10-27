@@ -23,7 +23,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：**Cloudflare D1**（SQLite，33 个迁移 0001–0033，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
+* **数据**：**Cloudflare D1**（SQLite，32 个迁移 0001–0032，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -46,7 +46,7 @@ workers/src/        27 个领域模块（security / security-network / security-
                     bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-vision / bot-links /
                     maintenance）
-migrations/         D1 迁移 0001–0033（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily）
+migrations/         D1 迁移 0001–0032（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
@@ -193,7 +193,6 @@ npm run bump:minor
 
 * **密码**：PBKDF2-SHA256，60 万次迭代（OWASP 2023 建议）+ 每用户 16 字节随机盐；旧哈希在登录成功后就地升级；登录后可自助改密（先验旧密码，成功后只保留当前会话、其它设备立即失效）
 * **会话**：`HttpOnly` + `SameSite=Lax`（HTTPS 附带 `Secure`）Cookie，同时兼容旧版 `Bearer` 令牌；**数据库只保存令牌的 SHA-256 摘要**；支持「全部退出」
-* **图片访问**：上传返回的 URL 携带随机访问令牌（**30 天有效**）；过期后匿名/被转发的链接失效，文件所有者本人登录仍可读取（迁移 0033 给历史令牌 180 天过渡），避免存量笔记图片集体裂开
 * **限流**：内存桶快速拒绝 + D1 跨实例共享计数（登录 / 注册 / 上传 / AI 问答 / 改密 / 导出 / 备份邮件 3 封每小时），D1 异常时自动降级不阻断业务
 * **输入**：SQL 全参数化、富文本 DOMPurify 白名单清洗、图片二进制魔数嗅探；**所有 JSON 入口都经 `readJsonCapped` 限长**（书籍 20MB、备份邮件 12MB、批量同步 4MB + 每种资源 200 条 + 单条 200KB、资源 CRUD 512KB、阅读进度 8KB、账号接口 8KB、AI 问答 256KB + 问题 ≤4000 字 + 历史 ≤20 条），网关另有一道 **21MB 声明长度兜底**（新入口忘了设上限也不会被撑爆）——超限在**读取过程中**就中止，不会先把超大请求读进内存
 * **响应头**：CSP（`script-src` 已去除 `'unsafe-inline'`，内联脚本用 sha256 白名单，且**不再放行任何第三方脚本域**——DOMPurify 已自托管到 `vendor/`）、HSTS、`X-Frame-Options`、`Referrer-Policy`、`Permissions-Policy`，见 [`public/_headers`](public/_headers) 与 `workers/src/security.js`
