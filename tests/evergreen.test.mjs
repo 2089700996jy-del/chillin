@@ -132,10 +132,12 @@ test('Evergreen Topics - Directory Sheet & Back navigation lifecycle', () => {
 test('Evergreen Topics - parseTopicDateToTs correctly parses Chinese date formats', () => {
     const ts = parseTopicDateToTs('2023年10月23日');
     assert.equal(isNaN(ts), false, 'Chinese date must not return NaN');
-    const d = new Date(ts);
-    assert.equal(d.getFullYear(), 2023);
-    assert.equal(d.getMonth(), 9); // October is month 9 (0-indexed)
-    assert.equal(d.getDate(), 23);
+    // 解析结果固定落在东八区零点（2023-10-22T16:00Z）。CI 跑在 UTC，
+    // 直接 getDate() 会退回 22 日；先平移到东八区再用 UTC 取值，断言的是「日历日」。
+    const d = new Date(ts + 8 * 3600 * 1000);
+    assert.equal(d.getUTCFullYear(), 2023);
+    assert.equal(d.getUTCMonth(), 9); // October is month 9 (0-indexed)
+    assert.equal(d.getUTCDate(), 23);
 });
 
 test('Evergreen Topics - aggregateTopics correctly calculates timespanDays with Chinese dates', () => {

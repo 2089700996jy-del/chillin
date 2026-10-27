@@ -42,7 +42,9 @@ jobs:
         run: npm test
 
       - name: Edge bundle dry-run (must exit 0)
+        # 打包验证固定在 Node 22（与部署运行时一致）；Node 20 矩阵只负责单测兼容性，避免重复打包。
         # --dry-run 只在本地打包，不上传、不需要 Cloudflare 凭据
+        if: matrix.node == '22'
         run: npx wrangler deploy --dry-run
 
       - name: Pages output layout is complete
