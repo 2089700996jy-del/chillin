@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.157 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
+> **报告版本**：v2.5.158 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)  
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v204`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0032 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
+> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v205`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0032 已应用，0033 随 v2.5.158 在部署前 apply）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）  
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -260,6 +260,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `security.js` (门面) ➔ 分治为 `security-crypto.js`、`security-network.js`：
   - 动态盐 PBKDF2 强散列（60 万次迭代，旧哈希登录成功时透明升级）、时序安全比较；
   - 所有 JSON 接口默认 `Cache-Control: no-store`；备份邮件每人每小时 3 封，并支持 `BACKUP_EMAIL_ALLOWLIST` 收件人白名单与附件文件名净化；
+  - 图片访问令牌 30 天过期（迁移 0033；历史令牌 180 天过渡），过期后仅文件所有者本人登录可读，转发的裸链接自然失效；
   - 跨实例共享限流计数（内存桶快速拒绝 + D1 原子计数）、CORS/响应头/MIME 嗅探与输入校验；
   - 说明：v2.5.97 曾随外链解析功能一并移除 `security-ssrf.js`（14 组 CIDR、IPv6 内嵌判定、出站限长读取等）；v2.5.132 为小宇宙链接速览重新引入**白名单制**出站抓取（只认 `xiaoyuzhoufm.com` 与图床 `xyzcdn.net`、强制 https + 443、手动重定向逐跳复核、6 秒超时、体积上限、IP 字面量与私网主机拒绝），**不做通用外链预览**；v2.5.137 起再加一条**可选的第三方代读**退路（配 `LINK_READER_API_KEY` 才启用：把白名单内的目标交给读取服务用它自己的出口读一次，返回的 JSON 封面同样过图床白名单；v2.5.138 起代读只请求 `Accept: text/html`，仍回 JSON 时从 `data.html` 取内嵌 HTML 再解析）；
 * `auth.js`：会话令牌仅存 SHA-256 哈希、HttpOnly+SameSite Cookie 鉴权、刷新即轮换、设备登录会话列表，以及**自助改密**（先验旧密码，成功后只保留当前会话、其它设备立即失效；失败返回 400 而非 401，避免前端把输错旧密码误当登录过期）；
@@ -273,10 +274,10 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * `bot-web.js`：联网检索分流——显式「查一下」与时效性问句才出站（提到自己的记录强制回本地 RAG），搜索取来源、模型按来源作答（v2.5.148 起默认只给结论，用户追问「来源 / 依据 / 哪查的」时才附前 3 条出处，追问直接复用上下文里的出处、不再出站），检索结果 6 小时缓存（v2.5.147 起命中缓存不扣额度）、每人每天 100 次上限（`WEB_DAILY_LIMIT` 可配）与每分钟 2 次突发闸（`WEB_BURST_LIMIT`，护的是一轮 cron 的 55s 收信预算），失败按原因给下一步；上游自 v2.5.146 起主用 DeepSeek 官方 Search（`POST /v1/tools/search`，复用 `LLM_API_KEY`、`ori_question` 带用户原话，返回的 `summary` 与 `site_name`/东八区 `date` 直接进合成提示词——边缘实测 417ms 出 5 条，同一查询 Jina 用 1533ms 且没有日期与站点），Jina 只作回落（`SEARCH_PROVIDER=jina`，或 `SEARCH_API_URL` 指向旧 GET 端点时自动沿用，仍走摘要模式 `X-Respond-With: no-content` + `X-Timeout: 10`），服务端 10s 超时 + 两道客户端死线（检索 20s、合成 20s，合计不占满一轮 cron 收信预算 55s），半截 JSON 一律当没有来源（绝不把 JSON 碎片当摘要喂给模型），时间锚点带星期；**v2.5.149** 起请求带 `need_content`（赛程表/比分这类事实只在网页正文里：实测 8 条约 50 KB、485ms→524ms 几乎不变），候选 5→8、单条上限 1200→3000 字、提示词上下文 5000→12000 字，正文（≥200 字）优先于 summary；相对时间（今天 / 这周周六周日）解析成具体日期并进查询词——检索端不知道「现在」是哪天，这正是「明明有赛程却答没查到」的真凶；并新增时区规则（网页多给当地时区，NBA 默认美东，要换算成北京时间并说明差异）；上游适配层拆到 `bot-search.js`（`workers/src/*` ≤500 行红线），本文件只管闸门、合成、缓存与回复组装；**v2.5.150** 起先花最多 4s 把问题改写成 1–2 条搜索框风格的关键词（`planWebQueries`：没配 `LLM_API_KEY` 就跳过，不额外花调用），与原句合并最多 3 条并行检索（`runWebSearchMulti`：按 URL 去重保留 `rerank_score` 高的副本、按分数降序，部分查询失败不影响整体），闸门同时补上「查看一下」与「比赛 / 开赛 / 下一场 / 下次 / 接下来 / 什么时间 / 哪一场 / 第几场」——2026-10-24 线上「查看一下76人下次比赛是什么时间」既不匹配显式检索词、时效性词表里也没有比赛与时间，于是落进聊天路径把自己上一轮的旧来源复述了一遍（看着像检索结果、还没落缓存）；检索客户端死线 20s→12s（DeepSeek 实测 330–530ms），规划 4s + 检索 12s + 合成 20s = 36s 仍不占满一轮 cron 收信预算；
 * `maintenance.js`：按 Cron 表达式分流的定时任务编排——每分钟先派发到点的定点提醒，再跑 ClawBot 轮询；整点第 13 分才跑 UGC 扫描与各类清理。
 
-#### ⑤ 原生自动化测试套件 (23 套件 / 316 用例)
+#### ⑤ 原生自动化测试套件 (23 套件 / 317 用例)
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
 * **23 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`architecture`、`auth`、`backup`、`bot-claw`、`bot-health`、`bot-outreach`、`bot-reminders`、`bot-web`、`books`、`css`、`docs`、`evergreen`、`garden`、`media`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
-* **316 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、改密与全量导出、旧哈希透明升级、接口 no-store、备份邮件限流与白名单、toast live region、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 缓存写入走 waitUntil**、文档与代码一致性门禁等；
+* **317 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、改密与全量导出、旧哈希透明升级、接口 no-store、备份邮件限流与白名单、toast live region、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 缓存写入走 waitUntil**、文档与代码一致性门禁等；
 * **测试全量执行约 5–6 秒**（2026-10-27 本机实测 5511 ms，含 `node:sqlite` 集成用例；60 万次 PBKDF2 让认证类用例变慢约 2 秒；Node 20 上集成用例自动跳过），保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通（见 [`.github/workflows/ci.yml`](https://github.com/2089700996jy-del/chillin/blob/main/.github/workflows/ci.yml)）。
 
 ---

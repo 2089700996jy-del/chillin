@@ -21,7 +21,7 @@ async function seedImage(env, db, userId, bytes = PNG) {
     const [item] = await res.json();
     const url = new URL('https://chillin.test' + item.src);
     const fileId = url.pathname.split('/').pop();
-    const row = await db.prepare("SELECT r2_key, size, data, access_token, user_id, mime_type, created_at, datetime('now', '+8 hours', '-2 minutes') AS lo, datetime('now', '+8 hours', '+2 minutes') AS hi FROM files WHERE id = ?1").bind(fileId).first();
+    const row = await db.prepare("SELECT r2_key, size, data, access_token, token_expires_at, user_id, mime_type, created_at, datetime('now', '+8 hours', '-2 minutes') AS lo, datetime('now', '+8 hours', '+2 minutes') AS hi FROM files WHERE id = ?1").bind(fileId).first();
     return { fileId, token: url.searchParams.get('t'), row };
 }
 
@@ -39,6 +39,10 @@ test('Media - upload writes bytes to R2 and keeps only metadata in D1', { skip: 
     assert.equal(r2.store.has(row.r2_key), true, 'R2 must hold the object');
     assert.deepEqual([...r2.store.get(row.r2_key).bytes], [...PNG]);
     assert.ok(token && token.length > 10, 'a random access token must be issued');
+    assert.ok(
+        row.token_expires_at > Date.now() + 29 * 24 * 60 * 60 * 1000,
+        '新令牌应带 30 天有效期，实际为 ' + row.token_expires_at
+    );
     // 时间基准：新建文件的 created_at 必须落在东八区（曾依赖 SQLite 的 UTC 默认值）
     assert.ok(
         row.created_at >= row.lo && row.created_at <= row.hi,
@@ -69,6 +73,32 @@ test('Media - file view rejects a wrong access token', { skip: sqliteSkip }, asy
 
     const res = await handleFileView(fileId, new Request(`https://chillin.test/api/file/${fileId}?t=forged`), { MEDIA: r2 }, db, async () => null);
     assert.equal(res.status, 403);
+});
+
+test('Media - 令牌过期后匿名访问被拒，所有者本人登录仍可看', { skip: sqliteSkip }, async () => {
+    const db = createTestDb();
+    await seedUser(db, 7);
+    await seedUser(db, 8);
+    const r2 = new FakeR2();
+    const { fileId, token } = await seedImage({ MEDIA: r2 }, db, 7);
+
+    // 把令牌改为已过期
+    await db.prepare('UPDATE files SET token_expires_at = ?1 WHERE id = ?2')
+        .bind(Date.now() - 1000, fileId).run();
+    const url = `https://chillin.test/api/file/${fileId}?t=${token}`;
+
+    const anon = await handleFileView(fileId, new Request(url), { MEDIA: r2 }, db, async () => null);
+    assert.equal(anon.status, 403, '过期令牌不能再给匿名访问');
+
+    const owner = await handleFileView(fileId, new Request(url), { MEDIA: r2 }, db, async () => 7);
+    assert.equal(owner.status, 200, '所有者登录后历史图片仍要能显示');
+
+    const other = await handleFileView(fileId, new Request(url), { MEDIA: r2 }, db, async () => 8);
+    assert.equal(other.status, 403, '别人的登录不能借过期令牌越权');
+
+    // 正文里连令牌都没有时，本人登录同样可读
+    const ownerNoToken = await handleFileView(fileId, new Request(`https://chillin.test/api/file/${fileId}`), { MEDIA: r2 }, db, async () => 7);
+    assert.equal(ownerNoToken.status, 200);
 });
 
 test('Media - file view answers Range requests with 206 and Content-Range', { skip: sqliteSkip }, async () => {

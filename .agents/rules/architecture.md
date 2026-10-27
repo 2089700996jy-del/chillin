@@ -43,7 +43,7 @@
 | [`workers/src/garden-resources.js`](../../workers/src/garden-resources.js) | 数字花园资产领域 | 周记、笔记、随手记、收藏、提示词 CRUD 与软删、阅读进度同步。 |
 | [`workers/src/garden-sync.js`](../../workers/src/garden-sync.js) | 增量同步与统计 | 聚合增量拉取 `/api/sync/pull`、脏数据批量推送（D1 分片）、热力图、备份邮件（每人每小时 3 封 + 可选收件人白名单 + 文件名净化）。 |
 | [`workers/src/garden-export.js`](../../workers/src/garden-export.js) | 全量数据导出 | `GET /api/export`：把只存在 D1 的阅读进度、云端书库元数据、健康打卡、Bot 档案/提醒/近期对话与五类花园资产一并导出；显式字段白名单，**绝不含会话、Bot 令牌与轮询游标**；R2 图片与书籍正文不进 JSON，`omissions` 写明范围。 |
-| [`workers/src/garden-media.js`](../../workers/src/garden-media.js) | 媒体存储领域 | 图片上传（二进制写 R2，D1 只存元数据）、带访问令牌与 Range 的下发、R2 备份快照保留策略。 |
+| [`workers/src/garden-media.js`](../../workers/src/garden-media.js) | 媒体存储领域 | 图片上传（二进制写 R2，D1 只存元数据）、带 30 天过期访问令牌与 Range 的下发（过期后仅所有者登录可读）、R2 备份快照保留策略。 |
 | [`workers/src/garden-books.js`](../../workers/src/garden-books.js) | 阅读器云书库 | 书籍正文存 R2（对象键为书籍指纹的 SHA-256）、书目元数据 CRUD、跨设备下载与软删墓碑。 |
 | [`workers/src/garden-echo.js`](../../workers/src/garden-echo.js) | 回响、通知与审计入口 | AI 回响卡片、周期回顾、Web Push 通知派发、UGC 审计入口。 |
 | [`workers/src/rag.js`](../../workers/src/rag.js) | 记忆回响 RAG 引擎 | 自然语言时间范围解析、停用词过滤、分词、多轮上下文继承、全资产多特征加权打分与兜底回复。 |
