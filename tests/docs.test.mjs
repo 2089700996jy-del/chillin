@@ -278,3 +278,12 @@ test('Docs - 行动文档里内联点名的文件路径必须存在', () => {
     }
     assert.equal(stale.length, 0, '以下文档引用的文件已不存在（多半是改名/拆分后忘了同步）：\n' + stale.join('\n'));
 });
+
+test('Docs - CI 工作流覆盖双 Node 版本与 Worker 打包', () => {
+    const ci = read('.github/workflows/ci.yml');
+    assert.match(ci, /pull_request/, '必须在 PR 上跑，不能只跑 main push');
+    assert.match(ci, /node: \['20', '22'\]/, 'Node 20 与 22 的行为不同（SQLite 用例在 20 下跳过），矩阵必须两个都跑');
+    assert.match(ci, /npm test/, 'CI 必须跑完整单测');
+    assert.match(ci, /wrangler deploy --dry-run/, 'CI 必须验证 Worker 能打包');
+    assert.match(ci, /public\/\$f/, 'CI 必须继续检查 Pages 发布目录的完整文件清单');
+});

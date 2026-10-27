@@ -151,3 +151,14 @@ test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async
         );
     }
 });
+
+test('Architecture - 笔记列表按批渲染，且搜索能定位分页外的笔记', async () => {
+    const notes = await fs.readFile(path.join(root, 'public', 'js', 'notes.js'), 'utf8');
+    assert.match(notes, /const NOTES_PAGE_SIZE = 60;/, '笔记每批 60 条，和随手记的 100 条分开调');
+    assert.match(notes, /allNotes\.slice\(0, notesVisibleCount\)/, '渲染必须只取当前窗口，不能全量塞 DOM');
+    assert.match(notes, /new IntersectionObserver/, '滚到底要自动续载');
+    assert.match(notes, /actions\.ensureNoteRendered = ensureNoteRendered/, '搜索跳转需要把目标笔记纳入渲染窗口');
+
+    const search = await fs.readFile(path.join(root, 'public', 'js', 'search.js'), 'utf8');
+    assert.match(search, /actions\.ensureNoteRendered/, '搜索跳转必须优先按笔记类型扩窗，不能只依赖 feeds 的 ensureItemRendered');
+});

@@ -194,9 +194,21 @@ export function initSearch() {
         });
     }
 
+    // 输入防抖：每次按键都全量扫周记正文/笔记/收藏/提示词，数据多时会把输入拖卡。
+    // 只渲染最后一次输入；Enter 会立即 flush，避免「打完马上回车」选中上一条结果。
+    const SEARCH_DEBOUNCE_MS = 120;
+    let searchDebounceTimer = 0;
+    const scheduleGlobalSearch = (value) => {
+        clearTimeout(searchDebounceTimer);
+        searchDebounceTimer = setTimeout(() => {
+            searchDebounceTimer = 0;
+            renderGlobalSearchResults(value);
+        }, SEARCH_DEBOUNCE_MS);
+    };
+
     if (globalSearchInput) {
         globalSearchInput.addEventListener('input', (e) => {
-            renderGlobalSearchResults(e.target.value.trim());
+            scheduleGlobalSearch(e.target.value.trim());
         });
 
         globalSearchInput.addEventListener('keydown', (e) => {
@@ -214,6 +226,11 @@ export function initSearch() {
                 }
             } else if (e.key === 'Enter') {
                 e.preventDefault();
+                if (searchDebounceTimer) {
+                    clearTimeout(searchDebounceTimer);
+                    searchDebounceTimer = 0;
+                    renderGlobalSearchResults(globalSearchInput.value.trim());
+                }
                 if (currentItems[selectedIndex] && typeof currentItems[selectedIndex].run === 'function') {
                     currentItems[selectedIndex].run();
                 }
@@ -441,10 +458,13 @@ export function initSearch() {
         if (!selector) return;
         setTimeout(() => {
             let el = document.querySelector(selector);
-            if (!el && typeof actions.ensureItemRendered === 'function') {
-                // 目标可能还没被渲染（随手记首屏只渲染 100 条）：以前这里会静默什么都不发生。
-                // 先让列表把目标所在的整批纳入渲染窗口，再重新查询。
-                if (actions.ensureItemRendered(selector)) el = document.querySelector(selector);
+            if (!el) {
+                // 目标可能还没被渲染（随手记 100 条/批、笔记 60 条/批）：以前这里会静默什么都不发生。
+                // 先让对应列表把目标所在的整批纳入渲染窗口，再重新查询。
+                const isNote = selector.includes('data-note-id');
+                const ensured = (isNote && typeof actions.ensureNoteRendered === 'function' && actions.ensureNoteRendered(selector))
+                    || (typeof actions.ensureItemRendered === 'function' && actions.ensureItemRendered(selector));
+                if (ensured) el = document.querySelector(selector);
             }
             if (el) {
                 el.scrollIntoView({ behavior: 'smooth', block: 'center' });

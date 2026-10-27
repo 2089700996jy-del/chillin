@@ -122,10 +122,50 @@ const renderAnnotationsList = () => {
     });
 };
 
+const NOTES_PAGE_SIZE = 60;
+let notesVisibleCount = NOTES_PAGE_SIZE;
+let notesLoadMoreObserver = null;
+
+const loadMoreNotes = () => {
+    if (notesLoadMoreObserver) {
+        notesLoadMoreObserver.disconnect();
+        notesLoadMoreObserver = null;
+    }
+    if (notesVisibleCount >= state.notesDatabase.length) return;
+    notesVisibleCount += NOTES_PAGE_SIZE;
+    renderNotes();
+};
+
+const observeNotesLoadMore = (el) => {
+    if (typeof IntersectionObserver !== 'function') return;
+    el.classList.add('list-load-more--auto');
+    notesLoadMoreObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreNotes();
+    }, { rootMargin: '600px 0px' });
+    notesLoadMoreObserver.observe(el);
+};
+
+// 搜索跳转用：目标笔记可能落在分页窗口之外，先把所在批纳入渲染窗口再查询。
+const ensureNoteRendered = (selector) => {
+    const matched = /data-note-id="([^"]+)"/.exec(String(selector || ''));
+    if (!matched) return false;
+    const targetId = matched[1];
+    const sorted = [...state.notesDatabase].sort((a, b) => b.id - a.id);
+    const index = sorted.findIndex((note) => String(note.id) === targetId);
+    if (index === -1 || index < notesVisibleCount) return false;
+    notesVisibleCount = Math.ceil((index + 1) / NOTES_PAGE_SIZE) * NOTES_PAGE_SIZE;
+    renderNotes();
+    return true;
+};
+
 const renderNotes = () => {
+    if (notesLoadMoreObserver) {
+        notesLoadMoreObserver.disconnect();
+        notesLoadMoreObserver = null;
+    }
     setHtml(notesListContainer, '');
-    const sortedNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
-    if (sortedNotes.length === 0) {
+    const allNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
+    if (allNotes.length === 0) {
         if (isSyncingNow()) {
             setHtml(notesListContainer, skeletonListHtml(3));
             return;
@@ -139,6 +179,7 @@ const renderNotes = () => {
         `);
         return;
     }
+    const sortedNotes = allNotes.slice(0, notesVisibleCount);
     sortedNotes.forEach(note => {
         const el = document.createElement('div');
         el.className = 'note-item';
@@ -153,6 +194,16 @@ const renderNotes = () => {
         el.addEventListener('click', () => openNoteEditor(note.id));
         notesListContainer.appendChild(el);
     });
+
+    if (allNotes.length > sortedNotes.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'list-load-more';
+        more.textContent = `加载更多（还有 ${allNotes.length - sortedNotes.length} 条）`;
+        more.addEventListener('click', loadMoreNotes);
+        notesListContainer.appendChild(more);
+        observeNotesLoadMore(more);
+    }
 };
 
 const hasUnsavedNoteChanges = () => {
@@ -320,6 +371,7 @@ document.getElementById('btn-add-annotation').addEventListener('click', () => {
 
 
     actions.renderNotes = renderNotes;
+    actions.ensureNoteRendered = ensureNoteRendered;
     actions.openNoteEditor = openNoteEditor;
     actions.hasUnsavedNoteChanges = hasUnsavedNoteChanges;
     actions.saveNoteDraft = saveNoteDraft;

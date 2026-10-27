@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Node.js test environment mock for browser globals
 if (typeof globalThis.window === 'undefined') {
@@ -80,9 +85,18 @@ test('Search - 跳转失联修复（C3）：分页列表之外的条目必须先
     const fs = await import('node:fs');
     const search = fs.readFileSync(new URL('../public/js/search.js', import.meta.url), 'utf8');
     const feeds = fs.readFileSync(new URL('../public/js/feeds.js', import.meta.url), 'utf8');
-    assert.match(search, /if \(!el && typeof actions\.ensureItemRendered === 'function'\)/, 'jumpToElement 查不到元素时必须先问列表要渲染窗口，否则长列表下的搜索跳转静默失效');
-    assert.match(search, /if \(actions\.ensureItemRendered\(selector\)\) el = document\.querySelector\(selector\)/, '扩窗口后必须重新查询一次选择器（否则拿到的是旧 DOM 的 null）');
+    assert.match(search, /actions\.ensureNoteRendered\(selector\)/, 'jumpToElement 查不到元素时必须先问笔记列表要渲染窗口');
+    assert.match(search, /actions\.ensureItemRendered\(selector\)/, 'jumpToElement 也要继续兼容随手记的 ensureItemRendered');
+    assert.match(search, /if \(ensured\) el = document\.querySelector\(selector\)/, '扩窗口后必须重新查询一次选择器（否则拿到的是旧 DOM 的 null）');
     assert.match(feeds, /actions\.ensureItemRendered = ensureFeedRendered/, 'feeds.js 必须把 ensureFeedRendered 注册进 actions 注册表');
     assert.match(feeds, /feedsVisibleCount = Math\.ceil\(\(index \+ 1\) \/ FEEDS_PAGE_SIZE\) \* FEEDS_PAGE_SIZE/, '扩窗口必须按整页对齐（否则数目零散、状态难以推理）');
     assert.match(fs.readFileSync(new URL('../public/js/actions.js', import.meta.url), 'utf8'), /ensureItemRendered: null/, 'actions.js 注册表必须声明 ensureItemRendered 占位');
+});
+
+test('Search - 输入防抖 120ms，Enter 立即 flush', () => {
+    const src = fs.readFileSync(path.join(root, 'public/js/search.js'), 'utf8');
+    assert.match(src, /const SEARCH_DEBOUNCE_MS = 120;/, '搜索防抖必须有一个明确的毫秒常量');
+    assert.match(src, /clearTimeout\(searchDebounceTimer\)/, '连续输入必须取消上一次定时器');
+    assert.match(src, /searchDebounceTimer = setTimeout\(/, '输入应走 setTimeout，而不是每个按键同步全量扫描');
+    assert.match(src, /if \(searchDebounceTimer\) \{[\s\S]*?renderGlobalSearchResults/, 'Enter 必须先 flush 挂起的搜索，否则会选中上一条结果');
 });
