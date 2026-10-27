@@ -86,3 +86,9 @@ test('A11y - toast 容器是 polite live region，错误提示用 alert 角色',
     assert.match(utilsJs, /setAttribute\('role', type === 'error' \? 'alert' : 'status'\)/, '错误提示用 alert，其余用 status');
     assert.match(utilsJs, /aria-atomic/, '整条提示应作为一个整体播报');
 });
+
+test('A11y - 阅读器章节目录是可聚焦的滚动区域', () => {
+    const sidebar = (html.match(/<div[^>]*id="sidebar-chapter-list"[^>]*>/) || [''])[0];
+    assert.match(sidebar, /tabindex="0"/, '章节列表可滚动，键盘用户必须能聚焦它，否则 axe 报 scrollable-region-focusable');
+    assert.match(sidebar, /aria-label="章节列表"/, '可聚焦的滚动区域需要可访问名称，读屏才知道这是目录');
+});

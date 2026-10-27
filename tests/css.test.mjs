@@ -379,3 +379,18 @@ test('CSS - 键盘焦点可见：全局 reset 只吞指针焦点，Tab 焦点有
         '输入框需要单独的 :focus-visible 规则（模块自带的 :focus{outline:none} 优先级更高）');
     assert.match(css, /outline-offset:\s*2px/, '焦点环要留 2px offset，否则会贴在按钮边缘看不清');
 });
+
+test('CSS - 次级元信息颜色走主题令牌（整页审计的 5 处灰字）', () => {
+    const block = (selector) => {
+        const start = css.indexOf('\n' + selector + ' {');
+        assert.ok(start >= 0, '缺少选择器 ' + selector);
+        return css.slice(start, css.indexOf('}', start));
+    };
+    for (const selector of ['.note-item-date', '.feed-date', '.feed-tag-pill', '.k-topic-tier-pill', '.k-shelf-count-badge', '.k-shelf-card-snippet']) {
+        assert.match(block(selector), /color:\s*var\(--text-color-light\)/, selector + ' 的次级文字必须走主题令牌，裸灰值在深色/夜间下会失去对比度');
+    }
+    assert.match(block('.feed-tag-pill'), /background:\s*rgba\(var\(--neutral-rgb\)/, 'feed 标签底色要跟随主题反转');
+    for (const selector of ['.bookmark-card-type', '.bookmark-card-desc']) {
+        assert.match(block(selector), /color:\s*rgba\(var\(--label-rgb\), 0\.85\)/, selector + ' 在卡片底色上只有 4.45:1，必须加深到 0.85');
+    }
+});
