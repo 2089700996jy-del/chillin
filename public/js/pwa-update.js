@@ -126,7 +126,7 @@ export function initPwaUpdates() {
                 <span id="pwa-update-msg" style="flex:1"></span>
                 <span style="display:flex;gap:8px;flex-shrink:0">
                   <button type="button" id="pwa-force-btn" style="border:0;border-radius:999px;padding:8px 10px;background:rgba(255,255,255,0.14);color:#fff;font:600 12px/1 inherit;cursor:pointer">强制更新</button>
-                  <button type="button" id="pwa-update-btn" style="border:0;border-radius:999px;padding:8px 12px;background:#007AFF;color:#fff;font:600 12px/1 inherit;cursor:pointer">立即刷新</button>
+                  <button type="button" id="pwa-update-btn" style="border:0;border-radius:999px;padding:8px 12px;background:var(--ios-blue,#0066CC);color:#fff;font:600 12px/1 inherit;cursor:pointer">立即刷新</button>
                 </span>
             `);
             document.body.appendChild(bar);

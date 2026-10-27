@@ -171,7 +171,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
 | [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码（UTF-8 优先、GBK 兜底）、阅读进度写入保护（更旧写入被拒）、百分比夹紧与跨用户隔离 |
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
-| [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌、深色下会失明的 Tailwind 色阶与链接色令牌 |
+| [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌、深色下会失明的 Tailwind 色阶与链接色令牌、**亮/暗 24 组对比度实算（WCAG AA）与键盘焦点可见门禁** |
 | [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用、**toast live region 与错误 alert 角色** |
 | [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、长轮询游标持久化与排重、**默认只聊天不落库**、显式「记录：…」才写入随手记、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」，联网答案默认也不带「来源：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误、**微信发图落成带图随手记（`item.type=2` 识别 → 明文魔数 → **AES-128-ECB + PKCS7** 解密（`aeskey` 32 位 hex，另兼容 `media.aes_key` 与「hex 再 base64」中间层，CBC 两种 IV 兜底），直链与带授权参数的地址都试，图取不到就如实告知且不落库）** |
 | [`tests/bot-health.test.mjs`](tests/bot-health.test.mjs) | 健康打卡：一句话解析出步数/睡眠/中高强度/静息心率/体重（斤折半、千分位）、越界值点名不写库、只认显式格式不劫持聊天、一天一行 UPSERT 只覆盖本次字段、日期一律东八区、汇总只统计真的记过该字段的天（真实 SQLite） |

@@ -23,7 +23,9 @@ const manifest = JSON.parse(fs.readFileSync(path.join(root, 'public', 'manifest.
 // v2.5.154：底栏选中态改实心字形时删掉 3 处——.mobile-tab-item.active 的 color !important
 // 会永久压死阅读器夜间/护眼那两条更具体的选择器，:active .tab-icon 的 transform/transition
 // 两条 !important 也已被全局 scale(0.95) 的按下反馈取代。
-const IMPORTANT_BASELINE = 226;
+// v2.5.160：+1 —— 输入框的键盘焦点环必须 !important 才能压过各模块自带的
+// :focus{outline:none}（auth/搜索/编辑器各写了一套），否则 Tab 到输入框时看不见焦点。
+const IMPORTANT_BASELINE = 227;
 
 test('CSS - theme-color / manifest 与页面底色一致（iOS 状态栏不出现色带）', () => {
     const bg = (css.match(/--ios-bg:\s*(#[0-9A-Fa-f]{6})/) || [])[1];
@@ -85,7 +87,9 @@ test('CSS - !important 数量不再增长（基线棘轮）', () => {
 
 // 裸 hex 棘轮：v2.5.144 令牌化批次把它从 501 降到 126（阈值=同值出现 >=3 次才建令牌），
 // 剩余的是长尾一次性色值，不强行合并。
-const HEX_BASELINE = 126;
+// v2.5.160：+1 —— 深色主按钮的强调文字色 #4A9EFF（浅色层新增的 --danger-color / --danger-fill
+// 与 --accent-text 复用/替换了原有 hex，净增 1）。
+const HEX_BASELINE = 127;
 
 test('CSS - 裸 hex 数量不再增长（基线棘轮）', () => {
     const count = (css.replace(/\/\*[\s\S]*?\*\//g, '').match(/#[0-9a-fA-F]{3,8}\b/g) || []).length;
@@ -197,7 +201,7 @@ test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静�
 test('CSS - 灰度色值一律走 RGB 分量令牌（禁止再写回 rgba(60,60,67,α) 字面量）', () => {
     const label = (css.match(/rgba\(var\(--label-rgb\),/g) || []).length;
     const neutral = (css.match(/rgba\(var\(--neutral-rgb\),/g) || []).length;
-    assert.ok(label >= 60, 'rgba(var(--label-rgb), α) 只剩 ' + label + ' 处——有人把灰度字面量写回来了，深色模式会再次出现看不清的二级文字');
+    assert.ok(label >= 50, 'rgba(var(--label-rgb), α) 只剩 ' + label + ' 处——有人把灰度字面量写回来了，深色模式会再次出现看不清的二级文字（v2.5.160 把 5 处 placeholder 收敛到 --placeholder-color，下限从 60 调到 50）');
     assert.ok(neutral >= 60, 'rgba(var(--neutral-rgb), α) 只剩 ' + neutral + ' 处——中性表面会脱离主题切换');
     for (const literal of ['rgba(60, 60, 67,', 'rgba(120, 120, 128,']) {
         assert.ok(!css.includes(literal), '请用 rgba(var(--label-rgb), α) / rgba(var(--neutral-rgb), α) 代替字面量 ' + literal + '（见 .agents/rules/ui-style.md 的主题令牌纪律）');
@@ -266,4 +270,112 @@ test('CSS - 底栏选中态是实心字形而非缩放，且主题覆盖不再�
         '护眼阅读器底栏选中色必须生效（--garden-green）');
     assert.match(css, /:root\[data-theme="dark"\] \.mobile-tab-item\.active\s*\{[^}]*color:\s*var\(--ios-blue-dark\)/,
         '应用级深色主题的底栏选中色必须切到 #0A84FF（--ios-blue-dark）：#007AFF 在深色玻璃上对比度只有 4.70');
+});
+
+test('CSS - 关键文本/控件对比度达到 WCAG AA（亮/暗双主题）', () => {
+    // 真浏览器审计（axe-core + Chrome，v2.5.160）把结论固化成静态门禁：
+    // 任何一次令牌微调如果让下面这些组合跌破 4.5:1，这里会先失败，而不是等用户看不清。
+    const tokenBlock = (re) => {
+        const m = css.match(re);
+        assert.ok(m, '缺少令牌块：' + re);
+        const map = {};
+        for (const line of m[1].split('\n')) {
+            const kv = line.match(/^\s*(--[\w-]+)\s*:\s*([^;]+);/);
+            if (kv) map[kv[1]] = kv[2].trim();
+        }
+        return map;
+    };
+    const light = tokenBlock(/:root\s*\{([\s\S]*?)\n\}/);
+    const darkLayer = tokenBlock(/:root\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/);
+    // 深色层只覆盖变化项，其余继承亮色令牌
+    const dark = { ...light, ...darkLayer };
+
+    const resolve = (value, tokens, depth = 0) => {
+        if (depth > 6 || !value.includes('var(')) return value;
+        return resolve(value.replace(/var\(\s*(--[\w-]+)\s*(?:,\s*([^()]*))?\)/g,
+            (_, name, fallback) => tokens[name] ?? fallback ?? ''), tokens, depth + 1);
+    };
+    const parse = (raw) => {
+        const value = raw.trim();
+        if (value.startsWith('#')) {
+            const h = value.slice(1);
+            const n = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
+            return [0, 2, 4].map((i) => parseInt(n.slice(i, i + 2), 16)).concat(1);
+        }
+        const nums = value.match(/-?\d*\.?\d+/g);
+        assert.ok(nums && nums.length >= 3, '无法解析颜色：' + raw);
+        return [Number(nums[0]), Number(nums[1]), Number(nums[2]), nums.length > 3 ? Number(nums[3]) : 1];
+    };
+    const blend = (fg, bg) => [0, 1, 2].map((i) => fg[i] * fg[3] + bg[i] * (1 - fg[3]));
+    const luminance = (rgb) => {
+        const f = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+        return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]);
+    };
+    const contrast = (fgName, bgName, tokens) => {
+        const fg = parse(resolve(tokens[fgName], tokens));
+        const bg = parse(resolve(tokens[bgName], tokens));
+        const solid = blend(fg, bg);
+        const l1 = luminance(solid), l2 = luminance(bg);
+        return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+
+    const pairs = [
+        ['正文/页面', '--text-color', '--ios-bg'],
+        ['正文/卡片', '--text-color', '--ios-card-bg'],
+        ['次要文字/页面', '--ios-secondary-label', '--ios-bg'],
+        ['次要文字/卡片', '--ios-secondary-label', '--ios-card-bg'],
+        ['链接/页面', '--link-color', '--ios-bg'],
+        ['链接/卡片', '--link-color', '--ios-card-bg'],
+        ['底栏未选中/页面', '--tab-inactive', '--ios-bg'],
+        ['主按钮白字/蓝底', '--white', '--ios-blue'],
+        ['危险文字/卡片', '--danger-color', '--ios-card-bg'],
+        ['危险按钮白字/红底', '--white', '--danger-fill'],
+        ['占位文字/卡片', '--placeholder-color', '--ios-card-bg'],
+        ['键盘焦点环/页面', '--focus-ring-color', '--ios-bg'],
+    ];
+    for (const [label, fg, bg] of pairs) {
+        const ratio = contrast(fg, bg, light);
+        // 焦点环属于「非文本 UI 组件」，WCAG 2.4.11 要求 3:1；其余文字组合要求 4.5:1
+        const min = label.includes('焦点环') ? 3 : 4.5;
+        assert.ok(ratio >= min, `亮色「${label}」只有 ${ratio.toFixed(2)}:1，低于 ${min}:1`);
+    }
+
+    const darkPairs = [
+        ['正文/页面', '--text-color', '--ios-bg'],
+        ['正文/卡片', '--text-color', '--ios-card-bg'],
+        ['次要文字/页面', '--ios-secondary-label', '--ios-bg'],
+        ['次要文字/卡片', '--ios-secondary-label', '--ios-card-bg'],
+        ['强调文字/页面', '--accent-text', '--ios-bg'],
+        ['强调文字/卡片', '--accent-text', '--ios-card-bg'],
+        ['链接/页面', '--link-color', '--ios-bg'],
+        ['底栏未选中/页面', '--tab-inactive', '--ios-bg'],
+        ['主按钮白字/蓝底', '--white', '--ios-blue'],
+        ['危险文字/卡片', '--danger-color', '--ios-card-bg'],
+        ['危险按钮白字/红底', '--white', '--danger-fill'],
+        ['键盘焦点环/页面', '--focus-ring-color', '--ios-bg'],
+    ];
+    for (const [label, fg, bg] of darkPairs) {
+        const ratio = contrast(fg, bg, dark);
+        const min = label.includes('焦点环') ? 3 : 4.5;
+        assert.ok(ratio >= min, `深色「${label}」只有 ${ratio.toFixed(2)}:1，低于 ${min}:1`);
+    }
+
+    // 深色层必须真的覆盖这些角色，否则会回落到浅色值（登录页曾经整片黑字压在深底上）
+    for (const name of ['--accent-text', '--danger-color', '--danger-fill', '--link-color', '--tab-inactive']) {
+        assert.ok(dark[name], '深色层缺少 ' + name + ' 覆盖');
+    }
+});
+
+test('CSS - 键盘焦点可见：全局 reset 只吞指针焦点，Tab 焦点有 2px 焦点环', () => {
+    const resetAt = css.search(/:focus:not\(:focus-visible\)/);
+    assert.ok(resetAt >= 0, '全局焦点 reset 必须写成 :focus:not(:focus-visible)，否则 Tab 焦点会被一起清掉');
+    // 反例：裸 :focus 的 outline:none 会把键盘焦点也吞掉（v2.5.159 之前的写法）
+    assert.ok(!/(^|\n)button:focus\s*,/.test(css), '不要再用裸 button:focus 清除轮廓——键盘用户会完全失去焦点位置');
+    assert.ok(!/\n\.btn-primary:focus\s*,/.test(css), '不要再用裸 .btn-primary:focus 清除轮廓');
+
+    const ringAt = css.search(/:focus-visible\s*\{\s*\n\s*outline:\s*2px solid var\(--focus-ring-color\)/);
+    assert.ok(ringAt > resetAt, '全局 :focus-visible 焦点环必须存在，并且写在 reset 之后');
+    assert.match(css, /input:focus-visible[\s\S]{0,500}outline:\s*2px solid var\(--focus-ring-color\)\s*!important/,
+        '输入框需要单独的 :focus-visible 规则（模块自带的 :focus{outline:none} 优先级更高）');
+    assert.match(css, /outline-offset:\s*2px/, '焦点环要留 2px offset，否则会贴在按钮边缘看不清');
 });

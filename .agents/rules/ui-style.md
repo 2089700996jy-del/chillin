@@ -11,7 +11,7 @@
    * 圆角规范：主表面统一使用 `var(--surface-radius)`（26px），微件与子元素使用 `10px ~ 12px`，胶囊一律 `var(--radius-pill)`；
    * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 只为保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时用 `--surface-hairline`；
    * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并微升 `transform: translateY(-2px)`；
-   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#007AFF`，对齐 iOS 系统蓝），不得再引入第二个蓝；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
+   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#0066CC`，由 iOS 系统蓝 `#007AFF` 加深而来：白字按钮对比度从 4.01:1 提到 5.57:1，2026-10-27 对比度审计后定稿），不得再引入第二个蓝；深色底上的**文字/图标**改用 `--accent-text`（`#4A9EFF`），不得拿 `--ios-blue` 当深色文字色；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
    * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏的顶边线与上投影一律取消，边界交给材质本身，见 §3.5）；
    * 首屏柔光：亮色主题 `body` 顶部铺两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作 hero 光晕，卡片保持纯白浮在其上；深色与护眼主题必须显式 `background-image: none`（深底上会发脏蓝，由 `tests/css.test.mjs` 看住）。
 
@@ -163,3 +163,10 @@ iOS 的 Tab 选中态是**字形由描边变实心 + 主题色 + 标签加粗**�
 - **深色红色用 `--danger-color`**（深色层切到 `#FF453A`），不要再写 `#ff3b30` 字面量。
 - **禁止写死 Tailwind 色阶**：`#0f172a` / `#1e293b` / `#334155` / `#475569` / `#64748b` / `#94a3b8` 都是浅色专用灰，不跟随 `data-theme` 反转（v2.5.120 修掉的 `.rich-link-title` 就曾在深色卡片上隐形）。正文链接统一走 `--link-color`（亮 `var(--ios-blue)` / 深 `#0A84FF`）；**不要在 JS 模板里拼内联 `style="color:#007AFF"`**——内联样式优先于样式表，深色层覆盖不掉（`tests/css.test.mjs` 对以上两者都有门禁）。
 - **验证方法**：改动后必须用真浏览器读 `getComputedStyle` 逐元素核对（不要只看截图——归一化后的截图会让白字看起来发暗），并对浅色主题做逐像素 diff（`maxDiff` 必须为 0）证明零回归；`backups/` 里有采集页与 `_pngdiff.mjs` 可直接复用。
+
+### 3.6 对比度与键盘焦点（v2.5.160 起，WCAG 2.1 AA 门禁）
+
+* **文字对比度 ≥ 4.5:1，非文本 UI ≥ 3:1**：二级文字 `--ios-secondary-label` / `--placeholder-color` 为 `rgba(var(--label-rgb), 0.75)`（页面 5.01、卡片 5.20、导航底 4.82）；底栏未选中 `--tab-inactive: #6E6E73`（4.81）；链接与主按钮底色 `--ios-blue: #0066CC`（页面 5.28 / 白字 5.57）；危险色 `--danger-color: #D70015`、深色填充 `--danger-fill: #B3261E`（白字 5.38 / 6.54）。**改任何一个都必须同步跑 `tests/css.test.mjs` 的对比度门禁**，它会按亮/暗两套令牌实算 compositing 后的比值。
+* **深色层只覆盖变化项**：`--accent-text`、`--danger-fill`、`--focus-ring-color`、`--label-rgb` 等必须在 `:root[data-theme="dark"]` 里显式给出，否则会回落到浅色值（登录页曾因此出现整片黑字压在 `#14161b` 上，axe 实测 1.16:1）。
+* **焦点只对键盘可见**：全局 reset 写成 `:focus:not(:focus-visible)`，键盘焦点统一 `outline: 2px solid var(--focus-ring-color); outline-offset: 2px`；输入框因为各模块自带 `:focus{outline:none}`，另有一条 `input:focus-visible { outline: 2px solid … !important }` 兜底。**禁止再写裸 `:focus { outline: none }`**，否则 Tab 用户会完全失去位置感。
+* **真浏览器复验**：Chrome + axe-core 的 `color-contrast` 在登录页（亮/暗）与设计系统 harness 上均为 0 violation；截图与审计脚本放在仓库外的 `D:\7\audit-tools`，不随仓库分发。
