@@ -8,6 +8,7 @@ import {
     ilinkUin,
     ilinkHeaders,
     ilinkBase,
+    ilinkRedirectBase,
     requestClawQrcode,
     queryClawQrcode,
     fetchClawUpdates,
@@ -180,6 +181,17 @@ test('ClawBot - 取二维码与查询扫码状态解析官方字段', async () =
     await assert.rejects(() => requestClawQrcode(missing.impl), /qrcode/);
 });
 
+test('ClawBot - 扫码重定向主机只接受微信 HTTPS 域名', () => {
+    assert.equal(ilinkRedirectBase('ilink2.weixin.qq.com'), 'https://ilink2.weixin.qq.com');
+    assert.equal(ilinkRedirectBase('https://ilink2.weixin.qq.com/'), 'https://ilink2.weixin.qq.com');
+    assert.equal(ilinkRedirectBase('https://weixin.qq.com'), 'https://weixin.qq.com');
+    assert.equal(ilinkRedirectBase('evil.example'), '');
+    assert.equal(ilinkRedirectBase('http://ilink2.weixin.qq.com'), '');
+    assert.equal(ilinkRedirectBase('https://ilink2.weixin.qq.com/path'), '');
+    assert.equal(ilinkRedirectBase('https://ilink2.weixin.qq.com@evil.example'), '');
+    assert.equal(ilinkRedirectBase(''), '');
+});
+
 test('ClawBot - 长轮询携带游标，解析消息与 get_updates_buf', async () => {
     const st = stubFetch({
         '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-2', msgs: [{ message_id: '1' }] } })
@@ -301,6 +313,90 @@ integration('ClawBot - 扫码确认写入凭证并规范化 baseurl，cursor 归
     assert.equal(row.cursor, '');
     assert.equal(row.qrcode, '');
     assert.ok(Number(row.bound_at_ms) > 0);
+});
+
+integration('ClawBot - scaned_but_redirect 先持久化新主机，再在新主机完成确认', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const redirectBase = 'https://ilink2.weixin.qq.com';
+    const st = stubFetch({
+        '/ilink/bot/get_bot_qrcode': () => ({ json: { qrcode: 'QR-REDIRECT', qrcode_img_content: 'https://x/qr.png' } }),
+        '/ilink/bot/get_qrcode_status': (u) => u.startsWith(redirectBase)
+            ? { json: { status: 'confirmed', bot_token: 'BOT-R', baseurl: redirectBase, ilink_bot_id: 'bot-r@im.bot', ilink_user_id: 'owner@im.wechat' } }
+            : { json: { status: 'scaned_but_redirect', redirect_host: 'ilink2.weixin.qq.com' } }
+    });
+    await startClawLogin({}, db, 1, st.impl);
+    const redirected = await checkClawLogin({}, db, 1, st.impl);
+    assert.equal(redirected.status, 'scaned_but_redirect');
+    assert.match(redirected.message, /切换微信节点/);
+    let row = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+    assert.equal(row.status, 'pending');
+    assert.equal(row.baseurl, redirectBase, '重定向主机必须落库，下一次 check 才会去新主机');
+    assert.equal(row.qrcode, 'QR-REDIRECT');
+    assert.ok(st.calls[0].url.startsWith(OFFICIAL), '第一次仍从官方主机开始');
+    assert.ok(st.calls[1].url.startsWith(OFFICIAL), '第一次状态查询仍走官方主机');
+
+    const bound = await checkClawLogin({}, db, 1, st.impl);
+    assert.equal(bound.bound, true);
+    assert.equal(bound.ilinkBotId, 'bot-r@im.bot');
+    assert.equal(JSON.stringify(bound).includes('BOT-R'), false);
+    assert.ok(st.calls[2].url.startsWith(redirectBase), '确认前必须先去 redirect_host 轮询');
+    row = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+    assert.equal(row.status, 'bound');
+    assert.equal(row.baseurl, redirectBase);
+});
+
+integration('ClawBot - binded_redirect 清掉二维码并给出明确提示，不假装绑定', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const st = stubFetch({
+        '/ilink/bot/get_bot_qrcode': () => ({ json: { qrcode: 'QR-BOUNDED' } }),
+        '/ilink/bot/get_qrcode_status': () => ({ json: { status: 'binded_redirect' } })
+    });
+    await startClawLogin({}, db, 1, st.impl);
+    const out = await checkClawLogin({}, db, 1, st.impl);
+    assert.equal(out.bound, false);
+    assert.equal(out.status, 'binded_redirect');
+    assert.match(out.message, /绑定过其他 ClawBot 实例/);
+    const row = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
+    assert.equal(row.status, 'error');
+    assert.equal(row.qrcode, '', '终态必须清二维码，否则界面会一直等待');
+    assert.match(row.last_error, /绑定过其他 ClawBot 实例/);
+
+    const res = await handleClawApi(
+        new Request('https://chillin.example/api/bot/claw/status'), {},
+        new URL('https://chillin.example/api/bot/claw/status'), db, 1
+    );
+    const body = await res.json();
+    assert.equal(body.status, 'error');
+    assert.match(body.lastError, /绑定过其他 ClawBot 实例/);
+});
+
+integration('ClawBot - need_verifycode / verify_code_blocked / 未知状态都不再无限等待', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    let nextStatus = 'need_verifycode';
+    const st = stubFetch({
+        '/ilink/bot/get_bot_qrcode': () => ({ json: { qrcode: 'QR-VERIFY-' + nextStatus } }),
+        '/ilink/bot/get_qrcode_status': () => ({ json: { status: nextStatus } })
+    });
+
+    for (const expected of ['need_verifycode', 'verify_code_blocked']) {
+        nextStatus = expected;
+        await startClawLogin({}, db, 1, st.impl);
+        const out = await checkClawLogin({}, db, 1, st.impl);
+        assert.equal(out.status, expected);
+        assert.ok(out.message && out.message.length > 0, expected + ' 必须有可展示的提示');
+        const row = await db.prepare('SELECT status, qrcode FROM bot_claw_accounts WHERE user_id = 1').first();
+        assert.equal(row.status, 'error');
+        assert.equal(row.qrcode, '');
+    }
+
+    nextStatus = 'some_future_status';
+    await startClawLogin({}, db, 1, st.impl);
+    const unknown = await checkClawLogin({}, db, 1, st.impl);
+    assert.equal(unknown.status, 'error');
+    assert.match(unknown.message, /未知扫码状态/);
 });
 
 integration('ClawBot - 二维码过期清空 qrcode，确认响应缺字段只记错误不绑定', async () => {
@@ -1776,5 +1872,10 @@ test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭
     assert.ok(auth.includes('stopBotClawPolling'), '关闭弹层/取消时必须能停掉轮询');
     assert.match(auth, /MutationObserver/, '弹层关闭要靠 class 变化停轮询');
     assert.ok(auth.includes('确认后自动完成绑定'), '扫码后要告诉用户去手机上确认');
+    assert.match(auth, /二维码进入刷新窗口/, '倒计时到 0 不能直接判过期，要继续问服务端');
+    assert.match(auth, /CLAW_SCAN_MAX_MS/, '本地只做超时兜底');
+    assert.match(auth, /scaned_but_redirect/, '前端要知道扫码重定向不是终态');
+    assert.match(auth, /binded_redirect/, '前端要展示已绑定其他实例的明确提示');
+    assert.match(auth, /need_verifycode/, '前端要展示需要配对码的明确提示');
 });
 

@@ -1020,10 +1020,12 @@ async function toggleBotOutreach() {
 const CLAW_POLL_INTERVAL_MS = 1000;
 const CLAW_CHECK_EVERY_MS = 2000;
 const CLAW_QR_MIN_TTL_SECONDS = 30;
+const CLAW_SCAN_MAX_MS = 5 * 60 * 1000;
 let clawPollTimer = 0;
 let clawCheckInFlight = false;
 let clawLastCheckAt = 0;
 let clawExpiresAt = 0;
+let clawScanStartedAt = 0;
 let clawBusy = false;
 
 function clawEls() {
@@ -1053,6 +1055,7 @@ function hideBotClawQr() {
     if (els.cancel) els.cancel.hidden = true;
     if (els.qrNote) { els.qrNote.hidden = true; els.qrNote.textContent = ''; }
     clawExpiresAt = 0;
+    clawScanStartedAt = 0;
 }
 
 function paintBotClawCountdown() {
@@ -1060,23 +1063,27 @@ function paintBotClawCountdown() {
     if (!clawExpiresAt || !els.qrHint) return 0;
     const left = Math.max(0, Math.ceil((clawExpiresAt - Date.now()) / 1000));
     els.qrHint.textContent = left > 0
-        ? '请用微信扫码，二维码 ' + left + ' 秒后失效。'
-        : '二维码已过期，请重新生成。';
+        ? '请用微信扫码，二维码约 ' + left + ' 秒后失效（以微信状态为准）。'
+        : '二维码进入刷新窗口，正在向微信确认状态…';
     return left;
 }
 
-function expireBotClawQr(message) {
+function failBotClawQr(title, message) {
     stopBotClawPolling();
     hideBotClawQr();
     const els = clawEls();
-    if (els.title) els.title.textContent = '二维码已过期';
-    if (els.hint) els.hint.textContent = message || '二维码已过期，请重新生成。';
+    if (els.title) els.title.textContent = title || '绑定未完成';
+    if (els.hint) els.hint.textContent = message || '请重新生成二维码。';
     if (els.bind) {
         els.bind.hidden = false;
         els.bind.disabled = false;
         els.bind.textContent = '重新生成二维码';
     }
     if (els.unbind) els.unbind.hidden = true;
+}
+
+function expireBotClawQr(message) {
+    failBotClawQr('二维码已过期', message || '二维码已过期，请重新生成。');
 }
 
 function renderBotClawStatus(state) {
@@ -1097,6 +1104,12 @@ function renderBotClawStatus(state) {
             els.hint.textContent = hint;
         }
         if (els.bind) els.bind.textContent = '绑定微信';
+        return;
+    }
+    if (state && state.status === 'error') {
+        if (els.title) els.title.textContent = '绑定未完成';
+        if (els.hint) els.hint.textContent = state.lastError || '请重新生成二维码后再试。';
+        if (els.bind) els.bind.textContent = '重新生成二维码';
         return;
     }
     if (pending) {
@@ -1154,6 +1167,7 @@ async function startBotClawBind() {
         els.title.textContent = '等待扫码';
         els.hint.textContent = '用微信扫一扫，确认后自动完成绑定。';
         clawExpiresAt = Date.now() + ttl * 1000;
+        clawScanStartedAt = Date.now();
         paintBotClawCountdown();
         startBotClawPolling();
     } catch (e) {
@@ -1188,7 +1202,17 @@ async function pollBotClawOnce() {
             return;
         }
         if (state && state.status === 'expired') {
-            expireBotClawQr('二维码已过期，请重新生成。');
+            expireBotClawQr(state.message || '二维码已过期，请重新生成。');
+            return;
+        }
+        const terminal = {
+            binded_redirect: ['微信已绑定其他实例', state && state.message],
+            need_verifycode: ['需要配对码', state && state.message],
+            verify_code_blocked: ['配对码错误次数过多', state && state.message],
+            error: ['绑定未完成', (state && (state.message || state.lastError)) || '请重新生成二维码后再试。']
+        };
+        if (state && terminal[state.status]) {
+            failBotClawQr(terminal[state.status][0], terminal[state.status][1]);
             return;
         }
         const els = clawEls();
@@ -1196,6 +1220,9 @@ async function pollBotClawOnce() {
             if (state && state.status === 'scaned') {
                 els.qrNote.hidden = false;
                 els.qrNote.textContent = '已扫码，请在手机上确认。';
+            } else if (state && state.status === 'scaned_but_redirect') {
+                els.qrNote.hidden = false;
+                els.qrNote.textContent = state.message || '已扫码，正在切换微信节点…';
             } else if (state && state.lastError) {
                 els.qrNote.hidden = false;
                 els.qrNote.textContent = '通道暂时不可用，正在重试…';
@@ -1217,8 +1244,11 @@ function startBotClawPolling() {
     clawLastCheckAt = 0;
     clawPollTimer = setInterval(() => {
         if (!clawExpiresAt) return;
-        const left = paintBotClawCountdown();
-        if (left <= 0) { expireBotClawQr('二维码已过期，请重新生成。'); return; }
+        paintBotClawCountdown();
+        if (clawScanStartedAt && Date.now() - clawScanStartedAt > CLAW_SCAN_MAX_MS) {
+            failBotClawQr('扫码超时', '长时间没有收到微信确认，请重新生成二维码。');
+            return;
+        }
         if (clawCheckInFlight || Date.now() - clawLastCheckAt < CLAW_CHECK_EVERY_MS) return;
         clawLastCheckAt = Date.now();
         pollBotClawOnce();

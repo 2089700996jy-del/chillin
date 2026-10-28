@@ -19,8 +19,9 @@
  *   每分钟 cron 走 pollClawAccounts 长轮询收信，业务指令复用 bot-commands 共享大脑。
  * - 凭证：bot_token 只存 D1、只在服务端使用，任何 API 响应都不返回。
  *
- * 已知未覆盖：扫码后可能返回 scaned_but_redirect（需换轮询主机）与 binded_redirect，
- * v1 先按「同一微信身份只绑一次」的常规路径处理，遇到时记 last_error 便于排查。
+ * 扫码异常：scaned_but_redirect 换到 redirect_host 继续轮询（只接受微信域名）；
+ * binded_redirect / need_verifycode / verify_code_blocked / 未知状态都清掉二维码并给出
+ * 可执行的下一步，绝不让前端停在一个永远不会变的「等待扫码」。
  */
 import { jsonResponse } from './security.js';
 import { truncateUtf8, buildBotReply, claimBotMessage } from './bot-commands.js';
@@ -32,8 +33,16 @@ const ILINK_CHANNEL_VERSION = '2.4.8';
 /** 0x00020408，官方客户端 2.4.8 对应的十进制字符串 */
 const ILINK_CLIENT_VERSION = '132104';
 const ILINK_BOT_AGENT = 'Chillin/0.1';
-/** 二维码实测 40–60 秒就 expired，前端据此自动换新 */
+/** 服务端只把 90 秒当展示上限；真实有效期以 get_qrcode_status 为准 */
 const QR_TTL_SECONDS = 90;
+/** 状态提示：服务端给前端一句能直接展示的话，避免各端各猜一套 */
+const QR_STATUS_TEXT = {
+    wait: '等待扫码。', scaned: '已扫码，请在手机上确认。',
+    scaned_but_redirect: '已扫码，正在切换微信节点…',
+    binded_redirect: '这个微信已经绑定过其他 ClawBot 实例，请先在原实例解绑后再试。',
+    need_verifycode: '微信要求输入手机上的配对码；当前应用内暂不支持，请重新生成二维码或换一个微信。',
+    verify_code_blocked: '配对码错误次数过多，请稍后重新生成二维码。', expired: '二维码已过期，请重新生成。'
+};
 /** 微信单聊消息的实践长度上限，留足余量 */
 const MAX_CLAW_REPLY_BYTES = 4000;
 /** 单次 cron 最多轮询几个账号 */
@@ -81,6 +90,23 @@ export function ilinkBase(baseurl) {
     return raw;
 }
 
+/** redirect_host 只允许微信 HTTPS 域名：扫码响应不该把 Worker 变成任意主机的代理 */
+export function ilinkRedirectBase(host) {
+    const raw = String(host || '').trim();
+    if (!raw) return '';
+    const candidate = (/^https:\/\//i.test(raw) ? raw : 'https://' + raw).replace(/\/+$/, '');
+    try {
+        const url = new URL(candidate);
+        const hostname = url.hostname.toLowerCase();
+        if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) return '';
+        if (url.pathname !== '/' && url.pathname !== '') return '';
+        if (hostname !== 'weixin.qq.com' && !hostname.endsWith('.weixin.qq.com')) return '';
+        return candidate;
+    } catch {
+        return '';
+    }
+}
+
 export async function requestClawQrcode(fetchImpl = fetch) {
     const res = await fetchImpl(ILINK_DEFAULT_BASE + '/ilink/bot/get_bot_qrcode?bot_type=3', {
         method: 'POST',
@@ -94,8 +120,8 @@ export async function requestClawQrcode(fetchImpl = fetch) {
     return { qrcode, url: String((data && data.qrcode_img_content) || '') };
 }
 
-export async function queryClawQrcode(qrcode, fetchImpl = fetch) {
-    const res = await fetchImpl(ILINK_DEFAULT_BASE + '/ilink/bot/get_qrcode_status?qrcode=' + encodeURIComponent(qrcode), {
+export async function queryClawQrcode(qrcode, fetchImpl = fetch, baseurl = '') {
+    const res = await fetchImpl(ilinkBase(baseurl) + '/ilink/bot/get_qrcode_status?qrcode=' + encodeURIComponent(qrcode), {
         method: 'GET',
         headers: ilinkHeaders('')
     });
@@ -106,7 +132,8 @@ export async function queryClawQrcode(qrcode, fetchImpl = fetch) {
         botToken: String((data && data.bot_token) || ''),
         baseurl: String((data && data.baseurl) || ''),
         ilinkBotId: String((data && data.ilink_bot_id) || ''),
-        ilinkUserId: String((data && data.ilink_user_id) || '')
+        ilinkUserId: String((data && data.ilink_user_id) || ''),
+        redirectHost: String((data && data.redirect_host) || '')
     };
 }
 
@@ -193,7 +220,7 @@ async function upsertQrcode(db, userId, qrcode) {
         + "datetime('now', '+8 hours'), datetime('now', '+8 hours')) "
         + "ON CONFLICT(user_id) DO UPDATE SET status = 'pending', qrcode = ?2, "
         + "qr_expires_at = datetime('now', '+8 hours', '+" + QR_TTL_SECONDS + " seconds'), "
-        + "bot_token = '', cursor = '', ilink_bot_id = '', ilink_user_id = '', bound_at_ms = 0, "
+        + "baseurl = 'https://ilinkai.weixin.qq.com', bot_token = '', cursor = '', ilink_bot_id = '', ilink_user_id = '', bound_at_ms = 0, "
         + "is_deleted = 0, last_error = '', updated_at = datetime('now', '+8 hours')"
     ).bind(userId, qrcode).run();
 }
@@ -250,19 +277,25 @@ function publicStatus(row) {
         lastError: String(row.last_error || '')
     };
 }
-
+async function markQrTerminalError(db, id, message) {
+    await db.prepare("UPDATE bot_claw_accounts SET status = 'error', qrcode = '', qr_expires_at = NULL, last_error = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'pending'")
+        .bind(id, String(message || '').slice(0, 200)).run();
+}
+async function saveQrRedirect(db, id, baseurl) {
+    await db.prepare("UPDATE bot_claw_accounts SET baseurl = ?2, last_error = '', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'pending'")
+        .bind(id, baseurl).run();
+}
 /** 取一张新二维码并落库（旧二维码立即作废：企微/微信侧只认最新一次） */
 export async function startClawLogin(env, db, userId, fetchImpl = fetch) {
     const qr = await requestClawQrcode(fetchImpl);
     await upsertQrcode(db, userId, qr.qrcode);
     return { qrcode: qr.qrcode, url: qr.url, ttlSeconds: QR_TTL_SECONDS, status: 'pending' };
 }
-
 /** 查询一次扫码状态；confirmed 时把凭证写入库 */
 export async function checkClawLogin(env, db, userId, fetchImpl = fetch) {
     const row = await readAccount(db, userId);
     if (!row || !row.qrcode) return publicStatus(row);
-    const state = await queryClawQrcode(String(row.qrcode), fetchImpl);
+    const state = await queryClawQrcode(String(row.qrcode), fetchImpl, row.baseurl);
     if (state.status === 'confirmed') {
         if (!state.botToken || !state.ilinkBotId) {
             await markAccountError(db, row.id, 'confirmed 响应缺少 bot_token/ilink_bot_id');
@@ -272,11 +305,31 @@ export async function checkClawLogin(env, db, userId, fetchImpl = fetch) {
         console.log('[bot-claw] 绑定成功 ilink_bot_id=' + state.ilinkBotId);
         return publicStatus(await readAccount(db, userId));
     }
-    if (state.status === 'expired') {
+    const status = state.status;
+    if (status === 'scaned_but_redirect') {
+        const redirectBase = ilinkRedirectBase(state.redirectHost);
+        if (!redirectBase) {
+            console.error('[bot-claw] 扫码重定向地址无效，继续当前节点 host=' + state.redirectHost);
+            return Object.assign(publicStatus(row), { status, message: '已扫码，微信未返回可用的新节点，继续在当前节点确认…' });
+        }
+        await saveQrRedirect(db, row.id, redirectBase);
+        return Object.assign(publicStatus(await readAccount(db, userId)), { status, message: QR_STATUS_TEXT[status] });
+    }
+    if (status === 'expired') {
         await db.prepare("UPDATE bot_claw_accounts SET qrcode = '', updated_at = datetime('now', '+8 hours') WHERE id = ?1")
             .bind(row.id).run();
+        return Object.assign(publicStatus(row), { status, message: QR_STATUS_TEXT[status] });
     }
-    return Object.assign(publicStatus(row), { status: state.status });
+    if (!Object.prototype.hasOwnProperty.call(QR_STATUS_TEXT, status)) {
+        const message = '微信返回了未知扫码状态（' + status + '），请重新生成二维码。';
+        await markQrTerminalError(db, row.id, message);
+        return Object.assign(publicStatus(await readAccount(db, userId)), { status: 'error', message });
+    }
+    if (status === 'binded_redirect' || status === 'need_verifycode' || status === 'verify_code_blocked') {
+        await markQrTerminalError(db, row.id, QR_STATUS_TEXT[status]);
+        return Object.assign(publicStatus(await readAccount(db, userId)), { status, message: QR_STATUS_TEXT[status] });
+    }
+    return Object.assign(publicStatus(row), { status, message: QR_STATUS_TEXT[status] });
 }
 
 export async function unbindClaw(db, userId) {
