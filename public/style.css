@@ -2837,45 +2837,48 @@ body.hide-bottom-nav .nav-brand-mobile {
     opacity: 0.55;
   }
 
-  /* Mobile bottom tab: 与「滚动后的顶栏」共用同一块毛玻璃材质（--nav-scrolled-bg + blur(20px) saturate(180%)）。
-     不再铺不透明底色、不再画 1px 上边线/上投影：内容滚到栏下时隔着 88% 同源底色被柔化，才叫「通透」，
-     也才能和顶栏、页面浑然一体（见 ui-style.md §3.5）。底色仍由 --bg-rgb 页面分量派生，Redmi 手势区不会出色带。 */
+  /* Mobile bottom dock: 悬浮胶囊，而不是横贯屏幕的一条板。
+     与阅读器底栏（.reader-nav-bottom）同一套语言：左右留 12px、底部叠 safe-area，
+     圆角 22px、同款 --nav-scrolled-bg + blur(20px)，边界由圆角 + 极细 hairline + 柔和卡片阴影给出。
+     底色仍由 --bg-rgb 页面分量派生，Redmi 手势区不会出色带（见 ui-style.md §3.5）。 */
   .mobile-bottom-nav {
     display: flex !important;
     position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: auto;
-    min-height: 56px;
-    /* 与 .super-navbar.scrolled 同一个令牌、同一组模糊参数：上下固定栏是同一块材质，不是两块板。
-       这里刻意不加 !important：阅读器夜间/护眼那两条更具体的覆盖（--black / --mint-200）写在文件后部，
-       一旦加 !important 就永远不生效（见 ui-style.md §3.5）。 */
+    bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    left: 12px;
+    right: 12px;
+    height: 62px;
+    min-height: 0;
+    padding: 4px 6px;
+    /* 与 .super-navbar.scrolled 同一个令牌、同一组模糊参数：底栏仍是页面底色的延伸。
+       这里刻意不加 !important：阅读器夜间/护眼那两条更具体的覆盖（--black / --mint-200）
+       写在文件后部，一旦加 !important 就永远不生效（见 ui-style.md §3.5）。 */
     background: var(--nav-scrolled-bg);
     backdrop-filter: blur(20px) saturate(180%);
     -webkit-backdrop-filter: blur(20px) saturate(180%);
-    border-top: 1px solid transparent;
-    box-shadow: none;
-    z-index: var(--z-nav);
-    padding-top: 4px;
-    padding-bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    border: 1px solid var(--surface-hairline);
+    border-radius: 22px;
+    box-shadow: var(--card-shadow);
     box-sizing: border-box;
+    z-index: var(--z-nav);
   }
 
   .mobile-tab-item {
     flex: 1 1 0;
     min-width: 0;
+    height: 52px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: flex-start;
+    justify-content: center;
     text-decoration: none;
     color: var(--tab-inactive);
-    font-size: 10.5px;
+    font-size: 10px;
     font-weight: 500;
-    transition: color 0.18s ease, transform 0.18s var(--ease-spring), opacity 0.12s ease;
-    padding: 5px 0 0;
-    min-height: 48px;
+    transition: color 0.18s ease, background-color 0.18s ease, transform 0.18s var(--ease-spring), opacity 0.12s ease;
+    padding: 3px 0 2px;
+    min-height: 0;
+    border-radius: 17px;
     -webkit-tap-highlight-color: transparent;
     user-select: none;
     cursor: pointer;
@@ -2918,6 +2921,8 @@ body.hide-bottom-nav .nav-brand-mobile {
   .mobile-tab-item.active {
     color: var(--accent-text, var(--accent-color));
     font-weight: 600;
+    /* 选中态是一枚浅色胶囊，不再让整条底栏被一个蓝色标签点亮 */
+    background: rgba(var(--label-rgb), 0.06);
   }
 
   /* Hide bottom nav bar when reading or editing */
@@ -5142,20 +5147,15 @@ html.ios-pwa .super-navbar__content {
 
 html.ios-pwa .notion-app {
   padding-top: calc(66px + var(--ios-sat)) !important;
-  padding-bottom: calc(72px + var(--ios-sab)) !important;
-}
-
-html.ios-pwa .mobile-bottom-nav {
-  /* 尺寸/底色/模糊与 @media (max-width: 768px) 的基础定义完全相同，不再重复；
-     这里只保留 PWA 下用 --ios-sab 精确垫高、并盖过非 PWA 的 10px 兜底。 */
-  padding-bottom: max(8px, var(--ios-sab)) !important;
+  /* 悬浮胶囊顶部在 70px + safe-area，这里留 12px 呼吸，不再贴着内容 */
+  padding-bottom: calc(82px + var(--ios-sab)) !important;
 }
 
 html.ios-pwa .mobile-tab-item {
-  height: 48px;
-  padding: 4px 0 2px;
+  height: 52px;
+  padding: 3px 0 2px;
   box-sizing: border-box;
-  justify-content: flex-start;
+  justify-content: center;
 }
 
 html.ios-pwa .fab-btn {
@@ -6772,7 +6772,7 @@ body.eyecare-reader-body .reader-sync-info {
 /* 5. Dark Theme (OLED & Grouped Dark #1C1C1E) System Parity */
 body.dark-reader-body .mobile-bottom-nav {
   background: var(--black);
-  border-top-color: rgba(255, 255, 255, 0.12);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 body.dark-reader-body .mobile-tab-item {
@@ -6781,6 +6781,8 @@ body.dark-reader-body .mobile-tab-item {
 
 body.dark-reader-body .mobile-tab-item.active {
   color: var(--ios-blue-dark);
+  /* 阅读器夜间主题不一定带 data-theme，单独给胶囊一层可见的浅色底 */
+  background: rgba(255, 255, 255, 0.08);
 }
 
 body.dark-reader-body .notion-collection-card,
@@ -7066,7 +7068,7 @@ body.dark-reader-body .article-content {
 /* 6. Eye-care Theme Parity */
 body.eyecare-reader-body .mobile-bottom-nav {
   background: var(--mint-200);
-  border-top-color: rgba(76, 175, 80, 0.2);
+  border-color: rgba(76, 175, 80, 0.2);
 }
 
 body.eyecare-reader-body .mobile-tab-item.active {

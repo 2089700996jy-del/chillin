@@ -12,7 +12,7 @@
    * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 只为保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时用 `--surface-hairline`；
    * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并微升 `transform: translateY(-2px)`；
    * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#0066CC`，由 iOS 系统蓝 `#007AFF` 加深而来：白字按钮对比度从 4.01:1 提到 5.57:1，2026-10-27 对比度审计后定稿），不得再引入第二个蓝；深色底上的**文字/图标**改用 `--accent-text`（`#4A9EFF`），不得拿 `--ios-blue` 当深色文字色；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
-   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏的顶边线与上投影一律取消，边界交给材质本身，见 §3.5）；
+   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏为悬浮胶囊 dock，边界由圆角 + 极细 hairline + 柔和阴影给出，见 §3.5）；
    * 首屏柔光：亮色主题 `body` 顶部铺两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作 hero 光晕，卡片保持纯白浮在其上；深色与护眼主题必须显式 `background-image: none`（深底上会发脏蓝，由 `tests/css.test.mjs` 看住）。
 
 3. **模糊层 (backdrop-filter) 与层级纪律**：
@@ -89,14 +89,14 @@
    * 纵向热区必须有容器空间，**两个真实踩过的坑**：`overflow-x: auto` 会连带裁剪纵向溢出，横向滚动行必须补 `padding: 8px 0`；`flex-wrap: wrap` 的容器必须把 `row-gap` 提到 `16px`，否则换行后上下两行热区重叠（320px 窄屏实测会换行）；
    * 横向滚动的胶囊行必须补右缘渐隐 `mask-image`，否则被裁切的末位胶囊会让用户完全不知道它存在。
 
-### 3.5 固定栏取色同源：顶栏 / 底栏必须与页面浑然一体（v2.5.151 起）
+### 3.5 固定栏取色同源：顶栏透明、底栏悬浮胶囊（v2.5.151 / v2.5.174 起）
 
-iOS 上顶栏与底部 Tab 栏都是**页面底色的延伸**，不是两块独立的板。本项目真实踩过三种断层：① 顶栏静止态铺不透明的 `--bg-color`，把页面 hero 光晕挡在栏下，栏底留下 ΔR≈20 的台阶；② 底栏铺另一套 `--nav-bg`（`#F2F2F7`），比页面 `#F8F9FA` 低 6/7/3；③ 修完 ①② 后底栏改成不透明 `--bg-color` 并加了一条 `0 -1px 0` 顶边线，用户仍反馈「有条线分割视觉卡在还不够通透统一」——**不透明板 + 一条线本身就是「卡」**，与页面同色不等于浑然一体。
+iOS 上顶栏与底部导航都取页面底色，但**底栏不再横贯屏幕**：v2.5.151 把它从「另一块不透明板」拉回同源毛玻璃，v2.5.152 又删掉顶边线；到 v2.5.174 用户仍反馈「通栏还是碍眼」，于是改成**左右留 12px、22px 圆角的悬浮胶囊 dock**。历史教训：① 顶栏静止态铺不透明 `--bg-color` 会挡住 hero 光晕，留下 ΔR≈20 的台阶；② 底栏铺另一套 `--nav-bg`（`#F2F2F7`）会比页面低 6/7/3；③ 不透明板 + `0 -1px 0` 顶边线会被读成「一条线把界面切断」。
 
 * **分量同源**：页面底色必须同时提供 `--ios-bg`（hex）与 `--bg-rgb`（`R, G, B` 分量），两套主题各自定义；导航玻璃层（`--nav-glass-scrolled` / `--nav-scrolled-bg`）与底栏一律由 `rgba(var(--bg-rgb), α)` 或 `var(--bg-color)` 派生，**不允许再定义第二套导航取色**（`--nav-glass` 已因此删除）。`tests/css.test.mjs` 用 hex→rgb 反解机器校验两者同值，并断言静止态顶栏透明、底栏复用滚动顶栏的材质令牌。
 * **顶栏静止态透明**：`background: transparent`，让页面 hero 光晕一直铺到状态栏；只有 `.scrolled` 才升玻璃底（`--nav-scrolled-bg`）。iOS PWA（`html.ios-pwa`）下同样不得常驻玻璃底，否则状态栏区域会变成一条白带。
-* **底栏 = 与滚动顶栏同一块毛玻璃材质（不是另一块板）**：`background: var(--nav-scrolled-bg)` + `backdrop-filter: blur(20px) saturate(180%)`（含 `-webkit-` 配对），与 `.super-navbar.scrolled` 逐字同源；**不画上边线、不加投影**（`box-shadow: none`），边界完全由材质给出。底栏一旦铺不透明底或补 `0 -1px 0` 之类分割线，就会被读成「一条线把界面切断」（v2.5.152 用户反馈原话）。`tests/css.test.mjs` 三条机器校验：材质令牌、模糊参数、禁止 `0 -1px 0`。
-* **毛玻璃要真的有东西可透**：底栏必须允许内容滚到它下面（页面底部留 `104px` 内边距，滚动中卡片会从栏下经过，隔着 88% 同源底色被柔化成底纹）；若某页内容永远到不了栏下，该页的「通透」是看不出来的。
+* **底栏 = 悬浮胶囊 dock**：`left/right: 12px`、`bottom: calc(8px + env(safe-area-inset-bottom, 0px))`、`height: 62px`、`border-radius: 22px`、`padding: 4px 6px`；材质仍是 `background: var(--nav-scrolled-bg)` + `backdrop-filter: blur(20px) saturate(180%)`（含 `-webkit-` 配对），与 `.super-navbar.scrolled` 同源；边界由 `border: 1px solid var(--surface-hairline)` + `box-shadow: var(--card-shadow)` 给出，**不再通栏、不再画 `0 -1px 0` 顶边线**。选中项是一枚 `rgba(var(--label-rgb), 0.06)` 的浅色胶囊，不是整条底栏的高亮。`tests/css.test.mjs` 机器校验：12px 边距、safe-area 底距、62px 高度、22px 圆角、hairline、卡片阴影、不回到 `height: auto`、不画顶边线、模糊参数与选中胶囊。
+* **毛玻璃要真的有东西可透**：底栏必须允许内容滚到胶囊后面（页面底部留 `104px` 内边距；滚动中卡片从左右留白与胶囊下方经过，隔着 88% 同源底色被柔化成底纹）；若某页内容永远到不了胶囊后面，该页的「通透」是看不出来的。
 * **禁止用 `!important` 压死阅读器覆盖**：`body.dark-reader-body / body.eyecare-reader-body .mobile-bottom-nav` 是更具体、故意写在文件后部的覆盖；底栏基础规则一旦加 `!important`，夜间/护眼阅读器的底栏底色就永远不生效。
 * **深色投影只在滚动后出现**：深色层（`:root[data-theme="dark"]`）的栏底分界与投影必须写在 `.super-navbar.scrolled` 上；静止态保持「零线零影」，否则透明顶栏底下会留下一道深色接缝。
 

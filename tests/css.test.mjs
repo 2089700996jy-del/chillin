@@ -137,7 +137,7 @@ const BACKDROP_BASELINE = 41;
 
 test('CSS - 单个组件的定义块数不再增长（.mobile-bottom-nav 反例）', () => {
     // .mobile-bottom-nav 曾散落在 11 个规则块里（顶层 + @media + html.ios-pwa + 深色/护眼），
-    // 每一层都靠 !important 抢优先级。已合并为 10 块，这里只许变小，不许再往上加。
+    // 每一层都靠 !important 抢优先级。已合并为 9 块（v2.5.174 移除 iOS PWA 的重复 padding 层），这里只许变小，不许再往上加。
     const blocks = [...css.replace(/\/\*[\s\S]*?\*\//g, '').matchAll(/([^{}]+)\{([^{}]*)\}/g)]
         .filter((m) => m[1].split(',').some((s) => s.trim().endsWith('.mobile-bottom-nav')));
     assert.ok(
@@ -147,7 +147,7 @@ test('CSS - 单个组件的定义块数不再增长（.mobile-bottom-nav 反例�
     assert.ok(css.includes('  .mobile-bottom-nav {'), '@media (max-width: 768px) 里的基础定义不见了——移动端底栏会直接消失');
 });
 
-const NAV_BLOCKS_BASELINE = 10;
+const NAV_BLOCKS_BASELINE = 9;
 
 test('CSS - backdrop-filter 数量不再增长，只允许悬浮表面使用', () => {
     const count = (css.match(/(?:-webkit-)?backdrop-filter\s*:/g) || []).length;
@@ -177,7 +177,7 @@ test('CSS - 应用级深色主题层：RGB 令牌反转 + 五类主表面打底'
     assert.match(dark, /--segment-active-bg:\s*rgba\(255,\s*255,\s*255,\s*0\.16\)/, '深色层必须把分段控件选中胶囊改为半透明白，否则选中态比轨道更暗');
 });
 
-test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静止态顶栏透明、底栏复用滚动顶栏的毛玻璃材质', () => {
+test('CSS - 固定栏取色同源：--bg-rgb 与 --ios-bg 同值，底栏是悬浮胶囊 dock', () => {
     const toRgb = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16)).join(', ');
     const pick = (source, name) => ((source.match(new RegExp(name + '\\s*:\\s*(#[0-9a-fA-F]{6})')) || [''])[1]);
     const lightBg = pick(css, '--ios-bg');
@@ -191,11 +191,21 @@ test('CSS - 固定栏取色同源：--bg-rgb 必须与 --ios-bg 同值，且静�
     assert.equal(darkRgb, toRgb(darkBg), '--bg-rgb 与深色 --ios-bg 不同步：深色底栏会再次和页面底色出现色阶断层');
     // 静止态顶栏不铺不透明底色，页面 hero 光晕才能从固定栏后面透出来
     assert.match(css, /\.super-navbar\s*\{[^}]*background:\s*transparent/, '顶栏静止态必须 background: transparent，否则会挡住页面 hero 光晕、在栏底留下色阶断层');
-    // 底栏与「滚动后的顶栏」共用同一块毛玻璃材质，而不是再铺一块不透明板
-    // （v2.5.152：用户反馈「有条线分割视觉卡在还不够通透统一」——不透明底 + 0 -1px 0 顶边线是根因）
-    assert.match(css, /\.mobile-bottom-nav\s*\{[^}]*background:\s*var\(--nav-scrolled-bg\)/, '底栏底色必须复用 --nav-scrolled-bg（与 .super-navbar.scrolled 同一块材质），不要再铺不透明 --bg-color / --nav-bg');
-    assert.match(css, /\.mobile-bottom-nav\s*\{[^}]*backdrop-filter:\s*blur\(20px\)\s*saturate\(180%\)/, '底栏必须做 blur(20px) saturate(180%) 毛玻璃，否则内容滚到栏下时是一块死板、不够通透');
-    assert.ok(!/\.mobile-bottom-nav[^{]*\{[^}]*box-shadow:\s*0 -1px 0/.test(css), '底栏不得再画 0 -1px 0 分割线（见 .agents/rules/ui-style.md §3.5：边界由材质本身给出，不靠线/靠投影）');
+
+    const navBlock = (css.match(/\.mobile-bottom-nav\s*\{([^}]*background:\s*var\(--nav-scrolled-bg\)[^}]*)\}/s) || ['', ''])[1];
+    assert.ok(navBlock, '找不到移动端底栏基础规则（必须复用 --nav-scrolled-bg）');
+    assert.match(navBlock, /left:\s*12px/, '底栏必须左右各留 12px，否则又变回横贯屏幕的一条板');
+    assert.match(navBlock, /right:\s*12px/, '底栏右侧必须留 12px');
+    assert.match(navBlock, /bottom:\s*calc\(8px \+ env\(safe-area-inset-bottom, 0px\)\)/, '底栏底部必须叠 safe-area 后留 8px，不能贴死手势条');
+    assert.match(navBlock, /height:\s*62px/, '底栏高度必须是 62px 的胶囊，不是自动高度的通栏');
+    assert.match(navBlock, /border-radius:\s*22px/, '底栏必须是 22px 圆角的悬浮胶囊');
+    assert.match(navBlock, /border:\s*1px solid var\(--surface-hairline\)/, '胶囊边界必须是极细 hairline，不能画回 1px 硬分割线');
+    assert.match(navBlock, /box-shadow:\s*var\(--card-shadow\)/, '悬浮胶囊必须用 --card-shadow 提供与卡片的同一套柔和层次');
+    assert.ok(!/height:\s*auto/.test(navBlock), '底栏又退回 height: auto 的通栏了');
+    assert.ok(!/border-top/.test(navBlock), '悬浮胶囊不再画顶边线（会被读成一条横板）');
+    assert.match(navBlock, /backdrop-filter:\s*blur\(20px\)\s*saturate\(180%\)/, '底栏必须做 blur(20px) saturate(180%) 毛玻璃，否则内容滚到胶囊后时是一块死板、不够通透');
+    assert.ok(!/\.mobile-bottom-nav[^{]*\{[^}]*box-shadow:\s*0 -1px 0/.test(css), '底栏不得再画 0 -1px 0 分割线（见 .agents/rules/ui-style.md §3.5）');
+    assert.match(css, /\.mobile-tab-item\.active\s*\{[^}]*background:\s*rgba\(var\(--label-rgb\),\s*0\.06\)/, '选中项必须是浅色胶囊，不能只靠蓝色文字点亮整条底栏');
 });
 
 test('CSS - 灰度色值一律走 RGB 分量令牌（禁止再写回 rgba(60,60,67,α) 字面量）', () => {
