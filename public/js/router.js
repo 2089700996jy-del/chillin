@@ -176,6 +176,8 @@ const switchView = (targetViewId, opts = {}) => {
         if (mobileBottomNav) {
             mobileBottomNav.style.display = 'none';
             mobileBottomNav.classList.add('hidden');
+            mobileBottomNav.classList.remove('scroll-hidden');
+            mobileBottomNav.removeAttribute('inert');
         }
         document.body.classList.add('hide-bottom-nav');
     } else {
@@ -183,7 +185,8 @@ const switchView = (targetViewId, opts = {}) => {
         btnBack.style.display = 'none';
         if (mobileBottomNav) {
             mobileBottomNav.style.display = '';
-            mobileBottomNav.classList.remove('hidden');
+            mobileBottomNav.classList.remove('hidden', 'scroll-hidden');
+            mobileBottomNav.removeAttribute('inert');
         }
         document.body.classList.remove('hide-bottom-nav');
 

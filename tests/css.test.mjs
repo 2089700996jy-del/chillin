@@ -205,6 +205,11 @@ test('CSS - 固定栏取色同源：--bg-rgb 与 --ios-bg 同值，底栏是悬�
     assert.ok(!/border-top/.test(navBlock), '悬浮胶囊不再画顶边线（会被读成一条横板）');
     assert.match(navBlock, /backdrop-filter:\s*blur\(20px\)\s*saturate\(180%\)/, '底栏必须做 blur(20px) saturate(180%) 毛玻璃，否则内容滚到胶囊后时是一块死板、不够通透');
     assert.ok(!/\.mobile-bottom-nav[^{]*\{[^}]*box-shadow:\s*0 -1px 0/.test(css), '底栏不得再画 0 -1px 0 分割线（见 .agents/rules/ui-style.md §3.5）');
+    assert.match(navBlock, /transition:\s*transform[^;]*opacity/, '底栏必须有 transform/opacity 过渡，滚动收起才平滑');
+    const scrollHidden = (css.match(/\.mobile-bottom-nav\.scroll-hidden\s*\{([^}]*)\}/) || ['', ''])[1];
+    assert.match(scrollHidden, /transform:\s*translateY\(calc\(100% \+ 20px\)\)/, '滚动收起必须平移出视口，不能瞬间消失');
+    assert.match(scrollHidden, /opacity:\s*0/, '滚动收起必须淡出');
+    assert.match(scrollHidden, /pointer-events:\s*none/, '滚动收起时不能拦截点击');
     assert.match(css, /\.mobile-tab-item\.active\s*\{[^}]*background:\s*rgba\(var\(--label-rgb\),\s*0\.06\)/, '选中项必须是浅色胶囊，不能只靠蓝色文字点亮整条底栏');
 });
 

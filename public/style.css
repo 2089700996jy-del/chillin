@@ -2861,6 +2861,15 @@ body.hide-bottom-nav .nav-brand-mobile {
     box-shadow: var(--card-shadow);
     box-sizing: border-box;
     z-index: var(--z-nav);
+    transition: transform 0.28s var(--ease-spring), opacity 0.2s ease;
+  }
+
+  /* 滚动收起：只做位移和淡出，display 仍由 .hidden / body.hide-bottom-nav 管理，
+     所以编辑器、键盘和弹层原有的隐藏逻辑完全不受影响。 */
+  .mobile-bottom-nav.scroll-hidden {
+    transform: translateY(calc(100% + 20px));
+    opacity: 0;
+    pointer-events: none;
   }
 
   .mobile-tab-item {

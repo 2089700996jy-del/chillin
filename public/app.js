@@ -165,26 +165,55 @@ document.addEventListener('DOMContentLoaded', () => {
         else if (mode === 'hide') el.style.display = 'none';
     }, true);
 
-    // Navbar scroll affordance + 回到顶部浮钮
+    // Navbar scroll affordance + 底部胶囊智能收起 + 回到顶部浮钮
     const navbar = document.getElementById('navbar');
+    const bottomNav = document.getElementById('mobile-bottom-nav');
     const backToTopBtn = document.getElementById('btn-back-to-top');
     const fabBtn = document.getElementById('btn-create-new');
+    let lastScrollY = Math.max(0, window.scrollY);
+
+    // 只切 class，不动 display：编辑器/键盘/弹层的既有 display:none 逻辑仍然优先。
+    // inert 让收起后的导航同时退出 Tab 序列与读屏树，避免「看不见但还能聚焦」。
+    const setBottomNavScrollHidden = (hidden) => {
+        if (!bottomNav) return;
+        if (bottomNav.classList.contains('scroll-hidden') === hidden) return;
+        bottomNav.classList.toggle('scroll-hidden', hidden);
+        bottomNav.toggleAttribute('inert', hidden);
+    };
+
     if (backToTopBtn) {
         backToTopBtn.addEventListener('click', () => {
             window.scrollTo({ top: 0, behavior: 'smooth' });
         });
     }
     window.addEventListener('scroll', () => {
-        if (window.scrollY > 20) navbar.classList.add('scrolled');
-        else navbar.classList.remove('scrolled');
+        const y = Math.max(0, window.scrollY);
+        if (navbar) {
+            if (y > 20) navbar.classList.add('scrolled');
+            else navbar.classList.remove('scrolled');
+        }
+
+        // 顶部始终显示；向下超过 96px 才收起，向上 6px 即恢复。
+        // 阈值避免一点抖动就切换；停下后保持当前状态，不参与滚动惯性判断。
+        if (y <= 48) {
+            setBottomNavScrollHidden(false);
+            lastScrollY = y;
+        } else {
+            const delta = y - lastScrollY;
+            if (Math.abs(delta) >= 6) {
+                setBottomNavScrollHidden(delta > 0 && y > 96);
+                lastScrollY = y;
+            }
+        }
+
         if (!backToTopBtn) return;
         // 滚过约一屏半才值得给一个「回去」的入口（列表越长越有用，首屏不要多一个浮钮）
-        const shouldShow = window.scrollY > window.innerHeight * 1.5;
+        const shouldShow = y > window.innerHeight * 1.5;
         backToTopBtn.classList.toggle('is-visible', shouldShow);
         if (!shouldShow) return;
         const fabVisible = !!fabBtn && fabBtn.style.display !== 'none' && !fabBtn.classList.contains('hidden');
         backToTopBtn.classList.toggle('above-fab', fabVisible);
-    });
+    }, { passive: true });
 
 
 

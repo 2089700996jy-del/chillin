@@ -130,6 +130,24 @@ test('Architecture - reader/upload/prompts 走路由级动态 import，首屏不
     }
 });
 
+test('Architecture - 移动底栏滚动收起/上滑恢复，编辑器隐藏逻辑不被破坏', async () => {
+    const app = await fs.readFile(path.join(root, 'public', 'app.js'), 'utf8');
+    assert.match(app, /scroll-hidden/, 'app.js 必须用 scroll-hidden 类做滚动收起，不能直接改 display');
+    assert.match(app, /delta > 0 && y > 96/, '向下超过 96px 才收起，避免一点抖动就隐藏');
+    assert.match(app, /Math\.abs\(delta\) >= 6/, '滚动方向要有 6px 死区，避免惯性抖动来回切换');
+    assert.match(app, /toggleAttribute\('inert'/, '收起后的导航必须 inert，退出 Tab 序列与读屏树');
+
+    const router = await fs.readFile(path.join(root, 'public', 'js', 'router.js'), 'utf8');
+    assert.match(router, /classList\.remove\('hidden', 'scroll-hidden'\)/, '切回普通视图时必须清掉滚动收起态');
+    assert.match(router, /document\.body\.classList\.add\('hide-bottom-nav'\)/, '编辑器原有的 hide-bottom-nav 逻辑必须保留');
+
+    const css = await fs.readFile(path.join(root, 'public', 'style.css'), 'utf8');
+    assert.match(css, /\.mobile-bottom-nav\.scroll-hidden\s*\{[^}]*transform:\s*translateY\(calc\(100% \+ 20px\)\)/, 'scroll-hidden 必须平滑下移出视口');
+    assert.match(css, /\.mobile-bottom-nav\.scroll-hidden\s*\{[^}]*opacity:\s*0/, 'scroll-hidden 必须淡出');
+    assert.match(css, /\.mobile-bottom-nav\.scroll-hidden\s*\{[^}]*pointer-events:\s*none/, 'scroll-hidden 必须不可点击');
+    assert.match(css, /transition:\s*transform[^;]*opacity/, '底栏必须有 transform/opacity 过渡，不能瞬间跳变');
+});
+
 test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async () => {
     // 背景：项目坚持零构建、直开，但此前没有任何体积约束——
     // 加一个 30KB 的库只需一次提交，没人会注意到首次加载变慢。
