@@ -730,7 +730,7 @@ integration('ClawBot - 一次 cron 调用内持续拉取，中途到达的消息
     assert.equal(st.calls.filter(c => c.url.endsWith('/getupdates')).length, 1);
 });
 
-// ── 私人伴侣：意图分流、个人档案与对话上下文 ──────────────────────────────
+// ── 朋友式助手：意图分流、个人档案与对话上下文 ──────────────────────────────
 
 test('Bot - 记录/记住/忘记只认显式写法，含糊语气一律不判为写入', () => {
     assert.equal(parseRecordCommand('记录：今晚手冲咖啡，水温 92 度'), '今晚手冲咖啡，水温 92 度');

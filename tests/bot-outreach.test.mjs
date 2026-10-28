@@ -135,7 +135,7 @@ integration('到点之前不打扰，到点之后主动说一句', async () => {
     const now = cstMs(todayYmd(Date.now()), 12, 0);
     const instant = pickOutreachInstantMs(1, now);
     const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 1 } }]);
-    const { env } = aiEnv('你上次说练吉他手指疼，现在应该好一些了吧。');
+    const { env, captured } = aiEnv('你上次说练吉他手指疼，现在应该好一些了吧。');
 
     const before = await runOutreachChecks(env, db, stub.impl, { nowMs: instant - 60 * 1000, random: () => 0 });
     assert.equal(before.sent, 0);
@@ -144,6 +144,10 @@ integration('到点之前不打扰，到点之后主动说一句', async () => {
 
     const after = await runOutreachChecks(env, db, stub.impl, { nowMs: instant + 1000, random: () => 0.1 });
     assert.equal(after.sent, 1);
+    const outreachPrompt = captured[0][0].content;
+    assert.match(outreachPrompt, /熟悉的朋友/, '主动关怀必须是朋友口吻');
+    assert.ok(!/伴侣/.test(outreachPrompt), '主动关怀不能再自称伴侣');
+    assert.match(outreachPrompt, /亲密称呼/, '要明确禁止「宝贝 / 亲爱的 / 想你」这类称呼');
     assert.equal(stub.calls.length, 1);
     assert.ok(String(stub.calls[0].url).includes('/ilink/bot/sendmessage'));
     const row = await db.prepare('SELECT status, ref_type, ref_id, text FROM bot_outreach ORDER BY id DESC LIMIT 1').first();
