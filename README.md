@@ -22,7 +22,7 @@
 
 ## 技术栈
 
-* **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；关键模块用 `modulepreload` 预取，减少零构建依赖瀑布
+* **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，不全量预加载业务模块（实测会抢 CSS 带宽）
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
 * **数据**：**Cloudflare D1**（SQLite，33 个迁移 0001–0033，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker

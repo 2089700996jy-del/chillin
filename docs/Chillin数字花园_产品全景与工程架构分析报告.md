@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.171 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
+> **报告版本**：v2.5.172 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v218`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0033 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
+> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v219`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0033 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -231,7 +231,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 ## 6. 技术架构、存储引擎与工程化治理
 
 ### 6.1 前后端技术拓扑与 Zero-Build 哲学
-* **前端架构**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**Zero-Build 零构建打包哲学**）；v2.5.171 起在 `<head>` 用 12 个 `modulepreload` 预取 `app.js` 依赖图里的高扇出模块（不带 `?v`，避免与 import 产生双 URL），并由 `tests/sw.test.mjs` 守住「真实存在 / 已预缓存 / 在依赖图内」。
+* **前端架构**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**Zero-Build 零构建打包哲学**）；v2.5.172 起只在 `<head>` 用 `modulepreload` 预热入口 `app.js`（与 script src 同 `?v`）；实测给 4/12 个业务模块加 modulepreload 会抢 249KB CSS 的带宽、拖慢 LCP，故不再全量预加载，并由 `tests/sw.test.mjs` 守住「只预热入口 + 已预缓存 + URL 一致」。
   * 摒弃 Webpack / Vite 庞大的 `node_modules` 依赖链与打包黑盒，所写即所跑，调试零延迟。
   * 没有任何虚拟 DOM 渲染开销，在低性能移动设备上拥有极高帧率和极低能耗。
   * 全部站点发布资源严格收敛于 `public/` 目录，杜绝源码、迁移脚本与测试文件暴露。
