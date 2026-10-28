@@ -563,6 +563,27 @@ integration('ClawBot - 长轮询默认只聊天：普通消息不落库，游标
     );
 });
 
+integration('ClawBot - defer 交给 waitUntil 后台处理，轮询先返回再主动回推', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-DEFER', msgs: [clawMessage()] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } })
+    });
+    const tasks = [];
+    await pollClawAccounts({ DB: db }, db, st.impl, {
+        budgetMs: 0,
+        defer: (task) => tasks.push(task)
+    });
+    assert.equal(tasks.length, 1, '一批消息必须注册一个 waitUntil 任务');
+    await Promise.all(tasks);
+    const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.ok(send, '后台跑完后必须用主动发送接口回推');
+    const turns = await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first();
+    assert.equal(turns.n, 2, '后台处理仍要落对话上下文');
+});
+
 integration('ClawBot - 同一条消息重复投递只处理一次（uint64 丢精度也能排重）', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -641,7 +662,7 @@ integration('ClawBot - 瞬时 5xx 不丢整分钟的收信窗口：退避后接�
         '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } })
     });
     // errorBackoffMs 把退避压到 5ms，用例不真等 1 秒；budgetMs 模拟本次调用剩下的时间
-    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 60, errorBackoffMs: 5 });
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 250, errorBackoffMs: 5 });
 
     const polls = st.calls.filter(c => c.url.endsWith('/getupdates')).length;
     assert.ok(polls >= 2, '一次 5xx 之后必须在同一分钟内接着拉，而不是把整个窗口丢掉：' + polls);
@@ -659,15 +680,18 @@ integration('ClawBot - scheduled 按 cron 分流：每分钟只轮询，小时�
 
     const original = globalThis.fetch;
     const poll = stubFetch({
-        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-9', msgs: [] } }),
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-9', msgs: [clawMessage()] } }),
         '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } })
     });
+    const tasks = [];
     try {
         globalThis.fetch = poll.impl;
-        await runScheduled({ DB: db }, { cron: CLAW_CRON }, { budgetMs: 0 });
+        await runScheduled({ DB: db }, { cron: CLAW_CRON }, { budgetMs: 0 }, { waitUntil: (task) => tasks.push(task) });
+        assert.equal(tasks.length, 1, '网关必须把消息批次交给 ctx.waitUntil');
+        await Promise.all(tasks);
     } finally { globalThis.fetch = original; }
-    assert.equal(poll.calls.length, 1, '单测把预算压到 0，只应有一轮长轮询');
-    assert.match(poll.calls[0].url, /getupdates$/);
+    assert.equal(poll.calls.filter(c => c.url.endsWith('/getupdates')).length, 1, '单测把预算压到 0，只应有一轮长轮询');
+    assert.ok(poll.calls.some(c => c.url.endsWith('/sendmessage')), 'waitUntil 任务跑完后必须主动回推');
 
     const hourly = stubFetch({});
     try {
@@ -1858,6 +1882,8 @@ integration('Bot - 读取服务返回 Microlink 形状的 JSON 也出卡片，�
 test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭弹层会停轮询', () => {
     const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
     const auth = fs.readFileSync(new URL('../public/js/auth.js', import.meta.url), 'utf8');
+    const api = fs.readFileSync(new URL('../workers/api.js', import.meta.url), 'utf8');
+    const maintenance = fs.readFileSync(new URL('../workers/src/maintenance.js', import.meta.url), 'utf8');
 
     for (const id of ['bot-claw-title', 'bot-claw-hint', 'btn-bot-claw-bind', 'btn-bot-claw-unbind', 'bot-claw-qr', 'bot-claw-qr-img', 'bot-claw-qr-hint', 'btn-bot-claw-cancel']) {
         assert.ok(html.includes('id="' + id + '"'), 'index.html 缺少绑定卡片节点 #' + id);
@@ -1877,5 +1903,7 @@ test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭
     assert.match(auth, /scaned_but_redirect/, '前端要知道扫码重定向不是终态');
     assert.match(auth, /binded_redirect/, '前端要展示已绑定其他实例的明确提示');
     assert.match(auth, /need_verifycode/, '前端要展示需要配对码的明确提示');
+    assert.match(api, /runScheduled\(env, event, undefined, ctx\)/, 'scheduled 入口必须把 ctx 传下去');
+    assert.match(maintenance, /ctx\.waitUntil/, '重活必须转交 waitUntil');
 });
 

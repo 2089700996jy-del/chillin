@@ -51,15 +51,17 @@ export async function runHourlyMaintenance(env) {
     }
 }
 
-/** pollOptions 透传给 pollClawAccounts，仅单测用来收紧时间预算 */
-export async function runScheduled(env, event, pollOptions) {
+/** pollOptions 透传给 pollClawAccounts；ctx 用于把重活交给 waitUntil */
+export async function runScheduled(env, event, pollOptions, ctx) {
     if (event && event.cron === CLAW_CRON) {
         // 用户自己设的提醒优先：他授权过的打扰，不参与主动关怀的日限/时窗/静默期
         try { await runReminderChecks(env, env.DB, undefined, pollOptions); }
         catch (err) { console.error('[scheduled] bot reminders failed:', err); }
         try { await runOutreachChecks(env, env.DB, undefined, pollOptions); }
         catch (err) { console.error('[scheduled] bot outreach failed:', err); }
-        try { await pollClawAccounts(env, env.DB, undefined, pollOptions); }
+        const opts = Object.assign({}, pollOptions);
+        if (!opts.defer && ctx && typeof ctx.waitUntil === 'function') opts.defer = (task) => ctx.waitUntil(task);
+        try { await pollClawAccounts(env, env.DB, undefined, opts); }
         catch (err) { console.error('[scheduled] bot poll failed:', err); }
         return;
     }

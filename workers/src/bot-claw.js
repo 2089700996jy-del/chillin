@@ -1,9 +1,6 @@
 /**
- * 微信 ClawBot 接入层（官方 iLink 协议）——让 Chillin Worker 直接当 ClawBot 后端，
- * 不再需要 OpenClaw、也不需要任何常驻机器。
- *
- * 协议依据：官方仓库 Tencent/openclaw-weixin 的 docs/protocol.md 与原客户端 src 实现，
- * 原文明确该协议「供实现兼容后端的开发者使用」，不是逆向。
+ * 微信 ClawBot 接入层（官方 iLink 协议）——让 Chillin Worker 直接当 ClawBot 后端，不需要 OpenClaw/常驻机器。
+ * 协议依据：官方仓库 Tencent/openclaw-weixin 的 docs/protocol.md 与原客户端 src 实现（非逆向）。
  *   传输：https://ilinkai.weixin.qq.com，POST + JSON，Authorization: Bearer <bot_token>
  *   登录：POST /ilink/bot/get_bot_qrcode?bot_type=3 -> 二维码；
  *         GET  /ilink/bot/get_qrcode_status?qrcode=… -> wait|scaned|confirmed|expired…
@@ -12,16 +9,11 @@
  *   回信：POST /ilink/bot/sendmessage。带上来信消息的 context_token 表示「接着这句话回」；
  *         置空同样能送达（v2.5.110 实测：无人说话时用空 context_token 主动开口，HTTP 200 且用户收到），
  *         这是 bot-outreach 主动关怀的传输基础。
- *
- * 分层：
- * - 传输层：上面几个纯函数，全部可注入 fetchImpl，便于离线单测。
- * - 接入层：/api/bot/claw/* 挂在登录态鉴权之后（绑机器人和绑账号一样属于私人操作）；
- *   每分钟 cron 走 pollClawAccounts 长轮询收信，业务指令复用 bot-commands 共享大脑。
+ * 分层：传输层是上面几个可注入 fetchImpl 的纯函数；
+ * 接入层 /api/bot/claw/* 挂在登录态鉴权之后；每分钟 cron 走 pollClawAccounts 收信，业务指令复用 bot-commands。
  * - 凭证：bot_token 只存 D1、只在服务端使用，任何 API 响应都不返回。
- *
- * 扫码异常：scaned_but_redirect 换到 redirect_host 继续轮询（只接受微信域名）；
- * binded_redirect / need_verifycode / verify_code_blocked / 未知状态都清掉二维码并给出
- * 可执行的下一步，绝不让前端停在一个永远不会变的「等待扫码」。
+ * 扫码异常：scaned_but_redirect 换到 redirect_host 继续轮询（只接受微信域名）；binded_redirect /
+ * need_verifycode / verify_code_blocked / 未知状态都清二维码并给出下一步，不假装成功。
  */
 import { jsonResponse } from './security.js';
 import { truncateUtf8, buildBotReply, claimBotMessage } from './bot-commands.js';
@@ -371,7 +363,7 @@ export async function handleClawApi(request, env, url, db, userId) {
  * 返回并推送。只要调用期间一直有在途长轮询，用户感知延迟就只剩「在途请求返回 + 回复
  * 往返」，而不是「等下一次 cron」。至少执行一轮，保证预算为 0 时也收一次信。
  */
-async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline, errorBackoffMs) {
+async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline, errorBackoffMs, defer) {
     const token = String(account.bot_token || '');
     if (!token) return;
     const userId = Number(account.user_id);
@@ -380,6 +372,7 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
     let polls = 0;
     let consecutiveErrors = 0;
     let successMarked = false;
+    let background = Promise.resolve();
     do {
         polls++;
         let updates;
@@ -419,13 +412,22 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
             cursor = updates.cursor;
             await saveCursor(db, account.id, cursor);
         }
-        for (const msg of updates.msgs) {
-            try {
-                await handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl);
-            } catch (err) {
-                // 单条消息失败不能连坐整分钟的收信
-                console.error('[bot-claw] 消息处理失败 id=' + account.id + ': ' + (err && err.message));
+        const batch = async () => {
+            for (const msg of updates.msgs) {
+                try {
+                    await handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl);
+                } catch (err) {
+                    // 单条消息失败不能连坐整分钟的收信
+                    console.error('[bot-claw] 消息处理失败 id=' + account.id + ': ' + (err && err.message));
+                }
             }
+        };
+        if (typeof defer === 'function' && updates.msgs.length) {
+            // 后台按到达顺序处理；ctx.waitUntil 负责在 scheduled 返回后继续跑完并主动回推
+            background = background.then(batch, batch);
+            defer(background.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
+        } else {
+            await batch();
         }
     } while (Date.now() < accountDeadline);
     console.log('[bot-claw] 轮询 ' + polls + ' 轮后让出 id=' + account.id);
@@ -489,7 +491,7 @@ export async function pollClawAccounts(env, db, fetchImpl = fetch, options = {})
     for (const account of accounts) {
         const accountDeadline = Math.min(runDeadline, Date.now() + slice);
         try {
-            await pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline, opts.errorBackoffMs);
+            await pollAccountUntilDeadline(env, db, account, fetchImpl, accountDeadline, opts.errorBackoffMs, opts.defer);
         } catch (err) {
             console.error('[bot-claw] 轮询失败 id=' + account.id + ': ' + (err && err.message));
             await markAccountError(db, account.id, err && err.message);

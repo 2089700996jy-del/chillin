@@ -83,7 +83,7 @@ import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.169';
+const APP_VERSION = '2.5.170';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -269,6 +269,6 @@ export default {
     // 定时任务：编排在 workers/src/maintenance.js —— 每分钟那条只跑 ClawBot 长轮询，
     // 每小时那条才跑 UGC 扫描与各类清理，避免每分钟触发把小时任务带着跑 60 遍。
     async scheduled(event, env, ctx) {
-        await runScheduled(env, event);
+        await runScheduled(env, event, undefined, ctx);
     }
 };
