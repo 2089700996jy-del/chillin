@@ -902,6 +902,14 @@ body.dark-reader-body .timeline-filter__select {
   }
 }
 
+.weekly-load-more-slot {
+  margin-top: 16px;
+}
+
+.weekly-load-more-slot:empty {
+  display: none;
+}
+
 .notion-collection-card {
   background: var(--card-bg); 
   border-radius: 16px; 

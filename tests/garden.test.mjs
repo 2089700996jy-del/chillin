@@ -116,6 +116,66 @@ integration('Garden sync - overlapping cursor recovers rows with the same second
     const recovered = await (await handleSyncPull(new URL(`https://x/api/sync/pull?since_feeds=${encodeURIComponent(overlapCursor)}`), db, 1)).json();
     assert.equal(recovered.feeds.length, 2, 'one-second overlap returns the tied rows for client-side merge');
 });
+integration('Garden sync - 游标分页完整走完且不重不漏（full 模式）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    for (let i = 1; i <= 5; i++) {
+        await handlePostFeed(jsonRequest('https://x/api/feeds', { id: 7000 + i, content: '分页 ' + i }), db, 1);
+    }
+
+    const seen = [];
+    let cursor = null;
+    let pages = 0;
+    do {
+        const url = new URL('https://x/api/sync/pull?page_size=2');
+        if (cursor) url.searchParams.set('cursor_feeds', cursor);
+        const body = await (await handleSyncPull(url, db, 1)).json();
+        assert.ok(Array.isArray(body.feeds));
+        seen.push(...body.feeds.map((f) => f.id));
+        cursor = body.next?.feeds || null;
+        pages += 1;
+        assert.ok(pages <= 5, '分页不能无限循环');
+    } while (cursor);
+
+    assert.equal(pages, 3, '5 条 / 每页 2 条应走 3 页');
+    assert.equal(seen.length, 5);
+    assert.equal(new Set(seen).size, 5, '分页不能重复');
+    assert.deepEqual([...seen].sort((a, b) => a - b), [7001, 7002, 7003, 7004, 7005]);
+
+    const terminal = await (await handleSyncPull(new URL('https://x/api/sync/pull?page_size=2&cursor_feeds=done'), db, 1)).json();
+    assert.deepEqual(terminal.feeds, [], 'done 游标必须返回空页，客户端才能停止续页');
+    assert.equal(terminal.next.feeds, null);
+
+    const bad = await handleSyncPull(new URL('https://x/api/sync/pull?page_size=2&cursor_feeds=not-a-cursor'), db, 1);
+    assert.equal(bad.status, 400, '伪造游标必须拒绝，不能静默从头拉');
+});
+
+integration('Garden sync - 增量分页对同秒记录用 (updated_at,id) 稳定翻页', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const sharedTs = '2026-10-16 12:00:05';
+    for (const id of [8001, 8002, 8003]) {
+        await db.prepare(`INSERT INTO quick_feeds (id, user_id, content, type, created_at, updated_at, is_deleted)
+            VALUES (?1, 1, ?2, 'text', ?3, ?3, 0)`).bind(id, '同秒 ' + id, sharedTs).run();
+    }
+
+    const seen = [];
+    let cursor = null;
+    let pages = 0;
+    do {
+        const url = new URL('https://x/api/sync/pull?page_size=2&since_feeds=' + encodeURIComponent('2026-10-16 12:00:00'));
+        if (cursor) url.searchParams.set('cursor_feeds', cursor);
+        const body = await (await handleSyncPull(url, db, 1)).json();
+        seen.push(...body.feeds.map((f) => f.id));
+        cursor = body.next?.feeds || null;
+        pages += 1;
+        assert.ok(pages <= 5);
+    } while (cursor);
+
+    assert.equal(pages, 2, '3 条 / 每页 2 条应走 2 页');
+    assert.deepEqual(seen, [8001, 8002, 8003], '同秒记录必须按 id 稳定续页，不能漏 8003');
+});
+
 integration('Garden sync - batch pushes > 100 statements safely with D1 chunking', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

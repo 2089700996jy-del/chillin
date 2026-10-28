@@ -18,7 +18,7 @@
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
 | 🤖 微信 ClawBot | 设置弹层内直接扫码绑定/解绑（90 秒二维码、扫后轮询确认）；绑定后可在微信里记事、提问、设提醒、健康打卡，主动关怀可随时关 |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
-| 📶 PWA | 全部前端模块（26 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知 |
+| 📶 PWA | 全部前端模块（26 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存） |
 
 ## 技术栈
 
@@ -163,7 +163,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
 | [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、模块请求绝不回退 index.html |
 | [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开、前端首屏体积预算 |
-| [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、热力图（真实 SQLite） |
+| [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、**keyset 游标分页**、热力图（真实 SQLite） |
 | [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出、**改密校验旧密码并只保留当前会话**（真实 SQLite） |
 | [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
 | [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象、删书连带清进度 |

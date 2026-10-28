@@ -37,38 +37,117 @@ export async function executeStatementsInChunks(db, statements, chunkSize = D1_B
     return results;
 }
 
+const SYNC_PULL_PAGE_MAX = 200;
+const SYNC_PULL_RESOURCES = [
+    { key: 'weeklies', table: 'weeklies', cursor: 'cursor_weeklies', format: formatWeekly },
+    { key: 'notes', table: 'notes', cursor: 'cursor_notes', format: formatNote },
+    { key: 'bookmarks', table: 'bookmarks', cursor: 'cursor_bookmarks', format: formatBookmark },
+    { key: 'prompts', table: 'prompts', cursor: 'cursor_prompts', format: formatPrompt },
+    { key: 'feeds', table: 'quick_feeds', cursor: 'cursor_feeds', format: formatFeed },
+];
+
+function parsePullPageSize(url) {
+    const raw = url.searchParams.get('page_size');
+    if (raw == null || raw === '') return 0;
+    const n = Number(raw);
+    return Number.isInteger(n) && n > 0 ? Math.min(n, SYNC_PULL_PAGE_MAX) : 0;
+}
+
+function encodePullCursor(payload) {
+    return btoa(JSON.stringify(payload)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodePullCursor(raw) {
+    if (raw === 'done') return { done: true };
+    if (typeof raw !== 'string' || raw.length > 512) return null;
+    try {
+        const b64 = String(raw).replace(/-/g, '+').replace(/_/g, '/');
+        const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+        const value = JSON.parse(atob(padded));
+        return value && typeof value === 'object' ? value : null;
+    } catch (_) {
+        return null;
+    }
+}
+
+async function pullResourcePage(db, userId, spec, since, cursorRaw, pageSize) {
+    const cursor = cursorRaw ? decodePullCursor(cursorRaw) : null;
+    if (cursorRaw && !cursor) throw new Error('invalid cursor');
+    if (cursor && cursor.done) return { rows: [], next: null };
+
+    if (!pageSize) {
+        const sql = since
+            ? 'SELECT * FROM ' + spec.table + ' WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC'
+            : 'SELECT * FROM ' + spec.table + ' WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC';
+        const stmt = since ? db.prepare(sql).bind(userId, since) : db.prepare(sql).bind(userId);
+        return { rows: (await stmt.all()).results || [], next: null };
+    }
+
+    if (since) {
+        if (cursor && cursor.m !== 'i') throw new Error('cursor mode mismatch');
+        if (cursor && (!isValidRecordId(cursor.id) || typeof cursor.u !== 'string')) throw new Error('invalid cursor');
+        const base = 'SELECT * FROM ' + spec.table + ' WHERE user_id = ?1 AND updated_at > ?2';
+        const sql = cursor
+            ? base + ' AND (updated_at > ?3 OR (updated_at = ?3 AND id > ?4)) ORDER BY updated_at ASC, id ASC LIMIT ?5'
+            : base + ' ORDER BY updated_at ASC, id ASC LIMIT ?3';
+        const stmt = cursor
+            ? db.prepare(sql).bind(userId, since, cursor.u, cursor.id, pageSize)
+            : db.prepare(sql).bind(userId, since, pageSize);
+        const rows = (await stmt.all()).results || [];
+        const last = rows[rows.length - 1];
+        return {
+            rows,
+            next: rows.length === pageSize && last
+                ? encodePullCursor({ m: 'i', u: last.updated_at, id: last.id })
+                : null,
+        };
+    }
+
+    if (cursor && cursor.m !== 'f') throw new Error('cursor mode mismatch');
+    if (cursor && !isValidRecordId(cursor.id)) throw new Error('invalid cursor');
+    const base = 'SELECT * FROM ' + spec.table + ' WHERE user_id = ?1 AND is_deleted = 0';
+    const sql = cursor
+        ? base + ' AND id < ?2 ORDER BY id DESC LIMIT ?3'
+        : base + ' ORDER BY id DESC LIMIT ?2';
+    const stmt = cursor ? db.prepare(sql).bind(userId, cursor.id, pageSize) : db.prepare(sql).bind(userId, pageSize);
+    const rows = (await stmt.all()).results || [];
+    const last = rows[rows.length - 1];
+    return {
+        rows,
+        next: rows.length === pageSize && last
+            ? encodePullCursor({ m: 'f', id: last.id })
+            : null,
+    };
+}
+
 export async function handleSyncPull(url, db, userId) {
-    const sinceWeeklies = url.searchParams.get('since_weeklies') || url.searchParams.get('since');
-    const sinceNotes = url.searchParams.get('since_notes') || url.searchParams.get('since');
-    const sinceBookmarks = url.searchParams.get('since_bookmarks') || url.searchParams.get('since');
-    const sincePrompts = url.searchParams.get('since_prompts') || url.searchParams.get('since');
-    const sinceFeeds = url.searchParams.get('since_feeds') || url.searchParams.get('since');
+    const pageSize = parsePullPageSize(url);
+    const since = url.searchParams.get('since');
+    const body = {};
+    const next = {};
+    let invalidCursor = false;
 
-    const [weekliesRes, notesRes, bookmarksRes, promptsRes, feedsRes] = await Promise.all([
-        sinceWeeklies
-            ? db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, sinceWeeklies).all()
-            : db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
-        sinceNotes
-            ? db.prepare('SELECT * FROM notes WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, sinceNotes).all()
-            : db.prepare('SELECT * FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
-        sinceBookmarks
-            ? db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, sinceBookmarks).all()
-            : db.prepare('SELECT * FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
-        sincePrompts
-            ? db.prepare('SELECT * FROM prompts WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, sincePrompts).all()
-            : db.prepare('SELECT * FROM prompts WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
-        sinceFeeds
-            ? db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND updated_at > ?2 ORDER BY id DESC').bind(userId, sinceFeeds).all()
-            : db.prepare('SELECT * FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
-    ]);
+    await Promise.all(SYNC_PULL_RESOURCES.map(async (spec) => {
+        const resourceSince = url.searchParams.get('since_' + spec.key) || since;
+        try {
+            const page = await pullResourcePage(
+                db,
+                userId,
+                spec,
+                resourceSince,
+                url.searchParams.get(spec.cursor),
+                pageSize
+            );
+            body[spec.key] = page.rows.map(spec.format);
+            if (pageSize) next[spec.key] = page.next;
+        } catch (_) {
+            invalidCursor = true;
+        }
+    }));
 
-    return jsonResponse({
-        weeklies: (weekliesRes.results || []).map(formatWeekly),
-        notes: (notesRes.results || []).map(formatNote),
-        bookmarks: (bookmarksRes.results || []).map(formatBookmark),
-        prompts: (promptsRes.results || []).map(formatPrompt),
-        feeds: (feedsRes.results || []).map(formatFeed),
-    }, 200);
+    if (invalidCursor) return jsonResponse({ error: '同步游标无效' }, 400);
+    if (pageSize) body.next = next;
+    return jsonResponse(body, 200);
 }
 
 // ── Batch Sync (Push) ──

@@ -445,6 +445,62 @@ export async function hydrateFromIndexedDb() {
     }
 }
 
+const PULL_PAGE_SIZE = 100;
+const PULL_MAX_PAGES = 500;
+
+/**
+ * 聚合拉取的分页版本：每次 RTT 只取每种资源的一页，用服务端 keyset 游标续页。
+ * 离线口径不变——页面拉完后仍合并进完整的本地缓存，不裁成服务器第一页。
+ * 旧版 Worker 不认识 page_size 时会直接返回全量；没有 next 就视为一次拉完。
+ */
+async function pullAggregatedPages(pullSpecs) {
+    const accumulated = Object.fromEntries(pullSpecs.map((spec) => [spec.resource, []]));
+    const cursors = {};
+    let pages = 0;
+
+    while (true) {
+        const params = new URLSearchParams({ page_size: String(PULL_PAGE_SIZE) });
+        for (const spec of pullSpecs) {
+            const since = getSyncCursor(spec.resource);
+            if (since) params.set('since_' + spec.resource, getIncrementalSyncCursor(since));
+            if (cursors[spec.resource]) params.set('cursor_' + spec.resource, cursors[spec.resource]);
+        }
+
+        const data = await apiRequest('/api/sync/pull?' + params.toString());
+        if (!data || typeof data !== 'object' || Array.isArray(data) || data.error) {
+            throw new Error('sync/pull page failed');
+        }
+
+        let hasMore = false;
+        for (const spec of pullSpecs) {
+            const rows = data[spec.resource];
+            if (Array.isArray(rows)) accumulated[spec.resource].push(...rows);
+            const next = data.next && data.next[spec.resource];
+            if (next) {
+                cursors[spec.resource] = next;
+                hasMore = true;
+            } else {
+                // 已完成的资源不再从头拉：服务端把 done 当成空页，避免重复累积。
+                cursors[spec.resource] = 'done';
+            }
+        }
+
+        pages += 1;
+        if (!hasMore) break;
+        if (pages >= PULL_MAX_PAGES) throw new Error('sync/pull page limit exceeded');
+    }
+
+    // 防御性去重：分页边界/旧服务端重复返回时，同 id 只保留最后一条。
+    for (const spec of pullSpecs) {
+        const byId = new Map();
+        for (const row of accumulated[spec.resource]) {
+            if (row && row.id != null) byId.set(String(row.id), row);
+        }
+        accumulated[spec.resource] = Array.from(byId.values());
+    }
+    return accumulated;
+}
+
 /** 首屏同步时把仍停留在空态的列表换成骨架屏，避免"暂无内容"的误导 */
 function showSkeletonsForEmptyLists() {
     const targets = ['gallery-container', 'notes-list-container', 'bookmark-list-container', 'feeds-stream-container'];
@@ -521,13 +577,7 @@ export async function syncFromApi() {
         // 1. 尝试聚合增量拉取（单次 RTT 打包获取 5 大资源，极大降低移动端延迟）
         let aggregatedData = null;
         try {
-            const pullParams = new URLSearchParams();
-            pullSpecs.forEach(spec => {
-                const cursor = getSyncCursor(spec.resource);
-                if (cursor) pullParams.set(`since_${spec.resource}`, getIncrementalSyncCursor(cursor));
-            });
-            const pullQuery = pullParams.toString();
-            aggregatedData = await apiRequest(`/api/sync/pull${pullQuery ? '?' + pullQuery : ''}`);
+            aggregatedData = await pullAggregatedPages(pullSpecs);
         } catch (_) {
             aggregatedData = null; // 降级走独立并行拉取
         }

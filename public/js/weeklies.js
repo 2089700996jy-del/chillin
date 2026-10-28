@@ -33,10 +33,14 @@ import { setHtml } from './trusted-types.js';
 export function initWeeklies() {
     const galleryContainer = document.getElementById('gallery-container');
     const filterBtns = document.querySelectorAll('.filter-btn');
+    const weeklyLoadMoreContainer = document.getElementById('weekly-load-more-container');
     const weeklyFilter = mountDateFilter(document.getElementById('weekly-date-filter'), {
         getDate: (item) => item && item.date,
         unit: '篇',
-        onChange: () => renderCards(),
+        onChange: () => {
+            weeklyVisibleCount = WEEKLY_PAGE_SIZE;
+            renderCards();
+        },
     });
     const articleCategory = document.getElementById('article-category');
     const articleDate = document.getElementById('article-date');
@@ -50,6 +54,31 @@ export function initWeeklies() {
     const editorPageTitle = document.getElementById('editor-page-title');
 
 let currentWeeklyAnnotations = [];
+
+// 周记画廊也按批渲染：首屏 60 条，滚到底自动续载；筛选切换时从头开始。
+const WEEKLY_PAGE_SIZE = 60;
+let weeklyVisibleCount = WEEKLY_PAGE_SIZE;
+let weeklyCategoryFilter = 'all';
+let weeklyLoadMoreObserver = null;
+
+const loadMoreWeeklies = () => {
+    if (weeklyLoadMoreObserver) {
+        weeklyLoadMoreObserver.disconnect();
+        weeklyLoadMoreObserver = null;
+    }
+    if (weeklyVisibleCount >= state.database.length) return;
+    weeklyVisibleCount += WEEKLY_PAGE_SIZE;
+    renderCards();
+};
+
+const observeWeeklyLoadMore = (el) => {
+    if (typeof IntersectionObserver !== 'function') return;
+    el.classList.add('list-load-more--auto');
+    weeklyLoadMoreObserver = new IntersectionObserver((entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) loadMoreWeeklies();
+    }, { rootMargin: '600px 0px' });
+    weeklyLoadMoreObserver.observe(el);
+};
 
 const renderWeeklyAnnotationsList = () => {
     const timeline = document.getElementById('weekly-annotations-timeline');
@@ -81,13 +110,21 @@ const renderWeeklyAnnotationsList = () => {
     });
 };
 
-const renderCards = (filter = 'all') => {
+const renderCards = (filter = weeklyCategoryFilter) => {
+    if (filter !== weeklyCategoryFilter) weeklyVisibleCount = WEEKLY_PAGE_SIZE;
+    weeklyCategoryFilter = filter;
     setHtml(galleryContainer, '');
+    if (weeklyLoadMoreContainer) setHtml(weeklyLoadMoreContainer, '');
+    if (weeklyLoadMoreObserver) {
+        weeklyLoadMoreObserver.disconnect();
+        weeklyLoadMoreObserver = null;
+    }
     weeklyFilter?.update(state.database);
     const range = weeklyFilter?.getValue() || { year: 'all', month: 'all' };
-    const sortedDB = filterItemsByYearMonth(state.database, (item) => item && item.date, range.year, range.month)
+    const filteredDB = filterItemsByYearMonth(state.database, (item) => item && item.date, range.year, range.month)
         .filter(item => filter === 'all' || item.category === filter)
         .sort((a, b) => b.id - a.id);
+    const sortedDB = filteredDB.slice(0, weeklyVisibleCount);
     let rendered = 0;
     sortedDB.forEach(item => {
 
@@ -125,6 +162,16 @@ const renderCards = (filter = 'all') => {
                 <div class="list-empty-sub">点右下角「+」写下第一篇周记吧</div>
             </div>
         `);
+    }
+
+    if (weeklyLoadMoreContainer && filteredDB.length > sortedDB.length) {
+        const more = document.createElement('button');
+        more.type = 'button';
+        more.className = 'list-load-more';
+        more.textContent = '加载更多（还有 ' + (filteredDB.length - sortedDB.length) + ' 篇）';
+        more.addEventListener('click', loadMoreWeeklies);
+        weeklyLoadMoreContainer.appendChild(more);
+        observeWeeklyLoadMore(more);
     }
 };
 
@@ -657,8 +704,35 @@ filterBtns.forEach(btn => {
         const matched = /data-id="([^"]+)"/.exec(String(selector || ''));
         if (!matched) return false;
         const target = state.database.find((item) => String(item.id) === decodeCssEscapedId(matched[1]));
-        if (!target || !weeklyFilter?.isActive()) return false;
-        weeklyFilter.reset();
+        if (!target) return false;
+
+        let changed = false;
+        if (weeklyFilter?.isActive()) {
+            const range = weeklyFilter.getValue();
+            const stillVisible = filterItemsByYearMonth([target], (item) => item && item.date, range.year, range.month);
+            if (!stillVisible.length) {
+                weeklyFilter.reset();
+                changed = true;
+            }
+        }
+        if (weeklyCategoryFilter !== 'all' && target.category !== weeklyCategoryFilter) {
+            weeklyCategoryFilter = 'all';
+            changed = true;
+        }
+
+        const filtered = filterItemsByYearMonth(
+            state.database,
+            (item) => item && item.date,
+            weeklyFilter?.getValue().year || 'all',
+            weeklyFilter?.getValue().month || 'all'
+        ).filter((item) => weeklyCategoryFilter === 'all' || item.category === weeklyCategoryFilter);
+        const index = filtered.findIndex((item) => String(item.id) === String(target.id));
+        if (index < 0) return false;
+        if (index >= weeklyVisibleCount) {
+            weeklyVisibleCount = Math.ceil((index + 1) / WEEKLY_PAGE_SIZE) * WEEKLY_PAGE_SIZE;
+            changed = true;
+        }
+        if (!changed) return false;
         renderCards();
         return true;
     };

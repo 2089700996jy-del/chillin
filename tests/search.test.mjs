@@ -126,8 +126,15 @@ test('Timeline - 周记/随手记筛选条接线，筛选变化会复位分页�
     const feeds = fs.readFileSync(new URL('../public/js/feeds.js', import.meta.url), 'utf8');
     const search = fs.readFileSync(new URL('../public/js/search.js', import.meta.url), 'utf8');
     const actions = fs.readFileSync(new URL('../public/js/actions.js', import.meta.url), 'utf8');
+    const sync = fs.readFileSync(new URL('../public/js/sync.js', import.meta.url), 'utf8');
 
     assert.match(html, /id="weekly-date-filter"/, '周记必须有独立的年/月筛选条');
+    assert.match(html, /id="weekly-load-more-container"/, '周记的加载更多必须有独立的整宽容器，不能被多列画廊切开');
+    assert.match(weeklies, /WEEKLY_PAGE_SIZE = 60/, '周记首屏应只渲染一批，而不是全量');
+    assert.match(weeklies, /weeklyLoadMoreContainer/, '加载更多按钮要挂到独立容器');
+    assert.match(sync, /PULL_PAGE_SIZE = 100/, '聚合拉取必须有明确的每页上限');
+    assert.match(sync, /cursor_' \+ spec\.resource/, '客户端必须把服务端游标带回下一页');
+    assert.match(sync, /cursors\[spec.resource\] = 'done'/, '已完成的资源要标记 done，避免下一页从头重复拉');
     assert.match(html, /id="feeds-date-filter"/, '随手记必须有独立的年/月筛选条');
     assert.match(weeklies, /mountDateFilter\(document\.getElementById\('weekly-date-filter'\)/, '周记筛选条必须接到共享过滤器');
     assert.match(weeklies, /weeklyFilter\?\.update\(state\.database\)/, '每次渲染都要把最新数据交给筛选器重建年份计数');
