@@ -4,7 +4,7 @@
  * 这是「用户授权的打扰」，与 bot-outreach 的主动关怀是两件事：本套用例盯四个点——
  *   1. 时间解析宁可返回 null 也不猜（猜错要在回执里看得见）；
  *   2. 指令识别不误伤聊天（「我今天提醒我自己要早睡」不是指令）；
- *   3. 到点必达，且 30 分钟后只追问一次，超 2 小时不补发；
+ *   3. 到点必达，且普通 10 分钟 / 慢任务 2 小时后追问，失败退避重试；超 2 小时不补发；
  *   4. 幂等：同一分钟跑两次只发一条；发送失败退回 pending。
  * 出站全部走 fetchImpl 替身，用例完全离线。
  */
@@ -27,7 +27,11 @@ import {
     recentFiredReminder,
     completeReminder,
     runReminderChecks,
+    followUpMsForText,
+    skipReminderFollowUp,
     REMINDER_FOLLOW_UP_MS,
+    REMINDER_FOLLOW_UP_SLOW_MS,
+    REMINDER_FOLLOW_UP_MAX_ATTEMPTS,
     REMINDER_MAX_ACTIVE,
     REMINDER_STALE_MS
 } from '../workers/src/bot-reminders.js';
@@ -216,45 +220,146 @@ sqliteTest('提醒 - 列表与按编号取消：只动 pending，一律软删', 
     assert.match(await cancelReminder(db, 1, '交电费', NOW), /没找到待提醒里含/);
 });
 
-sqliteTest('提醒 - cron：到点开口带空 context_token，30 分钟后追问一次', async () => {
+sqliteTest('提醒 - cron：到点开口带空 context_token，10 分钟后追问一次', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedClawAccount(db);
     await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (1, 1, ?1, ?2, 'pending', 0)")
-        .bind('给电动牙刷充电', NOW - 1000).run();
+        .bind('交电费', NOW - 1000).run();
 
     const st = sentStub();
     const first = await runReminderChecks({}, db, st.impl, { nowMs: NOW });
     assert.deepEqual(first, { due: 1, sent: 1, asked: 0, missed: 0, failed: 0 });
     assert.equal(st.calls.length, 1);
     assert.ok(st.calls[0].url.endsWith('/ilink/bot/sendmessage'));
-    assert.match(st.calls[0].body.msg.item_list[0].text_item.text, /⏰ 提醒你：给电动牙刷充电/);
+    assert.match(st.calls[0].body.msg.item_list[0].text_item.text, /⏰ 提醒你：交电费/);
     assert.equal(st.calls[0].body.msg.context_token, '', '主动开口靠空 context_token，v2.5.110 实测可送达');
 
     let row = await db.prepare('SELECT * FROM bot_reminders WHERE user_id = 1').first();
     assert.equal(row.status, 'fired');
     assert.equal(row.fired_at_ms, NOW);
     assert.equal(row.follow_up_at_ms, NOW + REMINDER_FOLLOW_UP_MS);
+    assert.equal(row.follow_up_ms, REMINDER_FOLLOW_UP_MS);
+    assert.equal(row.follow_up_status, 'pending');
+    assert.equal(row.follow_up_retry_at_ms, NOW + REMINDER_FOLLOW_UP_MS);
+    assert.equal(row.follow_up_attempts, 0);
 
-    // 10 分钟时不该追问；30 分钟到了才追问，且只问一次
-    assert.deepEqual(await runReminderChecks({}, db, st.impl, { nowMs: NOW + 10 * 60 * 1000 }),
+    // 5 分钟时不该追问；10 分钟到了才追问，且只问一次
+    assert.deepEqual(await runReminderChecks({}, db, st.impl, { nowMs: NOW + 5 * 60 * 1000 }),
         { due: 0, sent: 0, asked: 0, missed: 0, failed: 0 });
     const asked = await runReminderChecks({}, db, st.impl, { nowMs: NOW + REMINDER_FOLLOW_UP_MS + 1 });
     assert.deepEqual(asked, { due: 0, sent: 0, asked: 1, missed: 0, failed: 0 });
     assert.equal(st.calls.length, 2);
     assert.match(st.calls[1].body.msg.item_list[0].text_item.text, /做得怎么样了/);
     assert.deepEqual(await runReminderChecks({}, db, st.impl, { nowMs: NOW + REMINDER_FOLLOW_UP_MS + 2 }),
-        { due: 0, sent: 0, asked: 0, missed: 0, failed: 0 }, '追问只发生一次');
+        { due: 0, sent: 0, asked: 0, missed: 0, failed: 0 }, '追问成功后不再重发');
 
-    row = await db.prepare('SELECT status, follow_up_sent FROM bot_reminders WHERE user_id = 1').first();
+    row = await db.prepare('SELECT status, follow_up_sent, follow_up_status, follow_up_attempts, follow_up_retry_at_ms FROM bot_reminders WHERE user_id = 1').first();
     assert.equal(row.status, 'fired', '等用户回「完成」之前一直停在 fired');
     assert.equal(row.follow_up_sent, 1);
+    assert.equal(row.follow_up_status, 'sent');
+    assert.equal(row.follow_up_attempts, 1);
+    assert.equal(row.follow_up_retry_at_ms, 0);
 
     const fired = await recentFiredReminder(db, 1, NOW + REMINDER_FOLLOW_UP_MS);
-    assert.equal(fired.text, '给电动牙刷充电');
+    assert.equal(fired.text, '交电费');
     assert.equal(await completeReminder(db, 1, fired), true);
     assert.equal(await completeReminder(db, 1, fired), false, '第二次是空操作（幂等）');
     assert.equal(await recentFiredReminder(db, 1, NOW + REMINDER_FOLLOW_UP_MS), null, '完成后不再计入「刚提醒过」');
+});
+
+sqliteTest('提醒 - 追问间隔：普通 10 分钟，充电等慢任务 2 小时', async () => {
+    assert.equal(REMINDER_FOLLOW_UP_MS, 10 * 60 * 1000);
+    assert.equal(followUpMsForText('交电费'), REMINDER_FOLLOW_UP_MS);
+    assert.equal(followUpMsForText('给电动车充电'), REMINDER_FOLLOW_UP_SLOW_MS);
+    assert.equal(followUpMsForText('炖一锅汤'), REMINDER_FOLLOW_UP_SLOW_MS);
+
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    const reply = await runRemind(db, 1, parseRemindCommand('提醒我 明天早上8点 给电动车充电', NOW), NOW);
+    assert.match(reply, /已记下/);
+    const row = await db.prepare('SELECT follow_up_ms FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.follow_up_ms, REMINDER_FOLLOW_UP_SLOW_MS, '慢任务要在创建时就把 2 小时间隔落库');
+});
+
+sqliteTest('提醒 - cron：追问发送失败按退避重试，成功后只发一次', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, status, follow_up_at_ms, follow_up_ms, follow_up_status, follow_up_attempts, follow_up_retry_at_ms, is_deleted) VALUES (1, 1, ?1, ?2, 'fired', ?2, ?3, 'pending', 0, ?2, 0)")
+        .bind('交电费', NOW - 1000, REMINDER_FOLLOW_UP_MS).run();
+
+    let calls = 0;
+    const flaky = async (url, init) => {
+        calls += 1;
+        if (calls === 1) throw new Error('sendmessage http 503');
+        return new Response('{"ret":0}', { status: 200 });
+    };
+
+    const failed = await runReminderChecks({}, db, flaky, { nowMs: NOW });
+    assert.deepEqual(failed, { due: 0, sent: 0, asked: 0, missed: 0, failed: 1 });
+    let row = await db.prepare('SELECT follow_up_status, follow_up_attempts, follow_up_retry_at_ms, follow_up_sent FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.follow_up_status, 'pending', '发送失败不能标记 sent');
+    assert.equal(row.follow_up_attempts, 1);
+    assert.equal(row.follow_up_sent, 0);
+    assert.equal(row.follow_up_retry_at_ms, NOW + 60 * 1000, '第一次退避 1 分钟');
+
+    assert.deepEqual(await runReminderChecks({}, db, flaky, { nowMs: NOW + 59 * 1000 }),
+        { due: 0, sent: 0, asked: 0, missed: 0, failed: 0 }, '未到退避时间不重试');
+
+    const retried = await runReminderChecks({}, db, flaky, { nowMs: row.follow_up_retry_at_ms });
+    assert.deepEqual(retried, { due: 0, sent: 0, asked: 1, missed: 0, failed: 0 });
+    row = await db.prepare('SELECT follow_up_status, follow_up_attempts, follow_up_retry_at_ms, follow_up_sent FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.follow_up_status, 'sent');
+    assert.equal(row.follow_up_attempts, 2);
+    assert.equal(row.follow_up_sent, 1);
+    assert.equal(row.follow_up_retry_at_ms, 0);
+    assert.equal(calls, 2);
+});
+
+sqliteTest('提醒 - cron：追问前读不到账号也重试，次数耗尽才 failed', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, status, follow_up_at_ms, follow_up_ms, follow_up_status, follow_up_attempts, follow_up_retry_at_ms, is_deleted) VALUES (1, 1, ?1, ?2, 'fired', ?2, ?3, 'pending', 0, ?2, 0)")
+        .bind('交电费', NOW - 1000, REMINDER_FOLLOW_UP_MS).run();
+
+    const st = sentStub();
+    const first = await runReminderChecks({}, db, st.impl, { nowMs: NOW });
+    assert.deepEqual(first, { due: 0, sent: 0, asked: 0, missed: 0, failed: 1 });
+    assert.equal(st.calls.length, 0, '读不到账号时不能假装发出');
+    let row = await db.prepare('SELECT follow_up_status, follow_up_attempts, follow_up_retry_at_ms FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.follow_up_status, 'pending');
+    assert.equal(row.follow_up_attempts, 1);
+    assert.ok(row.follow_up_retry_at_ms > NOW);
+
+    await db.prepare("UPDATE bot_reminders SET follow_up_attempts = ?1, follow_up_retry_at_ms = ?2 WHERE user_id = 1")
+        .bind(REMINDER_FOLLOW_UP_MAX_ATTEMPTS, NOW).run();
+    const exhausted = await runReminderChecks({}, db, st.impl, { nowMs: NOW });
+    assert.deepEqual(exhausted, { due: 0, sent: 0, asked: 0, missed: 0, failed: 1 });
+    row = await db.prepare('SELECT follow_up_status, follow_up_retry_at_ms FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.follow_up_status, 'failed');
+    assert.equal(row.follow_up_retry_at_ms, 0);
+});
+
+sqliteTest('提醒 - 回「还没」会停掉待发追问，但仍可回「完成」', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, fired_at_ms, status, follow_up_at_ms, follow_up_ms, follow_up_status, follow_up_attempts, follow_up_retry_at_ms, is_deleted) VALUES (1, 1, ?1, ?2, ?2, 'fired', ?2, ?3, 'pending', 0, ?2, 0)")
+        .bind('交电费', NOW - 1000, REMINDER_FOLLOW_UP_MS).run();
+
+    const fired = await recentFiredReminder(db, 1, NOW);
+    assert.equal(await skipReminderFollowUp(db, 1, fired), true);
+    const row = await db.prepare('SELECT follow_up_status, follow_up_retry_at_ms FROM bot_reminders WHERE user_id = 1').first();
+    assert.equal(row.follow_up_status, 'skipped');
+    assert.equal(row.follow_up_retry_at_ms, 0);
+
+    const st = sentStub();
+    const later = await runReminderChecks({}, db, st.impl, { nowMs: NOW + REMINDER_FOLLOW_UP_MS + 1 });
+    assert.deepEqual(later, { due: 0, sent: 0, asked: 0, missed: 0, failed: 0 });
+    assert.equal(st.calls.length, 0);
+    assert.equal(await completeReminder(db, 1, fired), true, '不追问不等于不能完成');
 });
 
 sqliteTest('提醒 - cron：超过 2 小时不补发，标 missed 且不发', async () => {

@@ -7,10 +7,12 @@
  * 所以分表（bot_reminders / bot_outreach）、分开关（outreach_enabled / 无）、分审计。
  * 否则用户一句「别主动找我」会把他的提醒一起关掉——那是他的东西，不是系统的兴致。
  *
- * 状态机（见 migrations/0029_bot_reminders.sql）：
- *   pending --到点--> fired --30 分钟--> 追问一次 --> done（回「完成」）
+ * 状态机（见 migrations/0029_bot_reminders.sql + 0033_bot_reminder_follow_up_state.sql）：
+ *   pending --到点--> fired --10 分钟（充电等慢任务 2 小时）--> 追问 --> done（回「完成」）
  *   pending --超过 2 小时没送出去--> missed（不补发：凌晨补一句「该充电了」是伤害不是服务）
  *   pending --「取消提醒 N」--> cancelled + is_deleted = 1
+ *   fired --追问发送失败--> pending（退避重试，次数耗尽后 failed）
+ *   fired --回「还没」--> skipped（不再追问，仍可回「完成」）
  *
  * 时间解析的立场：规则优先、猜错要看得见。解析出来的绝对时刻一定写回执里（「今天 20:00」），
  * 用户看到不对可以立刻取消——比反问一轮省事，也比默默猜错安全。
@@ -45,8 +47,27 @@ function east8Parts(nowMs) {
 
 /** 到点没送出去超过 2 小时就不再补发 */
 export const REMINDER_STALE_MS = 2 * 60 * 60 * 1000;
-/** 开口后 30 分钟追问一次（10 分钟太早：充电要几小时） */
-export const REMINDER_FOLLOW_UP_MS = 30 * 60 * 1000;
+/** 普通任务开口后 10 分钟追问；充电等慢任务用 2 小时 */
+export const REMINDER_FOLLOW_UP_MS = 10 * 60 * 1000;
+export const REMINDER_FOLLOW_UP_SLOW_MS = 2 * 60 * 60 * 1000;
+/** 追问失败最多尝试 5 次，指数退避（1/2/4/8 分钟，封顶 10 分钟） */
+export const REMINDER_FOLLOW_UP_MAX_ATTEMPTS = 5;
+export const REMINDER_FOLLOW_UP_LEASE_MS = 5 * 60 * 1000;
+const REMINDER_FOLLOW_UP_RETRY_BASE_MS = 60 * 1000;
+const REMINDER_FOLLOW_UP_RETRY_MAX_MS = 10 * 60 * 1000;
+const SLOW_TASK_RE = /充电|电池|电瓶|电动车|汽车|保养|炖|煮|烘焙|发酵|长途|出差|航班|火车/;
+
+function normalizeFollowUpMs(value) {
+    const n = Number(value);
+    return Number.isFinite(n) && n > 0 ? Math.min(Math.max(Math.round(n), 60 * 1000), 24 * 3600 * 1000) : 0;
+}
+
+/** 任务语义决定追问间隔：慢任务给足时间，普通任务 10 分钟就问一次 */
+export function followUpMsForText(text) {
+    return SLOW_TASK_RE.test(String(text == null ? '' : text))
+        ? REMINDER_FOLLOW_UP_SLOW_MS
+        : REMINDER_FOLLOW_UP_MS;
+}
 /** 「完成」只认 12 小时内刚提醒过的那条 */
 export const REMINDER_DONE_WINDOW_MS = 12 * 60 * 60 * 1000;
 /** 一件事最多 200 字，提醒是短句不是备忘录 */
@@ -222,7 +243,7 @@ export function parseNotYetReply(text) {
     return NOT_YET_RE.test(String(text == null ? '' : text).trim());
 }
 
-/** 到点开口 / 30 分钟后追问 的文本（模板，不经过模型——模型多一层就可能忘记说了什么） */
+/** 到点开口 / 追问的文本（模板，不经过模型——模型多一层就可能忘记说了什么） */
 export function reminderFiredText(text) {
     return '⏰ 提醒你：' + text + '\n\n做完了回「完成」，我把它记进随手记；今天不做了回「还没」。';
 }
@@ -250,8 +271,9 @@ export async function runRemind(db, userId, parsed, nowMs) {
     }
     const account = await loadBoundAccount(db, userId);
     if (!account) return '我这边还没有绑定的微信通道，设了也送不到——去花园「设置 → 微信 Bot」扫码绑定后再发一次。';
-    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (?1, ?2, ?3, ?4, 'pending', 0)")
-        .bind(userId, account.id, parsed.text, parsed.fireAtMs).run();
+    const followUpMs = normalizeFollowUpMs(parsed.followUpMs) || followUpMsForText(parsed.text);
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, follow_up_ms, status, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0)")
+        .bind(userId, account.id, parsed.text, parsed.fireAtMs, followUpMs).run();
     return ['已记下 ✅', '> ' + formatReminderTime(parsed.fireAtMs, now) + ' — ' + parsed.text, '',
         '到点我会在微信里叫你；不想了就发「我的提醒」看编号，再发「取消提醒 <编号>」。'].join('\n');
 }
@@ -308,7 +330,15 @@ export async function recentFiredReminder(db, userId, nowMs) {
 /** 幂等收尾：只有还是 fired 才能变 done */
 export async function completeReminder(db, userId, row) {
     if (!row || !row.id) return false;
-    const upd = await db.prepare("UPDATE bot_reminders SET status = 'done', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'fired'")
+    const upd = await db.prepare("UPDATE bot_reminders SET status = 'done', follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'fired'")
+        .bind(row.id, userId).run();
+    return Number((upd && upd.meta && upd.meta.changes) || 0) === 1;
+}
+
+/** 用户回「还没」：停掉尚未发出的追问，但不结束这条提醒（之后仍可回「完成」） */
+export async function skipReminderFollowUp(db, userId, row) {
+    if (!row || !row.id) return false;
+    const upd = await db.prepare("UPDATE bot_reminders SET follow_up_status = 'skipped', follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'fired' AND follow_up_status IN ('pending', 'sending')")
         .bind(row.id, userId).run();
     return Number((upd && upd.meta && upd.meta.changes) || 0) === 1;
 }
@@ -318,8 +348,29 @@ async function saveTurnSafe(db, userId, text) {
     catch (err) { console.error('[reminder] 写对话上下文失败: ' + (err && err.message)); }
 }
 
+function followUpBackoffMs(attempts) {
+    const exp = Math.max(0, Number(attempts || 0) - 1);
+    return Math.min(REMINDER_FOLLOW_UP_RETRY_MAX_MS, REMINDER_FOLLOW_UP_RETRY_BASE_MS * Math.pow(2, exp));
+}
+
+/** 失败后按次数退避；次数耗尽进入 failed，避免永远卡在 pending */
+async function scheduleFollowUpRetry(db, id, attempts, now, reason) {
+    const count = Math.max(0, Number(attempts || 0));
+    if (count >= REMINDER_FOLLOW_UP_MAX_ATTEMPTS) {
+        await db.prepare("UPDATE bot_reminders SET follow_up_status = 'failed', follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'fired'")
+            .bind(id).run();
+        console.error('[reminder] 追问放弃 id=' + id + ' reason=' + reason);
+        return 'failed';
+    }
+    const retryAt = Number(now) + followUpBackoffMs(count);
+    await db.prepare("UPDATE bot_reminders SET follow_up_status = 'pending', follow_up_attempts = ?1, follow_up_retry_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND status = 'fired'")
+        .bind(count, retryAt, id).run();
+    console.error('[reminder] 追问重试 id=' + id + ' attempt=' + count + ' reason=' + reason);
+    return 'pending';
+}
+
 /**
- * 每分钟 cron 入口：先发到点的提醒，再发 30 分钟前的追问。
+ * 每分钟 cron 入口：先发到点的提醒，再发到期的追问（失败退避重试）。
  * options.nowMs / options.staleMs 供单测收紧时间；options.limit 控制单轮条数。
  */
 export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}) {
@@ -334,7 +385,7 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
         return sender;
     };
 
-    const dueRes = await db.prepare("SELECT id, user_id, text, fire_at_ms FROM bot_reminders WHERE is_deleted = 0 AND status = 'pending' AND fire_at_ms <= ?1 ORDER BY fire_at_ms ASC, id ASC LIMIT ?2")
+    const dueRes = await db.prepare("SELECT id, user_id, text, fire_at_ms, follow_up_ms FROM bot_reminders WHERE is_deleted = 0 AND status = 'pending' AND fire_at_ms <= ?1 ORDER BY fire_at_ms ASC, id ASC LIMIT ?2")
         .bind(now, limit).all();
     const due = (dueRes && dueRes.results) || [];
     summary.due = due.length;
@@ -353,8 +404,10 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
             summary.missed++;
             continue;
         }
-        const claim = await db.prepare("UPDATE bot_reminders SET status = 'fired', fired_at_ms = ?1, follow_up_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND status = 'pending'")
-            .bind(now, now + REMINDER_FOLLOW_UP_MS, row.id).run();
+        const followUpMs = normalizeFollowUpMs(row.follow_up_ms) || followUpMsForText(row.text);
+        const followUpAt = now + followUpMs;
+        const claim = await db.prepare("UPDATE bot_reminders SET status = 'fired', fired_at_ms = ?1, follow_up_at_ms = ?2, follow_up_ms = ?3, follow_up_status = 'pending', follow_up_attempts = 0, follow_up_retry_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?4 AND status = 'pending'")
+            .bind(now, followUpAt, followUpMs, row.id).run();
         if (Number((claim && claim.meta && claim.meta.changes) || 0) !== 1) continue;
         const firedText = reminderFiredText(row.text);
         try {
@@ -372,21 +425,43 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
             await saveTurnSafe(db, row.user_id, firedText);
             console.log('[reminder] 已送达 id=' + row.id + ' user=' + row.user_id);
         } catch (err) {
-            await db.prepare("UPDATE bot_reminders SET status = 'pending', fired_at_ms = 0, follow_up_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'fired'")
+            await db.prepare("UPDATE bot_reminders SET status = 'pending', fired_at_ms = 0, follow_up_at_ms = 0, follow_up_status = 'none', follow_up_attempts = 0, follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'fired'")
                 .bind(row.id).run();
             summary.failed++;
             console.error('[reminder] 发送失败 id=' + row.id + ': ' + (err && err.message));
         }
     }
 
-    const askRes = await db.prepare("SELECT id, user_id, text FROM bot_reminders WHERE is_deleted = 0 AND status = 'fired' AND follow_up_sent = 0 AND follow_up_at_ms > 0 AND follow_up_at_ms <= ?1 ORDER BY follow_up_at_ms ASC, id ASC LIMIT ?2")
+    const askRes = await db.prepare("SELECT id, user_id, text, follow_up_attempts FROM bot_reminders WHERE is_deleted = 0 AND status = 'fired' AND follow_up_status IN ('pending', 'sending') AND follow_up_retry_at_ms > 0 AND follow_up_retry_at_ms <= ?1 ORDER BY follow_up_retry_at_ms ASC, id ASC LIMIT ?2")
         .bind(now, limit).all();
     for (const row of ((askRes && askRes.results) || [])) {
-        const claim = await db.prepare("UPDATE bot_reminders SET follow_up_sent = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND follow_up_sent = 0")
-            .bind(row.id).run();
+        const attempts = Number(row.follow_up_attempts || 0);
+        if (attempts >= REMINDER_FOLLOW_UP_MAX_ATTEMPTS) {
+            await scheduleFollowUpRetry(db, row.id, attempts, now, 'max_attempts');
+            summary.failed++;
+            continue;
+        }
+
+        let account = null;
+        try {
+            account = await loadBoundAccount(db, row.user_id);
+        } catch (err) {
+            await scheduleFollowUpRetry(db, row.id, attempts + 1, now, 'account_read_failed');
+            summary.failed++;
+            console.error('[reminder] 追问读账号失败 id=' + row.id + ': ' + (err && err.message));
+            continue;
+        }
+        if (!account) {
+            await scheduleFollowUpRetry(db, row.id, attempts + 1, now, 'no_account');
+            summary.failed++;
+            continue;
+        }
+
+        const nextAttempt = attempts + 1;
+        const claim = await db.prepare("UPDATE bot_reminders SET follow_up_status = 'sending', follow_up_attempts = ?1, follow_up_retry_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND status = 'fired' AND follow_up_status IN ('pending', 'sending') AND follow_up_retry_at_ms <= ?4")
+            .bind(nextAttempt, now + REMINDER_FOLLOW_UP_LEASE_MS, row.id, now).run();
         if (Number((claim && claim.meta && claim.meta.changes) || 0) !== 1) continue;
-        const account = await loadBoundAccount(db, row.user_id);
-        if (!account) continue;
+
         const askText = reminderAskText(row.text);
         try {
             const send = await loadSender();
@@ -399,9 +474,13 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
                 text: askText,
                 fetchImpl
             });
+            await db.prepare("UPDATE bot_reminders SET follow_up_status = 'sent', follow_up_sent = 1, follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'fired'")
+                .bind(row.id).run();
             summary.asked++;
             await saveTurnSafe(db, row.user_id, askText);
         } catch (err) {
+            await scheduleFollowUpRetry(db, row.id, nextAttempt, now, 'send_failed');
+            summary.failed++;
             console.error('[reminder] 追问失败 id=' + row.id + ': ' + (err && err.message));
         }
     }

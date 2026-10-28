@@ -33,7 +33,7 @@ import { handleClawLinkMessage, buildManualLinkCard } from './bot-links.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
-    runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder
+    runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder, skipReminderFollowUp
 } from './bot-reminders.js';
 import { maybeRunHealthCommand } from './bot-health.js';
 
@@ -409,6 +409,7 @@ export async function runCommand(env, db, userId, content) {
                 await saveFeed(db, userId, '✅ ' + fired.text);
                 return '记下了 ✅「' + fired.text + '」已经写进随手记。';
             }
+            try { await skipReminderFollowUp(db, userId, fired); } catch (err) { console.error('[reminder] 取消失败追问: ' + (err && err.message)); }
             return '好，那就不催了。做完了随时跟我说一声，我记进花园。';
         }
     }
