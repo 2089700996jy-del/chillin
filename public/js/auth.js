@@ -160,6 +160,7 @@ export function logout(opts = {}) {
     localStorage.removeItem('chillin_token');
     localStorage.removeItem('chillin_user');
     clearSyncCursorsForUser(uid);
+    try { localStorage.removeItem(PUSH_SYNC_FAILED_KEY); } catch (_) {}
     checkAuth();
     if (opts.silent) return;
     if (opts.reason === 'expired') {
@@ -605,6 +606,23 @@ export async function openSecurityModal() {
     }
 }
 
+const PUSH_SYNC_FAILED_KEY = 'chillin_push_sync_failed';
+let pushServerState = (() => {
+    try {
+        return localStorage.getItem(PUSH_SYNC_FAILED_KEY) ? 'failed' : 'unknown';
+    } catch (_) {
+        return 'unknown';
+    }
+})();
+
+function rememberPushServerState(next) {
+    pushServerState = next;
+    try {
+        if (next === 'failed') localStorage.setItem(PUSH_SYNC_FAILED_KEY, '1');
+        else localStorage.removeItem(PUSH_SYNC_FAILED_KEY);
+    } catch (_) {}
+}
+
 /** 刷新系统推送通知状态指示与操作按钮 */
 export function updatePushNotificationStatus() {
     const badge = document.getElementById('push-status-badge');
@@ -624,11 +642,21 @@ export function updatePushNotificationStatus() {
 
     const permission = Notification.permission;
     if (permission === 'granted') {
-        badge.textContent = '已开启';
-        badge.classList.add('is-persisted');
-        btnEnable.style.display = 'none';
-        btnTest.style.display = 'inline-block';
-        if (hint) hint.textContent = '设备通知已授权就绪，轻按「测试通知」可向系统通知中心发送测试消息';
+        if (pushServerState === 'failed') {
+            badge.textContent = '待同步';
+            badge.classList.remove('is-persisted');
+            btnEnable.style.display = 'inline-block';
+            btnEnable.textContent = '重试同步';
+            btnEnable.disabled = false;
+            btnTest.style.display = 'none';
+            if (hint) hint.textContent = '本机通知已授权，但订阅尚未同步到服务器；点「重试同步」再试一次';
+        } else {
+            badge.textContent = '已开启';
+            badge.classList.add('is-persisted');
+            btnEnable.style.display = 'none';
+            btnTest.style.display = 'inline-block';
+            if (hint) hint.textContent = '设备通知已授权就绪，轻按「测试通知」可向系统通知中心发送测试消息';
+        }
     } else if (permission === 'denied') {
         badge.textContent = '已拦截';
         badge.classList.remove('is-persisted');
@@ -783,7 +811,7 @@ export async function registerPushNotification() {
 
         const existingSub = await reg.pushManager.getSubscription();
         if (existingSub) {
-            await sendSubscriptionToServer(existingSub);
+            if (!(await syncPushSubscription(existingSub))) return;
             updatePushNotificationStatus();
             showToast('已成功开启设备推送通知！', 'ok');
             return;
@@ -794,7 +822,7 @@ export async function registerPushNotification() {
             userVisibleOnly: true,
             applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
         });
-        await sendSubscriptionToServer(subscription);
+        if (!(await syncPushSubscription(subscription))) return;
         updatePushNotificationStatus();
         showToast('已成功开启设备推送通知！', 'ok');
     } catch (e) {
@@ -803,15 +831,25 @@ export async function registerPushNotification() {
     }
 }
 
-async function sendSubscriptionToServer(subscription) {
+async function syncPushSubscription(subscription) {
     try {
-        await apiRequest('/api/push/subscribe', {
-            method: 'POST',
-            body: JSON.stringify(subscription)
-        });
+        await sendSubscriptionToServer(subscription);
+        rememberPushServerState('ok');
+        return true;
     } catch (e) {
-        console.error('Failed to send subscription:', e);
+        console.error('Failed to sync subscription:', e);
+        rememberPushServerState('failed');
+        updatePushNotificationStatus();
+        showToast('本机通知已授权，但订阅同步到服务器失败；请点「重试同步」', 'warn');
+        return false;
     }
+}
+
+async function sendSubscriptionToServer(subscription) {
+    await apiRequest('/api/push/subscribe', {
+        method: 'POST',
+        body: JSON.stringify(subscription)
+    });
 }
 /** 「关于我」档案条目：应用内查看 / 编辑 / 遗忘（与微信端共用同一份记忆） */
 let editingProfileId = null;

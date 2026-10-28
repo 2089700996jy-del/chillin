@@ -233,3 +233,18 @@ integration('Auth - 旧的 10 万次哈希在登录成功后就地升级到当�
         jsonRequest('https://x/api/auth/login', { username: 'legacy', password: 'passw0rd1' }), env, db
     )).status, 200, '升级后旧密码仍可登录');
 });
+
+
+test('Auth - 推送订阅上传失败不再静默成功', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../public/js/auth.js', import.meta.url), 'utf8');
+
+    const uploadBody = /async function sendSubscriptionToServer\(subscription\) \{([\s\S]*?)\n\}/.exec(src);
+    assert.ok(uploadBody, '必须保留独立的订阅上传函数');
+    assert.doesNotMatch(uploadBody[1], /catch/, '订阅上传失败不能被 sendSubscriptionToServer 内部吞掉');
+    assert.match(uploadBody[1], /await apiRequest\(/, '上传函数应只负责请求，错误交给调用方处理');
+    assert.match(src, /rememberPushServerState\('failed'\)/, '失败必须记录为待同步状态');
+    assert.match(src, /重试同步/, '失败后状态区要给出可重试的按钮文案');
+    assert.match(src, /syncPushSubscription\(existingSub\)/, '已存在的浏览器订阅也要重新同步，不能只提示成功');
+    assert.match(src, /syncPushSubscription\(subscription\)/, '新订阅必须等服务器确认后才提示成功');
+});
