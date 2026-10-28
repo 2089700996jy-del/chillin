@@ -807,6 +807,26 @@ test('Bot - 来源标签统一成 [类型] YYYY-MM-DD，标题与日期重复时
     assert.equal(sourceLabel(null), '[记录] 未知日期');
 });
 
+integration('Bot - 普通闲聊不注入「未检索到记忆」的检索失败指令', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    let messages = null;
+    const env = { AI: { run: async (model, opts) => { messages = opts.messages; return { response: '又咋了，今天碰上什么破事了？' }; } } };
+
+    const reply = await buildBotReply(env, db, 1, '今天上班烦死了');
+    assert.equal(reply, '又咋了，今天碰上什么破事了？');
+    assert.ok(messages, '必须真的调用模型');
+    assert.ok(!/未检索到/.test(messages[0].content), '闲聊没有记忆命中时，不能把「请告知没找到」塞进系统提示词');
+    assert.ok(!/【花园记忆片段（历史事实/.test(messages[0].content), '没有命中时不要凭空注入记忆块');
+
+    // 有旧记录，但「在吗」没有主题词：也不能把最近 5 条当成聊天素材硬塞进去
+    await db.prepare(
+        "INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?1, 1, ?2, datetime('now','+8 hours'), datetime('now','+8 hours'), 0)"
+    ).bind(1799000000099, '上周在读《人类简史》，读到农业革命那一章').run();
+    assert.equal(await buildBotReply(env, db, 1, '在吗'), '又咋了，今天碰上什么破事了？');
+    assert.ok(!/【花园记忆片段（历史事实/.test(messages[0].content), '没有主题词的「在吗」不能自动翻最近记录');
+});
+
 integration('Bot - 默认聊天不附依据，追问来源时才带', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -1280,6 +1300,13 @@ integration('Bot - 提示词带人格边界、档案与最近上下文（旧→�
     assert.match(messages[0].content, /你自己没有写入能力/, '人格边界必须进提示词：不许自称已保存');
     assert.match(messages[0].content, /记录：<内容>/, '必须把指令通道的真实能力列给它，否则它会答「我没有写入能力」');
     assert.match(messages[0].content, /到点必达/, '主动开口与定点提醒的边界要说清：指令里的提醒不受日限约束');
+    // v2.5.176：聊天不再默认「先共情」，也不再用 150 字上限；改为按语境判断回应方式
+    assert.match(messages[0].content, /不要每次都先共情/, '必须允许自然接话，不能每句都先共情');
+    assert.match(messages[0].content, /不要机械限制长度/, '简单话题可短、复杂话题可展开，不能一刀切 150 字');
+    assert.match(messages[0].content, /普通聊天默认只聊天/, '闲聊不能被自动当成记录任务');
+    assert.match(messages[0].content, /不要总说「根据我对你的了解」/, '熟悉感要自然用上记忆，不能反复强调「我了解你」');
+    assert.ok(!/先接住对方的情绪/.test(messages[0].content), '旧的强制共情规则不能残留');
+    assert.ok(!/150 字以内/.test(messages[0].content), '旧的固定篇幅限制不能残留');
     assert.equal(messages[messages.length - 1].content, '在吗');
     const roles = messages.slice(1, -1).map((m) => m.role);
     assert.deepEqual(roles, ['user', 'assistant', 'user', 'assistant'], '上下文按旧→新注入，实际：' + JSON.stringify(roles));
