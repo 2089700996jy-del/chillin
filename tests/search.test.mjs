@@ -93,6 +93,51 @@ test('Search - 跳转失联修复（C3）：分页列表之外的条目必须先
     assert.match(fs.readFileSync(new URL('../public/js/actions.js', import.meta.url), 'utf8'), /ensureItemRendered: null/, 'actions.js 注册表必须声明 ensureItemRendered 占位');
 });
 
+test('Timeline - 年/月过滤只认合法日期，且月份必须依附年份', async () => {
+    const { parseYearMonth, filterItemsByYearMonth, decodeCssEscapedId } = await import('../public/js/utils.js');
+    assert.equal(decodeCssEscapedId('\\34 '), '4', 'CSS.escape("4") 的结果必须还原为 4，否则搜索跳转找不到记录');
+    assert.equal(decodeCssEscapedId('abc'), 'abc');
+    assert.deepEqual(parseYearMonth('2026-10-27 09:00:00'), { year: '2026', month: '10' });
+    assert.deepEqual(parseYearMonth('2026-01-01'), { year: '2026', month: '01' });
+    assert.equal(parseYearMonth('2026-13-01'), null, '13 月必须判非法');
+    assert.equal(parseYearMonth('not-a-date'), null);
+    assert.equal(parseYearMonth(''), null);
+
+    const items = [
+        { id: 1, date: '2026-10-01' },
+        { id: 2, date: '2026-10-27 09:00:00' },
+        { id: 3, date: '2026-09-30' },
+        { id: 4, date: '2025-10-01' },
+        { id: 5, date: '没有日期' },
+    ];
+    const getDate = (item) => item.date;
+    assert.deepEqual(filterItemsByYearMonth(items, getDate).map((x) => x.id), [1, 2, 3, 4, 5], '全部时间不过滤任何条目');
+    assert.deepEqual(filterItemsByYearMonth(items, getDate, '2026', 'all').map((x) => x.id), [1, 2, 3]);
+    assert.deepEqual(filterItemsByYearMonth(items, getDate, '2026', '10').map((x) => x.id), [1, 2]);
+    assert.deepEqual(filterItemsByYearMonth(items, getDate, '2025', '10').map((x) => x.id), [4]);
+    assert.deepEqual(filterItemsByYearMonth(items, getDate, 'all', '10').map((x) => x.id), [], '只选月份不选年份时不能越过年份语义');
+    assert.deepEqual(filterItemsByYearMonth([], getDate, '2026').map((x) => x.id), []);
+});
+
+test('Timeline - 周记/随手记筛选条接线，筛选变化会复位分页窗口', async () => {
+    const fs = await import('node:fs');
+    const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
+    const weeklies = fs.readFileSync(new URL('../public/js/weeklies.js', import.meta.url), 'utf8');
+    const feeds = fs.readFileSync(new URL('../public/js/feeds.js', import.meta.url), 'utf8');
+    const search = fs.readFileSync(new URL('../public/js/search.js', import.meta.url), 'utf8');
+    const actions = fs.readFileSync(new URL('../public/js/actions.js', import.meta.url), 'utf8');
+
+    assert.match(html, /id="weekly-date-filter"/, '周记必须有独立的年/月筛选条');
+    assert.match(html, /id="feeds-date-filter"/, '随手记必须有独立的年/月筛选条');
+    assert.match(weeklies, /mountDateFilter\(document\.getElementById\('weekly-date-filter'\)/, '周记筛选条必须接到共享过滤器');
+    assert.match(weeklies, /weeklyFilter\?\.update\(state\.database\)/, '每次渲染都要把最新数据交给筛选器重建年份计数');
+    assert.match(feeds, /mountDateFilter\(document\.getElementById\('feeds-date-filter'\)/, '随手记筛选条必须接到共享过滤器');
+    assert.match(feeds, /feedsVisibleCount = FEEDS_PAGE_SIZE;\n\s*renderFeeds\(\);/, '切换年月后必须复位到首屏 100 条，避免沿用旧窗口');
+    assert.match(feeds, /filterChanged/, '搜索跳转遇到被筛选藏起来的条目时要先复位筛选再重查');
+    assert.match(search, /ensureWeeklyRendered/, '周记被年月筛选后，搜索跳转仍必须能展开目标');
+    assert.match(actions, /ensureWeeklyRendered: null/, 'actions 注册表必须声明周记的扩窗口占位');
+});
+
 test('Search - 输入防抖 120ms，Enter 立即 flush', () => {
     const src = fs.readFileSync(path.join(root, 'public/js/search.js'), 'utf8');
     assert.match(src, /const SEARCH_DEBOUNCE_MS = 120;/, '搜索防抖必须有一个明确的毫秒常量');

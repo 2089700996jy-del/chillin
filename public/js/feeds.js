@@ -1,5 +1,5 @@
 /** Quick feeds (随手记) stream, link enrich, heatmap. */
-import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast } from './utils.js';
+import { escapeHtml, getEast8Time, skeletonListHtml, isSyncingNow, confirmDialog, showToast, mountDateFilter, filterItemsByYearMonth, decodeCssEscapedId } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
 import {
@@ -41,13 +41,25 @@ const FEEDS_PAGE_SIZE = 100;
 let feedsVisibleCount = FEEDS_PAGE_SIZE;
 let loadMoreObserver = null;
 
+const feedsFilter = mountDateFilter(document.getElementById('feeds-date-filter'), {
+    getDate: (feed) => feed && feed.created_at,
+    onChange: () => {
+        feedsVisibleCount = FEEDS_PAGE_SIZE;
+        renderFeeds();
+    },
+});
+
+function getFilteredFeeds() {
+    const range = feedsFilter?.getValue() || { year: 'all', month: 'all' };
+    return filterItemsByYearMonth(state.feedsDatabase, (feed) => feed && feed.created_at, range.year, range.month);
+}
 
 function loadMoreFeeds() {
     if (loadMoreObserver) {
         loadMoreObserver.disconnect();
         loadMoreObserver = null;
     }
-    if (feedsVisibleCount >= state.feedsDatabase.length) return;
+    if (feedsVisibleCount >= getFilteredFeeds().length) return;
     feedsVisibleCount += FEEDS_PAGE_SIZE;
     renderFeeds();
 }
@@ -67,10 +79,28 @@ function observeLoadMore(el) {
 function ensureFeedRendered(selector) {
     const matched = /data-feed-id="([^"]+)"/.exec(String(selector || ''));
     if (!matched) return false;
-    const targetId = matched[1];
-    const index = state.feedsDatabase.findIndex((feed) => String(feed.id) === targetId);
-    if (index === -1 || index < feedsVisibleCount) return false;
-    feedsVisibleCount = Math.ceil((index + 1) / FEEDS_PAGE_SIZE) * FEEDS_PAGE_SIZE;
+    const targetId = decodeCssEscapedId(matched[1]);
+    const target = state.feedsDatabase.find((feed) => String(feed.id) === targetId);
+    if (!target) return false;
+
+    // 目标可能被年/月筛选藏起来了：先回到全部时间，否则搜索跳转会静默失败。
+    let filterChanged = false;
+    if (feedsFilter?.isActive()) {
+        const range = feedsFilter.getValue();
+        const stillVisible = filterItemsByYearMonth([target], (feed) => feed && feed.created_at, range.year, range.month);
+        if (!stillVisible.length) {
+            feedsFilter.reset();
+            filterChanged = true;
+        }
+    }
+
+    const filtered = getFilteredFeeds();
+    const index = filtered.findIndex((feed) => String(feed.id) === targetId);
+    if (index === -1) return false;
+    if (!filterChanged && index < feedsVisibleCount) return false;
+    if (index >= feedsVisibleCount) {
+        feedsVisibleCount = Math.ceil((index + 1) / FEEDS_PAGE_SIZE) * FEEDS_PAGE_SIZE;
+    }
     renderFeeds();
     return true;
 }
@@ -84,12 +114,24 @@ function renderFeeds() {
         loadMoreObserver = null;
     }
 
-    const totalFeeds = state.feedsDatabase.length;
-    const displayFeeds = state.feedsDatabase.slice(0, feedsVisibleCount);
+    feedsFilter?.update(state.feedsDatabase);
+    const filteredFeeds = getFilteredFeeds();
+    const totalFeeds = filteredFeeds.length;
+    const displayFeeds = filteredFeeds.slice(0, feedsVisibleCount);
 
     if (!displayFeeds || displayFeeds.length === 0) {
         if (isSyncingNow()) {
             setHtml(container, skeletonListHtml(3));
+            return;
+        }
+        if (feedsFilter?.isActive()) {
+            setHtml(container, `
+                <div class="list-empty">
+                    <div class="list-empty-icon">🗓️</div>
+                    <div class="list-empty-title">这个时间段还没有随手记</div>
+                    <div class="list-empty-sub">换一年/月看看，或点上方「清除筛选」。</div>
+                </div>
+            `);
             return;
         }
         setHtml(container, `

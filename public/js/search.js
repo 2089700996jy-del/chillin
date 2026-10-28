@@ -462,7 +462,9 @@ export function initSearch() {
                 // 目标可能还没被渲染（随手记 100 条/批、笔记 60 条/批）：以前这里会静默什么都不发生。
                 // 先让对应列表把目标所在的整批纳入渲染窗口，再重新查询。
                 const isNote = selector.includes('data-note-id');
+                const isWeekly = selector.includes('.notion-collection-card');
                 const ensured = (isNote && typeof actions.ensureNoteRendered === 'function' && actions.ensureNoteRendered(selector))
+                    || (isWeekly && typeof actions.ensureWeeklyRendered === 'function' && actions.ensureWeeklyRendered(selector))
                     || (typeof actions.ensureItemRendered === 'function' && actions.ensureItemRendered(selector));
                 if (ensured) el = document.querySelector(selector);
             }

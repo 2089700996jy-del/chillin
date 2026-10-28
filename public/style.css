@@ -824,6 +824,71 @@ body.eyecare-reader-body #btn-back {
   font-weight: 600;
 }
 
+/* 周记 / 随手记的时间轴筛选：离线可用，只过滤本地已同步数据 */
+.timeline-filter {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 4px 0 14px;
+}
+
+.timeline-filter[hidden] { display: none; }
+
+.timeline-filter__select {
+  min-height: 36px;
+  max-width: 48%;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: rgba(var(--neutral-rgb), 0.06);
+  color: var(--text-color);
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.timeline-filter__select:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+.timeline-filter__select:disabled { opacity: 0.5; }
+
+.timeline-filter__reset[hidden] { display: none; }
+
+.timeline-filter__reset {
+  margin-left: 0;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--accent-text, var(--accent-color));
+}
+
+.timeline-filter__count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--text-secondary, rgba(var(--label-rgb), 0.6));
+  white-space: nowrap;
+}
+
+body.dark-reader-body .timeline-filter__select {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.12);
+  color: inherit;
+}
+
+@media (max-width: 480px) {
+  .timeline-filter__select {
+    width: 112px;
+    max-width: 46%;
+  }
+
+  .timeline-filter__count {
+    width: auto;
+    margin-left: auto;
+  }
+}
+
 .notion-collection-gallery { 
   display: block; 
   column-count: 1;

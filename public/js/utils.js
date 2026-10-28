@@ -302,6 +302,155 @@ export function isSyncingNow() {
     return typeof document !== 'undefined' && document.body.classList.contains('is-syncing');
 }
 
+// ── 时间轴筛选：周记 / 随手记共用的年、月过滤 ──
+// 纯前端过滤，断网时仍然可用；不改变同步口径，也不把本地数据裁成服务器第一页。
+export function parseYearMonth(value) {
+    const match = /^(\d{4})-(\d{2})/.exec(String(value || '').trim());
+    if (!match) return null;
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    if (!Number.isInteger(year) || year < 1970 || year > 9999) return null;
+    if (!Number.isInteger(month) || month < 1 || month > 12) return null;
+    return { year: String(year), month: String(month).padStart(2, '0') };
+}
+
+/** CSS.escape 会把纯数字 id 写成 \34 这种转义串；搜索跳转解析选择器时要还原成真实 id。 */
+export function decodeCssEscapedId(value) {
+    return String(value || '')
+        .replace(/\\([0-9a-fA-F]{1,6})\s?/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+        .replace(/\\(.)/g, '$1');
+}
+
+export function filterItemsByYearMonth(items, getDate, year = 'all', month = 'all') {
+    const list = Array.isArray(items) ? items : [];
+    // 月份必须依附年份：UI 在「全部年份」时禁用月份，纯函数也保持同一语义，避免跨年混筛。
+    if (year === 'all' && month !== 'all') return [];
+    if (year === 'all' && month === 'all') return list.slice();
+    return list.filter((item) => {
+        const parts = parseYearMonth(typeof getDate === 'function' ? getDate(item) : '');
+        if (!parts) return false;
+        if (year !== 'all' && parts.year !== String(year)) return false;
+        if (month !== 'all' && parts.month !== String(month).padStart(2, '0')) return false;
+        return true;
+    });
+}
+
+/**
+ * 把「全部年份 / 全部月份」下拉接到一个列表上。
+ * update() 只重建计数与选项，不触发 onChange；用户改选时才调用 onChange。
+ */
+export function mountDateFilter(root, opts = {}) {
+    if (!root) return null;
+    const yearEl = root.querySelector('[data-date-year]');
+    const monthEl = root.querySelector('[data-date-month]');
+    const resetEl = root.querySelector('[data-date-reset]');
+    const countEl = root.querySelector('[data-date-count]');
+    if (!yearEl || !monthEl) return null;
+    const readDate = typeof opts.getDate === 'function' ? opts.getDate : () => '';
+    const unit = opts.unit === '篇' ? '篇' : '条';
+    let items = [];
+    let value = { year: 'all', month: 'all' };
+
+    const yearCounts = () => {
+        const map = new Map();
+        for (const item of items) {
+            const parts = parseYearMonth(readDate(item));
+            if (!parts) continue;
+            map.set(parts.year, (map.get(parts.year) || 0) + 1);
+        }
+        return map;
+    };
+
+    const monthCounts = (year) => {
+        const map = new Map();
+        for (const item of items) {
+            const parts = parseYearMonth(readDate(item));
+            if (!parts || parts.year !== year) continue;
+            map.set(parts.month, (map.get(parts.month) || 0) + 1);
+        }
+        return map;
+    };
+
+    const option = (valueText, text) => {
+        const el = document.createElement('option');
+        el.value = valueText;
+        el.textContent = text;
+        return el;
+    };
+
+    const paint = () => {
+        const years = yearCounts();
+        if (years.size === 0) {
+            root.hidden = true;
+            return;
+        }
+        root.hidden = false;
+        if (value.year !== 'all' && !years.has(value.year)) value = { year: 'all', month: 'all' };
+
+        yearEl.replaceChildren(option('all', '全部年份'));
+        [...years.keys()].sort((a, b) => b.localeCompare(a)).forEach((year) => {
+            yearEl.appendChild(option(year, year + '（' + years.get(year) + '）'));
+        });
+        yearEl.value = value.year;
+
+        if (value.year === 'all') {
+            value.month = 'all';
+            monthEl.replaceChildren(option('all', '全部月份'));
+            monthEl.disabled = true;
+        } else {
+            const months = monthCounts(value.year);
+            if (value.month !== 'all' && !months.get(value.month)) value.month = 'all';
+            monthEl.replaceChildren(option('all', '全部月份'));
+            [...months.keys()].sort().forEach((month) => {
+                monthEl.appendChild(option(month, month + ' 月（' + months.get(month) + '）'));
+            });
+            monthEl.value = value.month;
+            monthEl.disabled = false;
+        }
+
+        if (resetEl) resetEl.hidden = value.year === 'all' && value.month === 'all';
+        if (countEl) {
+            const active = value.year !== 'all';
+            const shown = active ? filterItemsByYearMonth(items, readDate, value.year, value.month).length : items.length;
+            const nextText = active ? shown + ' / ' + items.length + ' ' + unit : items.length + ' ' + unit;
+            if (countEl.textContent !== nextText) countEl.textContent = nextText;
+        }
+    };
+
+    const emit = () => {
+        if (typeof opts.onChange === 'function') opts.onChange({ ...value });
+    };
+
+    yearEl.addEventListener('change', () => {
+        value = { year: yearEl.value || 'all', month: 'all' };
+        paint();
+        emit();
+    });
+    monthEl.addEventListener('change', () => {
+        value = { year: value.year, month: monthEl.value || 'all' };
+        paint();
+        emit();
+    });
+    resetEl?.addEventListener('click', () => {
+        value = { year: 'all', month: 'all' };
+        paint();
+        emit();
+    });
+
+    return {
+        update(nextItems) {
+            items = Array.isArray(nextItems) ? nextItems : [];
+            paint();
+        },
+        getValue() { return { ...value }; },
+        isActive() { return value.year !== 'all'; },
+        reset() {
+            value = { year: 'all', month: 'all' };
+            paint();
+        }
+    };
+}
+
 // ── 应用级主题（批次 A）：跟随系统 / 手动浅色 / 手动深色 ──
 // <head> 的内联预绘脚本已经先落过一次 data-theme（避免深色偏好用户首帧闪白），
 // 这里负责后续读写：持久化偏好、同步 <meta name="theme-color">、跟随系统外观切换。

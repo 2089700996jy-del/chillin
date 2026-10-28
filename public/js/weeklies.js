@@ -13,6 +13,9 @@ import {
     skeletonListHtml,
     isSyncingNow,
     confirmDialog,
+    mountDateFilter,
+    filterItemsByYearMonth,
+    decodeCssEscapedId,
 } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -30,6 +33,11 @@ import { setHtml } from './trusted-types.js';
 export function initWeeklies() {
     const galleryContainer = document.getElementById('gallery-container');
     const filterBtns = document.querySelectorAll('.filter-btn');
+    const weeklyFilter = mountDateFilter(document.getElementById('weekly-date-filter'), {
+        getDate: (item) => item && item.date,
+        unit: '篇',
+        onChange: () => renderCards(),
+    });
     const articleCategory = document.getElementById('article-category');
     const articleDate = document.getElementById('article-date');
     const articleTitle = document.getElementById('article-title');
@@ -75,10 +83,13 @@ const renderWeeklyAnnotationsList = () => {
 
 const renderCards = (filter = 'all') => {
     setHtml(galleryContainer, '');
-    const sortedDB = [...state.database].sort((a, b) => b.id - a.id);
+    weeklyFilter?.update(state.database);
+    const range = weeklyFilter?.getValue() || { year: 'all', month: 'all' };
+    const sortedDB = filterItemsByYearMonth(state.database, (item) => item && item.date, range.year, range.month)
+        .filter(item => filter === 'all' || item.category === filter)
+        .sort((a, b) => b.id - a.id);
     let rendered = 0;
     sortedDB.forEach(item => {
-        if (filter !== "all" && item.category !== filter) return;
 
         const card = document.createElement('div');
         card.className = "notion-collection-card";
@@ -95,6 +106,16 @@ const renderCards = (filter = 'all') => {
     if (rendered === 0) {
         if (isSyncingNow()) {
             setHtml(galleryContainer, skeletonListHtml(3));
+            return;
+        }
+        if (weeklyFilter?.isActive()) {
+            setHtml(galleryContainer, `
+                <div class="list-empty">
+                    <div class="list-empty-icon">🗓️</div>
+                    <div class="list-empty-title">这个时间段还没有周记</div>
+                    <div class="list-empty-sub">换一年/月看看，或点上方「清除筛选」。</div>
+                </div>
+            `);
             return;
         }
         setHtml(galleryContainer, `
@@ -632,6 +653,15 @@ filterBtns.forEach(btn => {
 
 
     actions.renderCards = renderCards;
+    actions.ensureWeeklyRendered = (selector) => {
+        const matched = /data-id="([^"]+)"/.exec(String(selector || ''));
+        if (!matched) return false;
+        const target = state.database.find((item) => String(item.id) === decodeCssEscapedId(matched[1]));
+        if (!target || !weeklyFilter?.isActive()) return false;
+        weeklyFilter.reset();
+        renderCards();
+        return true;
+    };
     actions.openArticle = openArticle;
     actions.openWeeklyEditor = openWeeklyEditor;
     actions.handleExitWeeklyEditor = handleExitWeeklyEditor;

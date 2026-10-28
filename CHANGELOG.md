@@ -1,12 +1,40 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-25T03:27:51.487Z · 提交数：392
+> 生成时间：2026-10-28T04:03:06.817Z · 提交数：403
+
+## 2026-10-27
+
+### ✨ 新功能
+
+- **bot**: add in-app ClawBot QR bind/unbind card
+- **perf**: debounce search and paginate notes (v2.5.162)
+- **media**: expire image access tokens
+- **security**: add password change, full export and hardening
+
+### 🐛 缺陷修复
+
+- **a11y**: authenticated pages and reader themes (v2.5.161)
+- **a11y**: contrast and focus audit (v2.5.160)
+
+### 🧪 测试
+
+- stabilize UTC CI and bundle Worker once on Node 22
+
+### 🔧 杂务
+
+- **release**: 2.5.159
+- **release**: 2.5.159 roll back expiring media tokens
+
+### 📎 其他
+
+- Revert "feat(media): expire image access tokens"
 
 ## 2026-10-25
 
 ### ✨ 新功能
 
+- **bot**: record a day of health from one message
 - **ui**: use filled tab glyphs and unblock theme colors
 
 ### ⚡ 性能优化
