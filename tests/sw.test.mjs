@@ -140,3 +140,36 @@ test('PWA - 运行时缓存写入挂在 waitUntil 上（响应不等缓存落盘
     assert.doesNotMatch(branch, /await\s+cache\.put/, '缓存写入不得再让 respondWith 的 promise 等它');
     assert.match(branch, /catch\(/, 'waitUntil 与写入失败都要吞掉异常，不能影响本次响应');
 });
+
+
+test('PWA - modulepreload 只预加载真实存在、已预缓存且在 app.js 依赖图里的模块', async () => {
+    const html = await fs.readFile(path.join(root, SITE, 'index.html'), 'utf8');
+    const links = [...html.matchAll(/<link\s+rel="modulepreload"\s+href="([^"]+)"/g)].map((m) => m[1]);
+    const expected = ['state', 'ui', 'actions', 'utils', 'router', 'auth', 'backup', 'api', 'db', 'config', 'trusted-types', 'feeds']
+        .map((name) => '/js/' + name + '.js');
+    assert.deepEqual(links, expected, '首屏关键模块清单必须与代码里的 12 个高扇出节点一致');
+
+    const sw = await fs.readFile(path.join(root, SITE, 'sw.js'), 'utf8');
+    const assets = parseAssets(sw);
+    const graph = new Set();
+    const walk = async (file) => {
+        if (graph.has(file)) return;
+        graph.add(file);
+        const source = await fs.readFile(path.join(root, SITE, file.replace(/^\//, '')), 'utf8');
+        const re = /import\s+(?:[^'"]*?\s+from\s+)?['"]([^'"]+)['"]/g;
+        for (const match of source.matchAll(re)) {
+            const spec = match[1];
+            if (!spec.startsWith('.')) continue;
+            const target = path.posix.normalize(path.posix.join(path.posix.dirname(file), spec));
+            if (target.startsWith('/js/')) await walk(target);
+        }
+    };
+    await walk('/app.js');
+
+    for (const href of links) {
+        assert.ok(!href.includes('?'), 'modulepreload 不能带 ?v：import 用的是无查询串 URL，带版本会重复请求：' + href);
+        assert.ok(assets.includes(href), '预加载模块必须已在 sw.js ASSETS 中：' + href);
+        await assert.doesNotReject(fs.access(path.join(root, SITE, href.replace(/^\//, ''))), '预加载模块不存在：' + href);
+        assert.ok(graph.has(href), '预加载模块不在 app.js 静态依赖图里：' + href);
+    }
+});

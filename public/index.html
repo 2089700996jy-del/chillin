@@ -34,7 +34,20 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.170">
+    <link rel="stylesheet" href="style.css?v=2.5.171">
+    <!-- 首屏关键模块预加载：只列 app.js 静态依赖图里的高扇出节点，URL 必须与 import 完全一致（不带 ?v） -->
+    <link rel="modulepreload" href="/js/state.js">
+    <link rel="modulepreload" href="/js/ui.js">
+    <link rel="modulepreload" href="/js/actions.js">
+    <link rel="modulepreload" href="/js/utils.js">
+    <link rel="modulepreload" href="/js/router.js">
+    <link rel="modulepreload" href="/js/auth.js">
+    <link rel="modulepreload" href="/js/backup.js">
+    <link rel="modulepreload" href="/js/api.js">
+    <link rel="modulepreload" href="/js/db.js">
+    <link rel="modulepreload" href="/js/config.js">
+    <link rel="modulepreload" href="/js/trusted-types.js">
+    <link rel="modulepreload" href="/js/feeds.js">
 </head>
 <body>
 
@@ -298,7 +311,7 @@
             </div>
             <div class="notion-collection-gallery" id="gallery-container"></div>
             <div id="weekly-load-more-container" class="weekly-load-more-slot"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.170</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.171</button>
         </section>
 
         <!-- ========================================== -->
@@ -522,7 +535,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.170</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.171</button>
         </section>
 
         <!-- ========================================== -->
@@ -667,7 +680,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.170</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.171</button>
         </section>
 
         <!-- ========================================== -->
@@ -815,7 +828,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.170</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.171</button>
         </section>
 
         <!-- ========================================== -->
@@ -918,7 +931,7 @@
                 <span class="timeline-filter__count" data-date-count aria-live="polite"></span>
             </div>
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.170</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.171</button>
         </section>
 
     </main>
@@ -1485,7 +1498,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.170"></script>
-    <script type="module" src="app.js?v=2.5.170"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.171"></script>
+    <script type="module" src="app.js?v=2.5.171"></script>
 </body>
 </html>
