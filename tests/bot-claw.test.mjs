@@ -819,12 +819,12 @@ integration('Bot - 普通闲聊不注入「未检索到记忆」的检索失败�
     assert.ok(!/未检索到/.test(messages[0].content), '闲聊没有记忆命中时，不能把「请告知没找到」塞进系统提示词');
     assert.ok(!/【花园记忆片段（历史事实/.test(messages[0].content), '没有命中时不要凭空注入记忆块');
 
-    // 有旧记录，但「在吗」没有主题词：也不能把最近 5 条当成聊天素材硬塞进去
+    // 有旧记录，但「嗯」没有主题词：也不能把最近 5 条当成聊天素材硬塞进去
     await db.prepare(
         "INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?1, 1, ?2, datetime('now','+8 hours'), datetime('now','+8 hours'), 0)"
     ).bind(1799000000099, '上周在读《人类简史》，读到农业革命那一章').run();
-    assert.equal(await buildBotReply(env, db, 1, '在吗'), '又咋了，今天碰上什么破事了？');
-    assert.ok(!/【花园记忆片段（历史事实/.test(messages[0].content), '没有主题词的「在吗」不能自动翻最近记录');
+    assert.equal(await buildBotReply(env, db, 1, '嗯'), '又咋了，今天碰上什么破事了？');
+    assert.ok(!/【花园记忆片段（历史事实/.test(messages[0].content), '没有主题词的短句不能自动翻最近记录');
 });
 
 integration('Bot - 默认聊天不附依据，追问来源时才带', async () => {
