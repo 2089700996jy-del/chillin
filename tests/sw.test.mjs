@@ -53,7 +53,11 @@ test('PWA - module requests never fall back to index.html (offline white-screen 
     assert.notEqual(end, -1, 'sw.js must have a navigation branch after the module branch');
     const moduleBranch = sw.slice(start, end);
 
-    assert.ok(moduleBranch.includes('ignoreSearch'), 'module fallback should hit the cache with ignoreSearch');
+    assert.ok(sw.includes('ignoreSearch'), 'module fallback should hit the cache with ignoreSearch');
+    assert.match(moduleBranch, /staleWhileRevalidate\(\)/, '模块必须走 stale-while-revalidate，不能每次冷启动等网络');
+    assert.match(sw, /cache\.match\(e\.request\)/, 'SWR 必须精确匹配缓存，避免版本化 app.js 命中旧无查询串缓存');
+    assert.match(sw, /e\.waitUntil\(update/, '后台刷新必须挂在 waitUntil 上');
+    assert.doesNotMatch(moduleBranch, /networkThenCache/, '模块分支不应再退回 network-first');
     assert.ok(
         !moduleBranch.includes('/index.html'),
         'module requests must never be answered with index.html (Uncaught SyntaxError on offline boot)'

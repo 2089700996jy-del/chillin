@@ -18,11 +18,11 @@
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
 | 🤖 微信 ClawBot | 设置弹层内直接扫码绑定/解绑（二维码有效期以微信服务端状态为准；扫码后轮询确认，重定向与已绑定/配对码等异常有明确提示；图片/链接/模型等慢处理交给 `ctx.waitUntil` 后台完成并主动回推）；绑定后可在微信里记事、提问、设提醒、健康打卡，主动关怀可随时关 |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
-| 📶 PWA | 全部前端模块（26 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位 |
+| 📶 PWA | 全部前端模块（27 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位 |
 
 ## 技术栈
 
-* **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，不全量预加载业务模块（实测会抢 CSS 带宽）
+* **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，reader/upload/prompts 按路由动态 `import()`；模块 SW 走 stale-while-revalidate
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
 * **数据**：**Cloudflare D1**（SQLite，33 个迁移 0001–0033，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
@@ -37,7 +37,7 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏；单一强调色、无边框柔和阴影材质、首屏柔光渐变与留白节奏、应用级深色主题）
   sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
   manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
-  js/               26 个 ES 模块（auth / sync / feeds / … / trusted-types）
+  js/               27 个 ES 模块（auth / sync / feeds / feature-loader / … / trusted-types）
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
@@ -161,7 +161,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/sync.test.mjs`](tests/sync.test.mjs) | 时间格式解析、LWW 合并、脏数据选择与 id 补全 |
 | [`tests/rag.test.mjs`](tests/rag.test.mjs) | 分词、停用词、时间范围解析、打分 |
 | [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
-| [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、modulepreload 路径/依赖图门禁、模块请求绝不回退 index.html |
+| [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、modulepreload 路径/依赖图门禁、模块 SWR、模块请求绝不回退 index.html |
 | [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开、前端首屏体积预算 |
 | [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、**keyset 游标分页**、热力图（真实 SQLite） |
 | [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出、**改密校验旧密码并只保留当前会话**（真实 SQLite） |

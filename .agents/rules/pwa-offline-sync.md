@@ -10,14 +10,15 @@
    * 在拦截 `/js/` 目录下的 ES 模块请求时，**离线状态下严禁将请求回退到 `/index.html`**；
    * 浏览器将 HTML 网页内容作为 JS 解析会立即抛出 `Uncaught SyntaxError: Unexpected token '<'`，造成应用离线彻底瘫痪；
    * 离线时对于模块请求，必须严格从本地 Cache 匹配已缓存的 JS 脚本。
-2. **全量核心模块预缓存 (Pre-cache All 26 Modules)**：
-   * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 26 个核心模块路径（`actions`, `api`, `auth`, `backup`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `evergreen-topics`, `feeds`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `trusted-types`, `ui`, `upload`, `utils`, `version`, `weeklies`, `wikilinks`）；
+2. **全量核心模块预缓存 (Pre-cache All 27 Modules)**：
+   * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 27 个核心模块路径（`actions`, `api`, `auth`, `backup`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `evergreen-topics`, `feeds`, `feature-loader`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `trusted-types`, `ui`, `upload`, `utils`, `version`, `weeklies`, `wikilinks`）；
    * 安装期（`install` 事件）必须使用 `Promise.allSettled` 进行静默容错缓存，防止单个非致命资源加载失败导致整个 Service Worker 拒绝激活。
-3. **运行时缓存写入：响应不等它，但绝不放任它丢**：
-   * 网络优先的分支（模块 JS / 导航 / 静态资源）拿到 200 响应后必须先 `res.clone()`，再用 `e.waitUntil()` 把 `cache.put(request, clone)` 挂进 SW 生命周期——浏览器会保活到写入完成，用户不必等缓存落盘；
+3. **运行时缓存写入：模块 SWR，导航/静态资源网络优先，响应不等写盘**：
+   * 模块 JS 走 **stale-while-revalidate**：先用精确 `cache.match(request)`（不加 `ignoreSearch`，防止新 `app.js?v=` 命中旧入口）立即返回缓存，同时后台 `fetch` 新版本；只有缓存缺失时才等网络，网络失败再按 `ignoreSearch` 回退离线缓存。模块请求**永远不得**回退 `/index.html`；
+   * 导航与静态资源仍走网络优先；所有 200 响应必须先 `res.clone()`，再用 `e.waitUntil()` 把 `cache.put(request, clone)` 挂进 SW 生命周期——浏览器会保活到写入完成，用户不必等缓存落盘；
    * **两个极端都禁止**：把 `await cache.put()` 塞进 `respondWith` 的 promise 里（每次请求白等一次磁盘写入），或 fire-and-forget 丢到后台（SW 被回收时那次写入可能来不及完成，用户下次离线就发现这一版没被缓存住）；
    * `waitUntil` 在个别引擎上可能因事件已失活而抛错，须 `try/catch` 兜住；写入失败（配额满等）同样只吞异常，绝不影响当次响应；
-   * 守卫用例：`tests/sw.test.mjs` 会校验模块分支仍带 `ignoreSearch` 且绝不回退 `/index.html`、导航分支仍回退 `/index.html`，并断言缓存写入确实挂在 `e.waitUntil()` 上、且不再出现 `await cache.put`。
+   * 守卫用例：`tests/sw.test.mjs` 会校验模块分支使用 `staleWhileRevalidate()`、精确 `cache.match`、后台刷新挂在 `e.waitUntil()` 上且绝不回退 `/index.html`；导航分支仍回退 `/index.html`，并断言缓存写入确实挂在 `e.waitUntil()` 上、且不再出现 `await cache.put`。
 
 ---
 

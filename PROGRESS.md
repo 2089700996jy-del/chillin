@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-28。供后续会话快速接续。当前前端/Worker：**v2.5.172**（Worker 已部署、D1 迁移 0001–0033 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-28。供后续会话快速接续。当前前端/Worker：**v2.5.173**（Worker 已部署、D1 迁移 0001–0033 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -26,7 +26,7 @@
 
 > 各模块的职责与边界以 [`.agents/rules/architecture.md`](.agents/rules/architecture.md) §2.2「严格领域模块归档」表为**唯一来源**——`tests/docs.test.mjs` 强制它覆盖 `workers/src/` 下每一个文件，改代码必须同批改它；README 目录树是文件清单的另一个受校验视图。此处不再复制第二份表格（历史副本见归档文件附录）。
 
-**前端分层**（`public/`：`app.js` 编排 + `js/` 26 个 ESM）：
+**前端分层**（`public/`：`app.js` 编排 + `js/` 27 个 ESM）：
 - 基础设施：`js/config.js`、`js/state.js`、`js/utils.js`、`js/actions.js`、`js/ui.js`、`js/db.js`、`js/trusted-types.js`
 - 网络与会话：`js/api.js`（薄 facade）、`js/auth.js`、`js/sync.js`
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
@@ -53,9 +53,8 @@
 | v2.5.168 | Bot 提醒追问 10 分钟（慢任务 2 小时）+ 失败退避重试；0033 |
 | v2.5.169 | ClawBot 扫码重定向/异常终态；二维码以服务端状态为准；331→335 |
 | v2.5.170 | ClawBot 慢消息交给 ctx.waitUntil 后台处理并主动回推；335→336 |
-| v2.5.171 | 首屏 12 个 modulepreload + 依赖图门禁；336→337 |
-| v2.5.172 | 实测 12 个 modulepreload 拖慢 LCP；回滚为只预热 app.js 入口；337 |
-| v2.5.163 | ClawBot 绑定/解绑；重绑；323→326 |
+| v2.5.171–172 | modulepreload 实测：12 个拖慢 LCP，回滚为只预热 app.js；337 |
+| v2.5.173 | reader/upload/prompts 路由级动态 import；模块 SW stale-while-revalidate；337→338 |
 | v2.5.162 | 搜索 120ms 防抖；笔记 60 条/批自动续载 + 搜索跳转扩窗；CI 双 Node 门禁补强；UTC 日期误报修复；320→323 |
 | v2.5.161 | 登录后整页审计：5 页面亮/暗 axe 0 violation；阅读器亮/夜间/护眼正文 ≥10:1；修 8 处次级灰字；章节目录可聚焦；测试 318 → **320** |
 | v2.5.160 | 对比度/可访问性审计：亮/暗 24 组文本与控件全 ≥ AA（强调蓝 #0066CC、二级文字 0.75、底栏 #6E6E73、危险色 #D70015）；修复键盘焦点被 reset 吞掉、深色登录页黑字与 6 处小组件灰字；真机 axe 0 violation |

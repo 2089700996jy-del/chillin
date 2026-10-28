@@ -4,6 +4,9 @@ import { ui } from './ui.js';
 import { actions } from './actions.js';
 import { openSecurityModal } from './auth.js';
 import { applyAppTheme } from './utils.js';
+import { loadFeature } from './feature-loader.js';
+
+const warnLazy = (name) => (err) => console.error('[lazy] ' + name + ' failed', err);
 
 export function initRouter() {
     const views = document.querySelectorAll('.view-section');
@@ -61,10 +64,12 @@ const applyRoute = (route) => {
         return;
     }
     if (route.view === 'editor') {
+        loadFeature('upload').catch(warnLazy('upload'));
         actions.openWeeklyEditor(route.id ? Number(route.id) || route.id : null, { skipHistory: true });
         return;
     }
     if (route.view === 'note-editor') {
+        loadFeature('upload').catch(warnLazy('upload'));
         actions.openNoteEditor(route.id ? Number(route.id) || route.id : null, { skipHistory: true });
         return;
     }
@@ -73,12 +78,18 @@ const applyRoute = (route) => {
         return;
     }
     if (route.view === 'prompt-editor') {
-        switchView('prompt-editor', { skipHistory: true });
+        loadFeature('prompts')
+            .then(() => switchView('prompt-editor', { skipHistory: true }))
+            .catch((err) => { warnLazy('prompts')(err); switchView('bookmarks', { skipHistory: true }); });
         return;
     }
     if (route.view === 'reader-book') {
-        if ((document.querySelector('.view-section.active')?.id || '') !== 'view-reader-book') switchView('reader', { skipHistory: true });
-        else switchView('reader-book', { skipHistory: true });
+        loadFeature('reader')
+            .then(() => {
+                if ((document.querySelector('.view-section.active')?.id || '') !== 'view-reader-book') switchView('reader', { skipHistory: true });
+                else switchView('reader-book', { skipHistory: true });
+            })
+            .catch(warnLazy('reader'));
         return;
     }
     if (route.view === 'settings') {
@@ -91,7 +102,17 @@ const applyRoute = (route) => {
         return;
     }
     if (MAIN_VIEWS.has(route.view)) {
-        switchView(route.view, { skipHistory: true });
+        if (route.view === 'reader') {
+            loadFeature('reader')
+                .then(() => switchView('reader', { skipHistory: true }))
+                .catch((err) => { warnLazy('reader')(err); switchView('reader', { skipHistory: true }); });
+        } else if (route.view === 'bookmarks') {
+            loadFeature('prompts')
+                .then(() => switchView('bookmarks', { skipHistory: true }))
+                .catch((err) => { warnLazy('prompts')(err); switchView('bookmarks', { skipHistory: true }); });
+        } else {
+            switchView(route.view, { skipHistory: true });
+        }
         return;
     }
     switchView('home', { skipHistory: true });
@@ -124,12 +145,20 @@ const switchView = (targetViewId, opts = {}) => {
         // 回到应用级外观（批次 A）：不要固定刷成浅色，深色主题下会闪状态栏
         applyAppTheme();
         if (targetViewId === 'reader') {
-            setTimeout(actions.renderBookshelf, 100);
+            loadFeature('reader')
+                .then(() => setTimeout(() => actions.renderBookshelf?.(), 100))
+                .catch(warnLazy('reader'));
+        } else if (targetViewId === 'bookmarks') {
+            loadFeature('prompts').catch(warnLazy('prompts'));
         } else if (targetViewId === 'feeds') {
             actions.renderFeeds();
         } else if (targetViewId === 'home') {
             actions.renderHeatmap();
         }
+    }
+
+    if (targetViewId === 'editor' || targetViewId === 'note-editor') {
+        loadFeature('upload').catch(warnLazy('upload'));
     }
 
     // Update FAB label
@@ -266,8 +295,13 @@ fabBtn.addEventListener('click', () => {
     else if (ui.currentActiveNavView === 'notes') actions.openNoteEditor(null);
     else if (ui.currentActiveNavView === 'bookmarks') {
         const isPromptsActive = document.querySelector('.segment-btn.active[data-subtab="prompts"]');
-        if (isPromptsActive) actions.openPromptEditor?.();
-        else actions.openBookmarkEditor?.();
+        if (isPromptsActive) {
+            loadFeature('prompts')
+                .then(() => actions.openPromptEditor?.())
+                .catch(warnLazy('prompts'));
+        } else {
+            actions.openBookmarkEditor?.();
+        }
     }
     else if (ui.currentActiveNavView === 'reader') document.getElementById('book-file-input').click();
 });

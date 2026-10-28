@@ -105,6 +105,31 @@ test('Architecture - frontend modules have valid imports and no undeclared funct
     }
 });
 
+test('Architecture - reader/upload/prompts 走路由级动态 import，首屏不静态引入', async () => {
+    const app = await fs.readFile(path.join(root, 'public', 'app.js'), 'utf8');
+    for (const name of ['reader', 'upload', 'prompts']) {
+        assert.doesNotMatch(
+            app,
+            new RegExp("from ['\"]\\./js/" + name + "\\.js['\"]"),
+            '首屏 app.js 不得静态 import ' + name + '.js（应走 feature-loader）'
+        );
+    }
+    assert.match(app, /feature-loader\.js/, 'app.js 必须通过 feature-loader 接入懒加载');
+    assert.match(app, /loadFeature\(feature\)/, '首击兜底应显式加载对应 feature');
+
+    const loader = await fs.readFile(path.join(root, 'public', 'js', 'feature-loader.js'), 'utf8');
+    for (const name of ['reader', 'upload', 'prompts']) {
+        assert.ok(loader.includes("import('./" + name + ".js')"), 'feature-loader 缺少 ' + name + ' 的动态 import');
+    }
+    assert.match(loader, /const pending = new Map\(\)/, '并发导航必须复用同一个加载 Promise');
+    assert.match(loader, /pending\.delete\(name\)/, '加载失败要允许重试');
+
+    const router = await fs.readFile(path.join(root, 'public', 'js', 'router.js'), 'utf8');
+    for (const name of ['reader', 'prompts', 'upload']) {
+        assert.match(router, new RegExp("loadFeature\\('" + name + "'\\)"), 'router 没有按路由加载 ' + name);
+    }
+});
+
 test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async () => {
     // 背景：项目坚持零构建、直开，但此前没有任何体积约束——
     // 加一个 30KB 的库只需一次提交，没人会注意到首次加载变慢。

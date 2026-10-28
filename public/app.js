@@ -22,9 +22,6 @@ import { initRouter } from './js/router.js';
 import { initWeeklies } from './js/weeklies.js';
 import { initNotes } from './js/notes.js';
 import { initBookmarks } from './js/bookmarks.js';
-import { initPrompts } from './js/prompts.js';
-import { initUpload } from './js/upload.js';
-import { initReader } from './js/reader.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
 import { initSearch } from './js/search.js';
@@ -34,6 +31,7 @@ import { initEvergreenTopics } from './js/evergreen-topics.js';
 import { showToast, initAppTheme } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 import { checkAndSendBackupGuardNotification } from './js/backup.js';
+import { loadFeature, isFeatureReady } from './js/feature-loader.js';
 
 // 应用级主题（批次 A）：在 DOMContentLoaded 之前生效，避免首帧闪白
 initAppTheme();
@@ -51,6 +49,29 @@ document.addEventListener('DOMContentLoaded', () => {
     const versionEls = document.querySelectorAll('[data-app-version]');
     versionEls.forEach((el) => { el.textContent = APP_BUILD_LABEL; });
     document.title = `Chillin · ${APP_BUILD_LABEL}`;
+
+    // 懒加载模块的首击兜底：先 import、再重放这次点击，避免用户第一次点上传/提示词/导入书时没反应。
+    // 这三个模块不在首屏静态图里；router 会按路由提前加载，但用户可能赶在 chunk 到达前就点。
+    let replayingLazyClick = false;
+    document.addEventListener('click', (e) => {
+        if (replayingLazyClick) return;
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        const uploadBtn = target.closest('.btn-upload-image');
+        const promptTab = target.closest('.segment-btn[data-subtab]');
+        const bookInput = target.closest('#book-file-input');
+        const feature = uploadBtn ? 'upload' : (promptTab ? 'prompts' : (bookInput ? 'reader' : null));
+        if (!feature || isFeatureReady(feature)) return;
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        loadFeature(feature)
+            .then(() => {
+                replayingLazyClick = true;
+                try { (uploadBtn || promptTab || bookInput).click(); }
+                finally { replayingLazyClick = false; }
+            })
+            .catch((err) => console.error('[lazy] ' + feature + ' failed', err));
+    }, true);
 
     // 全局事件委托：取代原有的内联 onclick / onerror（CSP 收紧后内联处理器会被拦截）
     document.addEventListener('click', (e) => {
@@ -237,12 +258,9 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('authUI', initAuthUI);
     checkAuth();
 
-    safeInit('upload', initUpload);
     safeInit('weeklies', initWeeklies);
     safeInit('notes', initNotes);
     safeInit('bookmarks', initBookmarks);
-    safeInit('prompts', initPrompts);
-    safeInit('reader', initReader);
     safeInit('feeds', initFeeds);
     safeInit('echoAi', initEchoAi);
     safeInit('search', initSearch);

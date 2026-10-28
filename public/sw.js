@@ -1,6 +1,6 @@
 // Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
-const CACHE_NAME = 'chillin-v219';
-const APP_V = '2.5.172';
+const CACHE_NAME = 'chillin-v220';
+const APP_V = '2.5.173';
 const ASSETS = [
     '/',
     '/index.html',
@@ -26,6 +26,7 @@ const ASSETS = [
     '/js/echo-ai.js',
     '/js/evergreen-topics.js',
     '/js/feeds.js',
+    '/js/feature-loader.js',
     '/js/notes.js',
     '/js/prompts.js',
     '/js/pwa-update.js',
@@ -103,11 +104,44 @@ self.addEventListener('fetch', (e) => {
         }
     };
 
+    /**
+     * 模块走 stale-while-revalidate：先用缓存秒开，同时后台拉新版写回。
+     *
+     * 不能用 network-first：每次冷启动都等一轮 RTT，离线才回缓存；也不能用
+     * cache-only：无版本号的 /js/* 更新后永远拿旧代码。这里先精确匹配缓存
+     * （避免 /app.js?v=新版本 被 ignoreSearch 命中旧 /app.js），命中就立即返回，
+     * 网络更新挂在 waitUntil 上；只有缓存缺失时才等网络，失败再按 ignoreSearch
+     * 兜底离线。模块永远不会回退到 /index.html。
+     */
+    const staleWhileRevalidate = async () => {
+        const cache = await caches.open(CACHE_NAME);
+        const cached = await cache.match(e.request);
+        const update = fetch(e.request).then((res) => {
+            if (res && res.status === 200) {
+                const clone = res.clone();
+                try {
+                    e.waitUntil(
+                        cache.put(e.request, clone).catch(() => { /* 配额满等：写入失败不能影响本次响应 */ })
+                    );
+                } catch (_) { /* 极少数引擎在事件失活后拒绝 waitUntil */ }
+            }
+            return res;
+        }).catch(() => null);
+
+        if (cached) {
+            e.waitUntil(update.then(() => {}).catch(() => {}));
+            return cached;
+        }
+        const fresh = await update;
+        if (fresh) return fresh;
+        return (await caches.match(e.request, { ignoreSearch: true })) || Response.error();
+    };
+
     // 1. ES modules / app shell JS:
     // 离线时决不能降级到 /index.html（会触发 Uncaught SyntaxError: Unexpected token '<' 导致整站崩溃）
     const isModuleJs = url.pathname.startsWith('/js/') || url.pathname.endsWith('/app.js') || url.pathname === '/app.js';
     if (isModuleJs) {
-        e.respondWith(networkThenCache(() => caches.match(e.request, { ignoreSearch: true })));
+        e.respondWith(staleWhileRevalidate());
         return;
     }
 
