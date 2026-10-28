@@ -6,6 +6,7 @@ import {
     skeletonListHtml,
     isSyncingNow,
     confirmDialog,
+    decodeCssEscapedId,
 } from './utils.js';
 import { state } from './state.js';
 import { actions } from './actions.js';
@@ -143,6 +144,22 @@ const renderBookmarks = () => {
     }
 };
 
+// 搜索/AI 回响跳转用：目标可能落在首屏 100 条之外，先扩到整批再定位。
+function ensureBookmarkRendered(selector) {
+    const matched = /data-bookmark-id="([^"]+)"/.exec(String(selector || ''));
+    if (!matched) return false;
+    const targetId = decodeCssEscapedId(matched[1]);
+    const target = state.bookmarksDatabase.find((bm) => String(bm.id) === targetId);
+    if (!target) return false;
+
+    const sorted = [...state.bookmarksDatabase].sort((x, y) => y.id - x.id);
+    const index = sorted.findIndex((bm) => String(bm.id) === targetId);
+    if (index === -1 || index < bookmarksVisibleCount) return false;
+    bookmarksVisibleCount = Math.ceil((index + 1) / BOOKMARKS_PAGE_SIZE) * BOOKMARKS_PAGE_SIZE;
+    renderBookmarks();
+    return true;
+}
+
 const openBookmarkEditor = () => {
     bookmarkEditorForm.reset();
     if (editBookmarkImage) editBookmarkImage.value = '';
@@ -179,6 +196,7 @@ bookmarkEditorForm.addEventListener('submit', (e) => {
 
 
     actions.renderBookmarks = renderBookmarks;
+    actions.ensureBookmarkRendered = ensureBookmarkRendered;
     actions.openBookmarkEditor = openBookmarkEditor;
 
     return { renderBookmarks, openBookmarkEditor };

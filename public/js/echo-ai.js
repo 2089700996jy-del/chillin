@@ -243,6 +243,22 @@ async function sendAiChatMessage() {
             let isFirstChunk = true;
             let sourcesMounted = false;
 
+            const escapeSourceId = (value) => {
+                const str = String(value);
+                return typeof CSS !== 'undefined' && CSS.escape ? CSS.escape(str) : str;
+            };
+
+            const revealSourceCard = (selector, ensure) => {
+                if (typeof ensure === 'function') ensure(selector);
+                const card = document.querySelector(selector);
+                if (!card) return false;
+                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                card.style.transition = 'box-shadow 0.3s ease';
+                card.style.boxShadow = '0 0 0 2px var(--ios-blue, #007AFF)';
+                setTimeout(() => { card.style.boxShadow = ''; }, 2000);
+                return true;
+            };
+
             function jumpToGardenSource(s) {
                 if (!s || s.id == null) return;
                 if (window.closeAiChatModal) window.closeAiChatModal();
@@ -267,12 +283,9 @@ async function sendAiChatMessage() {
                         if (actions.switchView) actions.switchView('feeds');
                         location.hash = '#/feeds';
                         setTimeout(() => {
-                            const card = document.querySelector(`.feed-item-card[data-feed-id="${id}"]`);
-                            if (card) {
-                                card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                card.style.transition = 'box-shadow 0.3s ease';
-                                card.style.boxShadow = '0 0 0 2px var(--ios-blue, #007AFF)';
-                                setTimeout(() => { card.style.boxShadow = ''; }, 2000);
+                            const selector = `.feed-item-card[data-feed-id="${escapeSourceId(id)}"]`;
+                            if (!revealSourceCard(selector, actions.ensureItemRendered)) {
+                                showToast('这条随手记可能已被删除，或还没有同步到本机', 'warn');
                             }
                         }, 120);
                     } else if (type === '提示词') {
@@ -290,6 +303,12 @@ async function sendAiChatMessage() {
                         location.hash = '#/bookmarks';
                         const subtabBtn = document.querySelector('[data-subtab="resources"]');
                         if (subtabBtn) subtabBtn.click();
+                        setTimeout(() => {
+                            const selector = `.bookmark-card[data-bookmark-id="${escapeSourceId(id)}"]`;
+                            if (!revealSourceCard(selector, actions.ensureBookmarkRendered)) {
+                                showToast('这条收藏可能已被删除，或还没有同步到本机', 'warn');
+                            }
+                        }, 120);
                     }
                 }, 150);
             }

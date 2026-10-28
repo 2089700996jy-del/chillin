@@ -463,8 +463,10 @@ export function initSearch() {
                 // 先让对应列表把目标所在的整批纳入渲染窗口，再重新查询。
                 const isNote = selector.includes('data-note-id');
                 const isWeekly = selector.includes('.notion-collection-card');
+                const isBookmark = selector.includes('data-bookmark-id');
                 const ensured = (isNote && typeof actions.ensureNoteRendered === 'function' && actions.ensureNoteRendered(selector))
                     || (isWeekly && typeof actions.ensureWeeklyRendered === 'function' && actions.ensureWeeklyRendered(selector))
+                    || (isBookmark && typeof actions.ensureBookmarkRendered === 'function' && actions.ensureBookmarkRendered(selector))
                     || (typeof actions.ensureItemRendered === 'function' && actions.ensureItemRendered(selector));
                 if (ensured) el = document.querySelector(selector);
             }

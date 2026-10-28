@@ -127,6 +127,8 @@ test('Timeline - 周记/随手记筛选条接线，筛选变化会复位分页�
     const search = fs.readFileSync(new URL('../public/js/search.js', import.meta.url), 'utf8');
     const actions = fs.readFileSync(new URL('../public/js/actions.js', import.meta.url), 'utf8');
     const sync = fs.readFileSync(new URL('../public/js/sync.js', import.meta.url), 'utf8');
+    const echo = fs.readFileSync(new URL('../public/js/echo-ai.js', import.meta.url), 'utf8');
+    const bookmarks = fs.readFileSync(new URL('../public/js/bookmarks.js', import.meta.url), 'utf8');
 
     assert.match(html, /id="weekly-date-filter"/, '周记必须有独立的年/月筛选条');
     assert.match(html, /id="weekly-load-more-container"/, '周记的加载更多必须有独立的整宽容器，不能被多列画廊切开');
@@ -142,7 +144,13 @@ test('Timeline - 周记/随手记筛选条接线，筛选变化会复位分页�
     assert.match(feeds, /feedsVisibleCount = FEEDS_PAGE_SIZE;\n\s*renderFeeds\(\);/, '切换年月后必须复位到首屏 100 条，避免沿用旧窗口');
     assert.match(feeds, /filterChanged/, '搜索跳转遇到被筛选藏起来的条目时要先复位筛选再重查');
     assert.match(search, /ensureWeeklyRendered/, '周记被年月筛选后，搜索跳转仍必须能展开目标');
+    assert.match(search, /actions\.ensureBookmarkRendered/, '收藏落在 100 条分页外时，搜索跳转也要先扩窗');
     assert.match(actions, /ensureWeeklyRendered: null/, 'actions 注册表必须声明周记的扩窗口占位');
+    assert.match(echo, /actions\.ensureItemRendered/, 'AI 回响跳到随手记前，必须先让分页列表把目标纳入窗口');
+    assert.match(echo, /actions\.ensureBookmarkRendered/, 'AI 回响跳到收藏前，必须先让收藏分页把目标纳入窗口');
+    assert.match(echo, /revealSourceCard/, '跳转后的滚动与高亮必须共用同一套兜底');
+    assert.match(bookmarks, /actions\.ensureBookmarkRendered = ensureBookmarkRendered/, 'bookmarks.js 必须注册收藏列表的扩窗口能力');
+    assert.match(actions, /ensureBookmarkRendered: null/, 'actions 注册表必须声明收藏扩窗口占位');
 });
 
 test('Search - 输入防抖 120ms，Enter 立即 flush', () => {

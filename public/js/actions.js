@@ -25,6 +25,7 @@ export const actions = {
     /** 让分页列表把某个条目纳入渲染窗口（搜索跳转用）；返回是否真的重渲染过 */
     ensureItemRendered: null,
     ensureWeeklyRendered: null,
+    ensureBookmarkRendered: null,
     renderBookshelf: null,
     renderEchoCards: null,
     jumpToElement: null,
