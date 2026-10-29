@@ -10,6 +10,7 @@
  * 前端 public/js/feeds.js 早就支持结构化 quick_feeds.summary：只要把
  * {title, description, cover, platform, icon} 写进 summary，花园里这条记录就自动渲染成富链接卡片；
  * 封面转存 R2 后写自家 /api/file/... 地址，卡片不依赖第三方防盗链。
+ * 本文件是纯 HTTP/HTML 解析，不经过 LLM；切换聊天/视觉模型不会影响卡片解析。
  *
  * **可用性事实（2026-10-21 Cloudflare 边缘探测）**：小宇宙按出口 IP/ASN 封了 Cloudflare，
  * www/static 主机一律 403（openresty），api 主机可达但要鉴权（401），图床 xyzcdn 正常（200），

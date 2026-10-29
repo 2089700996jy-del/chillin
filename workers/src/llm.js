@@ -20,7 +20,7 @@ export function moderateText(text, env) {
 export async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
     const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
     const apiKey = env.LLM_API_KEY;
-    const model = env.LLM_MODEL || 'deepseek-chat';
+    const model = env.LLM_MODEL || 'deepseek-flash';
 
     if (apiKey) {
         const url = `${apiBase.replace(/\/$/, '')}/chat/completions`;
@@ -34,6 +34,8 @@ export async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
                 model,
                 messages,
                 temperature: 0.7,
+                // 聊天/主动关怀是短对话，默认 high thinking 只会增加首字延迟；显式关闭
+                thinking: { type: 'disabled' },
                 stream: true
             })
         });
@@ -90,7 +92,7 @@ export async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
 export async function callCustomLlmWithMessages(env, messages) {
     const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
     const apiKey = env.LLM_API_KEY;
-    const model = env.LLM_MODEL || 'deepseek-chat';
+    const model = env.LLM_MODEL || 'deepseek-flash';
 
     if (apiKey) {
         const url = `${apiBase.replace(/\/$/, '')}/chat/completions`;
@@ -103,7 +105,9 @@ export async function callCustomLlmWithMessages(env, messages) {
             body: JSON.stringify({
                 model,
                 messages,
-                temperature: 0.7
+                temperature: 0.7,
+                // 闲聊/问答不需要长思维链：关闭 thinking，保留 temperature 的效果
+                thinking: { type: 'disabled' }
             })
         });
 

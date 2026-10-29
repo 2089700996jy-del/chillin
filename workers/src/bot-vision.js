@@ -3,6 +3,8 @@
  *
  * v2.5.127 起：DeepSeek 官方端点实测可读图（2026-10-21 线上探针确证：202614 字节 JPEG
  * 1355ms 返回正确中文描述，prompt_tokens 约 960）。
+ * v2.5.182 起：默认 deepseek-flash（V4.1-Flash-1017 原生多模态），并显式关闭 thinking，
+ * 避免首字延迟与 8 秒超时；v2.5.127 的探针仅作为历史记录。
  * 没有密钥、模型报错、超时、内容安全拦截，一律返回空串——存图与回复绝不受影响。
  *
  * v2.5.129 起：提示词由「念标签」改成「朋友随口说一句」（2026-10-21 A/B 实测，真图上
@@ -33,7 +35,7 @@ export async function describeClawImageContent(env, bytes, mime, fetchImpl = fet
     const apiKey = (env && (env.VISION_API_KEY || env.LLM_API_KEY)) || '';
     if (!apiKey) return '';
     const base = String((env && (env.VISION_API_BASE || env.LLM_API_BASE)) || 'https://api.deepseek.com/v1').replace(/\/$/, '');
-    const model = String((env && env.VISION_MODEL) || 'deepseek-chat');
+    const model = String((env && env.VISION_MODEL) || 'deepseek-flash');
     const signal = (typeof AbortSignal !== 'undefined' && AbortSignal.timeout) ? AbortSignal.timeout(VISION_TIMEOUT_MS) : undefined;
     try {
         const res = await fetchImpl(base + '/chat/completions', {
@@ -42,6 +44,8 @@ export async function describeClawImageContent(env, bytes, mime, fetchImpl = fet
             body: JSON.stringify({
                 model,
                 temperature: 0.2,
+                // 识图只回一句描述；thinking 会拖慢 8 秒超时窗口，也会让 temperature 失效
+                thinking: { type: 'disabled' },
                 max_tokens: VISION_MAX_TOKENS,
                 messages: [{
                     role: 'user',

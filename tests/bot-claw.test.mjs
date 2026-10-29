@@ -35,6 +35,7 @@ import {
     aes128EcbDecrypt
 } from '../workers/src/bot-media.js';
 import { describeClawImageContent } from '../workers/src/bot-vision.js';
+import { callCustomLlmWithMessages } from '../workers/src/llm.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
     parseRecordCommand,
@@ -1478,7 +1479,9 @@ test('ClawBot - 看图：取回并压平描述、超长截断、没密钥不发�
     const ok = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '  一只黑猫\n蹲在窗台上  ' } }] } }) });
     assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', ok.impl), '一只黑猫 蹲在窗台上');
     assert.equal(ok.calls.length, 1);
-    assert.equal(ok.calls[0].body.model, 'deepseek-chat', '默认走 deepseek-chat（flash 的思考会吃光 max_tokens）');
+    assert.equal(ok.calls[0].body.model, 'deepseek-flash', '默认走 V4.1 Flash（VISION_MODEL 可覆盖）');
+    assert.equal(ok.calls[0].body.thinking.type, 'disabled', '识图必须关闭 thinking，避免拖慢 8 秒超时与挤占 max_tokens');
+    assert.equal(ok.calls[0].body.temperature, 0.2);
     assert.equal(ok.calls[0].init.headers.Authorization, 'Bearer sk-x');
     assert.match(ok.calls[0].body.messages[0].content[1].image_url.url, /^data:image\/png;base64,/);
 
@@ -1503,6 +1506,27 @@ test('ClawBot - 看图：取回并压平描述、超长截断、没密钥不发�
 
     const soft = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '加微信看更多' } }] } }) });
     assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', soft.impl), '****看更多', '软违规词沿用既有替换策略');
+});
+
+test('Bot - 文字聊天默认走 deepseek-flash，并显式关闭 thinking', async () => {
+    const realFetch = globalThis.fetch;
+    const calls = [];
+    globalThis.fetch = async (url, init) => {
+        calls.push({ url: String(url), body: JSON.parse(init.body) });
+        return new Response(JSON.stringify({ choices: [{ message: { content: '好' } }] }), { status: 200 });
+    };
+    try {
+        const reply = await callCustomLlmWithMessages(
+            { LLM_API_KEY: 'sk-test', LLM_API_BASE: 'https://api.deepseek.com/v1' },
+            [{ role: 'user', content: '在吗' }]
+        );
+        assert.equal(reply, '好');
+        assert.equal(calls[0].body.model, 'deepseek-flash', 'model 名必须是 flash；带日期的是版本名');
+        assert.equal(calls[0].body.thinking.type, 'disabled', '闲聊默认不思考，避免首字延迟');
+        assert.equal(calls[0].body.temperature, 0.7);
+    } finally {
+        globalThis.fetch = realFetch;
+    }
 });
 
 integration('ClawBot - 图 + 配文时先把描述说给用户，回「记录」才落库', async () => {

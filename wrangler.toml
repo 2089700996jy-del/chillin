@@ -22,8 +22,10 @@ ALLOW_REGISTRATION = "false"
 VAPID_PUBLIC_KEY = "BBj8FZZ57_GfEm-HGPo9pXRA5jsd4FAzu-3bQJC7KjAoGp3TWlDGFt5D22JadZ6t5bw9u6NDNsy4Vgny9v3r2e0"
 
 # 🤖 DeepSeek 大语言模型配置（可选：在 Cloudflare 后台添加密钥变量 LLM_API_KEY）
+# API 的 model 名是 deepseek-flash；DeepSeek-V4.1-Flash-1017 是它的版本名，不要写进 model。
 LLM_API_BASE = "https://api.deepseek.com/v1"
-LLM_MODEL = "deepseek-chat"
+LLM_MODEL = "deepseek-flash"
+VISION_MODEL = "deepseek-flash"
 
 # 定时任务：两条 —— 每分钟那条只跑微信 ClawBot 长轮询（消息实时性），
 # 每小时第 13 分钟那条才跑 UGC 扫描与各类清理（见 workers/src/maintenance.js）。
