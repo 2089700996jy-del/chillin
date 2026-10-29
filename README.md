@@ -162,6 +162,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/rag.test.mjs`](tests/rag.test.mjs) | 分词、停用词、时间范围解析、打分 |
 | [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
 | [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、modulepreload 路径/依赖图门禁、模块 SWR、模块请求绝不回退 index.html |
+| [`tests/pwa-update.test.mjs`](tests/pwa-update.test.mjs) | 同一次更新只留一条 banner、自动刷新不叠 toast（最小 DOM/SW/定时器桩直接跑 `initPwaUpdates()`） |
 | [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开、前端首屏体积预算 |
 | [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、**keyset 游标分页**、热力图（真实 SQLite） |
 | [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出、**改密校验旧密码并只保留当前会话**（真实 SQLite） |
