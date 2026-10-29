@@ -2953,12 +2953,12 @@ body.hide-bottom-nav .nav-brand-mobile {
 
   /* Page Padding Adjustment for Header & Bottom Tab Bar */
   .notion-app {
-    padding: 72px 18px 104px !important;
+    padding: 60px 18px 104px !important;
   }
 
   .page-header {
     margin-bottom: 24px;
-    padding-top: 4px;
+    padding-top: 0;
   }
 
   .page-title {
@@ -5155,7 +5155,7 @@ html.ios-pwa .super-navbar__content {
 }
 
 html.ios-pwa .notion-app {
-  padding-top: calc(66px + var(--ios-sat)) !important;
+  padding-top: calc(56px + var(--ios-sat)) !important;
   /* 悬浮胶囊顶部在 70px + safe-area，这里留 12px 呼吸，不再贴着内容 */
   padding-bottom: calc(82px + var(--ios-sab)) !important;
 }
