@@ -103,11 +103,16 @@ export function initPwaUpdates() {
     const softReload = (reason) => {
         if (reloading || forceRefreshing) return;
         reloading = true;
-        showToast(reason || '正在刷新到新版本…', 'success');
+        // 更新提示只走底部 banner 这一条通道；不再额外弹 toast，避免一次更新出现两条提醒
+        const msg = document.querySelector('#pwa-update-bar #pwa-update-msg');
+        if (msg) msg.textContent = reason || '正在刷新到新版本…';
         setTimeout(() => window.location.reload(), 600);
     };
 
     const ensureBanner = (message) => {
+        // 远端版本探针、SW updatefound、controllerchange 可能接连触发；
+        // 同一次更新只保留第一条 banner，不重复改文案、不重复排自动刷新。
+        if (bannerShown) return;
         pendingReloadReason = message || '发现新版本';
         let bar = document.getElementById('pwa-update-bar');
         if (!bar) {
