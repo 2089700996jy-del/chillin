@@ -34,7 +34,7 @@
 public/             Cloudflare Pages 的**发布目录**（build output directory，仓库其余内容不会被发布）
   index.html        单页容器（11 个视图 + 10 个弹层）
   app.js            启动装配：模块初始化、会话恢复、在线/离线
-  style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏；单一强调色、无边框柔和阴影材质、首屏柔光渐变与留白节奏、悬浮胶囊底栏与滚动智能收起、应用级深色主题）
+  style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏；单一强调色、无边框柔和阴影材质、首屏柔光渐变与留白节奏、悬浮胶囊底栏与滚动智能收起、窄屏思考轨迹头部单行收纳、应用级深色主题）
   sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
   manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
   js/               27 个 ES 模块（auth / sync / feeds / feature-loader / … / trusted-types）

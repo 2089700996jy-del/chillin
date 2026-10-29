@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.177 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
+> **报告版本**：v2.5.178 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v224`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0033 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
+> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v225`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0033 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -69,6 +69,7 @@ mindmap
       全屏手势图片灯箱 (Lightbox)
       连续打卡徽章与活跃热力图
       折叠/展开记忆回响胶囊
+      窄屏热力图头部单行收纳（不换行留白）
     常青花园与每日灵感
       常青主题资产台 (Evergreen Topic Shelves)
       生长阶段 (萌芽 Seedling / 生根 Budding / 常青 Evergreen)

@@ -7346,6 +7346,34 @@ body.eyecare-reader-body .heatmap-streak-badge {
     margin-bottom: 8px;
   }
 
+  /* 窄屏不再让两个胶囊按钮掉到第二行：按钮收成文字胶囊，避免右侧整块留白 */
+  @media screen and (max-width: 420px) {
+    .heatmap-header {
+      flex-wrap: nowrap;
+      gap: 4px;
+    }
+    .heatmap-title {
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .heatmap-streak-badge {
+      font-size: 10px;
+      padding: 2px 5px;
+    }
+    .heatmap-actions {
+      flex-shrink: 0;
+      gap: 3px;
+    }
+    .heatmap-actions .btn-ai-pill {
+      gap: 0;
+      padding: 4px 7px;
+      font-size: 11px;
+    }
+    .heatmap-actions .btn-ai-pill svg {
+      display: none;
+    }
+  }
+
   .heatmap-grid {
     mask-image: linear-gradient(to right, transparent 0%, black 14px, black calc(100% - 14px), transparent 100%);
     -webkit-mask-image: linear-gradient(to right, transparent 0%, black 14px, black calc(100% - 14px), transparent 100%);
