@@ -5,8 +5,8 @@
  * 用户发来一段文字，该回什么 markdown，以及要不要动数据。
  *
  * 朋友式助手的四条底线（与 AGENTS.md 并列生效）：
- *   1. **默认无副作用**——普通聊天只产生回复，绝不写库；写入只有确定性的显式指令一条路，
- *      宁可少记、不可错记。
+ *   1. **默认不写花园**——普通聊天只写短期对话上下文（bot-memory 最近 8 轮 / 约 2400 字符，供下一句衔接），绝不写随手记；
+ *      长期写入只有确定性的显式指令一条路，宁可少记、不可错记。
  *   2. 三层记忆各司其职：当前对话（bot-memory）→ 个人档案（bot-memory）→ 花园事实（rag）。
  *   3. 脚注只在「真的动了数据」或「用户主动索要依据」时出现——默认聊天保持干净，
  *      且来源标签统一成 `[类型] YYYY-MM-DD`（标题重复日期时不重复展示）。
@@ -16,7 +16,7 @@
  *   帮助 / 记录：X / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
  *   光杆「记录」= 确认把刚才暂存的图片/链接写进随手记（消息默认不落库，见 bot-media.js / bot-links.js）
  *   小宇宙链接 = 抓 title/cover 做速览（只认白名单域名），回「记录」才落成富链接卡片
- * 其余一律走对话模型：温和、陪伴、多共情，不做任何持久化。
+ * 其余一律走对话模型：按语境自然回应，不默认共情、不自动写花园；仅有短期对话上下文。
  */
 
 import { handlePostFeed } from './garden-resources.js';
@@ -301,7 +301,7 @@ async function runChat(env, db, userId, text, history) {
     if (!answer) {
         answer = hasMemory
             ? generateFallbackReply(text, memory.contextText)
-            : '嗯，我在。想聊什么都可以，或者发「记录：…」我把内容存进花园。';
+            : '我刚刚没接上这句，你再发一下？';
     }
     const moderated = moderateText(answer, env);
     if (!moderated.ok) return '这个话题我不太方便展开，我们换个轻松的聊？';

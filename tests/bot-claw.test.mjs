@@ -827,6 +827,16 @@ integration('Bot - 普通闲聊不注入「未检索到记忆」的检索失败�
     assert.ok(!/【花园记忆片段（历史事实/.test(messages[0].content), '没有主题词的短句不能自动翻最近记录');
 });
 
+integration('Bot - 聊天模型无输出时用自然故障兜底，不推销记录', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 没有任何模型可用：走 runChat 的兜底分支，而不是把失败包装成欢迎语
+    const reply = await buildBotReply({}, db, 1, '今天有点累');
+    assert.equal(reply, '我刚刚没接上这句，你再发一下？');
+    assert.ok(!/记录|花园|想聊什么/.test(reply), '故障兜底不能把聊天引向随手记');
+});
+
 integration('Bot - 默认聊天不附依据，追问来源时才带', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
