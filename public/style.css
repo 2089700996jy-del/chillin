@@ -8020,12 +8020,80 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
 }
 
-/* 修改密码：三枚输入纵向排列，按钮撑满（移动端保持 44px 触控高度） */
+/* 账号安全：iOS Inset Grouped 卡片，密码与设备共享一个视觉容器 */
+.account-section-label {
+  margin: 18px 0 8px 2px;
+}
+
+.account-security-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: rgba(0, 122, 255, 0.1);
+  color: var(--ios-blue, var(--ios-blue));
+}
+
+body.dark-reader-body .account-security-icon {
+  background: rgba(10, 132, 255, 0.16);
+  color: var(--ios-blue-dark);
+}
+
+.account-security-group {
+  padding: 16px;
+  border: 1px solid rgba(var(--label-rgb), 0.06);
+  border-radius: 16px;
+  background: rgba(var(--neutral-rgb), 0.05);
+}
+
+.account-security-block {
+  min-width: 0;
+}
+
+.account-security-block-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.account-security-block-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-color);
+}
+
+.account-security-block-meta {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(var(--label-rgb), 0.52);
+}
+
+.account-security-block-desc {
+  margin: 4px 0 12px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: rgba(var(--label-rgb), 0.62);
+}
+
+.account-security-divider {
+  height: 1px;
+  margin: 16px 0;
+  background: rgba(var(--label-rgb), 0.08);
+}
+
+/* 修改密码：输入框与主按钮收进同一张卡片，按钮不再悬空 */
 .password-change-card {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 10px;
+  gap: 9px;
+  margin-top: 0;
 }
 
 .password-change-card .password-input {
@@ -8036,8 +8104,11 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
 
 .password-change-card .btn-primary {
   width: 100%;
-  min-height: 44px;
-  margin-top: 2px;
+  min-height: 42px;
+  height: 42px;
+  margin-top: 1px;
+  border-radius: 11px;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.22);
 }
 
 .password-change-hint {
@@ -8045,6 +8116,73 @@ body.dark-reader-body #confirm-dialog-cancel:hover {
   font-size: 12px;
   line-height: 1.5;
   color: var(--ios-secondary-label);
+}
+
+/* 退出所有设备：作为设备列表的底部行，而不是一块漂在空白里的红字 */
+.account-security-logout-all {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  padding: 10px 4px 0;
+  border: 0;
+  border-top: 1px solid rgba(var(--label-rgb), 0.08);
+  border-radius: 0;
+  background: transparent;
+  color: var(--danger-color);
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.account-security-logout-all:hover {
+  background: rgba(215, 0, 21, 0.04);
+}
+
+.account-security-logout-all:active {
+  opacity: 0.6;
+  background: rgba(215, 0, 21, 0.07);
+}
+
+/* 关于：两条法务入口做成标准 Inset Grouped 行 */
+.account-about-card {
+  overflow: hidden;
+  border: 1px solid rgba(var(--label-rgb), 0.06);
+  border-radius: 14px;
+  background: rgba(var(--neutral-rgb), 0.05);
+}
+
+.account-about-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 46px;
+  padding: 0 15px;
+  border-bottom: 1px solid rgba(var(--label-rgb), 0.08);
+  color: var(--text-color);
+  font-size: 14px;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.account-about-row:last-child {
+  border-bottom: 0;
+}
+
+.account-about-row:active {
+  background: rgba(var(--label-rgb), 0.05);
+}
+
+.account-about-chevron {
+  flex: 0 0 auto;
+  color: rgba(var(--label-rgb), 0.28);
 }
 
 .backup-email-btn {
@@ -8191,6 +8329,150 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
 }
 
 .session-empty { padding: 18px 4px; font-size: 13px; color: rgba(var(--label-rgb), 0.6); text-align: center; }
+
+/* 登录设备：只在 #session-list 内改成一张带分隔线的设备卡，不影响「关于我」列表 */
+#session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid rgba(var(--label-rgb), 0.08);
+  border-radius: 12px;
+  background: rgba(var(--label-rgb), 0.025);
+}
+
+#session-list .session-row {
+  gap: 11px;
+  padding: 12px 13px;
+  border: 0;
+  border-bottom: 1px solid rgba(var(--label-rgb), 0.08);
+  border-radius: 0;
+  background: transparent;
+}
+
+#session-list .session-row:last-child {
+  border-bottom: 0;
+}
+
+#session-list .session-row.is-current {
+  background: rgba(0, 122, 255, 0.045);
+}
+
+#session-list .session-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.session-device-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: rgba(0, 122, 255, 0.09);
+  color: var(--ios-blue, var(--ios-blue));
+}
+
+#session-list .session-device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.session-device-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#session-list .session-badge {
+  flex: 0 0 auto;
+  margin-left: 0;
+  padding: 1px 6px;
+  border-radius: 5px;
+  font-size: 10.5px;
+  line-height: 1.65;
+}
+
+#session-list .session-meta {
+  margin-top: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11.5px;
+}
+
+#session-list .session-revoke {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+  min-height: 44px;
+  margin-left: 2px;
+  padding: 0 2px 0 8px;
+  color: var(--danger-color) !important;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+#session-list .session-empty {
+  padding: 18px 12px;
+}
+
+body.dark-reader-body .account-security-group,
+body.dark-reader-body .account-about-card {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-reader-body .account-security-divider {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-reader-body .account-security-block-title,
+body.dark-reader-body .account-about-row {
+  color: rgba(235, 235, 245, 0.95);
+}
+
+body.dark-reader-body .account-security-block-desc,
+body.dark-reader-body .account-security-block-meta {
+  color: rgba(235, 235, 245, 0.58);
+}
+
+body.dark-reader-body #session-list {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.035);
+}
+
+body.dark-reader-body #session-list .session-row {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-reader-body #session-list .session-row.is-current {
+  background: rgba(10, 132, 255, 0.12);
+}
+
+body.dark-reader-body .session-device-icon {
+  background: rgba(10, 132, 255, 0.16);
+  color: var(--ios-blue-dark);
+}
+
+body.dark-reader-body .account-about-row {
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+body.dark-reader-body .account-about-row:active {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+body.dark-reader-body .account-about-chevron {
+  color: rgba(235, 235, 245, 0.3);
+}
 
 /* 「关于我」档案：列表复用 .session-row 骨架，编辑行留一个输入框与两个按钮 */
 .bot-profile-content { font-size: 14.5px; line-height: 1.45; color: inherit; word-break: break-word; }

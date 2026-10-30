@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-30T05:49:47.613Z · 提交数：437
+> 生成时间：2026-10-30T06:21:25.804Z · 提交数：441
 
 ## 2026-10-30
 
 ### ✨ 新功能
 
+- **insights**: turn recurring threads into next steps
 - **sync**: add edit conflict protection with recoverable snapshots
 - **backup**: 完整 D1+R2 灾难恢复清单、校验与一键恢复
 - **bot**: 多图快速识图与深度看图
@@ -17,6 +18,7 @@
 
 ### 🐛 缺陷修复
 
+- **insights**: filter generic pronoun topics
 - **sync**: normalize conflict signatures for legacy field aliases
 
 ### 🧪 测试
@@ -25,9 +27,14 @@
 
 ### 📝 文档
 
+- **architecture**: sync frontend gzip budget
 - **bot**: 说明管家列表上限与确认流程
 - **bot**: 补充管家管理能力说明
 - 同步长期记忆模块计数
+
+### 🎨 样式
+
+- **insights**: align dismiss action with card buttons
 
 ### 🔧 杂务
 

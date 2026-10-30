@@ -573,22 +573,46 @@ export async function refreshSession() {
 function formatSessionTime(ms) {
     if (!ms) return '未知';
     const d = new Date(Number(ms));
+    if (Number.isNaN(d.getTime())) return '未知';
+    const now = new Date();
     const pad = (n) => String(n).padStart(2, '0');
-    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    const sameDay = (a, b) => a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+    if (sameDay(d, now)) return `今天 ${time}`;
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    if (sameDay(d, yesterday)) return `昨天 ${time}`;
+    if (d.getFullYear() === now.getFullYear()) return `${d.getMonth() + 1}月${d.getDate()}日 ${time}`;
+    return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`;
+}
+
+/** 设备类型只用于装饰；不展示原始 IP，避免把设备列表变成一行难读的地址。 */
+function sessionDeviceIcon(device) {
+    const name = String(device || '').toLowerCase();
+    if (/ipad|tablet|平板/.test(name)) {
+        return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
+    }
+    if (/iphone|android|ios|mobile|手机/.test(name)) {
+        return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="6" y="2" width="12" height="20" rx="2"></rect><line x1="12" y1="18" x2="12.01" y2="18"></line></svg>';
+    }
+    return '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="3" width="20" height="14" rx="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>';
 }
 
 function renderSessions(list) {
     const container = document.getElementById('session-list');
     if (!container) return;
+    const countEl = document.getElementById('session-count');
+    if (countEl) countEl.textContent = Array.isArray(list) && list.length ? `${list.length} 台` : '';
     if (!Array.isArray(list) || list.length === 0) {
         setHtml(container, '<div class="session-empty">暂无可用的登录设备</div>');
         return;
     }
     setHtml(container, list.map((s) => `
         <div class="session-row${s.current ? ' is-current' : ''}">
+            <span class="session-device-icon" aria-hidden="true">${sessionDeviceIcon(s.device)}</span>
             <div class="session-main">
-                <div class="session-device">${escapeHtml(s.device)}${s.current ? ' <span class="session-badge">当前设备</span>' : ''}</div>
-                <div class="session-meta">最近活跃 ${formatSessionTime(s.lastSeenAt)}${s.ip ? ' · ' + escapeHtml(s.ip) : ''}</div>
+                <div class="session-device"><span class="session-device-name">${escapeHtml(s.device)}</span>${s.current ? ' <span class="session-badge">当前设备</span>' : ''}</div>
+                <div class="session-meta">最近活跃 ${formatSessionTime(s.lastSeenAt)}</div>
             </div>
             ${s.current ? '' : `<button type="button" class="btn-text text-danger session-revoke" data-session-id="${escapeHtml(s.id)}">退出</button>`}
         </div>
@@ -609,6 +633,8 @@ export async function openSecurityModal() {
     loadBotClawStatus();
     markAppThemeControl();
     const container = document.getElementById('session-list');
+    const countEl = document.getElementById('session-count');
+    if (countEl) countEl.textContent = '';
     if (container) setHtml(container, '<div class="session-empty">正在读取登录设备…</div>');
     try {
         renderSessions(await apiRequest('/api/auth/sessions'));
