@@ -124,6 +124,9 @@ export const PENDING_MEDIA_TTL_MINUTES = 60;
 const PENDING_MEDIA_MAX_CHARS = 2400;
 /** 待存卡片元数据（JSON）上限：链接速览用的 title / description / cover */
 const PENDING_SUMMARY_MAX_CHARS = 1200;
+/** 待存多图批次（JSON）上限：最多 6 张，含每张的短描述 */
+const PENDING_IMAGE_BATCH_MAX_CHARS = 12000;
+const PENDING_IMAGE_BATCH_MAX_ITEMS = 6;
 /** 待存内容的确认提示：图片与链接速览共用同一句 */
 export const PENDING_CONFIRM_HINT = '\n\n要存进随手记就回我「记录」。';
 
@@ -133,16 +136,17 @@ export const PENDING_CONFIRM_HINT = '\n\n要存进随手记就回我「记录」
  * 而是等用户在有效期内回一句「记录」——默认无副作用，宁可少记不可错记。
  * media_url 允许为空串（页面没有封面时），summary 只在链接速览时为卡片 JSON。
  */
-export async function savePendingMedia(db, userId, mediaUrl, content, summary) {
+export async function savePendingMedia(db, userId, mediaUrl, content, summary, imageBatch) {
     const url = String(mediaUrl || '');
     const body = String(content || '').trim();
     if (!db || !userId || !body) return false;
     const meta = summary ? clip(String(summary), PENDING_SUMMARY_MAX_CHARS) : null;
+    const batch = imageBatch ? clip(JSON.stringify(imageBatch), PENDING_IMAGE_BATCH_MAX_CHARS) : null;
     try {
         await db.prepare(
-            'INSERT INTO bot_pending_media (user_id, media_url, content, summary, is_deleted) VALUES (?1, ?2, ?3, ?4, 0) '
-            + "ON CONFLICT(user_id) DO UPDATE SET media_url = ?2, content = ?3, summary = ?4, is_deleted = 0, created_at = datetime('now', '+8 hours')"
-        ).bind(Number(userId), url, clip(body, PENDING_MEDIA_MAX_CHARS), meta).run();
+            'INSERT INTO bot_pending_media (user_id, media_url, content, summary, media_urls, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, 0) '
+            + "ON CONFLICT(user_id) DO UPDATE SET media_url = ?2, content = ?3, summary = ?4, media_urls = ?5, is_deleted = 0, created_at = datetime('now', '+8 hours')"
+        ).bind(Number(userId), url, clip(body, PENDING_MEDIA_MAX_CHARS), meta, batch).run();
         return true;
     } catch (err) {
         console.error('[bot-memory] 暂存消息失败: ' + (err && err.message));
@@ -154,11 +158,40 @@ export async function savePendingMedia(db, userId, mediaUrl, content, summary) {
 export async function readPendingMedia(db, userId) {
     if (!db || !userId) return null;
     const row = await db.prepare(
-        'SELECT media_url, content, summary FROM bot_pending_media WHERE user_id = ?1 AND is_deleted = 0 '
+        'SELECT media_url, content, summary, media_urls FROM bot_pending_media WHERE user_id = ?1 AND is_deleted = 0 '
         + "AND datetime(created_at, '-8 hours') >= datetime('now', ?2)"
     ).bind(Number(userId), '-' + PENDING_MEDIA_TTL_MINUTES + ' minutes').first();
     return row && row.content ? row : null;
 }
+
+/**
+ * 解析待存多图批次。兼容旧行（无 media_urls）与直接的数组 JSON；
+ * 只保留 http(s)/站内 /api/file/ 地址，最多 6 张，描述截断，绝不把坏 JSON 抛给调用方。
+ */
+export function parsePendingImageBatch(raw) {
+    let data = raw;
+    if (typeof raw === 'string' && raw.trim()) {
+        try { data = JSON.parse(raw); } catch (_) { data = null; }
+    }
+    const items = Array.isArray(data) ? data : (data && Array.isArray(data.items) ? data.items : []);
+    const caption = data && !Array.isArray(data) ? String(data.caption || '').trim() : '';
+    const out = [];
+    for (const item of items) {
+        if (!item || typeof item.url !== 'string') continue;
+        const url = item.url.trim();
+        if (!url || (!/^https?:\/\//i.test(url) && !url.startsWith('/api/file/'))) continue;
+        out.push({
+            url,
+            fileId: String(item.fileId || '').trim(),
+            mime: String(item.mime || '').trim(),
+            desc: clip(String(item.desc || '').trim(), 1200)
+        });
+    }
+    return { caption: clip(caption, PENDING_MEDIA_MAX_CHARS), items: out.slice(-PENDING_IMAGE_BATCH_MAX_ITEMS) };
+}
+
+export { PENDING_IMAGE_BATCH_MAX_ITEMS };
+
 
 /** 确认落库之后作废这一条（软删，用户数据永不物理删除） */
 export async function clearPendingMedia(db, userId) {

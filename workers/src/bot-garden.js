@@ -5,7 +5,7 @@
  * 宁可少记，也不能把普通聊天误写成收藏或提示词。
  */
 import { handlePostFeed, handlePostBookmark, handlePostPrompt } from './garden-resources.js';
-import { readPendingMedia, clearPendingMedia } from './bot-memory.js';
+import { readPendingMedia, clearPendingMedia, parsePendingImageBatch } from './bot-memory.js';
 import { buildManualLinkCard } from './bot-links.js';
 
 export const MAX_FEED_CHARS = 4000;
@@ -297,6 +297,22 @@ export async function runCommitPendingMedia(db, userId) {
         return '这会儿没有等着存的东西——发完图或链接 1 小时内回我「记录」就行，超时我就放下了。要记文字直接发「记录：内容」。';
     }
     const isLink = !!pending.summary;
+    const batch = isLink ? { caption: '', items: [] } : parsePendingImageBatch(pending.media_urls);
+    if (!isLink && batch.items.length > 1) {
+        let saved = 0;
+        let first = '';
+        for (const item of batch.items) {
+            const body = [batch.caption, item.desc].filter(Boolean).join('\n\n') || '来自微信的图片';
+            if (await saveFeed(db, userId, body.slice(0, MAX_FEED_CHARS), item.url, '', 'image')) {
+                saved++;
+                if (!first) first = body;
+            }
+        }
+        if (!saved) return '保存失败了，稍后再试一次？';
+        await clearPendingMedia(db, userId);
+        const preview = first.length > 160 ? first.slice(0, 160) + '…' : first;
+        return '已存入**随手记** ✅（' + saved + ' 张图各一条）\n\n> ' + preview.replace(/\n/g, '\n> ');
+    }
     const content = String(pending.content).slice(0, MAX_FEED_CHARS);
     if (!(await saveFeed(db, userId, content, pending.media_url, pending.summary, isLink ? 'link' : 'image'))) {
         return '保存失败了，稍后再试一次？';

@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-30。供后续会话快速接续。当前前端/Worker：**v2.5.187**（Worker 已部署、D1 迁移 0001–0036 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-30。供接续。当前前端/Worker：**v2.5.188**（Worker 已部署、D1 迁移 0001–0037 已应用、R2 桶 `chillin-media` 已建（21 张已搬）；见「部署」）。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓封面/标题/详情做成卡片（单集详情取 `description`、缺失时用 `shownotes` 去标签，播客页取简介；v2.5.140 起不再抓时长），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0036`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0037`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -32,13 +32,13 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 31 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 32 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
 - 智能与记忆：`ai.js`、`rag.js`、`rag-index.js`、`llm.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
-- Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
+- Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-image-flow.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
 
 ## 近期已完成（摘要）
 
@@ -54,7 +54,7 @@
 | v2.5.170 | ClawBot 慢消息交给 ctx.waitUntil 后台处理并主动回推；335→336 |
 | v2.5.171–172 | modulepreload 实测：12 个拖慢 LCP，回滚为只预热 app.js；337 |
 | v2.5.173 | reader/upload/prompts 路由级动态 import；模块 SW stale-while-revalidate；337→338 |
-| v2.5.174–187 | 朋友口吻；记忆 FTS5；管家收藏/提示词；交流偏好；338→351 |
+| v2.5.174–188 | 朋友口吻；记忆 FTS5；管家收藏/提示词；交流偏好；多图快速/深度看图；338→352 |
 | v2.5.162 | 搜索 120ms 防抖；笔记 60 条/批自动续载 + 搜索跳转扩窗；320→323 |
 | v2.5.161 | 登录后整页审计：5 页面亮/暗 axe 0 violation；阅读器亮/夜间/护眼正文 ≥10:1；修 8 处次级灰字；章节目录可聚焦；测试 318 → **320** |
 | v2.5.160 | 对比度/可访问性审计：亮/暗 24 组文本与控件全 ≥ AA（强调蓝 #0066CC、二级文字 0.75、底栏 #6E6E73、危险色 #D70015）；修复键盘焦点被 reset 吞掉、深色登录页黑字与 6 处小组件灰字；真机 axe 0 violation |

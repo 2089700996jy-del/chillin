@@ -36,6 +36,7 @@ import {
     PROFILE_ITEM_MAX_CHARS
 } from './bot-memory.js';
 import { handleClawLinkMessage } from './bot-links.js';
+import { maybeClawImageFollowUp } from './bot-image-flow.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
@@ -60,7 +61,7 @@ export const BOT_HELP_TEXT = [
     '- 「我的收藏」/「我的提示词」：看最近 10 条和编号',
     '- 「改收藏 3 标题=... | 链接=...」：先预览，回「确认」才改；「删收藏 3」也先确认再软删',
     '- 「改提示词 3 标题=... | 正文=...」/「删提示词 3」：同样先预览或确认，删除只软删',
-    '- 发图片：我先说说看到什么，回「记录」才存进随手记',
+    '- 发图片：默认逐张快速说说看到什么；带问题（表格、图表、共同点）时我会仔细看；一次最多 6 张，回「记录」才存进随手记',
     '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片；读不到就自己写标题——「记录：<标题> <链接>」',
     '- 「记住：内容」：写进「关于我」，以后都记得',
     '- 「偏好」：看交流偏好；「偏好 日常聊天：更自然」：先确认再记',
@@ -405,6 +406,10 @@ export async function runCommand(env, db, userId, content) {
 
     // 光杆「记录」：确认把刚才暂存的图片写进随手记（放在 RECORD_RE 之后，避免抢走「记录：X」）
     if (PENDING_COMMIT_RE.test(text)) return runCommitPendingMedia(db, userId);
+
+    // 连续图片后的追问：只在有待存图片、且问句确实指向图片时走深度看图
+    const imageFollowUp = await maybeClawImageFollowUp(env, db, userId, text);
+    if (imageFollowUp !== null) return imageFollowUp;
 
     // 小宇宙链接：抓标题与封面做速览；只认白名单域名，其它链接原样交回聊天
     const linkReply = await handleClawLinkMessage(env, db, userId, text);

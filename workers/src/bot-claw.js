@@ -17,8 +17,8 @@
  */
 import { jsonResponse } from './security.js';
 import { truncateUtf8, buildBotReply, claimBotMessage } from './bot-commands.js';
-import { extractClawImageItems, handleClawImageMessage } from './bot-media.js';
-
+import { extractClawImageItems } from './bot-media.js';
+import { handleClawImageMessage } from './bot-image-flow.js';
 const ILINK_DEFAULT_BASE = 'https://ilinkai.weixin.qq.com';
 /** 官方客户端上报的通道版本 */
 const ILINK_CHANNEL_VERSION = '2.4.8';

@@ -34,7 +34,8 @@ import {
     unwrapHexAsciiKey,
     aes128EcbDecrypt
 } from '../workers/src/bot-media.js';
-import { describeClawImageContent } from '../workers/src/bot-vision.js';
+import { describeClawImageContent, analyzeClawImages, isDeepVisionQuestion } from '../workers/src/bot-vision.js';
+import { maybeClawImageFollowUp } from '../workers/src/bot-image-flow.js';
 import { callCustomLlmWithMessages } from '../workers/src/llm.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
@@ -1178,7 +1179,15 @@ function mediaEnv(db, puts) {
     return {
         DB: db,
         MEDIA: {
-            put: async (key, buf, opts) => { puts.push({ key, size: buf.byteLength, type: opts.httpMetadata.contentType }); }
+            put: async (key, buf, opts) => {
+                const copy = new Uint8Array(buf);
+                puts.push({ key, size: copy.byteLength, type: opts.httpMetadata.contentType, bytes: copy });
+            },
+            get: async (key) => {
+                const hit = puts.find(p => p.key === key);
+                if (!hit) return null;
+                return { arrayBuffer: async () => hit.bytes.buffer.slice(hit.bytes.byteOffset, hit.bytes.byteOffset + hit.bytes.byteLength) };
+            }
         },
         AI: { run: async () => { throw new Error('图片通道不该调用模型'); } }
     };
@@ -1740,6 +1749,23 @@ test('ClawBot - 看图：取回并压平描述、超长截断、没密钥不发�
 
     const soft = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '加微信看更多' } }] } }) });
     assert.equal(await describeClawImageContent(env, PNG_BYTES, 'image/png', soft.impl), '****看更多', '软违规词沿用既有替换策略');
+
+    assert.equal(isDeepVisionQuestion('今晚的月亮'), false, '普通配文默认快速识图');
+    assert.equal(isDeepVisionQuestion('这几张截图里面有什么共同的问题？'), true, '多图关系问题走深度看图');
+    assert.equal(isDeepVisionQuestion('快速看一下这张图'), false, '用户明确要快时仍走快速');
+    const fastMany = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '一张截图' } }] } }) });
+    const fastText = await analyzeClawImages(env, [{ bytes: PNG_BYTES, mime: 'image/png' }, { bytes: PNG_BYTES, mime: 'image/png' }], { mode: 'fast', fetchImpl: fastMany.impl });
+    assert.equal(fastMany.calls.length, 2, '快速多图逐张并行，不把多图硬塞进一次慢调用');
+    assert.match(fastText, /^1\. 一张截图/);
+    const deep = stubFetch({ [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '两张截图都在报同一个登录错误。' } }] } }) });
+    const deepText = await analyzeClawImages(env, [{ bytes: PNG_BYTES, mime: 'image/png' }, { bytes: PNG_BYTES, mime: 'image/png' }], {
+        mode: 'deep', question: '这两张有什么共同问题？', fetchImpl: deep.impl
+    });
+    assert.equal(deep.calls.length, 1, '深度看图把多张图放在同一次请求里，模型才能比较关系');
+    assert.equal(deep.calls[0].body.messages[0].content.filter(c => c.type === 'image_url').length, 2);
+    assert.equal(deep.calls[0].body.max_tokens, 1200);
+    assert.match(deep.calls[0].body.messages[0].content[0].text, /共同问题/);
+    assert.match(deepText, /同一个登录错误/);
 });
 
 test('Bot - 文字聊天默认走 deepseek-flash，并显式关闭 thinking', async () => {
@@ -1802,6 +1828,47 @@ integration('ClawBot - 图 + 配文时先把描述说给用户，回「记录」
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 0, '确认后待存位要作废');
     assert.match(await buildBotReply({}, db, 1, '记录'), /没有等着存的东西/, '再确认一次要如实说明');
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 1, '不能重复入库');
+});
+
+integration('ClawBot - 一条消息多张图先快速逐张看，再凭连续图追问走深度看图并逐张保存', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const puts = [];
+    const msg = imageMessage();
+    msg.item_list = [
+        { type: 2, msg_id: 'IMG-A', image_item: { aeskey: '', media: 'https://cdn.example/a.png' } },
+        { type: 2, msg_id: 'IMG-B', image_item: { aeskey: '', media: 'https://cdn.example/b.png' } }
+    ];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-MULTI', msgs: [msg] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/a.png': () => ({ bytes: PNG_BYTES }),
+        'cdn.example/b.png': () => ({ bytes: PNG_BYTES }),
+        [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '一张截图' } }] } })
+    });
+    await pollClawAccounts(visionEnv(db, puts), db, st.impl, { budgetMs: 0 });
+
+    assert.equal(puts.length, 2, '一条消息里的两张图都要进 R2');
+    const visionCalls = st.calls.filter(c => c.url.includes(VISION_ROUTE));
+    assert.equal(visionCalls.length, 2, '快速模式逐张看图，不能只处理第一张');
+    const pending = await db.prepare('SELECT media_url, media_urls FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0').first();
+    const batch = JSON.parse(pending.media_urls);
+    assert.equal(batch.items.length, 2, '待存位要记住整批图');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 0, '未确认前不得落库');
+
+    const deep = stubFetch({
+        [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '两张截图都在报同一个登录错误。' } }] } })
+    });
+    const answer = await maybeClawImageFollowUp(visionEnv(db, puts), db, 1, '这两张截图里面有什么共同的问题？', deep.impl);
+    assert.match(answer, /同一个登录错误/, '连续图追问要能带上两张图做深度分析');
+    const deepCall = deep.calls.find(c => c.url.includes(VISION_ROUTE));
+    assert.equal(deepCall.body.messages[0].content.filter(c => c.type === 'image_url').length, 2, '追问要把整批图一起交给模型');
+    assert.match(deepCall.body.messages[0].content[0].text, /共同的问题/, '用户问题必须进入提示词');
+
+    assert.match(await buildBotReply({}, db, 1, '记录'), /已存入/);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM quick_feeds').first()).n, 2, '回「记录」后两张图各存一条');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_pending_media WHERE is_deleted = 0').first()).n, 0, '确认后整批待存位作废');
 });
 
 integration('ClawBot - 看图失败绝不连坐：图片仍暂存，回信也不编造描述', async () => {
