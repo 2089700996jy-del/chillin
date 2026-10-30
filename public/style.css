@@ -10384,5 +10384,5 @@ select:focus-visible,
 .insight-evidence-text { overflow-wrap: anywhere; }
 .insight-thread-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .insight-thread-actions .btn-primary, .insight-thread-actions .btn-secondary { min-height: 30px; padding: 5px 11px; font-size: 12px; }
-.insight-thread-actions .btn-text { min-height: 30px; padding: 5px 7px; font-size: 12px; color: var(--text-color-light); }
+.insight-thread-actions .btn-text { min-height: 30px; margin-left: 0; padding: 5px 7px; font-size: 12px; color: var(--text-color-light); }
 @media (min-width: 720px) { .insight-thread-card { flex-basis: 46%; } }
