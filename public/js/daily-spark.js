@@ -10,8 +10,6 @@ import {
     stampLocalUpdate,
     saveFeedsDatabase,
     apiSyncFeed,
-    saveNotesDatabase,
-    apiSyncNote,
 } from './api.js';
 import { setHtml } from './trusted-types.js';
 

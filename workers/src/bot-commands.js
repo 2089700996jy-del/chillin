@@ -37,8 +37,6 @@ import {
 } from './bot-reminders.js';
 import { maybeRunHealthCommand } from './bot-health.js';
 
-/** 单条回复上限（UTF-8 字节）。微信侧单条消息更短，这里统一留余量 */
-export const MAX_REPLY_BYTES = 20000;
 /** 同一条消息 10 分钟内只处理一次：上游可能重复投递 */
 export const BOT_MSG_TTL_MS = 10 * 60 * 1000;
 /** 每人 10 分钟最多问 20 次 AI，避免刷爆上游大模型配额 */
@@ -177,11 +175,6 @@ export function truncateUtf8(text, maxBytes) {
     if (bytes.length <= maxBytes) return source;
     const ellipsisBytes = encoder.encode('…').length;
     return decoder.decode(bytes.subarray(0, maxBytes - ellipsisBytes)).replace(/\uFFFD+$/, '') + '…';
-}
-
-/** 解析逗号分隔的白名单，留空表示不限制 */
-export function parseImUserList(value) {
-    return String(value || '').split(',').map(s => s.trim()).filter(Boolean);
 }
 
 /** 消息排重：第一次见到返回 true，重复投递返回 false */

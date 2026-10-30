@@ -17,9 +17,7 @@ import {
     refresh,
 } from './auth.js';
 import { setHtml } from './trusted-types.js';
-import { idbGet, idbSet, idbGetBatch, migrateFromLocalStorage } from './db.js';
-
-const SYNC_RESOURCES = ['weeklies', 'notes', 'bookmarks', 'feeds', 'prompts'];
+import { idbSet, idbGetBatch, migrateFromLocalStorage } from './db.js';
 
 /** Per-user incremental sync cursor (migrates legacy global keys once). */
 function getSyncCursor(resource) {

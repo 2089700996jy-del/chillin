@@ -111,21 +111,6 @@ export function initPrompts() {
         }
     }
 
-    // ── Scene Map ──
-    const SCENE_ICONS = {
-        '开发': '',
-        '写作': '',
-        '润色': '',
-        '推演': '',
-        '翻译': '',
-        '角色': '',
-        '通用': '',
-    };
-
-    function getSceneIcon(scene) {
-        return '';
-    }
-
     // ── Variable Highlight in Prompt Content ──
     function formatPromptContentHtml(text) {
         const safe = escapeHtml(text || '');

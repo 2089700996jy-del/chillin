@@ -28,7 +28,7 @@ import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
 import { initEvergreenTopics } from './js/evergreen-topics.js';
-import { showToast, initAppTheme } from './js/utils.js';
+import { initAppTheme } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 import { checkAndSendBackupGuardNotification } from './js/backup.js';
 import { loadFeature, isFeatureReady } from './js/feature-loader.js';
