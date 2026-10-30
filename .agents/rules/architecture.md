@@ -31,7 +31,7 @@
 ### 2.2 严格领域模块归档
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 
-（`workers/src/` 共 **27 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、3 个智能与记忆模块、1 个审计、11 个 Bot 模块（对话编排 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **28 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、4 个智能与记忆模块、1 个审计、11 个 Bot 模块（对话编排 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -47,6 +47,7 @@
 | [`workers/src/garden-books.js`](../../workers/src/garden-books.js) | 阅读器云书库 | 书籍正文存 R2（对象键为书籍指纹的 SHA-256）、书目元数据 CRUD、跨设备下载与软删墓碑。 |
 | [`workers/src/garden-echo.js`](../../workers/src/garden-echo.js) | 回响、通知与审计入口 | AI 回响卡片、周期回顾、Web Push 通知派发、UGC 审计入口。 |
 | [`workers/src/rag.js`](../../workers/src/rag.js) | 记忆回响 RAG 引擎 | 自然语言时间范围解析、停用词过滤、分词、多轮上下文继承、全资产多特征加权打分与兜底回复。 |
+| [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持 `rag.js` 不越过 500 行红线。 |
 | [`workers/src/llm.js`](../../workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式与非流式包装、敏感词合规审查。 |
 | [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：RAG 召回 → 模型调用 → SSE 流式推送（从网关下沉而来）。 |
 | [`workers/src/audit.js`](../../workers/src/audit.js) | 自动化安全与审计 | 定时 Cron UGC 违规扫描与隔离区备份、违规规则集、审计日志保留清理。 |

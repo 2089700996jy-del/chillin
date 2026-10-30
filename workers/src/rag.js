@@ -4,6 +4,19 @@
  * memory chunk scoring, and history topic inheritance for follow-up questions.
  */
 
+import {
+    MEMORY_TABLES,
+    buildFtsMatch,
+    fetchFtsHits,
+    fetchMemoryRows,
+    fetchRowsByIds,
+    loadLinkedMemories,
+    normalizeMemoryRow,
+    extractWikiLinks
+} from './rag-index.js';
+
+export { extractWikiLinks };
+
 export const RAG_STOPWORDS = new Set([
     '的', '了', '呢', '吗', '啊', '呀', '么', '吧', '就', '都', '也', '和', '与', '或',
     '在', '是', '有', '我', '你', '他', '她', '它', '们', '这', '那', '什么', '怎么',
@@ -211,7 +224,10 @@ export function extractItemDate(item) {
     return '';
 }
 
-export function scoreMemoryChunk(item, tokens, timeRange) {
+/** 类型先验：笔记/周记是更完整的记忆，收藏和提示词只做辅助。 */
+const TYPE_WEIGHT = { '笔记': 1.08, '周记': 1.05, '随手记': 1, '提示词': 0.9, '收藏': 0.75 };
+
+export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
     const dateStr = extractItemDate(item);
     if (timeRange) {
         if (!dateStr) return -1;
@@ -219,132 +235,173 @@ export function scoreMemoryChunk(item, tokens, timeRange) {
     }
     const title = String(item.title || '');
     const body = String(item.body || '');
+    const tags = Array.isArray(item.tags) ? item.tags.join(' ') : String(item.tags || '');
     const hayTitle = title.toLowerCase();
     const hayBody = body.toLowerCase();
+    const hayTags = tags.toLowerCase();
+    const matched = new Set();
     let score = 0;
-    let hits = 0;
     for (const t of tokens) {
-        if (hayTitle.includes(t)) { score += 4; hits += 1; }
-        if (hayBody.includes(t)) { score += 2; hits += 1; }
+        if (hayTitle.includes(t)) { score += 6; matched.add(t); }
+        if (hayBody.includes(t)) { score += 3; matched.add(t); }
+        if (hayTags.includes(t)) { score += 4; matched.add(t); }
     }
-    if (tokens.length > 0 && hits === 0) {
+    if (tokens.length > 0 && matched.size === 0) {
         return -1; // 有主题词时必须命中，避免不相关日记被灌进上下文
     }
+    // 覆盖越多主题词越可信，避免只命中一个泛词就排到前面
+    if (matched.size > 0) score += (matched.size / tokens.length) * 4;
+    if (options.phrase && options.phrase.length >= 2
+        && (hayTitle.includes(options.phrase) || hayBody.includes(options.phrase))) {
+        score += 5;
+    }
+    score *= TYPE_WEIGHT[item.type] || 1;
     if (timeRange) score += 3;
-    // 轻微偏好更新近的内容
+    // 轻微偏好更新近的内容；旧但高度相关的记忆仍然能排在前面
     if (dateStr) {
         const ageDays = Math.max(0, (Date.now() - Date.parse(dateStr + 'T00:00:00+08:00')) / 86400000);
-        score += Math.max(0, 2 - ageDays / 180);
+        score += 3 * Math.exp(-ageDays / 365);
     }
+    if (options.relatedBoost) score += options.relatedBoost;
     return score;
 }
 
 export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     const topK = opts.topK || 8;
     const maxChars = opts.maxChars || 1600;
-    let tokens = tokenizeQuery(question);
+    let tokens = tokenizeQuery(question).slice(0, 24);
     const timeRange = parseTimeRangeFromQuestion(question);
 
-    // 多轮对话主题继承：如果是代词短问（如“还有吗”、“详细说说”），且没有独立提取到有效词，从历史提取
-    if (tokens.length === 0 && Array.isArray(opts.history) && opts.history.length > 0) {
+    // 多轮对话主题继承：短问（如“还有吗”“详细说说”）没有独立主题时，从历史追问。
+    if (tokens.length < 2 && Array.isArray(opts.history) && opts.history.length > 0) {
         const prevUserMessages = opts.history.filter(h => h && h.role === 'user' && typeof h.content === 'string');
         if (prevUserMessages.length > 0) {
-            const lastUserMsg = prevUserMessages[prevUserMessages.length - 1].content;
-            const inheritedTokens = tokenizeQuery(lastUserMsg);
-            if (inheritedTokens.length > 0) {
-                tokens = inheritedTokens;
-            }
+            const inheritedTokens = tokenizeQuery(prevUserMessages[prevUserMessages.length - 1].content).slice(0, 12);
+            tokens = [...new Set([...tokens, ...inheritedTokens])].slice(0, 24);
         }
     }
 
-    // 并行拉取全域记忆资产（含随手记、笔记、周记、收藏以及新增的提示词库）
-    const [feedsRes, notesRes, weekliesRes, bookmarksRes, promptsRes] = await Promise.all([
-        db.prepare('SELECT id, content, created_at, updated_at, tags FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 100').bind(userId).all(),
-        db.prepare('SELECT id, title, content, date, created_at, updated_at FROM notes WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all(),
-        db.prepare('SELECT id, title, summary, content, date, created_at, updated_at FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all(),
-        db.prepare('SELECT id, title, description, url, created_at, updated_at FROM bookmarks WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all(),
-        db.prepare('SELECT id, title, project, scene, content, description, tags, created_at, updated_at FROM prompts WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC, id DESC LIMIT 60').bind(userId).all()
+    const ftsMatch = buildFtsMatch(tokens);
+    const candidateLimit = opts.candidateLimit || (tokens.length ? 240 : (timeRange ? 1000 : 300));
+    const [ftsHits, ...rowSets] = await Promise.all([
+        fetchFtsHits(db, userId, ftsMatch),
+        ...MEMORY_TABLES.map(cfg => fetchMemoryRows(db, cfg, userId, tokens, candidateLimit))
     ]);
 
-    const corpus = [];
-    for (const f of (feedsRes.results || [])) {
-        let tagText = '';
-        try { tagText = Array.isArray(JSON.parse(f.tags || '[]')) ? JSON.parse(f.tags || '[]').join(' ') : ''; } catch (_) {}
-        corpus.push({
-            type: '随手记',
-            id: f.id,
-            title: '',
-            body: `${f.content || ''} ${tagText}`.trim(),
-            date: f.created_at || f.updated_at || '',
-            created_at: f.created_at,
-            updated_at: f.updated_at
-        });
-    }
-    for (const n of (notesRes.results || [])) {
-        corpus.push({
-            type: '笔记',
-            id: n.id,
-            title: n.title || '',
-            body: n.content || '',
-            date: n.date || n.created_at || n.updated_at || '',
-            created_at: n.created_at,
-            updated_at: n.updated_at
-        });
-    }
-    for (const w of (weekliesRes.results || [])) {
-        corpus.push({
-            type: '周记',
-            id: w.id,
-            title: w.title || '',
-            body: `${w.summary || ''}\n${w.content || ''}`.trim(),
-            date: w.date || w.created_at || w.updated_at || '',
-            created_at: w.created_at,
-            updated_at: w.updated_at
-        });
-    }
-    for (const b of (bookmarksRes.results || [])) {
-        corpus.push({
-            type: '收藏',
-            id: b.id,
-            title: b.title || '',
-            body: `${b.description || ''} ${b.url || ''}`.trim(),
-            date: b.created_at || b.updated_at || '',
-            created_at: b.created_at,
-            updated_at: b.updated_at
-        });
-    }
-    for (const p of (promptsRes.results || [])) {
-        corpus.push({
-            type: '提示词',
-            id: p.id,
-            title: `[${p.project || '通用'}/${p.scene || '场景'}] ${p.title || ''}`,
-            body: `${p.description || ''}\n${p.content || ''}\n${p.tags || ''}`.trim(),
-            date: p.created_at || p.updated_at || '',
-            created_at: p.created_at,
-            updated_at: p.updated_at
-        });
-    }
+    const corpus = new Map();
+    const add = (cfg, row) => {
+        const item = normalizeMemoryRow(cfg, row);
+        if (item && !corpus.has(item.key)) corpus.set(item.key, item);
+    };
+    rowSets.forEach((rows, i) => {
+        const cfg = MEMORY_TABLES[i];
+        for (const row of rows) add(cfg, row);
+    });
 
-    const ranked = corpus
-        .map(item => ({ ...item, score: scoreMemoryChunk(item, tokens, timeRange) }))
+    // FTS 只返回 (type,id)，再回表取正文；软删行会在回表时被过滤。
+    const ftsGroups = new Map();
+    for (const hit of ftsHits) {
+        const type = String(hit.type || '');
+        const id = Number(hit.id);
+        if (!type || !Number.isFinite(id)) continue;
+        if (!ftsGroups.has(type)) ftsGroups.set(type, new Set());
+        ftsGroups.get(type).add(id);
+    }
+    await Promise.all(MEMORY_TABLES.map(async cfg => {
+        const ids = [...(ftsGroups.get(cfg.type) || [])].slice(0, 300);
+        if (!ids.length) return;
+        const rows = await fetchRowsByIds(db, cfg, userId, ids);
+        for (const row of rows) add(cfg, row);
+    }));
+
+    const allItems = [...corpus.values()];
+    const ranked = allItems
+        .map(item => ({ ...item, score: scoreMemoryChunk(item, tokens, timeRange, { phrase: String(question || '').trim() }) }))
         .filter(item => item.score >= 0)
         .sort((a, b) => b.score - a.score || Number(b.id || 0) - Number(a.id || 0));
 
     // 无关键词且无时间：不要倾倒全文，只取少量最近片段并标明
-    let selected = ranked.slice(0, topK);
     if (tokens.length === 0 && !timeRange) {
-        selected = corpus
+        const recent = allItems
             .slice()
             .sort((a, b) => String(extractItemDate(b)).localeCompare(String(extractItemDate(a))))
             .slice(0, Math.min(5, topK))
             .map(item => ({ ...item, score: 0 }));
+        return buildRetrievalResult(recent, tokens, timeRange, maxChars, {
+            candidateCount: allItems.length,
+            relatedCount: 0
+        });
     }
 
-    if (selected.length === 0) {
+    if (ranked.length === 0) {
         return {
             tokens,
             timeRange,
             sources: [],
+            candidateCount: allItems.length,
+            relatedCount: 0,
+            contextText: '（未检索到与问题匹配的记忆片段。请如实告知用户没有找到相关记录，不要编造。）'
+        };
+    }
+
+    // 关联扩展：先沿 [[wikilink]] 找回被引用但没命中关键词的记忆，
+    // 再补少量共同标签的邻居；关联项分数低于直接命中，上下文里单独标注。
+    const seeds = ranked.slice(0, 3);
+    const linked = await loadLinkedMemories(db, userId, seeds);
+    const related = [];
+    const selectedKeys = new Set(ranked.slice(0, topK).map(item => item.key));
+    for (const item of linked) {
+        if (corpus.has(item.key) && ranked.some(direct => direct.key === item.key)) continue;
+        const seed = seeds.find(s => extractWikiLinks(s.title + ' ' + s.body)
+            .some(link => item.title.toLowerCase().includes(link)));
+        if (!seed) continue;
+        if (selectedKeys.has(item.key)) continue;
+        const relation = item.relation || '链接';
+        item.score = Math.max(2, seed.score * 0.55);
+        item.relatedFrom = seed.key;
+        item.relation = relation;
+        related.push(item);
+        selectedKeys.add(item.key);
+    }
+    for (const seed of seeds) {
+        for (const tag of seed.tags.slice(0, 2)) {
+            if (tag.length < 2) continue;
+            for (const item of ranked) {
+                if (item.key === seed.key || selectedKeys.has(item.key)) continue;
+                if (!item.tags.includes(tag)) continue;
+                item.score = Math.max(1, seed.score * 0.45);
+                item.relatedFrom = seed.key;
+                item.relation = '共同标签 #' + tag;
+                related.push(item);
+                selectedKeys.add(item.key);
+                break;
+            }
+            if (related.length >= 2) break;
+        }
+        if (related.length >= 2) break;
+    }
+
+    const relatedLimit = Math.min(2, related.length, Math.max(0, topK - 1));
+    const directLimit = Math.max(1, topK - relatedLimit);
+    const selected = [
+        ...ranked.slice(0, directLimit),
+        ...related.slice(0, relatedLimit)
+    ];
+
+    return buildRetrievalResult(selected, tokens, timeRange, maxChars, {
+        candidateCount: allItems.length,
+        relatedCount: relatedLimit
+    });
+}
+
+function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {}) {
+    if (!selected.length) {
+        return {
+            tokens,
+            timeRange,
+            sources: [],
+            candidateCount: extra.candidateCount || 0,
+            relatedCount: 0,
             contextText: '（未检索到与问题匹配的记忆片段。请如实告知用户没有找到相关记录，不要编造。）'
         };
     }
@@ -354,10 +411,11 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     let used = 0;
     selected.forEach((item, idx) => {
         const dateLabel = extractItemDate(item) || '未知日期';
-        const titlePart = item.title ? ` · ${item.title}` : '';
+        const titlePart = item.title ? ' · ' + item.title : '';
+        const relationPart = item.relation ? ' · 关联：' + item.relation : '';
         const snippet = String(item.body || '').replace(/\s+/g, ' ').trim().slice(0, 220);
-        const header = `[${idx + 1}] ${item.type}${titlePart} · ${dateLabel}`;
-        const block = `${header}\n${snippet}`;
+        const header = '[' + (idx + 1) + '] ' + item.type + titlePart + ' · ' + dateLabel + relationPart;
+        const block = header + '\n' + snippet;
         if (used + block.length > maxChars && blocks.length > 0) return;
         blocks.push(block);
         used += block.length + 1;
@@ -367,7 +425,9 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
             date: dateLabel,
             title: item.title || '',
             snippet: snippet.slice(0, 80),
-            score: Math.round(item.score * 10) / 10
+            score: Math.round(item.score * 10) / 10,
+            related: Boolean(item.relation),
+            relation: item.relation || ''
         });
     });
 
@@ -375,9 +435,12 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
         tokens,
         timeRange,
         sources,
+        candidateCount: extra.candidateCount || 0,
+        relatedCount: extra.relatedCount || 0,
         contextText: blocks.join('\n\n')
     };
 }
+
 
 export function generateFallbackReply(question, contextText) {
     if (!contextText || contextText.trim().length === 0 || contextText.includes('未检索到')) {

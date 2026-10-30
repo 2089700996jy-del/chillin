@@ -78,6 +78,53 @@ integration('RAG - recently edited older records stay in the bounded candidate w
     const result = await retrieveGardenMemories(db, 1, '代码重构');
     assert.ok(result.sources.some((source) => source.type === '笔记' && source.id === 1));
 });
+
+integration('RAG - 全历史候选：旧记录不因最近的 300 条而被挤出', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    for (let id = 2; id <= 301; id += 1) {
+        const updated = '2026-10-20 12:00:00';
+        await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+            VALUES (?1, 1, ?2, ?3, ?4, ?5, ?6, 0)`)
+            .bind(id, `普通笔记 ${id}`, `最近的生活记录 ${id}`, '2026-10-20', updated, updated).run();
+    }
+    await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+        VALUES (1, 1, '模型迁移记录', '当时想换模型：deepseek-chat 太慢，换成了 deepseek-flash。', '2026-08-01', '2026-08-01 12:00:00', '2026-08-01 12:00:00', 0)`).run();
+
+    const result = await retrieveGardenMemories(db, 1, '我之前为什么想换模型');
+    assert.ok(result.sources.some(source => source.type === '笔记' && source.id === 1), '旧记录必须从全历史候选里被找回');
+});
+
+integration('RAG - wikilink 关联把没有命中关键词的目标记忆带进上下文', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+        VALUES (100, 1, '换模型的理由', '当时觉得 deepseek-chat 太慢，细节记在 [[迁移记录]]。', '2026-08-02', '2026-08-02 12:00:00', '2026-08-02 12:00:00', 0)`).run();
+    await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+        VALUES (101, 1, '迁移记录', 'deepseek-flash 更快，价格也合适，适合日常闲聊。', '2026-08-02', '2026-08-02 12:00:00', '2026-08-02 12:00:00', 0)`).run();
+
+    const result = await retrieveGardenMemories(db, 1, '为什么想换模型');
+    const target = result.sources.find(source => source.type === '笔记' && source.id === 101);
+    assert.ok(target, 'wikilink 目标必须被关联召回');
+    assert.equal(target.related, true);
+    assert.match(result.contextText, /关联：链接「迁移记录」/);
+});
+
+integration('RAG - 软删后 FTS 触发器同步移除索引，旧内容不再被召回', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+        VALUES (200, 1, '临时记忆', '独特记忆碎片只在这里出现。', '2026-09-01', '2026-09-01 12:00:00', '2026-09-01 12:00:00', 0)`).run();
+    const ftsBefore = await db.prepare("SELECT source_id FROM memory_fts WHERE memory_fts MATCH '\"独特记忆\"'").all();
+    assert.ok(ftsBefore.results.some(row => Number(row.source_id) === 200), '触发器必须把新笔记同步进 FTS5');
+    assert.ok((await retrieveGardenMemories(db, 1, '独特记忆')).sources.some(source => source.id === 200));
+
+    await db.prepare('UPDATE notes SET is_deleted = 1 WHERE id = 200').run();
+    const ftsAfter = await db.prepare("SELECT source_id FROM memory_fts WHERE memory_fts MATCH '\"独特记忆\"'").all();
+    assert.equal(ftsAfter.results.length, 0, '软删后 FTS 触发器必须移除索引行');
+    const after = await retrieveGardenMemories(db, 1, '独特记忆');
+    assert.ok(!after.sources.some(source => source.id === 200), '软删行必须同时从 LIKE 与 FTS 候选里消失');
+});
 test('RAG - scoreMemoryChunk accurately ranks matching garden chunks', () => {
     const promptItem = {
         type: '提示词',
