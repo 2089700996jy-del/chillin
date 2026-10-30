@@ -305,8 +305,11 @@ async function outreachTiming(db, account, nowMs) {
 async function draftOutreach(env, db, userId, candidate, followUp) {
     let profile = '';
     try { profile = await loadProfilePromptSafe(db, userId); } catch (_) { profile = ''; }
+    let preferences = '';
+    try { preferences = await loadPreferencePromptSafe(db, userId); } catch (_) { preferences = ''; }
     const parts = [];
     if (profile) parts.push('【关于她/他】\n' + profile);
+    if (preferences) parts.push('【交流偏好（只调整说法，不改变主动开口的边界）】\n' + preferences);
     if (followUp) {
         const talk = await loadRecentTalkSafe(db, userId);
         if (talk) parts.push('【你们刚聊过】（这是背景，不是叫你现在接话）\n' + talk);
@@ -336,6 +339,11 @@ async function draftOutreach(env, db, userId, candidate, followUp) {
 async function loadProfilePromptSafe(db, userId) {
     const mod = await import('./bot-memory.js');
     return mod.loadProfilePrompt(db, userId);
+}
+
+async function loadPreferencePromptSafe(db, userId) {
+    const mod = await import('./bot-preferences.js');
+    return mod.loadPreferencePrompt(db, userId);
 }
 
 // 最近几轮对话（同一份上下文记忆），只在「刚聊过」时才取；失败就当没有

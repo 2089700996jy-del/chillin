@@ -60,6 +60,13 @@ import {
     savePendingMedia
 } from '../workers/src/bot-memory.js';
 import {
+    listPreferences,
+    loadPreferencePrompt,
+    detectFeedbackPreference,
+    handleBotPreferencesApi,
+    PREF_MAX_ITEMS
+} from '../workers/src/bot-preferences.js';
+import {
     extractFirstUrl,
     isAllowedOutboundUrl,
     parseXiaoyuzhouUrl,
@@ -1072,6 +1079,58 @@ integration('Bot - 管家编辑：先预览、确认后更新，不认识字段�
     assert.equal((await db.prepare('SELECT title FROM bookmarks WHERE id = ?1').bind(bookmarkId).first()).title, 'Figma 新版');
 });
 
+integration('Bot - 交流偏好：反馈先确认再记，取消不写，并注入聊天提示词', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const preview = await buildBotReply({}, db, 1, '偏好 日常聊天：更自然，不要过度共情');
+    assert.match(preview, /确认/);
+    assert.equal((await listPreferences(db, 1)).length, 0, '预览阶段不能落库');
+
+    await buildBotReply({}, db, 1, '确认');
+    let items = await listPreferences(db, 1);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].pref_key, 'tone');
+    assert.equal(items[0].source, 'explicit');
+
+    const feedback = await buildBotReply({}, db, 1, '这句话太啰嗦了');
+    assert.match(feedback, /回复长度/);
+    assert.equal((await listPreferences(db, 1)).length, 1, '反馈也要先确认');
+    await buildBotReply({}, db, 1, '确认');
+    items = await listPreferences(db, 1);
+    assert.equal(items.length, 2);
+    assert.equal(items.find(it => it.pref_key === 'length').content, '更简洁，少铺垫，直接说重点');
+
+    await buildBotReply({}, db, 1, '太官方了');
+    await buildBotReply({}, db, 1, '取消');
+    assert.equal((await listPreferences(db, 1)).length, 2, '取消后一条都不能多');
+
+    const block = await loadPreferencePrompt(db, 1);
+    assert.match(block, /日常聊天/);
+    assert.match(block, /更自然/);
+    assert.match(block, /回复长度/);
+    assert.equal(detectFeedbackPreference('太官方了').key, 'tone');
+    assert.equal(detectFeedbackPreference('这句话太啰嗦').key, 'length');
+    assert.equal(detectFeedbackPreference('不用安慰我，直接说你的看法').key, 'opinion');
+    assert.equal(detectFeedbackPreference('这个分析不错，以后可以这样回答').key, 'analysis');
+    assert.equal(detectFeedbackPreference('别每次给方案').key, 'proactive');
+
+    let messages = null;
+    const env = { AI: { run: async (model, opts) => { messages = opts.messages; return { response: '在。' }; } } };
+    assert.equal(await buildBotReply(env, db, 1, '在吗'), '在。');
+    assert.match(messages[0].content, /交流偏好/, '偏好块必须注入聊天提示词');
+    assert.match(messages[0].content, /更自然/, '偏好内容必须进提示词');
+
+    const delPreview = await buildBotReply({}, db, 1, '忘记偏好 更自然');
+    assert.match(delPreview, /要删掉 1 条/);
+    assert.equal((await listPreferences(db, 1)).length, 2, '删除预览不能先删');
+    await buildBotReply({}, db, 1, '确认');
+    assert.equal((await listPreferences(db, 1)).length, 1);
+    const soft = await db.prepare('SELECT is_deleted FROM bot_preferences WHERE pref_key = ?1 AND user_id = 1 ORDER BY id DESC LIMIT 1').bind('tone').first();
+    assert.equal(soft.is_deleted, 1, '偏好删除只能软删');
+    assert.match(await buildBotReply({}, db, 1, '忘记偏好'), /要删哪条/, '光杆忘记偏好不能被档案遗忘指令抢走');
+});
+
 integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（全程软删）', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -1569,6 +1628,48 @@ integration('Bot - 档案接口跨用户隔离：改不动也删不掉别人的�
     assert.equal((await listProfile(db, 1))[0].content, '我在写一本小说', '别人的档案毫发无伤');
 });
 
+integration('Bot - 交流偏好接口跨用户隔离，编辑与删除都走软删', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+    const call = (user, method, path, body) => handleBotPreferencesApi(profileCall(method, path, body), {}, new URL('https://chillin.example' + path), db, user);
+
+    let res = await call(1, 'POST', '/api/bot/preferences', { key: 'tone', content: '更自然，别像客服' });
+    assert.equal(res.status, 200);
+    res = await call(1, 'POST', '/api/bot/preferences', { key: 'length', content: '短一点' });
+    assert.equal(res.status, 200);
+    let data = await (await call(1, 'GET', '/api/bot/preferences')).json();
+    assert.equal(data.items.length, 2);
+    assert.equal(data.maxItems, PREF_MAX_ITEMS);
+    assert.equal(data.items[0].label, '日常聊天');
+
+    const toneId = data.items.find(it => it.pref_key === 'tone').id;
+    res = await call(2, 'GET', '/api/bot/preferences');
+    assert.equal((await res.json()).items.length, 0, '偏好按用户隔离');
+    assert.equal((await call(2, 'PUT', '/api/bot/preferences/' + toneId, { content: '被篡改' })).status, 404);
+    assert.equal((await call(2, 'DELETE', '/api/bot/preferences/' + toneId)).status, 404);
+
+    res = await call(1, 'PUT', '/api/bot/preferences/' + toneId, { content: '自然一点，不用客套' });
+    assert.equal(res.status, 200);
+    data = await (await call(1, 'GET', '/api/bot/preferences')).json();
+    assert.equal(data.items.find(it => it.id === toneId).content, '自然一点，不用客套');
+
+    res = await call(1, 'DELETE', '/api/bot/preferences/' + toneId);
+    assert.equal(res.status, 200);
+    const soft = await db.prepare('SELECT is_deleted FROM bot_preferences WHERE id = ?1').bind(toneId).first();
+    assert.equal(soft.is_deleted, 1, '接口删除必须软删');
+    assert.equal((await call(1, 'DELETE', '/api/bot/preferences/' + toneId)).status, 404);
+
+    res = await call(1, 'POST', '/api/bot/preferences', { key: '不存在', content: 'x' });
+    assert.equal(res.status, 400, '不认识的类别拒绝写入');
+    res = await call(1, 'POST', '/api/bot/preferences', { key: 'custom', content: '' });
+    assert.equal(res.status, 400, '空内容拒绝写入');
+    res = await call(1, 'POST', '/api/bot/preferences/clear');
+    assert.equal(res.status, 200);
+    assert.equal((await (await call(1, 'GET', '/api/bot/preferences')).json()).items.length, 0);
+    assert.equal((await (await call(2, 'GET', '/api/bot/preferences')).json()).items.length, 0);
+});
+
 integration('Bot - 档案到 24 条上限后拒绝新增，绝不写进库却读不出来', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -1591,6 +1692,8 @@ integration('Bot - 网关把 /api/bot/profile 挂在登录态之后（未登录 
     await seedUser(db, 1);
     const res = await api.fetch(new Request('https://chillin.example/api/bot/profile'), { DB: db }, ctx);
     assert.equal(res.status, 401);
+    const pref = await api.fetch(new Request('https://chillin.example/api/bot/preferences'), { DB: db }, ctx);
+    assert.equal(pref.status, 401, '交流偏好也必须在登录态之后');
 });
 
 /** 看图环境：R2 替身 + 一把可用的视觉密钥（AI 绑定照旧一调就炸，描述只走 VISION_API_KEY 的兼容端点） */

@@ -8202,6 +8202,15 @@ body.dark-reader-body .backup-guard-segmented .k-segment-btn.active {
 /* 输入框旁的按钮不能被压窄，否则中文按钮会折成两行 */
 .bot-profile-add .btn-text { flex: 0 0 auto; white-space: nowrap; }
 
+/* 交流偏好：说明文案与类别下拉，复用档案列表骨架 */
+.bot-pref-hint { margin: 6px 0 4px; font-size: 12.5px; line-height: 1.5; color: rgba(var(--label-rgb), 0.6); }
+
+.bot-profile-add select.search-input { flex: 0 0 auto; max-width: 128px; padding-right: 6px; }
+
+.bot-preference-add { flex-wrap: wrap; }
+
+.bot-preference-add select.search-input { flex: 1 1 100%; max-width: none; }
+
 .session-edit-input {
   flex: 1 1 auto;
   min-width: 0;

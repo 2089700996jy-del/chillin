@@ -656,6 +656,7 @@ integration('Garden export - 覆盖 D1 专属数据且不泄露凭据或越权�
     await db.prepare("INSERT INTO reader_books (user_id, book_key, title, author, total_chapters, size, r2_key) VALUES (1,'book-1','长夜','某人',12,2048,'books/1/x.txt')").run();
     await db.prepare("INSERT INTO health_daily (user_id, date, steps, sleep_min, source) VALUES (1,'2026-10-24',8000,420,'manual')").run();
     await db.prepare("INSERT INTO bot_profile (user_id, label, content) VALUES (1,'饮食','不吃香菜')").run();
+    await db.prepare("INSERT INTO bot_preferences (user_id, pref_key, label, content, source) VALUES (1,'tone','日常聊天','更自然','feedback')").run();
     await db.prepare("INSERT INTO bot_reminders (user_id, text, fire_at_ms) VALUES (1,'喝水', 1700000000000)").run();
     await db.prepare("INSERT INTO bot_claw_accounts (user_id, status, bot_token, cursor, outreach_enabled) VALUES (1,'bound','SECRET_BOT_TOKEN','SECRET_CURSOR',1)").run();
 
@@ -675,6 +676,8 @@ integration('Garden export - 覆盖 D1 专属数据且不泄露凭据或越权�
     assert.equal(data.counts.healthDays, 1);
     assert.equal(data.health[0].steps, 8000);
     assert.equal(data.bot.profile[0].content, '不吃香菜');
+    assert.equal(data.counts.botPreferences, 1);
+    assert.equal(data.bot.preferences[0].content, '更自然');
     assert.equal(data.bot.reminders[0].text, '喝水');
     assert.equal(data.bot.claw.status, 'bound');
     assert.equal(data.bot.outreachEnabled, true);

@@ -76,6 +76,48 @@ export async function clearChatContext(db, userId) {
     return (res && res.meta && res.meta.changes) || 0;
 }
 
+// ─────────────── 待确认动作（管家编辑 / 删除、交流偏好共用） ───────────────
+
+/** 待确认动作的保留时长：过期后必须重新发起，避免很久以后一句「确认」误改数据 */
+export const PENDING_ACTION_TTL_MS = 10 * 60 * 1000;
+
+/** 读当前用户最新一条待确认动作；过期只标记并带回 action，交给对应入口清理与解释 */
+export async function readPendingAction(db, userId, now) {
+    const ts = now == null ? Date.now() : now;
+    let row;
+    try {
+        row = await db.prepare(
+            'SELECT id, action, target_table, target_id, payload, created_at_ms FROM bot_pending_actions WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 1'
+        ).bind(Number(userId)).first();
+    } catch (err) {
+        console.error('[bot-memory] 读取待确认动作失败: ' + (err && err.message));
+        return null;
+    }
+    if (!row) return null;
+    // 过期只标记、不在这里清：调用方要先看 action 才能决定由谁解释；清理交给对应入口
+    if (Number(row.created_at_ms) + PENDING_ACTION_TTL_MS < ts) {
+        return { ...row, payload: {}, expired: true };
+    }
+    let payload = {};
+    try { payload = JSON.parse(row.payload || '{}'); } catch (_) { payload = {}; }
+    return { ...row, payload };
+}
+
+/** 同一用户只保留一条待确认动作：新动作会软删旧的，避免两句「确认」改错目标 */
+export async function savePendingAction(db, userId, action, targetTable, targetId, payload) {
+    await db.prepare('UPDATE bot_pending_actions SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0')
+        .bind(Number(userId)).run();
+    await db.prepare(
+        'INSERT INTO bot_pending_actions (user_id, action, target_table, target_id, payload, created_at_ms, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)'
+    ).bind(Number(userId), action, targetTable, Number(targetId) || 0, JSON.stringify(payload || {}), Date.now()).run();
+}
+
+/** 作废当前待确认动作（软删，绝不物理删除） */
+export async function clearPendingAction(db, userId) {
+    await db.prepare('UPDATE bot_pending_actions SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0')
+        .bind(Number(userId)).run();
+}
+
 /** 待存内容的保留时长：超过这个时间还没被「记录」确认，就当用户不要了 */
 export const PENDING_MEDIA_TTL_MINUTES = 60;
 /** 待存正文上限（配文 ≤2000 字 + 看图描述 ≤120 字，留足余量） */

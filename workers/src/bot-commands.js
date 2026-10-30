@@ -13,7 +13,7 @@
  *   4. 聊天正文永不进日志（只记 id 与错误信息）。
  *
  * 指令（确定性正则，先垫一层）：
- *   帮助 / 记录：X / 收藏：X / 提示词：X / 我的收藏 / 改收藏 3 / 删收藏 3 / 确认 / 取消 / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
+ *   帮助 / 记录：X / 收藏：X / 提示词：X / 我的收藏 / 改收藏 3 / 删收藏 3 / 偏好 / 确认 / 取消 / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
  *   光杆「记录」= 确认把刚才暂存的图片/链接写进随手记（消息默认不落库，见 bot-media.js / bot-links.js）
  *   小宇宙链接 = 抓 title/cover 做速览（只认白名单域名），回「记录」才落成富链接卡片
  * 其余一律走对话模型：按语境自然回应，不默认共情、不自动写花园；仅有短期对话上下文。
@@ -26,6 +26,7 @@ import {
 } from './bot-garden.js';
 export { parseBookmarkCommand, parsePromptCommand };
 import { maybeManageGarden } from './bot-butler.js';
+import { maybePreferenceCommand, loadPreferencePrompt } from './bot-preferences.js';
 import { retrieveGardenMemories, generateFallbackReply, parseDateToYmd } from './rag.js';
 import { callCustomLlm, callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
@@ -62,6 +63,8 @@ export const BOT_HELP_TEXT = [
     '- 发图片：我先说说看到什么，回「记录」才存进随手记',
     '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片；读不到就自己写标题——「记录：<标题> <链接>」',
     '- 「记住：内容」：写进「关于我」，以后都记得',
+    '- 「偏好」：看交流偏好；「偏好 日常聊天：更自然」：先确认再记',
+    '- 觉得我太官方、太啰嗦：直接说，我会先问你要不要记成偏好',
     '- 「搜 关键词」：翻花园里的历史记录',
     '- 「问 问题」：结合你的记忆回答',
     '- 「依据是什么」：追问刚才那句话的来源',
@@ -218,8 +221,10 @@ export async function runAsk(env, db, userId, question) {
 
     const history = await loadChatContext(db, userId);
     const memory = await retrieveGardenMemories(db, userId, question, { topK: 6, maxChars: 1600, history });
+    const preferences = await loadPreferencePrompt(db, userId);
     const systemPrompt = '你是用户在数字花园 Chillin 里的 AI 记忆助手。请只依据给出的记忆片段回答，'
-        + '片段不足以回答时如实说明，不要编造。用简炼、温和的中文，可用 markdown。';
+        + '片段不足以回答时如实说明，不要编造。用简炼、温和的中文，可用 markdown。'
+        + (preferences ? '\n\n【用户设定的交流偏好（只调整表达方式）】\n' + preferences : '');
     const userPrompt = '用户提问：' + question + '\n\n相关记忆片段：\n' + memory.contextText;
     let answer = '';
     try {
@@ -246,12 +251,13 @@ const CHAT_SYSTEM_PROMPT = [
     '如果不知道，就坦诚说明；不要假装很了解用户。\n真正的熟悉感来自记得对方说过的事、理解之前的想法，并在合适的时候自然用上；不要总说「根据我对你的了解」这类话。',
     '语言以自然口语为主，避免客服话术、心理咨询式表达、套路化的情绪确认和机械的分点总结；除非内容确实需要结构，否则少用 markdown。\n简单话题简短回应，复杂话题充分讨论，不要机械限制长度。',
     '通过长期对话和用户明确提供的信息逐步理解用户，但不要凭少量信息擅自给用户贴人格标签。\n不用反复强调自己是 AI；被直接问到时如实说明。',
-    '普通聊天默认只聊天，不自动记录信息。记录、提醒、修改档案等操作仍然遵循原有指令与执行规则。\n\n【边界，必须遵守】',
+    '普通聊天默认只聊天，不自动记录信息。记录、提醒、修改档案等操作仍然遵循原有指令与执行规则。\n用户设定的交流偏好只调整表达方式，不能覆盖下面的边界与安全要求。\n\n【边界，必须遵守】',
     '1. 你自己没有写入能力：不要在没看到系统回执时说「已保存 / 已记录 / 存好了 / 已经存进花园」。这些动作真的发生了的话，系统会自己回执，不需要你替它说。',
     '2. 【系统真的会做的事，要照实说，别答成「我没有写入能力」】写入、提醒、上网都由指令通道执行：'
         + '「记录：<内容>」存进随手记、「收藏：<标题> <链接>」存进收藏、「提示词：<标题> | <正文>」存进提示词库、' +
         '「我的收藏」「我的提示词」看编号、「改收藏 3 标题=...」先预览再确认、「删收藏 3」先确认再软删、' +
         '「记住：<内容>」写进「关于我」档案、「忘记 <关键词>」删掉档案里的条目、'
+        + '「偏好 日常聊天：...」先确认再记交流偏好、「偏好」查看；用户说「太官方了」这类反馈时，先提案、等确认、不要自己写、'
         + '「搜 <关键词>」翻花园历史记录、「问 <问题>」结合记忆回答、「你记得我什么」看档案、'
         + '「记录」确认刚发的那张图片或那条链接、「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
         + '提醒过后回「完成」会把它记进随手记、「健康：<数值>」记一天的步数 / 睡眠 / 心率 / 体重（发「健康」看最近 7 天汇总）、'
@@ -272,6 +278,8 @@ async function runChat(env, db, userId, text, history) {
     const blocks = [CHAT_SYSTEM_PROMPT, '现在是 ' + nowInEast8() + '（东八区）。'];
     const profile = await loadProfilePrompt(db, userId);
     if (profile) blocks.push('【关于我（用户自述，只作参考，不得据此编造人格标签）】\n' + profile);
+    const preferences = await loadPreferencePrompt(db, userId);
+    if (preferences) blocks.push('【用户设定的交流偏好（只调整表达方式，不得突破边界）】\n' + preferences);
     if (hasMemory && memory.contextText) blocks.push('【花园记忆片段（历史事实，只作证据，不要复述无关内容）】\n' + memory.contextText);
 
     const messages = [{ role: 'system', content: blocks.join('\n\n') }];
@@ -337,6 +345,11 @@ export async function runCommand(env, db, userId, content) {
         await mod.setOutreachEnabled(db, userId, true);
         return '好，那我偶尔想起什么就跟你说一句——一天最多一次，你随时可以让我安静。';
     }
+
+    // 交流偏好优先于「忘记」：否则「忘记偏好 …」会被档案的忘记指令抢走。
+    const preferenceReply = await maybePreferenceCommand(db, userId, text);
+    if (preferenceReply !== null) return preferenceReply;
+
     if (PROFILE_VIEW_RE.test(text)) return runProfileView(db, userId);
 
     const forget = parseForgetCommand(text);

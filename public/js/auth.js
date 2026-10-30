@@ -283,6 +283,15 @@ export function initAuthUI() {
         if (e.key === 'Enter') { e.preventDefault(); addBotProfileFromInput(); }
     });
     document.getElementById('btn-bot-profile-clear')?.addEventListener('click', clearBotProfileAll);
+
+    // Bot 交流偏好：独立于事实档案的表达方式设置
+    document.getElementById('bot-preference-list')?.addEventListener('click', onBotPreferenceListClick);
+    document.getElementById('btn-bot-preference-add')?.addEventListener('click', addBotPreferenceFromInput);
+    document.getElementById('bot-preference-input')?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { e.preventDefault(); addBotPreferenceFromInput(); }
+    });
+    document.getElementById('btn-bot-preference-clear')?.addEventListener('click', clearBotPreferencesAll);
+
     document.getElementById('btn-bot-outreach')?.addEventListener('click', toggleBotOutreach);
 
     // 微信 ClawBot：扫码绑定 / 取消 / 解绑；弹层一关就停轮询，别让定时器在后台空转
@@ -594,6 +603,7 @@ export async function openSecurityModal() {
     updatePushNotificationStatus();
     updateBackupGuardUI();
     loadBotProfile();
+    loadBotPreferences();
     loadBotOutreach();
     loadBotClawStatus();
     markAppThemeControl();
@@ -956,6 +966,126 @@ async function clearBotProfileAll() {
         const res = await apiRequest('/api/bot/profile/clear', { method: 'POST' });
         showToast(res && res.removed ? '已清空 ' + res.removed + ' 条' : '档案本来就是空的', 'success');
         await loadBotProfile();
+    } catch (e) {
+        showToast('操作失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+/** Bot 交流偏好：应用内查看 / 新增 / 编辑 / 遗忘（独立于「关于我」事实档案） */
+let editingPreferenceId = null;
+
+function preferenceSourceLabel(source) {
+    if (source === 'feedback') return '来自微信反馈';
+    if (source === 'explicit') return '来自微信';
+    return '手动设定';
+}
+
+function renderBotPreferences(items) {
+    const container = document.getElementById('bot-preference-list');
+    if (!container) return;
+    if (!Array.isArray(items) || items.length === 0) {
+        setHtml(container, '<div class="session-empty">还没有交流偏好。在微信里说「太官方了」「太啰嗦了」，或在上面的输入框加一条。</div>');
+        return;
+    }
+    setHtml(container, items.map((it) => {
+        const id = escapeHtml(String(it.id));
+        const label = escapeHtml(String(it.label || '交流偏好'));
+        if (String(it.id) === String(editingPreferenceId)) {
+            return '<div class="session-row">'
+                + '<input type="text" class="session-edit-input" data-preference-edit="' + id + '" maxlength="240" value="' + escapeHtml(String(it.content || '')) + '" aria-label="编辑这条交流偏好">'
+                + '<button type="button" class="btn-text bot-profile-edit preference-save" data-preference-id="' + id + '">保存</button>'
+                + '<button type="button" class="btn-text bot-profile-edit preference-cancel">取消</button>'
+                + '</div>';
+        }
+        return '<div class="session-row">'
+            + '<div class="session-main">'
+            + '<div class="bot-profile-content">' + escapeHtml(String(it.content || '')) + '</div>'
+            + '<div class="session-meta">' + label + ' · ' + preferenceSourceLabel(String(it.source || '')) + '</div>'
+            + '</div>'
+            + '<button type="button" class="btn-text bot-profile-edit preference-edit" data-preference-id="' + id + '">改</button>'
+            + '<button type="button" class="btn-text bot-profile-forget preference-forget" data-preference-id="' + id + '">忘</button>'
+            + '</div>';
+    }).join(''));
+}
+
+async function loadBotPreferences() {
+    const container = document.getElementById('bot-preference-list');
+    if (!container) return;
+    setHtml(container, '<div class="session-empty">正在读取交流偏好…</div>');
+    try {
+        const data = await apiRequest('/api/bot/preferences');
+        renderBotPreferences(data && data.items);
+    } catch (_) {
+        setHtml(container, '<div class="session-empty">读取失败，请稍后重试</div>');
+    }
+}
+
+async function addBotPreferenceFromInput() {
+    const key = document.getElementById('bot-preference-key');
+    const input = document.getElementById('bot-preference-input');
+    const content = input ? String(input.value || '').trim() : '';
+    if (!content) { showToast('先写一条偏好再点「设定」', 'warn'); if (input) input.focus(); return; }
+    try {
+        await apiRequest('/api/bot/preferences', {
+            method: 'POST',
+            body: JSON.stringify({ key: key ? key.value : 'custom', content: content })
+        });
+        if (input) input.value = '';
+        editingPreferenceId = null;
+        showToast('好，偏好已设定', 'success');
+        await loadBotPreferences();
+    } catch (e) {
+        showToast('没设定成功：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+function onBotPreferenceListClick(e) {
+    const target = e.target instanceof Element ? e.target : null;
+    if (!target) return;
+    const edit = target.closest('.preference-edit');
+    if (edit && edit.dataset.preferenceId) { editingPreferenceId = edit.dataset.preferenceId; loadBotPreferences(); return; }
+    if (target.closest('.preference-cancel')) { editingPreferenceId = null; loadBotPreferences(); return; }
+    const save = target.closest('.preference-save');
+    if (save && save.dataset.preferenceId) {
+        const row = save.closest('.session-row');
+        const field = row ? row.querySelector('[data-preference-edit]') : null;
+        saveBotPreferenceItem(save.dataset.preferenceId, field ? field.value : '');
+        return;
+    }
+    const forget = target.closest('.preference-forget');
+    if (forget && forget.dataset.preferenceId) forgetBotPreferenceItem(forget.dataset.preferenceId);
+}
+
+async function saveBotPreferenceItem(id, content) {
+    const body = String(content || '').trim();
+    if (!body) { showToast('内容不能为空', 'warn'); return; }
+    try {
+        await apiRequest('/api/bot/preferences/' + encodeURIComponent(id), { method: 'PUT', body: JSON.stringify({ content: body }) });
+        editingPreferenceId = null;
+        showToast('已更新', 'success');
+        await loadBotPreferences();
+    } catch (e) {
+        showToast('更新失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+async function forgetBotPreferenceItem(id) {
+    if (!(await confirmDialog('忘掉这条交流偏好？', { confirmText: '忘掉' }))) return;
+    try {
+        await apiRequest('/api/bot/preferences/' + encodeURIComponent(id), { method: 'DELETE' });
+        showToast('已忘掉', 'success');
+        await loadBotPreferences();
+    } catch (e) {
+        showToast('操作失败：' + (e && e.message ? e.message : e), 'warn');
+    }
+}
+
+async function clearBotPreferencesAll() {
+    if (!(await confirmDialog('清空全部交流偏好？', { confirmText: '清空' }))) return;
+    try {
+        const res = await apiRequest('/api/bot/preferences/clear', { method: 'POST' });
+        showToast(res && res.removed ? '已清空 ' + res.removed + ' 条' : '偏好本来就是空的', 'success');
+        await loadBotPreferences();
     } catch (e) {
         showToast('操作失败：' + (e && e.message ? e.message : e), 'warn');
     }

@@ -3,7 +3,7 @@
  *
  * 为什么独立成模块：
  *   1. 客户端的 IndexedDB 只有笔记/周记/随手记/收藏/提示词这几类，阅读进度、健康打卡、
- *      Bot 档案与提醒只存在 D1，备份若号称「全量」就必须由服务端补上；
+ *      Bot 档案、交流偏好与提醒只存在 D1，备份若号称「全量」就必须由服务端补上；
  *   2. garden-sync.js 已有 360+ 行，再塞进来会撞 500 行红线，按领域拆分更符合架构规约。
  *
  * 只导出用户内容：会话、Bot 访问令牌与轮询游标属于凭据，一律不进导出。
@@ -36,6 +36,7 @@ export async function handleExport(db, userId) {
         books,
         health,
         profile,
+        preferences,
         chatTurns,
         reminders,
         claw
@@ -51,6 +52,7 @@ export async function handleExport(db, userId) {
         db.prepare('SELECT book_key, title, author, total_chapters, size, created_at, updated_at FROM reader_books WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC').bind(userId).all(),
         db.prepare('SELECT date, steps, sleep_min, active_min, resting_hr, weight_kg, source, created_at, updated_at FROM health_daily WHERE user_id = ?1 AND is_deleted = 0 ORDER BY date DESC').bind(userId).all(),
         db.prepare('SELECT label, content, source, created_at, updated_at FROM bot_profile WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id ASC').bind(userId).all(),
+        db.prepare('SELECT pref_key, label, content, source, created_at, updated_at FROM bot_preferences WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id ASC').bind(userId).all(),
         db.prepare('SELECT role, content, created_at FROM bot_chat_turns WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 200').bind(userId).all(),
         db.prepare('SELECT text, fire_at_ms, status, fired_at_ms, created_at FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
         db.prepare('SELECT status, bound_at_ms, last_poll_at, outreach_enabled FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0').bind(userId).first()
@@ -87,6 +89,14 @@ export async function handleExport(db, userId) {
         createdAt: r.created_at,
         updatedAt: r.updated_at
     }));
+    const preferenceRows = (preferences.results || []).map((r) => ({
+        key: r.pref_key,
+        label: r.label,
+        content: r.content,
+        source: r.source,
+        createdAt: r.created_at,
+        updatedAt: r.updated_at
+    }));
     const chatRows = (chatTurns.results || []).slice().reverse().map((r) => ({
         role: r.role,
         content: r.content,
@@ -115,6 +125,7 @@ export async function handleExport(db, userId) {
             readerProgress: (progress.results || []).length,
             healthDays: healthRows.length,
             botProfile: profileRows.length,
+            botPreferences: preferenceRows.length,
             botChatTurns: chatRows.length,
             botReminders: reminderRows.length
         },
@@ -147,6 +158,7 @@ export async function handleExport(db, userId) {
         health: healthRows,
         bot: {
             profile: profileRows,
+            preferences: preferenceRows,
             chatTurns: chatRows,
             reminders: reminderRows,
             outreachEnabled: claw ? Boolean(claw.outreach_enabled) : false,

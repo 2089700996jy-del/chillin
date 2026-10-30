@@ -8,8 +8,8 @@ import {
     handlePostBookmark, handlePostPrompt, handleDeleteBookmark, handleDeletePrompt
 } from './garden-resources.js';
 import { normalizeBookmarkType } from './bot-garden.js';
+import { readPendingAction, savePendingAction, clearPendingAction } from './bot-memory.js';
 
-const PENDING_TTL_MS = 10 * 60 * 1000;
 const LIST_LIMIT = 10;
 const MAX_TITLE = 120;
 const MAX_DESC = 500;
@@ -40,40 +40,6 @@ const PROMPT_KEYS = {
     '标签': 'tags', 'tag': 'tags', 'tags': 'tags',
     '置顶': 'is_pinned', 'pinned': 'is_pinned', 'is_pinned': 'is_pinned'
 };
-
-export async function readPendingAction(db, userId, now) {
-    const ts = now == null ? Date.now() : now;
-    let row;
-    try {
-        row = await db.prepare(
-            'SELECT id, action, target_table, target_id, payload, created_at_ms FROM bot_pending_actions WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 1'
-        ).bind(userId).first();
-    } catch (err) {
-        console.error('[butler] 读取待确认动作失败: ' + (err && err.message));
-        return null;
-    }
-    if (!row) return null;
-    if (Number(row.created_at_ms) + PENDING_TTL_MS < ts) {
-        await clearPendingAction(db, userId);
-        return { expired: true };
-    }
-    let payload = {};
-    try { payload = JSON.parse(row.payload || '{}'); } catch (_) { payload = {}; }
-    return { ...row, payload };
-}
-
-export async function savePendingAction(db, userId, action, targetTable, targetId, payload) {
-    await db.prepare('UPDATE bot_pending_actions SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0')
-        .bind(userId).run();
-    await db.prepare(
-        'INSERT INTO bot_pending_actions (user_id, action, target_table, target_id, payload, created_at_ms, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)'
-    ).bind(userId, action, targetTable, targetId, JSON.stringify(payload || {}), Date.now()).run();
-}
-
-export async function clearPendingAction(db, userId) {
-    await db.prepare('UPDATE bot_pending_actions SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0')
-        .bind(userId).run();
-}
 
 function flat(text, max) {
     const s = String(text || '').replace(/\s+/g, ' ').trim();
@@ -402,7 +368,10 @@ async function confirmUpdate(db, userId, pending) {
 
 async function confirmPending(db, userId, pending, text) {
     if (!pending) return '现在没有等你确认的操作。';
-    if (pending.expired) return '上次的确认已经过期了，重新发一次「删收藏 <编号>」或「改收藏 <编号> ...」。';
+    if (pending.expired) {
+        await clearPendingAction(db, userId);
+        return '上次的确认已经过期了，重新发一次「删收藏 <编号>」或「改收藏 <编号> ...」。';
+    }
     if (/^确认修改/i.test(text) && !String(pending.action).startsWith('update_')) {
         return '这次待确认的是删除，不是修改。回「确认」删除，或回「取消」放弃。';
     }
@@ -428,7 +397,10 @@ export async function maybeManageGarden(db, userId, text) {
     if (CANCEL_RE.test(raw)) {
         const pending = await readPendingAction(db, userId);
         if (!pending) return null;
-        if (pending.expired) return '之前那条确认已经过期了，不用取消了。';
+        if (pending.expired) {
+            await clearPendingAction(db, userId);
+            return '之前那条确认已经过期了，不用取消了。';
+        }
         await clearPendingAction(db, userId);
         return '好，取消了，什么都没动。';
     }

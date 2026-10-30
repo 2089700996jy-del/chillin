@@ -16,7 +16,7 @@
 | 🧩 提示词库 | `{{变量}}` 模板参数化、填参预览、一键复制或直发 AI |
 | 📖 阅读器 | TXT 导入自动分章（GBK / UTF-8）、章节树、三档主题；**云端书库**（v2.5.100）：正文存 R2，换设备打开书架即可下载续读；**进度双向同步**（v2.5.101）：打开时双向合并、断网进度排队补推、服务端按时间戳拒绝过期写入；**本机书架补传**（v2.5.102）：早年导入、云端还没有的书会自动重组正文补推到 R2（每次会话最多 3 本） |
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
-| 🤖 微信 ClawBot | 设置弹层内直接扫码绑定/解绑（二维码有效期以微信服务端状态为准；扫码后轮询确认，重定向与已绑定/配对码等异常有明确提示；图片/链接/模型等慢处理交给 `ctx.waitUntil` 后台完成并主动回推）；绑定后可在微信里记事、收藏、存提示词、看列表（最近 10 条）、改/删（先预览或确认，删除只软删）、提问、设提醒、健康打卡，主动关怀可随时关；聊天提示词按语境自然回应，不默认共情或给建议，主动关怀同用朋友口吻；文字与识图统一走 `deepseek-flash`，显式关闭 thinking |
+| 🤖 微信 ClawBot | 设置弹层内直接扫码绑定/解绑（二维码有效期以微信服务端状态为准；扫码后轮询确认，重定向与已绑定/配对码等异常有明确提示；图片/链接/模型等慢处理交给 `ctx.waitUntil` 后台完成并主动回推）；绑定后可在微信里记事、收藏、存提示词、看列表（最近 10 条）、改/删（先预览或确认，删除只软删）、记交流偏好（反馈先确认）、提问、设提醒、健康打卡，主动关怀可随时关；聊天提示词按语境自然回应，不默认共情或给建议，主动关怀同用朋友口吻；文字与识图统一走 `deepseek-flash`，显式关闭 thinking |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
 | 📶 PWA | 全部前端模块（27 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位 |
 
@@ -24,7 +24,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，reader/upload/prompts 按路由动态 `import()`；模块 SW 走 stale-while-revalidate
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：**Cloudflare D1**（SQLite，35 个迁移 0001–0035，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
+* **数据**：**Cloudflare D1**（SQLite，36 个迁移 0001–0036，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -41,13 +41,13 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        30 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        31 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
-                    garden-export / garden-echo / rag / rag-index / llm / ai / audit / bot-commands / bot-garden / bot-butler /
+                    garden-export / garden-echo / rag / rag-index / llm / ai / audit / bot-commands / bot-garden / bot-butler / bot-preferences /
                     bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-vision / bot-links /
                     maintenance）
-migrations/         D1 迁移 0001–0035（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily、Bot 提醒追问状态机与退避重试、长期记忆 FTS5 索引与关联召回、Bot 管家待确认动作）
+migrations/         D1 迁移 0001–0036（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily、Bot 提醒追问状态机与退避重试、长期记忆 FTS5 索引与关联召回、Bot 管家待确认动作、Bot 交流偏好）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）
