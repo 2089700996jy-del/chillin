@@ -76,6 +76,7 @@ import {
     handleAiReview,
     handleAuditScan
 } from './src/garden-echo.js';
+import { handleInsightThreads, handleInsightReminder } from './src/insights.js';
 import { handleExport } from './src/garden-export.js';
 import { handleClawApi } from './src/bot-claw.js';
 import { handleBotProfileApi } from './src/bot-memory.js';
@@ -84,7 +85,7 @@ import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.191';
+const APP_VERSION = '2.5.192';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -222,6 +223,9 @@ async function router(path, method, request, env, ctx) {
 
     // ── AI 回顾与回响卡片 ──
     if (path === '/api/ai/review' && method === 'POST') return handleAiReview(env, db, userId);
+    // ── 长期线索 → 行动（计划笔记 / 微信提醒） ──
+    if (path === '/api/insights/threads' && method === 'GET') return handleInsightThreads(url, db, userId);
+    if (path === '/api/reminders' && method === 'POST') return handleInsightReminder(request, db, userId);
     if (path === '/api/echo/generate' && method === 'POST') return handleEchoGenerate(request, env, ctx, db, userId);
     if (path === '/api/echo/cards' && method === 'GET') return handleGetEchoCards(db, userId);
     const echoCardMatch = path.match(/^\/api\/echo\/cards\/(\d+)$/);

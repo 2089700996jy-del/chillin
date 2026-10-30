@@ -228,6 +228,7 @@ async function doLogin() {
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
 
         checkAuth();
+        try { window.dispatchEvent(new CustomEvent('chillin:auth-ready')); } catch (_) {}
         const sync = await import('./sync.js');
         try { sync.loadLocalData(); } catch (_) {}
         Promise.resolve()

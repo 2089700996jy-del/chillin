@@ -28,6 +28,7 @@ import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
 import { initEvergreenTopics } from './js/evergreen-topics.js';
+import { initInsights, refreshInsights } from './js/insights.js';
 import { initAppTheme } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 import { checkAndSendBackupGuardNotification } from './js/backup.js';
@@ -296,6 +297,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('wikilinks', initWikilinks);
     safeInit('dailySpark', initDailySpark);
     safeInit('evergreenTopics', initEvergreenTopics);
+    safeInit('insights', initInsights);
     safeInit('router', initRouter);
 
     loadLocalData();
@@ -311,6 +313,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 // 滑动续期：静默换新令牌，避免固定 7 天到期被强制登出
                 refreshSession().catch(() => {});
                 syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
+                refreshInsights(true);
             }
         });
 

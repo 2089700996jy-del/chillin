@@ -11,7 +11,7 @@
    * 浏览器将 HTML 网页内容作为 JS 解析会立即抛出 `Uncaught SyntaxError: Unexpected token '<'`，造成应用离线彻底瘫痪；
    * 离线时对于模块请求，必须严格从本地 Cache 匹配已缓存的 JS 脚本。
 2. **全量核心模块预缓存 (Pre-cache All 27 Modules)**：
-   * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 27 个核心模块路径（`actions`, `api`, `auth`, `backup`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `evergreen-topics`, `feeds`, `feature-loader`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `trusted-types`, `ui`, `upload`, `utils`, `version`, `weeklies`, `wikilinks`）；
+   * `public/sw.js` 的静态预缓存列表 `ASSETS` 必须完整维护前端全部 28 个核心模块路径（`actions`, `api`, `auth`, `backup`, `bookmarks`, `config`, `daily-spark`, `db`, `echo-ai`, `evergreen-topics`, `feeds`, `feature-loader`, `insights`, `notes`, `prompts`, `pwa-update`, `reader`, `router`, `search`, `state`, `sync`, `trusted-types`, `ui`, `upload`, `utils`, `version`, `weeklies`, `wikilinks`）；
    * 安装期（`install` 事件）必须使用 `Promise.allSettled` 进行静默容错缓存，防止单个非致命资源加载失败导致整个 Service Worker 拒绝激活。
 3. **运行时缓存写入：模块 SWR，导航/静态资源网络优先，响应不等写盘**：
    * 模块 JS 走 **stale-while-revalidate**：先用精确 `cache.match(request)`（不加 `ignoreSearch`，防止新 `app.js?v=` 命中旧入口）立即返回缓存，同时后台 `fetch` 新版本；只有缓存缺失时才等网络，网络失败再按 `ignoreSearch` 回退离线缓存。模块请求**永远不得**回退 `/index.html`；

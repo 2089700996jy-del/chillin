@@ -420,6 +420,27 @@ integration('主动发出的消息会进对话记忆，用户回一句就能对�
     assert.match(prompt, /我自己先开口提的/);
 });
 
+integration('反复出现的旧念头会带着多个时间点进入主动关怀', async () => {
+    const db = await createTestDb();
+    await seedClawAccount(db);
+    await seedFeed(db, 7401, '想把阳台改造成书房，先量一下尺寸。', 100);
+    await seedFeed(db, 7402, '上个月又想到阳台改造，书房采光应该不错。', 60);
+    await seedFeed(db, 7403, '最近还在看阳台改造的案例，要不要继续？', 10);
+    const now = cstMs(todayYmd(Date.now()), 12, 0);
+    const instant = pickOutreachInstantMs(1, now);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { message_id: 22 } }]);
+    const { env, captured } = aiEnv('你之前好像也想过这个，要不要把阳台改造继续往下做？');
+    const res = await runOutreachChecks(env, db, stub.impl, { nowMs: instant + 1000, random: () => 0.99 });
+    assert.equal(res.sent, 1);
+    const prompt = JSON.stringify(captured[0]);
+    assert.match(prompt, /不同时间写过同一件事/);
+    assert.match(prompt, /阳台/);
+    assert.match(prompt, /要不要继续/);
+    const row = await db.prepare('SELECT ref_type, ref_id FROM bot_outreach ORDER BY id DESC LIMIT 1').first();
+    assert.equal(row.ref_type, 'thread');
+    assert.match(row.ref_id, /^thread-/);
+});
+
 integration('没说出口（跳过或发送失败）就不该留下对话记忆', async () => {
     const db = await createTestDb();
     await seedClawAccount(db);

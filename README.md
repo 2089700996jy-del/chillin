@@ -16,9 +16,10 @@
 | 🧩 提示词库 | `{{变量}}` 模板参数化、填参预览、一键复制或直发 AI |
 | 📖 阅读器 | TXT 导入自动分章（GBK / UTF-8）、章节树、三档主题；**云端书库**（v2.5.100）：正文存 R2，换设备打开书架即可下载续读；**进度双向同步**（v2.5.101）：打开时双向合并、断网进度排队补推、服务端按时间戳拒绝过期写入；**本机书架补传**（v2.5.102）：早年导入、云端还没有的书会自动重组正文补推到 R2（每次会话最多 3 本） |
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
+| 🌱 长期线索 | 跨月份反复出现的念头会被聚成「正在生长的线索」：每条都带原文短句与日期，可一键写成带下一步 checklist 的笔记、设明晚 20:00 的微信提醒，或先放下 30 天；同一批线索也会进入 Bot 主动关怀，让它能说「你之前也想过这个，要不要继续」 |
 | 🤖 微信 ClawBot | 设置弹层内直接扫码绑定/解绑（二维码有效期以微信服务端状态为准；扫码后轮询确认，重定向与已绑定/配对码等异常有明确提示；图片/链接/模型等慢处理交给 `ctx.waitUntil` 后台完成并主动回推）；绑定后可在微信里记事、收藏、存提示词、看列表（最近 10 条）、改/删（先预览或确认，删除只软删）、记交流偏好（反馈先确认）、发多图（默认逐张快速识图，问表格/图表/多图共同问题时深度看图）、提问、设提醒、健康打卡，主动关怀可随时关；聊天提示词按语境自然回应，不默认共情或给建议，主动关怀同用朋友口吻；文字与识图统一走 `deepseek-flash`，显式关闭 thinking |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
-| 📶 PWA | 全部前端模块（27 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位；**v2.5.190 同步冲突保护**：每记录保存云端基线，离线双端改同一条时进入冲突中心，可选保留本地/保留云端/手动合并，旧版本先存档可恢复 |
+| 📶 PWA | 全部前端模块（28 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位；**v2.5.190 同步冲突保护**：每记录保存云端基线，离线双端改同一条时进入冲突中心，可选保留本地/保留云端/手动合并，旧版本先存档可恢复 |
 
 ## 技术栈
 
@@ -37,13 +38,13 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   style.css         全部样式（设计令牌 + Inset Grouped + 主题 + 骨架屏；单一强调色、无边框柔和阴影材质、首屏柔光渐变与留白节奏、悬浮胶囊底栏与滚动智能收起、窄屏思考轨迹头部单行收纳、移动端顶部留白收紧、PWA 更新提示去重、应用级深色主题）
   sw.js             Service Worker（预缓存全部模块，绝不把 JS 降级为 HTML）
   manifest.json     PWA 清单      _headers  安全响应头（CSP / HSTS …）      version.json  版本探测
-  js/               27 个 ES 模块（auth / sync / feeds / feature-loader / … / trusted-types）
+  js/               28 个 ES 模块（auth / sync / feeds / insights / feature-loader / … / trusted-types）
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        32 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        33 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
-                    garden-export / garden-echo / rag / rag-index / llm / ai / audit / bot-commands / bot-garden / bot-butler / bot-preferences /
+                    garden-export / garden-echo / insights / rag / rag-index / llm / ai / audit / bot-commands / bot-garden / bot-butler / bot-preferences /
                     bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-image-flow / bot-vision / bot-links /
                     maintenance）
@@ -180,6 +181,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/css.test.mjs`](tests/css.test.mjs) | 样式卫生：死动画、重复/空声明块、静默失效的 `var()`、`!important` 棘轮、过渡属性白名单、层级令牌、模糊层与单组件定义块棘轮、深色主题层与灰度分量令牌、深色下会失明的 Tailwind 色阶与链接色令牌、**亮/暗 24 组对比度实算（WCAG AA）与键盘焦点可见门禁** |
 | [`tests/a11y.test.mjs`](tests/a11y.test.mjs) | 静态外壳可访问性：表单控件的可访问名称、重复 id、img alt、外观主题控件的可访问名称与首帧主题应用、**toast live region 与错误 alert 角色** |
 | [`tests/bot-claw.test.mjs`](tests/bot-claw.test.mjs) | 微信 ClawBot（iLink 协议）：请求头与 uint32 识别码、二维码/确认/解绑生命周期、扫码重定向主机切换与 binded_redirect/need_verifycode 异常终态、长轮询游标持久化与排重、`ctx.waitUntil` 后台处理慢消息、**默认只聊天、不写花园**（仅保留短期上下文）、显式「记录：…」才写入随手记、模型失败时自然兜底且不推销记录、关于我档案的记住/遗忘、**应用内档案接口的增改查删与跨用户隔离**、**来源脚注按需触发（默认不附「依据：」，联网答案默认也不带「来源：」）**、来源标签统一成「[类型] YYYY-MM-DD」、脏 baseurl 拒绝与失败只记错误、**微信发图落成带图随手记（`item.type=2` 识别 → 明文魔数 → **AES-128-ECB + PKCS7** 解密（`aeskey` 32 位 hex，另兼容 `media.aes_key` 与「hex 再 base64」中间层，CBC 两种 IV 兜底），直链与带授权参数的地址都试，图取不到就如实告知且不落库）** |
+| [`tests/insights.test.mjs`](tests/insights.test.mjs) | 长期线索：显式标签与中文词组抽取、跨月且 ≥14 天才成线、同日重复/无共同主题不硬凑、证据带日期、Bot 候选复用、180 天用户隔离、线索转微信提醒落库（真实 SQLite） |
 | [`tests/bot-health.test.mjs`](tests/bot-health.test.mjs) | 健康打卡：一句话解析出步数/睡眠/中高强度/静息心率/体重（斤折半、千分位）、越界值点名不写库、只认显式格式不劫持聊天、一天一行 UPSERT 只覆盖本次字段、日期一律东八区、汇总只统计真的记过该字段的天（真实 SQLite） |
 | [`tests/bot-outreach.test.mjs`](tests/bot-outreach.test.mjs) | Bot 主动关怀：东八区时窗与当天唯一开口时刻、每天至多一次、刚聊完 30 分钟内不插嘴、6 小时内聊过时把最近对话当背景、只用 3 天前旧素材、随机频率闸门、模型 SKIP 否决权、内容安全、发送失败与开关接口、**主动消息写进对话记忆（带出处）**（真实 SQLite） |
 | [`tests/bot-reminders.test.mjs`](tests/bot-reminders.test.mjs) | 定点提醒：中文数字与相对/绝对时刻解析、越界与「已经过去」一律反问不猜、只软删的取消、到点必达与 10 分钟只追问一次（慢任务 2 小时）、追问失败退避重试与次数上限、超 2 小时不补发、发送失败退回 pending、同一分钟幂等（真实 SQLite） |

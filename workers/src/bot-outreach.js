@@ -25,6 +25,7 @@
  */
 
 import { sendClawText } from './bot-claw.js';
+import { buildThreadCandidates } from './insights.js';
 import { callCustomLlmWithMessages, moderateText } from './llm.js';
 import { jsonResponse, readJsonCapped } from './security.js';
 
@@ -68,7 +69,7 @@ const OUTREACH_SYSTEM_PROMPT = [
     '1. 一句话，不超过 60 个汉字，口语，不要 markdown。',
     '2. 不要问候、不要问「在吗」、不要说教、不要提建议、不要评价对方，也不要用「宝贝 / 亲爱的 / 想你」这类亲密称呼或刻意煽情。',
     '3. 不要复述原文，不要提「记录」「数据库」「花园」「检索」这类系统词。',
-    '4. 只说这条记录让你想到的东西；不确定就当没想起，回 SKIP。',
+    '4. 只说这条记录让你想到的东西；不确定就当没想起，回 SKIP。若素材是多条跨时间的同一条线索，可以点出这个念头反复出现，并轻轻问一句要不要继续。',
     '5. 若给了「你们刚聊过」，那是背景不是台词：不要复述，也不要接着追问。'
 ].join('\n');
 
@@ -200,10 +201,13 @@ export async function collectCandidates(db, userId, nowMs) {
                 kind: source.kind,
                 id: String(row.id),
                 body: body.slice(0, 400),
+                atMs: at,
                 ageDays: Math.floor(age / 86400000)
             });
         }
     }
+    // 跨月份反复出现的旧记录合成线索候选；Bot 因此能说「你之前也想过这个」。
+    out.push(...buildThreadCandidates(out, nowMs));
     return out;
 }
 
@@ -314,10 +318,19 @@ async function draftOutreach(env, db, userId, candidate, followUp) {
         const talk = await loadRecentTalkSafe(db, userId);
         if (talk) parts.push('【你们刚聊过】（这是背景，不是叫你现在接话）\n' + talk);
     }
-    parts.push('她/他 ' + candidate.ageDays + ' 天前写的一条' + candidate.kind + '：\n' + candidate.body);
-    parts.push(followUp
-        ? '如果值得，就说一句能落回这条旧记录、又不重复刚才对话的话；不值得就只回复 SKIP。'
-        : '如果值得，就直接说出那句话；不值得就只回复 SKIP。');
+    if (Array.isArray(candidate.evidence) && candidate.evidence.length >= 2) {
+        parts.push('她/他不同时间写过同一件事（' + candidate.kind + '：' + candidate.topic + '）：');
+        for (const item of candidate.evidence.slice(0, 4)) {
+            parts.push('- ' + item.date + '（' + item.label + '）：' + item.snippet);
+        }
+        parts.push('如果值得，就像突然想起来一样，点出这是反复出现的念头，并轻轻问一句要不要继续；'
+            + '不要罗列日期，不要复述原文，不要提建议；只一句话，不值得就只回复 SKIP。');
+    } else {
+        parts.push('她/他 ' + candidate.ageDays + ' 天前写的一条' + candidate.kind + '：\n' + candidate.body);
+        parts.push(followUp
+            ? '如果值得，就说一句能落回这条旧记录、又不重复刚才对话的话；不值得就只回复 SKIP。'
+            : '如果值得，就直接说出那句话；不值得就只回复 SKIP。');
+    }
     let raw = '';
     try {
         raw = await callCustomLlmWithMessages(env, [

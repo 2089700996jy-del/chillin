@@ -293,6 +293,10 @@ const openNoteEditor = (noteId = null, opts = {}) => {
         }
     } else {
         ui.currentNoteId = null; editNoteId.value = ''; editNoteTitle.value = ''; editNoteContent.value = ''; noteEditorDate.innerText = getChineseDate(); btnDeleteNote.style.display = 'none';
+        if (opts && opts.prefill) {
+            editNoteTitle.value = String(opts.prefill.title || '');
+            editNoteContent.value = String(opts.prefill.content || '');
+        }
         currentNoteAnnotations = [];
         document.getElementById('note-annotations-section').style.display = 'none';
         const blSec = document.getElementById('note-backlinks-section');

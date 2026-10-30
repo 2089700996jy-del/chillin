@@ -258,24 +258,35 @@ async function loadBoundAccount(db, userId) {
     return row || null;
 }
 
+/** 应用内线索转提醒与微信指令共用的落库入口；只做校验、限流、通道检查与写入。 */
+export async function createReminderAt(db, userId, text, fireAtMs, nowMs, followUpMs) {
+    const body = String(text == null ? '' : text).trim().slice(0, REMINDER_TEXT_MAX_CHARS);
+    const now = Number(nowMs) || Date.now();
+    const fire = Number(fireAtMs);
+    if (!body) return { ok: false, reply: '要提醒你做什么？写一句具体的事。' };
+    if (!Number.isFinite(fire) || fire <= now + REMINDER_MIN_LEAD_MS || fire > now + REMINDER_MAX_LEAD_MS) {
+        return { ok: false, reply: '提醒时间要在未来 1 分钟到 1 年之间。' };
+    }
+    const limit = await checkRateLimitShared(db, 'bot-remind:' + userId, BOT_REMIND_LIMIT.limit, BOT_REMIND_LIMIT.windowMs);
+    if (!limit.ok) return { ok: false, reply: '今天设的提醒有点多，缓 ' + Math.max(1, Math.ceil(Number(limit.retryAfter || 60) / 60)) + ' 分钟再发一次。' };
+    const active = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending'").bind(userId).first();
+    if (Number((active && active.n) || 0) >= REMINDER_MAX_ACTIVE) {
+        return { ok: false, reply: '待提醒的事已经攒到 ' + REMINDER_MAX_ACTIVE + ' 条了，先发「我的提醒」清理几条？' };
+    }
+    const account = await loadBoundAccount(db, userId);
+    if (!account) return { ok: false, reply: '我这边还没有绑定的微信通道，设了也送不到——去花园「设置 → 微信 Bot」扫码绑定后再发一次。' };
+    const follow = normalizeFollowUpMs(followUpMs) || followUpMsForText(body);
+    const res = await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, follow_up_ms, status, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0)")
+        .bind(userId, account.id, body, fire, follow).run();
+    return { ok: true, id: (res && res.meta && res.meta.last_row_id) || 0, text: body, fireAtMs: fire,
+        reply: '已记下 ✅\n> ' + formatReminderTime(fire, now) + ' — ' + body + '\n\n到点我会在微信里叫你；不想了就发「我的提醒」看编号，再发「取消提醒 <编号>」。' };
+}
 /** 设提醒：限流 → 上限 → 通道 → 落库，回执里一定写清「我理解的时间」 */
 export async function runRemind(db, userId, parsed, nowMs) {
     if (!parsed || !parsed.matched) return null;
     if (!parsed.ok) return parsed.reply;
-    const now = Number(nowMs) || Date.now();
-    const limit = await checkRateLimitShared(db, 'bot-remind:' + userId, BOT_REMIND_LIMIT.limit, BOT_REMIND_LIMIT.windowMs);
-    if (!limit.ok) return '今天设的提醒有点多，缓 ' + Math.max(1, Math.ceil(Number(limit.retryAfter || 60) / 60)) + ' 分钟再发一次。';
-    const active = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending'").bind(userId).first();
-    if (Number((active && active.n) || 0) >= REMINDER_MAX_ACTIVE) {
-        return '待提醒的事已经攒到 ' + REMINDER_MAX_ACTIVE + ' 条了，先发「我的提醒」清理几条？';
-    }
-    const account = await loadBoundAccount(db, userId);
-    if (!account) return '我这边还没有绑定的微信通道，设了也送不到——去花园「设置 → 微信 Bot」扫码绑定后再发一次。';
-    const followUpMs = normalizeFollowUpMs(parsed.followUpMs) || followUpMsForText(parsed.text);
-    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, follow_up_ms, status, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0)")
-        .bind(userId, account.id, parsed.text, parsed.fireAtMs, followUpMs).run();
-    return ['已记下 ✅', '> ' + formatReminderTime(parsed.fireAtMs, now) + ' — ' + parsed.text, '',
-        '到点我会在微信里叫你；不想了就发「我的提醒」看编号，再发「取消提醒 <编号>」。'].join('\n');
+    const created = await createReminderAt(db, userId, parsed.text, parsed.fireAtMs, nowMs, parsed.followUpMs);
+    return created.reply;
 }
 
 /** 「我的提醒」：待提醒 + 刚提醒过、还没回「完成」的 */

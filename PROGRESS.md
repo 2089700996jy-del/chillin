@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-30。供接续。当前前端/Worker：**v2.5.191**（Worker 已部署、D1 迁移 0001–0037 已应用、R2 桶 `chillin-media` 已建（21 张已搬）；见「部署」）。
+> 更新时间：2026-10-30。供接续。当前前端/Worker：**v2.5.192**（Worker 已部署、D1 迁移 0001–0037 已应用、R2 桶 `chillin-media` 已建（21 张已搬）；见「部署」）。
 
 ## 项目是什么
 
@@ -26,17 +26,18 @@
 
 > 各模块的职责与边界以 [`.agents/rules/architecture.md`](.agents/rules/architecture.md) §2.2「严格领域模块归档」表为**唯一来源**——`tests/docs.test.mjs` 强制它覆盖 `workers/src/` 下每一个文件，改代码必须同批改它；README 目录树是文件清单的另一个受校验视图。此处不再复制第二份表格（历史副本见归档文件附录）。
 
-**前端分层**（`public/`：`app.js` 编排 + `js/` 27 个 ESM）：
+**前端分层**（`public/`：`app.js` 编排 + `js/` 28 个 ESM）：
 - 基础设施：`js/config.js`、`js/state.js`、`js/utils.js`、`js/actions.js`、`js/ui.js`、`js/db.js`、`js/trusted-types.js`
 - 网络与会话：`js/api.js`（薄 facade）、`js/auth.js`、`js/sync.js`
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 32 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 33 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
 - 智能与记忆：`ai.js`、`rag.js`、`rag-index.js`、`llm.js`
+- 长期线索与行动：`insights.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
 - Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-image-flow.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
 
@@ -56,6 +57,7 @@
 | v2.5.173 | reader/upload/prompts 路由级动态 import；模块 SW stale-while-revalidate；337→338 |
 | v2.5.174–189 | 朋友口吻；记忆 FTS5；管家收藏/提示词；交流偏好；多图快速/深度看图；完整备份/一键恢复；338→356 |
 | v2.5.190–191 | 同步冲突保护：云端基线、双端检测、保留本地/云端/手动合并、快照可恢复与指纹归一化；356→361 |
+| v2.5.192 | 长期线索→行动：跨月反复主题聚类（标签/双链/中文词组），首页证据卡可写下一步/明晚微信提醒/30 天先放下；Bot 主动关怀可点出「之前也想过」；369 |
 | v2.5.162 | 搜索 120ms 防抖；笔记 60 条/批自动续载 + 搜索跳转扩窗；320→323 |
 | v2.5.161 | 登录后整页审计：5 页面亮/暗 axe 0 violation；阅读器亮/夜间/护眼正文 ≥10:1；修 8 处次级灰字；章节目录可聚焦；测试 318 → **320** |
 | v2.5.160 | 对比度/可访问性审计：亮/暗 24 组文本与控件全 ≥ AA（强调蓝 #0066CC、二级文字 0.75、底栏 #6E6E73、危险色 #D70015）；修复键盘焦点被 reset 吞掉、深色登录页黑字与 6 处小组件灰字；真机 axe 0 violation |
@@ -63,7 +65,7 @@
 | v2.5.157 | 安全收口：PBKDF2 60 万次；备份邮件每小时 3 封 + 白名单；JSON no-store；toast live region；310→316 |
 | v2.5.156 | 账号安全与备份补齐：①新增 `POST /api/auth/password`（验旧密码 → PBKDF2 重哈希 → 只保留当前会话，限流 5 次/15 分钟；旧密码输错返回 400 而不是 401，避免前端把失败当登录过期直接登出），账号弹层新增「修改密码」三输入 + 回车提交；②新增 `GET /api/export` 与 `workers/src/garden-export.js`（阅读进度、云端书库元数据、健康打卡、Bot 档案/提醒/近 200 轮对话 + 五类花园资产；显式字段白名单，绝不含会话、Bot 令牌与游标；R2 图片与书籍正文不进 JSON）；客户端 ZIP 合并 `chillin-server-backup.json` 并附 README 说明范围，离线自动降级；测试 306→**310**（auth +2 / garden +1 / backup +1），`workers/src` 26→**27** 模块 |
 | v2.5.151 | 顶栏/底栏与页面「浑然一体」：新增 `--bg-rgb` 分量令牌（亮 `248, 249, 250` / 暗 `15, 17, 21`），导航玻璃层与底栏全部由它派生（删掉第二套取色 `--nav-glass`）；顶栏静止态改透明，让 hero 光晕一直铺到状态栏、滚动才升玻璃底，iOS PWA 不再常驻玻璃底（原先状态栏区域是一条白带）；底栏改 `var(--bg-color)` 并去掉 `!important`——夜间/护眼阅读器的底栏覆盖（`--black` / `--mint-200`）终于生效；深色投影只在 `.scrolled` 出现，静止态「零线零影」。headless 逐像素复测：改前栏底 ΔR≈20 台阶、底栏比页面低 6/7/3，改后亮色 y=106→108 是 228/239/246→228/240/247（无台阶）、底栏与页面同为 248/249/250，深色底栏 15/17/21；新增 `--bg-rgb` 与 `--ios-bg` 同值静态门禁，`!important` 棘轮 230→229 |
-| v2.5.152 | 底栏「去线 + 毛玻璃通透」（用户反馈「有条线分割视觉卡在还不够通透统一」）：根因是上一版把底栏做成**不透明 `var(--bg-color)` 板 + 一条 `0 -1px 0` 顶边线**——与页面同色不等于浑然一体，那条线就是把界面切断的「卡」；现底栏直接复用**滚动后顶栏的同一块材质** `--nav-scrolled-bg`（88% 页面分量）+ `backdrop-filter: blur(20px) saturate(180%)`，`box-shadow: none`、不再画任何分割线（保留不可见的 `border-top: 1px solid transparent` 供阅读器覆盖改色），不新增任何令牌。真机逐像素（390×844 dsf2，纯 stylesheet 无行内覆盖）：静止态栏上 y=780 与栏内 y=781 都是 248/249/250（连续无台阶，旧态此处是 227/229/234 的线）；滚动 150px 后卡片从栏下经过被柔化成底纹（`backups/_nav_real_scrolled.png`）；6 档材质（不透明 / 88% / 80% / 72% / 有无投影）对照图 `backups/_nav_glass_stack.png` 选定 88% 无投影。门禁同步：`tests/css.test.mjs` 把「底栏必须铺 `var(--bg-color)`」换成三条断言（材质令牌、模糊参数、禁止 `0 -1px 0`），`!important` 229 与 `backdrop-filter` 41 两条棘轮均不变 |
+| v2.5.152 | 底栏去分割线，改用顶栏同源 88% 材质 + 毛玻璃；6 档实拍对照后选定；门禁同步 |
 | v2.5.153 | 长列表「滑到底」批次（用户反馈周记/随手记越来越多、往下滑很久）：①**A1 紧凑行**——纯文字 ≤60 字的随手记密度收窄（内边距 18/20→10/14、正文 14px/1.5、双类选择器 `.feed-item-card.feed-item-card--compact` 避开后部同优先级覆写），51 条真实列表 **8679px → 7759px（10.3 屏 → 9.2 屏）**；②**B1** 卡片 `content-visibility: auto` + `contain-intrinsic-size: auto 150px`（紧凑 76px），510 条一次性强制布局 **103ms → 11ms**，周记画廊因桌面 `column-count: 2` 刻意不加；③**B2**「加载更多」改 `IntersectionObserver`（提前 600px）自动续载、保留无 IO 浏览器的手动兜底；④**C1** 滚过 1.5 屏浮出 44pt「回到顶部」圆钮，FAB 在场时 `.above-fab` 上移一格不叠角；⑤**C3** 修搜索跳转失联——随手记首屏只渲染 100 条，命中条目落在窗口外时旧的 `document.querySelector` 查不到、点了搜索**静默无反应**，现由 `actions.ensureItemRendered` 先扩整页窗口再重查。测试 295 → **298 用例**（css +1、search +2）。**未达此前口头估算的 ~5 屏**：阈值只命中 32/51 条，其余 19 条带图/带链接仍是 217px 卡片 |
 | v2.5.154 | 底栏选中态改 Apple HIG 实心字形（filled variant），并解开被 `!important` 压死的主题色：①**实心字形**——5 个 Tab 在 `public/index.html` 里各配一组手绘实心字形 `.tab-svg-fill`，选中时实心显示、描边隐藏、标签加粗；删掉 `.active .tab-icon { translateY(-2px) scale(1.12) }`（按下缩放已由全局 `:active` 的 `scale(0.95)` 提供，叠加会「按住发软、松手浮起」），选中图标几何 **26.88px → 24px**、与未选中同基线；②**主题色复活**——`public/style.css:6517` 的重复覆写组整组删除（含 3 处 `!important`），`!important` **229 → 226**，被它压死的 `body.dark-reader-body`（纯黑底 + `--ios-blue-dark`）与 `body.eyecare-reader-body`（薄荷底 + `--garden-green`）覆盖终于生效，另补深色层 `:root[data-theme="dark"] .mobile-tab-item.active { color: var(--ios-blue-dark) }`（#0A84FF 对比度 5.18 优于 #007AFF 的 4.70）；③**无障碍**——`nav` 补 `aria-label="主导航"`、选中项运行时 `aria-current="page"`（`public/js/router.js` 同步 remove/set）、FAB 的 `aria-label` 随视图更新。CDP 四态（亮/暗/夜间/护眼）computed style 与截图均已复核；新增 2 个用例（css 17、a11y 6） |
 | 工作树 | Bot 健康打卡（小米运动健康接入的 A 方案）：一句话记一天的步数/睡眠/中高强度/静息心率/体重，落进新表 `health_daily`（一天一行，`UNIQUE(user_id, date)` + UPSERT，null 不覆盖旧值）；发「健康」回最近 7 天汇总，只统计真的记过该字段的天、不拿没记的那天当 0。解析只认显式格式（「健康打卡/记录健康/记健康」「健康：…」「健康 8500步」——宽松式必须真的解析出数值才认），普通聊天（「健康最重要了」「今天天气不错」）一律还给聊天；斤折半成公斤、千分位、越界值（心率 300、999999 步）不写库但在回执里点名；「昨晚」归昨天、日期一律东八区（UTC 深夜算第二天）。新增 `migrations/0032_health_daily.sql`、`workers/src/bot-health.js`（`maybeRunHealthCommand` 是 `bot-commands.js` 的唯一接线口）与 `tests/bot-health.test.mjs`（8 用例）；`workers/src/*` 的 500 行上限逼 `bot-commands.js` 停在 499 行；同批补上小米开放平台申请要用的两张公开静态页 `public/privacy.html` / `public/terms.html`（**无需登录即可打开**，挂进设置弹层「关于」入口 `.legal-links`，样式自包含、复用令牌、零 hex 零 `!important`），由 `tests/security.test.mjs` 新增用例守住「无脚本 / 无内联事件处理器 / 不引第三方资源 / 两页互链 / 政策须交代 Cloudflare 存储与删除方式」 |
