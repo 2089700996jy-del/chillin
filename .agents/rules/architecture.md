@@ -16,7 +16,7 @@
    * 必须保持前端在浏览器中直接可见即可执行（所写即所得）；
    * 如确需引入外部安全库（例如 DOMPurify），必须**自托管**于 `public/vendor/`（现为 `public/vendor/dompurify.min.js` 3.1.7，其 SHA-384 已与官方发布版本逐一比对），**严禁依赖任何第三方 CDN**——`public/_headers` 的 CSP `script-src` 只放行 `'self'` 与三个内联脚本的 sha256 白名单，引入 CDN 会让脚本被浏览器直接拒绝执行；
    * 杜绝在 `package.json` 中随意添加客户端运行时 `dependencies`。
-   * **首屏体积预算**：`public/` 下 JS 合计 gzip ≤ 160 KB、CSS 合计 gzip ≤ 48 KB、单文件 gzip ≤ 20 KB，由 `tests/architecture.test.mjs` 机器校验。上调预算必须是一次有意识的改动（改测试里的 `BUDGET` 并写明原因），不允许无声膨胀。
+   * **首屏体积预算**：`public/` 下 JS 合计 gzip ≤ 168 KB（v2.5.192 新增长期线索模块后上调）、CSS 合计 gzip ≤ 48 KB、单文件 gzip ≤ 20 KB，由 `tests/architecture.test.mjs` 机器校验。上调预算必须是一次有意识的改动（改测试里的 `BUDGET` 并写明原因），不允许无声膨胀。
 
 ---
 
