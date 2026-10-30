@@ -228,9 +228,9 @@ const RESOURCE_LABELS = { weeklies: '周记', notes: '笔记', bookmarks: '收�
 const RESOURCE_FIELDS = {
     weeklies: ['category', 'title', 'summary', 'date', 'cover', 'weeklyData', 'content', 'annotations'],
     notes: ['title', 'content', 'date', 'annotations'],
-    bookmarks: ['type', 'title', 'url', 'desc', 'description', 'image'],
+    bookmarks: ['type', 'title', 'url', 'description', 'image'],
     prompts: ['title', 'project', 'scene', 'content', 'description', 'tags', 'is_pinned'],
-    feeds: ['content', 'type', 'media_url', 'mediaUrl', 'summary', 'tags']
+    feeds: ['content', 'type', 'media_url', 'summary', 'tags']
 };
 
 function stableStringify(value) {
@@ -251,10 +251,17 @@ function fnv1a(text) {
 }
 
 /** 只对用户可编辑字段做稳定指纹，忽略 _dirty/updated_at 等同步噪音。 */
+function signatureValue(resource, item, field) {
+    if (resource === 'bookmarks' && field === 'description') return item.description ?? item.desc ?? '';
+    if (resource === 'feeds' && field === 'media_url') return item.media_url ?? item.mediaUrl ?? '';
+    if (field === 'is_pinned') return item.is_pinned ? 1 : 0;
+    if (field === 'cover' || field === 'image') return item[field] || '';
+    return item[field] === undefined ? null : item[field];
+}
 export function syncSignature(resource, item) {
     if (!item) return '';
     const fields = RESOURCE_FIELDS[resource] || [];
-    const text = fields.map((field) => JSON.stringify(field) + ':' + stableStringify(item[field])).join('|');
+    const text = fields.map((field) => JSON.stringify(field) + ':' + stableStringify(signatureValue(resource, item, field))).join('|');
     return fnv1a(text) + ':' + text.length;
 }
 

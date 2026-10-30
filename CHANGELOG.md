@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-30T04:24:26.535Z · 提交数：435
+> 生成时间：2026-10-30T04:26:36.958Z · 提交数：436
 
 ## 2026-10-30
 
 ### ✨ 新功能
 
+- **sync**: add edit conflict protection with recoverable snapshots
 - **backup**: 完整 D1+R2 灾难恢复清单、校验与一键恢复
 - **bot**: 多图快速识图与深度看图
 - **bot**: 增加独立交流偏好与反馈确认
