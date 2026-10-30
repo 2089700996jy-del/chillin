@@ -93,6 +93,9 @@ integration('RAG - 全历史候选：旧记录不因最近的 300 条而被挤�
 
     const result = await retrieveGardenMemories(db, 1, '我之前为什么想换模型');
     assert.ok(result.sources.some(source => source.type === '笔记' && source.id === 1), '旧记录必须从全历史候选里被找回');
+
+    const short = await retrieveGardenMemories(db, 1, '模型');
+    assert.ok(short.sources.some(source => source.type === '笔记' && source.id === 1), '两字中文词必须走 LIKE 兜底');
 });
 
 integration('RAG - wikilink 关联把没有命中关键词的目标记忆带进上下文', async () => {
