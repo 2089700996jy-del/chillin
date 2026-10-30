@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createTestDb, sqliteTest } from './fake-d1.mjs';
 import { rateLimitBuckets } from '../workers/src/security-network.js';
-import { hashPassword, PBKDF2_ITERATIONS } from '../workers/src/security-crypto.js';
+import { hashPassword, verifyPassword, PBKDF2_ITERATIONS } from '../workers/src/security-crypto.js';
 import {
     handleRegister,
     handleLogin,
@@ -165,7 +165,7 @@ integration('Auth - 修改密码校验旧密码、重哈希并只保留当前会
 
     const after = await db.prepare('SELECT password_hash FROM users WHERE id = ?1').bind(userId).first();
     assert.notEqual(after.password_hash, before.password_hash);
-    assert.match(after.password_hash, /^pbkdf2\$600000\$/);
+    assert.match(after.password_hash, /^pbkdf2\$100000\$/);
 
     // 旧密码立刻失效，新密码可以登录
     assert.equal((await handleLogin(
@@ -213,12 +213,12 @@ integration('Auth - 注册请求体超过 8KB 上限时返回 413', async () => 
     assert.equal((await handleRegister(req, env, db)).status, 413);
 });
 
-integration('Auth - 旧的 10 万次哈希在登录成功后就地升级到当前迭代数', async () => {
+integration('Auth - 旧的 5 万次哈希在登录成功后就地升级到当前迭代数', async () => {
     rateLimitBuckets.clear();
-    assert.equal(PBKDF2_ITERATIONS, 600000, '当前标准是 OWASP 2023 的 60 万次');
+    assert.equal(PBKDF2_ITERATIONS, 100000, 'Cloudflare Workers WebCrypto 的 PBKDF2 上限是 10 万次');
     const db = createTestDb();
-    const oldHash = await hashPassword('passw0rd1', 100000);
-    assert.match(oldHash, /^pbkdf2\$100000\$/);
+    const oldHash = await hashPassword('passw0rd1', 50000);
+    assert.match(oldHash, /^pbkdf2\$50000\$/);
     await db.prepare('INSERT INTO users (username, password_hash) VALUES (?1, ?2)')
         .bind('legacy', oldHash).run();
 
@@ -228,10 +228,14 @@ integration('Auth - 旧的 10 万次哈希在登录成功后就地升级到当�
     assert.equal(login.status, 200);
 
     const row = await db.prepare('SELECT password_hash FROM users WHERE username = ?1').bind('legacy').first();
-    assert.match(row.password_hash, /^pbkdf2\$600000\$/, '登录成功后应透明升级到 60 万次');
+    assert.match(row.password_hash, /^pbkdf2\$100000\$/, '登录成功后应透明升级到 10 万次');
     assert.equal((await handleLogin(
         jsonRequest('https://x/api/auth/login', { username: 'legacy', password: 'passw0rd1' }), env, db
     )).status, 200, '升级后旧密码仍可登录');
+
+    // 旧版曾写入 60 万次哈希；边缘 WebCrypto 无法计算，必须安全拒绝而不是抛错。
+    const overCap = await verifyPassword('passw0rd1', 'pbkdf2$600000$00$00');
+    assert.deepEqual(overCap, { valid: false, upgrade: false });
 });
 
 

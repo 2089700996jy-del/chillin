@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-30T06:21:25.804Z · 提交数：441
+> 生成时间：2026-10-30T06:41:38.279Z · 提交数：443
 
 ## 2026-10-30
 
@@ -18,6 +18,7 @@
 
 ### 🐛 缺陷修复
 
+- **ui**: regroup account security settings
 - **insights**: filter generic pronoun topics
 - **sync**: normalize conflict signatures for legacy field aliases
 
@@ -34,6 +35,7 @@
 
 ### 🎨 样式
 
+- **account**: keep primary action at 44px
 - **insights**: align dismiss action with card buttons
 
 ### 🔧 杂务

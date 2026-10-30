@@ -3,10 +3,14 @@
  * Includes PBKDF2 hashing, constant-time string comparison, and password rules.
  */
 
-// 密码哈希：PBKDF2-SHA256（随机盐 16 字节 + 60 万次迭代）
-// 60 万次是 OWASP 2023 对 PBKDF2-HMAC-SHA256 的推荐下限；旧哈希不强制失效，
-// 登录成功时由 verifyPassword 标记 upgrade，再用当前迭代数透明重哈希。
-export const PBKDF2_ITERATIONS = 600000;
+// 密码哈希：PBKDF2-SHA256（随机盐 16 字节 + 10 万次迭代）
+// Cloudflare Workers 的 WebCrypto 对 PBKDF2 有硬上限：超过 100000 次会抛
+// NotSupportedError（"iteration counts above 100000 are not supported"）。
+// 因此 100000 是边缘运行时能执行的最高迭代数；旧版 60 万次配置会让登录成功后的
+// 透明升级路径直接 500，v2.5.194 起统一为 10 万次。旧哈希（低于当前值）仍会在
+// 登录成功时透明升级。
+export const PBKDF2_ITERATIONS = 100000;
+export const PBKDF2_MAX_ITERATIONS = 100000;
 
 export async function hashPassword(password, iterations = PBKDF2_ITERATIONS) {
     const encoder = new TextEncoder();
@@ -43,6 +47,11 @@ export async function verifyPassword(password, stored) {
 
     const saltPairs = saltHex.match(/.{2}/g);
     if (!Number.isFinite(iter) || iter < 1 || !saltPairs || !expected) {
+        return { valid: false, upgrade: false };
+    }
+    // 旧版可能写入过 60 万次哈希；边缘 WebCrypto 无法计算。返回无效而不是抛错，
+    // 至少让接口保持 401，不会把整个登录打成 500。
+    if (iter > PBKDF2_MAX_ITERATIONS) {
         return { valid: false, upgrade: false };
     }
     const salt = new Uint8Array(saltPairs.map(h => parseInt(h, 16)));
