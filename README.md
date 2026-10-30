@@ -41,9 +41,9 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        28 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        29 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-media / garden-books /
-                    garden-export / garden-echo / rag / rag-index / llm / ai / audit / bot-commands /
+                    garden-export / garden-echo / rag / rag-index / llm / ai / audit / bot-commands / bot-garden /
                     bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-vision / bot-links /
                     maintenance）

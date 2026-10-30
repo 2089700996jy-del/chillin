@@ -13,23 +13,27 @@
  *   4. 聊天正文永不进日志（只记 id 与错误信息）。
  *
  * 指令（确定性正则，先垫一层）：
- *   帮助 / 记录：X / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
+ *   帮助 / 记录：X / 收藏：X / 提示词：X / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
  *   光杆「记录」= 确认把刚才暂存的图片/链接写进随手记（消息默认不落库，见 bot-media.js / bot-links.js）
  *   小宇宙链接 = 抓 title/cover 做速览（只认白名单域名），回「记录」才落成富链接卡片
  * 其余一律走对话模型：按语境自然回应，不默认共情、不自动写花园；仅有短期对话上下文。
  */
 
-import { handlePostFeed } from './garden-resources.js';
+import {
+    parseBookmarkCommand, parsePromptCommand, runBookmarkCommand, runPromptCommand,
+    runRecord, runCommitPendingMedia, saveFeed,
+    BOOKMARK_BARE_RE, PROMPT_BARE_RE, BOOKMARK_BARE_REPLY, PROMPT_BARE_REPLY
+} from './bot-garden.js';
+export { parseBookmarkCommand, parsePromptCommand };
 import { retrieveGardenMemories, generateFallbackReply, parseDateToYmd } from './rag.js';
 import { callCustomLlm, callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
 import {
     saveChatTurn, loadChatContext, clearChatContext,
     addProfileItem, listProfile, forgetProfile, clearProfile, loadProfilePrompt, PROFILE_MAX_ITEMS,
-    PROFILE_ITEM_MAX_CHARS,
-    readPendingMedia, clearPendingMedia
+    PROFILE_ITEM_MAX_CHARS
 } from './bot-memory.js';
-import { handleClawLinkMessage, buildManualLinkCard } from './bot-links.js';
+import { handleClawLinkMessage } from './bot-links.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
@@ -41,9 +45,6 @@ import { maybeRunHealthCommand } from './bot-health.js';
 export const BOT_MSG_TTL_MS = 10 * 60 * 1000;
 /** 每人 10 分钟最多问 20 次 AI，避免刷爆上游大模型配额 */
 export const BOT_AI_LIMIT = { limit: 20, windowMs: 10 * 60 * 1000 };
-/** 一条随手记最多收 4000 字（远小于 CRUD 的 512KB 上限） */
-export const MAX_FEED_CHARS = 4000;
-
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
@@ -52,6 +53,8 @@ export const BOT_HELP_TEXT = [
     '',
     '- 直接跟我说话：聊天、吐槽、问问题都行',
     '- 「记录：内容」：把内容存进**随手记**',
+    '- 「收藏：<标题> <链接>」：存进**收藏**；只发链接也行，标题自动取域名',
+    '- 「提示词：<标题> | <正文>」：存进**提示词库**；前面可加「[项目/场景]」',
     '- 发图片：我先说说看到什么，回「记录」才存进随手记',
     '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片；读不到就自己写标题——「记录：<标题> <链接>」',
     '- 「记住：内容」：写进「关于我」，以后都记得',
@@ -184,22 +187,6 @@ export async function claimBotMessage(db, key) {
     return seen.ok;
 }
 
-/** 存进随手记：复用既有 CRUD handler，等价于前端调 POST /api/feeds（带图或带卡片元数据时补齐 payload） */
-export async function saveFeed(db, userId, content, mediaUrl, summary, type) {
-    const payload = { content };
-    if (mediaUrl) payload.media_url = mediaUrl;
-    if (summary) payload.summary = summary;
-    if (type) payload.type = type;
-    else if (mediaUrl) payload.type = 'image';
-    const res = await handlePostFeed(new Request('https://chillin.internal/api/feeds', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-    }), db, userId);
-    if (!res.ok) console.error('[bot] 存随手记失败 status=' + res.status);
-    return res.ok;
-}
-
 const WEEKDAY_CN = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 /** 东八区当前时间 + 星期（提示词里的时间锚点；缺了星期，「这周六」会被模型算错一天） */
@@ -258,7 +245,8 @@ const CHAT_SYSTEM_PROMPT = [
     '普通聊天默认只聊天，不自动记录信息。记录、提醒、修改档案等操作仍然遵循原有指令与执行规则。\n\n【边界，必须遵守】',
     '1. 你自己没有写入能力：不要在没看到系统回执时说「已保存 / 已记录 / 存好了 / 已经存进花园」。这些动作真的发生了的话，系统会自己回执，不需要你替它说。',
     '2. 【系统真的会做的事，要照实说，别答成「我没有写入能力」】写入、提醒、上网都由指令通道执行：'
-        + '「记录：<内容>」存进随手记、「记住：<内容>」写进「关于我」档案、「忘记 <关键词>」删掉档案里的条目、'
+        + '「记录：<内容>」存进随手记、「收藏：<标题> <链接>」存进收藏、「提示词：<标题> | <正文>」存进提示词库、' +
+        '「记住：<内容>」写进「关于我」档案、「忘记 <关键词>」删掉档案里的条目、'
         + '「搜 <关键词>」翻花园历史记录、「问 <问题>」结合记忆回答、「你记得我什么」看档案、'
         + '「记录」确认刚发的那张图片或那条链接、「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
         + '提醒过后回「完成」会把它记进随手记、「健康：<数值>」记一天的步数 / 睡眠 / 心率 / 体重（发「健康」看最近 7 天汇总）、'
@@ -301,38 +289,6 @@ async function runChat(env, db, userId, text, history) {
     if (!sources.length || !wantsEvidence(text)) return moderated.text;
     return moderated.text + '\n\n---\n依据：'
         + sources.slice(0, 3).map(sourceLabel).join('、');
-}
-
-async function runRecord(db, userId, content) {
-    const feed = content.slice(0, MAX_FEED_CHARS);
-    // 用户自己写了标题（「记录：<标题> <链接>」）就顺手做成真卡片：抓不到元数据时的兜底路径，零出站
-    const card = buildManualLinkCard(feed);
-    const ok = card
-        ? await saveFeed(db, userId, feed, '', JSON.stringify(card.meta), 'link')
-        : await saveFeed(db, userId, feed);
-    if (!ok) return '保存失败了，稍后再试一次？';
-    const preview = feed.length > 160 ? feed.slice(0, 160) + '…' : feed;
-    return '已存入**随手记** ✅\n\n> ' + preview.replace(/\n/g, '\n> ');
-}
-
-/**
- * 光杆「记录」：把暂存的内容（微信图片，或小宇宙链接速览）写进随手记。
- * 消息默认不落库，所以这条路径必须存在；没有待存内容时如实说明，
- * 而不是把「记录」当成闲聊丢给模型——那会让用户以为已经存好了。
- */
-async function runCommitPendingMedia(db, userId) {
-    const pending = await readPendingMedia(db, userId);
-    if (!pending) {
-        return '这会儿没有等着存的东西——发完图或链接 1 小时内回我「记录」就行，超时我就放下了。要记文字直接发「记录：内容」。';
-    }
-    const isLink = !!pending.summary;
-    const content = String(pending.content).slice(0, MAX_FEED_CHARS);
-    if (!(await saveFeed(db, userId, content, pending.media_url, pending.summary, isLink ? 'link' : 'image'))) {
-        return '保存失败了，稍后再试一次？';
-    }
-    await clearPendingMedia(db, userId);
-    const preview = content.length > 160 ? content.slice(0, 160) + '…' : content;
-    return '已存入**随手记** ✅（' + (isLink ? '连链接卡片一起' : '连图一起') + '）\n\n> ' + preview.replace(/\n/g, '\n> ');
 }
 
 async function runRemember(db, userId, content) {
@@ -416,6 +372,14 @@ export async function runCommand(env, db, userId, content) {
 
     const record = parseRecordCommand(text);
     if (record) return runRecord(db, userId, record);
+
+    // 管家写花园：收藏与提示词都走确定性格式，不靠模型猜字段。
+    const bookmark = parseBookmarkCommand(text);
+    if (bookmark) return runBookmarkCommand(db, userId, bookmark);
+    if (BOOKMARK_BARE_RE.test(text)) return BOOKMARK_BARE_REPLY;
+    const prompt = parsePromptCommand(text);
+    if (prompt) return runPromptCommand(db, userId, prompt);
+    if (PROMPT_BARE_RE.test(text)) return PROMPT_BARE_REPLY;
 
     // 光杆「记录」：确认把刚才暂存的图片写进随手记（放在 RECORD_RE 之后，避免抢走「记录：X」）
     if (PENDING_COMMIT_RE.test(text)) return runCommitPendingMedia(db, userId);

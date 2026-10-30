@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-10-30。供后续会话快速接续。当前前端/Worker：**v2.5.184**（Worker 已部署、D1 迁移 0001–0034 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
+> 更新时间：2026-10-30。供后续会话快速接续。当前前端/Worker：**v2.5.185**（Worker 已部署、D1 迁移 0001–0034 已应用、R2 桶 `chillin-media` 已建且 21 张存量图片已搬迁；见「部署」）。
 
 ## 项目是什么
 
@@ -32,13 +32,13 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 28 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 29 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
-- 智能与记忆：`ai.js`、`rag.js`、`llm.js`
+- 智能与记忆：`ai.js`、`rag.js`、`rag-index.js`、`llm.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
-- Bot：`bot-commands.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
+- Bot：`bot-commands.js`、`bot-garden.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
 
 ## 近期已完成（摘要）
 
@@ -54,7 +54,7 @@
 | v2.5.170 | ClawBot 慢消息交给 ctx.waitUntil 后台处理并主动回推；335→336 |
 | v2.5.171–172 | modulepreload 实测：12 个拖慢 LCP，回滚为只预热 app.js；337 |
 | v2.5.173 | reader/upload/prompts 路由级动态 import；模块 SW stale-while-revalidate；337→338 |
-| v2.5.174–184 | 底栏收起；聊天朋友口吻；顶部收紧；切 flash 关思考；清死代码；长期记忆：全历史 FTS5 候选 + 关联召回；338→346 |
+| v2.5.174–185 | 底栏收起；朋友口吻；顶部收紧；切 flash 关思考；清死代码；长期记忆全历史 FTS5；管家收藏/提示词；338→347 |
 | v2.5.162 | 搜索 120ms 防抖；笔记 60 条/批自动续载 + 搜索跳转扩窗；320→323 |
 | v2.5.161 | 登录后整页审计：5 页面亮/暗 axe 0 violation；阅读器亮/夜间/护眼正文 ≥10:1；修 8 处次级灰字；章节目录可聚焦；测试 318 → **320** |
 | v2.5.160 | 对比度/可访问性审计：亮/暗 24 组文本与控件全 ≥ AA（强调蓝 #0066CC、二级文字 0.75、底栏 #6E6E73、危险色 #D70015）；修复键盘焦点被 reset 吞掉、深色登录页黑字与 6 处小组件灰字；真机 axe 0 violation |

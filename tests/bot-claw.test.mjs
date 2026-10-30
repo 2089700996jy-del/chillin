@@ -39,6 +39,8 @@ import { callCustomLlmWithMessages } from '../workers/src/llm.js';
 import { CLAW_CRON, runScheduled } from '../workers/src/maintenance.js';
 import {
     parseRecordCommand,
+    parseBookmarkCommand,
+    parsePromptCommand,
     parseRememberCommand,
     parseForgetCommand,
     normalizeCommandText,
@@ -741,6 +743,12 @@ test('Bot - 记录/记住/忘记只认显式写法，含糊语气一律不判为
     assert.equal(parseRecordCommand('今天天气不错'), null);
     assert.equal(parseRecordCommand('记录了这件事'), null, '叙述句不是指令');
 
+    assert.equal(parseBookmarkCommand('收藏：Figma https://www.figma.com'), 'Figma https://www.figma.com');
+    assert.equal(parseBookmarkCommand('帮我收藏一下 https://example.com/a'), 'https://example.com/a');
+    assert.equal(parseBookmarkCommand('我收藏了这篇文章'), null, '叙述句不触发写入');
+    assert.equal(parsePromptCommand('提示词：代码审查 | 请审查以下代码'), '代码审查 | 请审查以下代码');
+    assert.equal(parsePromptCommand('提示词 怎么写'), null, '提问不是写入指令');
+
     assert.equal(parseRememberCommand('记住：我不吃香菜'), '我不吃香菜');
     assert.equal(parseRememberCommand('记住我不吃香菜'), '我不吃香菜');
     assert.equal(parseRememberCommand('记住'), null, '没有内容不写档案');
@@ -784,6 +792,8 @@ test('Bot - 自己写了标题的「记录：<标题> <链接>」也能做成真
 test('Bot - 帮助文案不再宣称「直接发文字存入随手记」', () => {
     assert.ok(!/直接发文字/.test(BOT_HELP_TEXT), '意图反转后帮助文案必须改写');
     assert.match(BOT_HELP_TEXT, /记录：/);
+    assert.match(BOT_HELP_TEXT, /收藏：/);
+    assert.match(BOT_HELP_TEXT, /提示词：/);
     assert.match(BOT_HELP_TEXT, /重置对话/);
 });
 
@@ -939,6 +949,47 @@ integration('Bot - 「记录：<标题> <链接>」落成带标题的链接卡�
     assert.equal(meta.title, 'Ep204 未来生活指南');
     assert.equal(meta.platform, '小宇宙');
     assert.ok(!feed.media_url, '没有封面就不写 media_url');
+});
+
+integration('Bot - 管家指令：收藏与提示词分别落库，格式不对时不乱写', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const bookmarkReply = await buildBotReply({}, db, 1, '收藏：Figma https://www.figma.com/file/abc 设计协作工具');
+    assert.match(bookmarkReply, /已存入\*\*收藏\*\*/);
+    let bookmark = await db.prepare('SELECT type, title, url, description FROM bookmarks WHERE user_id = 1').first();
+    assert.equal(bookmark.type, '🌐 网站');
+    assert.equal(bookmark.title, 'Figma');
+    assert.equal(bookmark.url, 'https://www.figma.com/file/abc');
+    assert.equal(bookmark.description, '设计协作工具');
+
+    await buildBotReply({}, db, 1, '收藏：[工具] Figma 设计 https://www.figma.com/file/def');
+    bookmark = await db.prepare('SELECT type, title FROM bookmarks WHERE url = ?1').bind('https://www.figma.com/file/def').first();
+    assert.equal(bookmark.type, '🛠️ 工具');
+    assert.equal(bookmark.title, 'Figma 设计');
+
+    await buildBotReply({}, db, 1, '收藏：https://example.com/article');
+    bookmark = await db.prepare('SELECT title FROM bookmarks WHERE url = ?1').bind('https://example.com/article').first();
+    assert.equal(bookmark.title, 'example.com', '只有链接时用域名当标题');
+
+    const invalidBookmark = await buildBotReply({}, db, 1, '收藏：只有文字没有链接');
+    assert.match(invalidBookmark, /链接/);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bookmarks').first()).n, 3, '无效收藏不能落库');
+
+    const promptReply = await buildBotReply({}, db, 1, '提示词：[开发/代码] 代码审查 | 请审查以下代码并指出风险');
+    assert.match(promptReply, /已存入\*\*提示词\*\*/);
+    const prompt = await db.prepare('SELECT title, project, scene, content FROM prompts WHERE user_id = 1').first();
+    assert.equal(prompt.title, '代码审查');
+    assert.equal(prompt.project, '开发');
+    assert.equal(prompt.scene, '代码');
+    assert.equal(prompt.content, '请审查以下代码并指出风险');
+
+    await buildBotReply({}, db, 1, '提示词：周报\n请写一份本周总结');
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM prompts').first()).n, 2, '换行格式也能识别');
+
+    const invalidPrompt = await buildBotReply({}, db, 1, '提示词：只有标题');
+    assert.match(invalidPrompt, /正文/);
+    assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM prompts').first()).n, 2, '缺正文不能落库');
 });
 
 integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（全程软删）', async () => {
