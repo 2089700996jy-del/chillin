@@ -34,9 +34,12 @@
 3. **精准脏数据推送 (Delta Push 原则)**：
    * 客户端在向 `/api/sync/batch` 推送变动时，必须通过 `item._dirty === true` 严格筛选真正发生过新建或修改的记录；
    * **严禁无差别上报全量数据**，防止数据库中数百条未修改数据的 `updated_at` 时间戳被意外重置与流量浪费。
-4. **冲突裁决机制 (Last-Write-Wins)**：
-   * 客户端与云端数据冲突时，一律遵循 **最后写入胜出 (LWW)** 原则；
-   * 使用统一的 `toUpdatedTs` 工具函数对齐东八区 ISO 时间戳（`2026-09-23 10:00:00`），毫秒精度比较。
+4. **编辑冲突保护（Conflict Guard，LWW 仅作兜底）**：
+   * 每条记录在本地保存上次成功同步的基线 `{updated_at, signature}`（`gardenSyncBases`）；内容指纹只覆盖用户可编辑字段，忽略 `_dirty` 等同步噪音；
+   * 拉取时若「本地 `_dirty` + 云端相对基线已变 + 两边内容不同」，必须判定为冲突：**保留本地版本、写入冲突中心（`gardenSyncConflicts`），禁止自动合并覆盖**；
+   * 推送时携带 `base_updated_at`；服务端发现当前 `updated_at` 已不等于基线，拒绝写入并在 `conflicts` 中回传云端版本；只有用户明确选择「保留本地」或手动合并后，才允许带 `force_sync` 覆盖；
+   * 冲突中心提供「保留本地 / 保留云端 / 手动合并」，并把被覆盖的版本先写入本地历史快照（`gardenSyncHistory`，上限 30 条）；旧版本必须可恢复；
+   * 无冲突时仍使用统一的 `toUpdatedTs` 对齐东八区时间戳（`2026-09-23 10:00:00`），保留原有 LWW 合并作为兜底。
 5. **网络断网感知与自动重连同步**：
    * 在 `public/app.js` 中监听 `window.addEventListener('offline')` 与 `'online'`；
    * 断网时标记 `.is-offline` 状态并提示用户；

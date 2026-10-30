@@ -140,6 +140,52 @@ export async function fetchSoftDeletedIdSet(db, tableName, userId, items) {
     return result;
 }
 
+/**
+ * 同步乐观锁：一次查出这批记录当前归属与 updated_at，避免逐条查询。
+ * 返回 { allowed, current }：allowed 用于归属校验，current 用于冲突检测。
+ */
+export async function fetchOwnedRows(db, tableName, userId, items) {
+    if (!OWNED_TABLES.has(tableName)) throw new Error('fetchOwnedRows: unknown table ' + tableName);
+    const ids = items.map(i => i.id).filter(id => id != null && id !== '');
+    const allowed = new Set();
+    const current = new Map();
+    if (ids.length === 0) return { allowed, current };
+    const CHUNK_SIZE = 80;
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+        const chunkIds = ids.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunkIds.map((_, idx) => '?' + (idx + 1)).join(',');
+        const res = await db.prepare(
+            'SELECT id, user_id, updated_at, is_deleted FROM ' + tableName + ' WHERE id IN (' + placeholders + ')'
+        ).bind(...chunkIds).all();
+        for (const row of (res.results || [])) {
+            if (!current.has(Number(row.id))) current.set(Number(row.id), row);
+        }
+    }
+    // 按调用方传入的 ID 类型回填 allowed：字符串 id 不能因为数据库回读成数字而被判成越权。
+    for (const id of ids) {
+        const row = current.get(Number(id));
+        if (!row || Number(row.user_id) === Number(userId)) allowed.add(id);
+    }
+    return { allowed, current };
+}
+
+/** 批量写入后回读 updated_at，客户端据此更新同步基线。 */
+export async function fetchUpdatedAtMap(db, tableName, userId, ids) {
+    if (!OWNED_TABLES.has(tableName)) throw new Error('fetchUpdatedAtMap: unknown table ' + tableName);
+    const valid = ids.filter(id => id != null && id !== '');
+    const map = new Map();
+    const CHUNK_SIZE = 80;
+    for (let i = 0; i < valid.length; i += CHUNK_SIZE) {
+        const chunkIds = valid.slice(i, i + CHUNK_SIZE);
+        const placeholders = chunkIds.map((_, idx) => '?' + (idx + 2)).join(',');
+        const res = await db.prepare(
+            'SELECT id, updated_at FROM ' + tableName + ' WHERE user_id = ?1 AND id IN (' + placeholders + ')'
+        ).bind(userId, ...chunkIds).all();
+        for (const row of (res.results || [])) map.set(Number(row.id), row.updated_at);
+    }
+    return map;
+}
+
 let softDeleteSchemaReady = false;
 
 export async function ensureSoftDeleteSchema(db) {

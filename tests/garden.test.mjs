@@ -96,6 +96,33 @@ integration('Garden sync - pull returns rows, batch push applies deltas and tomb
     assert.equal(final.weeklies.filter((w) => w.id === 3001 && !w.is_deleted).length, 0);
 });
 
+integration('Garden sync - stale base_updated_at is rejected and returned as a conflict', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(`INSERT INTO notes (id, title, content, date, user_id, updated_at, is_deleted)
+        VALUES (6001, '云端标题', '云端正文', '2026-10-30', 1, '2026-10-30 11:00:00', 0)`).run();
+
+    const stale = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', {
+        notes: [{ id: '6001', title: '离线旧稿', content: '离线正文', date: '2026-10-30', base_updated_at: '2026-10-30 10:00:00' }]
+    }), db, 1);
+    const staleBody = await stale.json();
+    assert.equal(staleBody.count, 0, 'stale write must not overwrite the newer cloud row');
+    assert.equal(staleBody.conflictCount, 1);
+    assert.equal(staleBody.conflicts[0].resource, 'notes');
+    assert.equal(staleBody.conflicts[0].cloud.title, '云端标题');
+    assert.ok(!staleBody.updated.some((entry) => String(entry.id) === '6001'), '被拒绝的记录不能回传成功时间戳');
+    assert.equal((await db.prepare('SELECT title FROM notes WHERE id = 6001').first()).title, '云端标题');
+
+    // 用户明确选择“保留本地”后，force_sync 允许覆盖，并回传新的服务端时间戳。
+    const forced = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', {
+        notes: [{ id: '6001', title: '确认保留本地', content: '本地正文', date: '2026-10-30', base_updated_at: '2026-10-30 10:00:00', force_sync: true }]
+    }), db, 1);
+    const forcedBody = await forced.json();
+    assert.equal(forcedBody.count, 1);
+    assert.equal((await db.prepare('SELECT title FROM notes WHERE id = 6001').first()).title, '确认保留本地');
+    assert.ok(forcedBody.updated.some((entry) => entry.resource === 'notes' && String(entry.id) === '6001'));
+});
+
 integration('Garden sync - overlapping cursor recovers rows with the same second timestamp', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

@@ -18,7 +18,7 @@
 | 🧠 AI 记忆回响 | 基于个人历史的全域 RAG 检索、多轮代词继承、流式回答、引用卡片一键回跳原文 |
 | 🤖 微信 ClawBot | 设置弹层内直接扫码绑定/解绑（二维码有效期以微信服务端状态为准；扫码后轮询确认，重定向与已绑定/配对码等异常有明确提示；图片/链接/模型等慢处理交给 `ctx.waitUntil` 后台完成并主动回推）；绑定后可在微信里记事、收藏、存提示词、看列表（最近 10 条）、改/删（先预览或确认，删除只软删）、记交流偏好（反馈先确认）、发多图（默认逐张快速识图，问表格/图表/多图共同问题时深度看图）、提问、设提醒、健康打卡，主动关怀可随时关；聊天提示词按语境自然回应，不默认共情或给建议，主动关怀同用朋友口吻；文字与识图统一走 `deepseek-flash`，显式关闭 thinking |
 | 🔍 命令面板 | `⌘K` / `Ctrl+K` 呼出：快捷指令 + 跨模块检索 + 关键词高亮 + 全键盘导航 |
-| 📶 PWA | 全部前端模块（27 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位 |
+| 📶 PWA | 全部前端模块（27 个 `js/` 模块 + `app.js`）离线预缓存、断网降级、重连自动补偿同步、版本热更新通知；**v2.5.165** 聚合拉取支持 keyset 游标分页（每页 100 条，逐页合并后仍保留全量离线缓存）；v2.5.166 推送订阅同步失败显式提示并可重试；v2.5.167 AI 回响来源在筛选/分页后可先扩窗再定位；**v2.5.190 同步冲突保护**：每记录保存云端基线，离线双端改同一条时进入冲突中心，可选保留本地/保留云端/手动合并，旧版本先存档可恢复 |
 
 ## 技术栈
 
@@ -162,13 +162,13 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | 文件 | 覆盖范围 |
 | :--- | :--- |
 | [`tests/security.test.mjs`](tests/security.test.mjs) | 密码/令牌哈希、CSP 哈希与第三方域、共享限流与降级、代理 IP 取信、响应限长、**接口默认 no-store** |
-| [`tests/sync.test.mjs`](tests/sync.test.mjs) | 时间格式解析、LWW 合并、脏数据选择与 id 补全 |
+| [`tests/sync.test.mjs`](tests/sync.test.mjs) | 时间格式解析、LWW 兜底合并、冲突指纹与冲突保留、脏数据选择与 id 补全 |
 | [`tests/rag.test.mjs`](tests/rag.test.mjs) | 分词、停用词、时间范围解析、打分 |
 | [`tests/search.test.mjs`](tests/search.test.mjs) | 关键词高亮与 HTML 转义 |
 | [`tests/sw.test.mjs`](tests/sw.test.mjs) | 预缓存清单完整性、modulepreload 路径/依赖图门禁、模块 SWR、模块请求绝不回退 index.html |
 | [`tests/pwa-update.test.mjs`](tests/pwa-update.test.mjs) | 同一次更新只留一条 banner、自动刷新不叠 toast（最小 DOM/SW/定时器桩直接跑 `initPwaUpdates()`） |
 | [`tests/architecture.test.mjs`](tests/architecture.test.mjs) | 网关 300 行红线、子域模块 500 行上限、网关无 SQL、健康检查公开、前端首屏体积预算 |
-| [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、**keyset 游标分页**、热力图（真实 SQLite） |
+| [`tests/garden.test.mjs`](tests/garden.test.mjs) | 资源 CRUD、跨用户归属、软删墓碑、批量同步、**乐观锁冲突拒绝与 force_sync**、keyset 游标分页、热力图（真实 SQLite） |
 | [`tests/auth.test.mjs`](tests/auth.test.mjs) | 会话哈希落库、刷新轮换、设备列表、单设备/全端退出、**改密校验旧密码并只保留当前会话**（真实 SQLite） |
 | [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
 | [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象、删书连带清进度 |

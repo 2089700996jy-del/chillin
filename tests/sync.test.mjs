@@ -25,7 +25,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { mergeDataLists, toUpdatedTs, getIncrementalSyncCursor, makePushedTimestampMap, clearPushedDirtyFlags } = await import('../public/js/sync.js');
+const { mergeDataLists, toUpdatedTs, getIncrementalSyncCursor, makePushedTimestampMap, clearPushedDirtyFlags, syncSignature, processApiSyncResult, getSyncConflicts } = await import('../public/js/sync.js');
 
 test('Sync - toUpdatedTs converts various date formats accurately', () => {
     const tsIso = toUpdatedTs('2026-09-23T10:00:00+08:00');
@@ -65,6 +65,51 @@ test('Sync - mergeDataLists applies Last-Write-Wins and merges unique items', ()
     assert.equal(item1.title, '本地新周记');
     assert.equal(item2.title, '云端较新笔记', 'Cloud item with newer timestamp should win');
     assert.equal(item3.title, '云端新增提示词');
+});
+
+test('Sync - syncSignature ignores sync noise and is stable across key order', () => {
+    const a = { id: 1, title: '同一篇', content: '正文', annotations: [{ id: 'x', note: '批注' }], _dirty: true, updated_at: '2026-10-30 09:00:00' };
+    const b = { id: 1, title: '同一篇', content: '正文', annotations: [{ note: '批注', id: 'x' }], _dirty: false, updated_at: '2026-10-31 09:00:00' };
+    assert.equal(syncSignature('notes', a), syncSignature('notes', b));
+    assert.notEqual(syncSignature('notes', a), syncSignature('notes', { ...b, content: '改过的正文' }));
+});
+
+test('Sync - local dirty edit wins over changed cloud row and is recorded as a conflict', () => {
+    localStorage.clear();
+    localStorage.setItem('default_gardenSyncedIds', JSON.stringify(['9001']));
+    const local = [{ id: 9001, title: '本地版本', content: '本地正文', updated_at: '2026-10-30 09:00:00', _dirty: true }];
+    const cloud = [{ id: 9001, title: '云端版本', content: '云端正文', updated_at: '2026-10-30 10:00:00' }];
+
+    const result = processApiSyncResult(local, cloud, false, 'notes');
+    assert.equal(result.conflicts, 1);
+    assert.equal(result.needsUpload, false, '冲突项不能自动上传覆盖云端');
+    assert.equal(result.merged.find((item) => item.id === 9001).title, '本地版本');
+    const conflicts = getSyncConflicts();
+    assert.equal(conflicts.length, 1);
+    assert.equal(conflicts[0].cloud.title, '云端版本');
+    assert.equal(conflicts[0].local.title, '本地版本');
+    localStorage.clear();
+});
+
+test('Sync - local edit survives a cloud tombstone instead of being silently dropped', () => {
+    localStorage.clear();
+    localStorage.setItem('default_gardenSyncedIds', JSON.stringify(['9101']));
+    const local = [{ id: 9101, title: '离线写的正文', content: '不能丢', updated_at: '2026-10-30 09:00:00', _dirty: true }];
+    const cloud = [{ id: 9101, title: '云端已删', content: '', updated_at: '2026-10-30 10:00:00', is_deleted: true }];
+
+    const result = processApiSyncResult(local, cloud, false, 'notes');
+    assert.equal(result.conflicts, 1);
+    assert.equal(result.needsUpload, false);
+    assert.equal(result.merged.find((item) => item.id === 9101).content, '不能丢');
+    assert.equal(getSyncConflicts()[0].cloud.is_deleted, true);
+    localStorage.clear();
+});
+
+test('Sync - mergeDataLists protectKeys keeps the local version instead of silently replacing it', () => {
+    const local = [{ id: 7, title: '本地草稿', updated_at: '2026-10-30 09:00:00', _dirty: true }];
+    const cloud = [{ id: 7, title: '云端新版', updated_at: '2026-10-30 10:00:00' }];
+    const merged = mergeDataLists(local, cloud, { protectKeys: new Set(['7']) });
+    assert.equal(merged.find((item) => item.id === 7).title, '本地草稿');
 });
 
 test('Sync - clearPushedDirtyFlags preserves _dirty if modified in-flight during sync', () => {

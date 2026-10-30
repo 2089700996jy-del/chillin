@@ -138,6 +138,13 @@ export function addDeletedId(id) {
         localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(current));
     }
 }
+export function removeDeletedId(id) {
+    if (!id) return;
+    const current = getDeletedIds();
+    const str = String(id);
+    const next = current.filter((entry) => String(entry) !== str);
+    if (next.length !== current.length) localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(next));
+}
 
 export function toUpdatedTs(value) {
     if (value == null || value === '') return 0;
@@ -211,9 +218,139 @@ export function clearPushedDirtyFlags(list, pushedMap) {
     return changed;
 }
 
-export function mergeDataLists(localList, apiList) {
+// ── 同步冲突保护：base 记录上次成功同步的云端版本，冲突时不覆盖本地 ──
+const SYNC_BASES_KEY = 'gardenSyncBases';
+const SYNC_CONFLICT_KEY = 'gardenSyncConflicts';
+const SYNC_HISTORY_KEY = 'gardenSyncHistory';
+const SYNC_CONFLICT_MAX = 30;
+const SYNC_HISTORY_MAX = 30;
+const RESOURCE_LABELS = { weeklies: '周记', notes: '笔记', bookmarks: '收藏', prompts: '提示词', feeds: '随手记' };
+const RESOURCE_FIELDS = {
+    weeklies: ['category', 'title', 'summary', 'date', 'cover', 'weeklyData', 'content', 'annotations'],
+    notes: ['title', 'content', 'date', 'annotations'],
+    bookmarks: ['type', 'title', 'url', 'desc', 'description', 'image'],
+    prompts: ['title', 'project', 'scene', 'content', 'description', 'tags', 'is_pinned'],
+    feeds: ['content', 'type', 'media_url', 'mediaUrl', 'summary', 'tags']
+};
+
+function stableStringify(value) {
+    if (Array.isArray(value)) return '[' + value.map(stableStringify).join(',') + ']';
+    if (value && typeof value === 'object') {
+        return '{' + Object.keys(value).sort().map((key) => JSON.stringify(key) + ':' + stableStringify(value[key])).join(',') + '}';
+    }
+    return JSON.stringify(value === undefined ? null : value);
+}
+
+function fnv1a(text) {
+    let hash = 2166136261;
+    for (let i = 0; i < text.length; i++) {
+        hash ^= text.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
+}
+
+/** 只对用户可编辑字段做稳定指纹，忽略 _dirty/updated_at 等同步噪音。 */
+export function syncSignature(resource, item) {
+    if (!item) return '';
+    const fields = RESOURCE_FIELDS[resource] || [];
+    const text = fields.map((field) => JSON.stringify(field) + ':' + stableStringify(item[field])).join('|');
+    return fnv1a(text) + ':' + text.length;
+}
+
+let syncBasesCache = null;
+let syncBasesCacheKey = '';
+function syncBasesStore() {
+    const key = getLocalKey(SYNC_BASES_KEY);
+    if (syncBasesCache === null || syncBasesCacheKey !== key) {
+        syncBasesCacheKey = key;
+        try { syncBasesCache = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (_) { syncBasesCache = {}; }
+    }
+    return syncBasesCache;
+}
+function persistSyncBases() {
+    try { localStorage.setItem(syncBasesCacheKey || getLocalKey(SYNC_BASES_KEY), JSON.stringify(syncBasesStore())); } catch (_) {}
+}
+function syncBaseKey(resource, id) { return resource + ':' + String(id); }
+export function getSyncBase(resource, id) {
+    if (id == null) return null;
+    return syncBasesStore()[syncBaseKey(resource, id)] || null;
+}
+function writeSyncBase(resource, item, updatedAt) {
+    if (!item || item.id == null) return false;
+    const ts = updatedAt || item.updated_at || item.updatedAt || null;
+    if (!ts) return false;
+    syncBasesStore()[syncBaseKey(resource, item.id)] = { updated_at: ts, signature: syncSignature(resource, item) };
+    return true;
+}
+export function rememberSyncBase(resource, item, updatedAt) {
+    if (writeSyncBase(resource, item, updatedAt)) persistSyncBases();
+}
+export function forgetSyncBase(resource, id) {
+    const bases = syncBasesStore();
+    const key = syncBaseKey(resource, id);
+    if (bases[key]) { delete bases[key]; persistSyncBases(); }
+}
+function rememberCloudBases(resource, apiList, protectKeys) {
+    if (!Array.isArray(apiList) || !resource) return;
+    let changed = false;
+    for (const item of apiList) {
+        if (!item || item.id == null || item.is_deleted) continue;
+        if (protectKeys && protectKeys.has(String(item.id))) continue;
+        if (writeSyncBase(resource, item)) changed = true;
+    }
+    if (changed) persistSyncBases();
+}
+
+function readStoredList(key) {
+    try {
+        const value = JSON.parse(localStorage.getItem(getLocalKey(key)) || '[]');
+        return Array.isArray(value) ? value : [];
+    } catch (_) { return []; }
+}
+const SYNC_STORAGE_MAX_CHARS = 1500000;
+function saveStoredList(key, list, max) {
+    const copy = list.slice(0, max);
+    let text = JSON.stringify(copy);
+    // 冲突快照含完整正文，不能让 localStorage 一次写入直接撞配额；超限时丢最旧的快照。
+    while (text.length > SYNC_STORAGE_MAX_CHARS && copy.length > 1) {
+        copy.pop();
+        text = JSON.stringify(copy);
+    }
+    try { localStorage.setItem(getLocalKey(key), text); } catch (_) {}
+}
+
+export function getSyncConflicts() { return readStoredList(SYNC_CONFLICT_KEY); }
+export function getSyncHistory() { return readStoredList(SYNC_HISTORY_KEY); }
+
+function conflictIdentity(conflict) { return conflict.resource + ':' + String(conflict.id); }
+function persistSyncConflicts(list) { saveStoredList(SYNC_CONFLICT_KEY, list, SYNC_CONFLICT_MAX); updateSyncConflictBanner(); }
+function archiveConflictSnapshot(conflict, choice, keep) {
+    if (!conflict) return;
+    const history = readStoredList(SYNC_HISTORY_KEY);
+    history.unshift({
+        at: getEast8Time(), resource: conflict.resource, id: conflict.id,
+        label: RESOURCE_LABELS[conflict.resource] || conflict.resource,
+        choice, version: keep || null
+    });
+    saveStoredList(SYNC_HISTORY_KEY, history, SYNC_HISTORY_MAX);
+}
+export function addSyncConflict(resource, local, cloud) {
+    if (!local || local.id == null) return;
+    const list = getSyncConflicts();
+    const key = conflictIdentity({ resource, id: local.id });
+    const next = list.filter((entry) => conflictIdentity(entry) !== key);
+    next.unshift({ resource, id: local.id, local, cloud, detectedAt: getEast8Time() });
+    persistSyncConflicts(next);
+}
+export function removeSyncConflict(resource, id) {
+    persistSyncConflicts(getSyncConflicts().filter((entry) => conflictIdentity(entry) !== resource + ':' + String(id)));
+}
+
+export function mergeDataLists(localList, apiList, options = {}) {
     if (!Array.isArray(localList)) localList = [];
     if (!Array.isArray(apiList)) apiList = [];
+    const protectKeys = options.protectKeys || new Set();
 
     const deletedIds = getDeletedIds();
     const map = new Map();
@@ -232,6 +369,7 @@ export function mergeDataLists(localList, apiList) {
             continue;
         }
         const cloud = map.get(key);
+        if (protectKeys.has(key)) { map.set(key, item); continue; }
         const localTs = toUpdatedTs(item.updated_at || item.updatedAt);
         const cloudTs = toUpdatedTs(cloud.updated_at || cloud.updatedAt);
         if (localTs > cloudTs || (localTs === cloudTs && item._dirty)) {
@@ -242,9 +380,46 @@ export function mergeDataLists(localList, apiList) {
     return Array.from(map.values()).sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
 }
 
-function processApiSyncResult(localList, apiData, isIncremental = false) {
-    if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false };
+export function processApiSyncResult(localList, apiData, isIncremental = false, resource = '') {
+    if (!Array.isArray(apiData)) return { merged: localList || [], needsUpload: false, conflicts: 0 };
     const syncedIds = getSyncedIds();
+    const validApiData = apiData.filter(item => !item.is_deleted);
+    const allCloudMap = new Map(apiData.filter((item) => item && item.id != null).map((item) => [String(item.id), item]));
+    const protectKeys = new Set();
+    const localMap = new Map((localList || []).filter((item) => item && item.id != null).map((item) => [String(item.id), item]));
+    let conflicts = 0;
+
+    // 云端已变 + 本地有未推送改动 = 冲突；此时本地版本优先保留，绝不静默覆盖。
+    if (resource) {
+        for (const [key, local] of localMap) {
+            if (!local._dirty) continue;
+            const cloud = allCloudMap.get(key);
+            if (!cloud) continue;
+            if (cloud.is_deleted) {
+                removeDeletedId(local.id);
+                protectKeys.add(key);
+                addSyncConflict(resource, local, cloud);
+                conflicts++;
+                continue;
+            }
+            const base = getSyncBase(resource, local.id);
+            const localSig = syncSignature(resource, local);
+            const cloudSig = syncSignature(resource, cloud);
+            if (localSig === cloudSig) {
+                // 内容其实相同（例如两端做了同样修改），直接采纳云端时间作为新基线。
+                rememberSyncBase(resource, cloud);
+                continue;
+            }
+            const cloudChanged = base
+                ? (String(cloud.updated_at || cloud.updatedAt) !== String(base.updated_at) || cloudSig !== base.signature)
+                : true; // 没有基线时，只要两边内容不同就保守判冲突，宁可多问一次也不静默覆盖
+            if (cloudChanged) {
+                protectKeys.add(key);
+                addSyncConflict(resource, local, cloud);
+                conflicts++;
+            }
+        }
+    }
 
     const apiIds = apiData.map(item => String(item.id));
     if (!isIncremental) {
@@ -254,9 +429,12 @@ function processApiSyncResult(localList, apiData, isIncremental = false) {
         addSyncedIds(Array.from(newSynced));
     }
 
-    // Soft-delete tombstones from cloud → remember locally so we don't re-upload
+    // Soft-delete tombstones from cloud → remember locally so we don't re-upload.
+    // 本地仍有未推送改动时不吞掉它：冲突条目会先把它保留在冲突中心。
     for (const item of apiData) {
-        if (item && item.is_deleted && item.id != null) addDeletedId(item.id);
+        if (item && item.is_deleted && item.id != null && !protectKeys.has(String(item.id))) {
+            addDeletedId(item.id);
+        }
     }
     const deletedIdSet = new Set(getDeletedIds().map(String));
 
@@ -264,30 +442,24 @@ function processApiSyncResult(localList, apiData, isIncremental = false) {
         if (!item || item.id == null) return false;
         const strId = String(item.id);
         if (deletedIdSet.has(strId)) return false;
-        
-        // Soft delete from incremental sync
         const cloudItem = apiData.find(a => String(a.id) === strId);
-        if (cloudItem && cloudItem.is_deleted) return false;
-
+        if (cloudItem && cloudItem.is_deleted && !protectKeys.has(strId)) return false;
         if (item._dirty) return true;
-        
-        // Full sync: if synced but missing from cloud, it was deleted
         if (!isIncremental && syncedIds.includes(strId) && !apiIds.includes(strId)) return false;
-        
         return true;
     });
 
-    const validApiData = apiData.filter(item => !item.is_deleted);
-    const merged = mergeDataLists(activeLocal, validApiData);
+    const merged = mergeDataLists(activeLocal, validApiData, { protectKeys });
+    if (resource) rememberCloudBases(resource, validApiData, protectKeys);
 
     const needsUpload = activeLocal.some(item => {
-        if (!item._dirty) return false;
+        if (!item._dirty || protectKeys.has(String(item.id))) return false;
         const cloud = validApiData.find(a => String(a.id) === String(item.id));
         if (!cloud) return true;
         return toUpdatedTs(item.updated_at) >= toUpdatedTs(cloud.updated_at);
     });
 
-    return { merged, needsUpload };
+    return { merged, needsUpload, conflicts };
 }
 
 let syncStatusTimer = null;
@@ -327,6 +499,306 @@ export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
             }
         }, autoHideMs);
     }
+}
+
+function resourceList(resource) {
+    return {
+        weeklies: state.database,
+        notes: state.notesDatabase,
+        bookmarks: state.bookmarksDatabase,
+        prompts: state.promptsDatabase,
+        feeds: state.feedsDatabase
+    }[resource] || null;
+}
+
+function resourceLabel(resource) { return RESOURCE_LABELS[resource] || resource; }
+function conflictKeyOf(resource, id) { return resource + ':' + String(id); }
+function conflictTitle(conflict) {
+    const item = conflict.local || conflict.cloud || {};
+    return item.title || (item.content ? String(item.content).slice(0, 28) : '') || '未命名记录';
+}
+function conflictPreview(item) {
+    if (!item) return '（无）';
+    const pieces = [];
+    if (item.is_deleted) pieces.push('（云端已删除，本地版本仍保留）');
+    if (item.title) pieces.push(item.title);
+    if (item.content) pieces.push(item.content);
+    if (!pieces.length) {
+        if (item.url) pieces.push(item.url);
+        if (item.description || item.desc) pieces.push(item.description || item.desc);
+    }
+    const text = pieces.join('\n\n') || JSON.stringify(item, null, 2);
+    return text.length > 1600 ? text.slice(0, 1600) + '\n…' : text;
+}
+function conflictTime(item) { return (item && (item.updated_at || item.updatedAt)) || '未知时间'; }
+
+export function updateSyncConflictBanner() {
+    const banner = document.getElementById('sync-conflict-banner');
+    if (!banner) return;
+    const count = getSyncConflicts().length;
+    banner.hidden = count === 0;
+    const text = document.getElementById('sync-conflict-banner-text');
+    if (text) text.textContent = '有 ' + count + ' 条同步冲突待处理';
+}
+
+function renderSyncConflictHistory(container) {
+    if (!container) return;
+    container.replaceChildren();
+    const history = getSyncHistory();
+    if (!history.length) {
+        const empty = document.createElement('p');
+        empty.className = 'sync-conflict-empty';
+        empty.textContent = '还没有保留的旧版本。';
+        container.appendChild(empty);
+        return;
+    }
+    history.slice(0, 10).forEach((entry, index) => {
+        const row = document.createElement('div');
+        row.className = 'sync-conflict-history-row';
+        const label = document.createElement('span');
+        label.textContent = entry.label + ' · ' + (entry.version && (entry.version.title || (entry.version.content || '').slice(0, 16)) || '历史快照') + ' · ' + entry.at;
+        const restore = document.createElement('button');
+        restore.type = 'button';
+        restore.className = 'btn-text sync-conflict-restore';
+        restore.textContent = '恢复';
+        restore.dataset.historyIndex = String(index);
+        row.append(label, restore);
+        container.appendChild(row);
+    });
+}
+
+function renderSyncConflictCenter() {
+    const list = document.getElementById('sync-conflict-list');
+    if (!list) return;
+    const conflicts = getSyncConflicts();
+    const count = document.getElementById('sync-conflict-count');
+    if (count) count.textContent = String(conflicts.length);
+    list.replaceChildren();
+    if (!conflicts.length) {
+        const empty = document.createElement('p');
+        empty.className = 'sync-conflict-empty';
+        empty.textContent = '没有待处理的冲突。';
+        list.appendChild(empty);
+    }
+    for (const conflict of conflicts) {
+        const card = document.createElement('article');
+        card.className = 'sync-conflict-item';
+        card.dataset.resource = conflict.resource;
+        card.dataset.id = String(conflict.id);
+        const heading = document.createElement('h3');
+        heading.textContent = resourceLabel(conflict.resource) + ' · ' + conflictTitle(conflict);
+        const meta = document.createElement('p');
+        meta.className = 'sync-conflict-meta';
+        meta.textContent = '本地修改 ' + conflictTime(conflict.local) + ' · 云端修改 ' + conflictTime(conflict.cloud);
+        const panes = document.createElement('div');
+        panes.className = 'sync-conflict-versions';
+        for (const [label, item] of [['本地版本', conflict.local], ['云端版本', conflict.cloud]]) {
+            const pane = document.createElement('div');
+            pane.className = 'sync-conflict-pane';
+            const title = document.createElement('strong');
+            title.textContent = label;
+            const pre = document.createElement('pre');
+            pre.textContent = conflictPreview(item);
+            pane.append(title, pre);
+            panes.appendChild(pane);
+        }
+        const actions = document.createElement('div');
+        actions.className = 'sync-conflict-actions';
+        for (const [action, text] of [['local', '保留本地'], ['cloud', '保留云端'], ['manual', '手动合并']]) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'btn-text';
+            button.dataset.conflictAction = action;
+            button.textContent = text;
+            actions.appendChild(button);
+        }
+        const manual = document.createElement('div');
+        manual.className = 'sync-conflict-manual';
+        manual.hidden = true;
+        const titleInput = document.createElement('input');
+        titleInput.type = 'text';
+        titleInput.dataset.mergeTitle = '1';
+        titleInput.value = (conflict.local && conflict.local.title) || '';
+        titleInput.placeholder = '标题';
+        const contentInput = document.createElement('textarea');
+        contentInput.dataset.mergeContent = '1';
+        contentInput.rows = 5;
+        contentInput.value = (conflict.local && (conflict.local.content || conflict.local.description || conflict.local.desc)) || '';
+        contentInput.placeholder = '合并后的正文';
+        const save = document.createElement('button');
+        save.type = 'button';
+        save.className = 'btn-text sync-conflict-save';
+        save.dataset.conflictAction = 'save-manual';
+        save.textContent = '保存合并结果';
+        manual.append(titleInput, contentInput, save);
+        card.append(heading, meta, panes, actions, manual);
+        list.appendChild(card);
+    }
+    renderSyncConflictHistory(document.getElementById('sync-conflict-history'));
+}
+
+export function openSyncConflictCenter() {
+    renderSyncConflictCenter();
+    const modal = document.getElementById('sync-conflict-modal');
+    if (!modal) return;
+    modal.classList.add('show');
+    modal.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('sync-conflict-open');
+    document.getElementById('sync-conflict-close')?.focus();
+}
+
+export function closeSyncConflictCenter() {
+    const modal = document.getElementById('sync-conflict-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        modal.setAttribute('aria-hidden', 'true');
+    }
+    document.body.classList.remove('sync-conflict-open');
+}
+
+function replaceLocalItem(resource, item) {
+    const list = resourceList(resource);
+    if (!list) return;
+    const index = list.findIndex((entry) => String(entry.id) === String(item.id));
+    if (index >= 0) list[index] = item; else list.unshift(item);
+}
+function removeLocalItem(resource, id) {
+    const list = resourceList(resource);
+    if (!list) return;
+    const index = list.findIndex((entry) => String(entry.id) === String(id));
+    if (index >= 0) list.splice(index, 1);
+}
+
+function saveResource(resource) {
+    if (resource === 'weeklies') saveDatabase();
+    else if (resource === 'notes') saveNotesDatabase();
+    else if (resource === 'bookmarks') saveBookmarksDatabase();
+    else if (resource === 'prompts') savePromptsDatabase();
+    else if (resource === 'feeds') saveFeedsDatabase();
+}
+function refreshResource(resource) {
+    if (resource === 'weeklies') refresh('weeklies');
+    else if (resource === 'notes') refresh('notes');
+    else if (resource === 'bookmarks') refresh('bookmarks');
+    else if (resource === 'prompts') refresh('prompts');
+    else if (resource === 'feeds') refresh('feeds');
+}
+function pushConflictItem(resource, item) {
+    const api = { weeklies: apiSyncWeekly, notes: apiSyncNote, bookmarks: apiSyncBookmark, prompts: apiSyncPrompt, feeds: apiSyncFeed }[resource];
+    if (api) return api(item, 'PUT', { force: true });
+    return null;
+}
+
+function resolveConflict(conflict, choice, merged) {
+    if (!conflict) return;
+    const cloudDeleted = !!(conflict.cloud && conflict.cloud.is_deleted);
+    if (choice === 'cloud') {
+        archiveConflictSnapshot(conflict, 'keep-cloud', conflict.local);
+        if (cloudDeleted) {
+            removeLocalItem(conflict.resource, conflict.id);
+        } else {
+            const cloud = { ...(conflict.cloud || {}) };
+            cloud._dirty = false;
+            replaceLocalItem(conflict.resource, cloud);
+            rememberSyncBase(conflict.resource, cloud);
+        }
+        removeSyncConflict(conflict.resource, conflict.id);
+        saveResource(conflict.resource);
+        refreshResource(conflict.resource);
+        setSyncStatus(cloudDeleted ? '已按云端删除本地版本' : '已保留云端版本', 'ok', 1800);
+        return;
+    }
+    if (choice === 'manual') {
+        archiveConflictSnapshot(conflict, 'merge-cloud', conflict.cloud);
+        archiveConflictSnapshot(conflict, 'merge-local', conflict.local);
+    } else {
+        archiveConflictSnapshot(conflict, 'keep-local', conflict.cloud);
+    }
+    const next = { ...(merged || conflict.local || {}), _dirty: true, updated_at: getEast8Time() };
+    if (cloudDeleted) {
+        // 云端已删除；服务端拒绝复活墓碑。把本地版本另存为新记录，内容不丢。
+        removeLocalItem(conflict.resource, conflict.id);
+        next.id = null;
+        ensureLocalId(next);
+        showToast('云端已删除，本地版本已另存为新记录', 'info');
+    } else {
+        replaceLocalItem(conflict.resource, next);
+    }
+    removeSyncConflict(conflict.resource, conflict.id);
+    saveResource(conflict.resource);
+    refreshResource(conflict.resource);
+    pushConflictItem(conflict.resource, next);
+    setSyncStatus('已保留本地版本，正在重新上传', 'info');
+}
+
+async function restoreHistoryVersion(index) {
+    const entry = getSyncHistory()[index];
+    if (!entry || !entry.version) return;
+    const ok = await confirmDialog('恢复这份历史快照会覆盖当前本地版本，并作为新版本上传。确定继续吗？');
+    if (!ok) return;
+    const item = { ...entry.version, _dirty: true, updated_at: getEast8Time() };
+    replaceLocalItem(entry.resource, item);
+    removeSyncConflict(entry.resource, item.id);
+    saveResource(entry.resource);
+    refreshResource(entry.resource);
+    closeSyncConflictCenter();
+    pushConflictItem(entry.resource, item);
+    setSyncStatus('已恢复历史快照', 'ok', 1800);
+}
+
+export function initSyncConflictUI() {
+    const modal = document.getElementById('sync-conflict-modal');
+    const banner = document.getElementById('sync-conflict-banner');
+    if (!modal || modal.dataset.bound === '1') { updateSyncConflictBanner(); return; }
+    modal.dataset.bound = '1';
+    const close = document.getElementById('sync-conflict-close');
+    if (close) close.addEventListener('click', closeSyncConflictCenter);
+    modal.addEventListener('click', (event) => {
+        if (event.target === modal) closeSyncConflictCenter();
+        const action = event.target.closest('[data-conflict-action]');
+        if (!action) return;
+        const card = action.closest('.sync-conflict-item');
+        if (!card) return;
+        const conflict = getSyncConflicts().find((entry) => conflictKeyOf(entry.resource, entry.id) === conflictKeyOf(card.dataset.resource, card.dataset.id));
+        if (!conflict) return;
+        const name = action.dataset.conflictAction;
+        if (name === 'manual') {
+            const manual = card.querySelector('.sync-conflict-manual');
+            if (manual) { manual.hidden = false; manual.querySelector('textarea')?.focus(); }
+        } else if (name === 'save-manual') {
+            const merged = { ...conflict.local };
+            const title = card.querySelector('[data-merge-title]')?.value;
+            const content = card.querySelector('[data-merge-content]')?.value;
+            if (title != null && ('title' in merged)) merged.title = title;
+            if (content != null) {
+                if ('content' in merged) merged.content = content;
+                if (!('content' in merged) && 'description' in merged) merged.description = content;
+                // 收藏同时有 desc / description 两个别名，服务端优先读 desc，两个都要更新。
+                if (!('content' in merged) && 'desc' in merged) merged.desc = content;
+            }
+            resolveConflict(conflict, 'manual', merged);
+        } else if (name === 'local') {
+            resolveConflict(conflict, 'local');
+        } else if (name === 'cloud') {
+            resolveConflict(conflict, 'cloud');
+        }
+    });
+    const history = document.getElementById('sync-conflict-history');
+    if (history) history.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-history-index]');
+        if (button) restoreHistoryVersion(Number(button.dataset.historyIndex));
+    });
+    if (banner) banner.addEventListener('click', openSyncConflictCenter);
+    if (!document.body.dataset.syncConflictDocBound) {
+        document.body.dataset.syncConflictDocBound = '1';
+        document.addEventListener('click', (event) => {
+            if (event.target.closest && event.target.closest('[data-open-sync-conflicts]')) {
+                event.preventDefault();
+                openSyncConflictCenter();
+            }
+        });
+    }
+    updateSyncConflictBanner();
 }
 
 function getActiveViewId() {
@@ -513,6 +985,7 @@ export async function syncFromApi() {
     isSyncingInBg = true;
     let needsBatchUpload = false;
     let hadError = false;
+    let conflictTotal = 0;
     setSyncStatus('同步中', 'info');
     showSkeletonsForEmptyLists();
 
@@ -585,7 +1058,8 @@ export async function syncFromApi() {
                 const apiData = aggregatedData[spec.resource];
                 if (!Array.isArray(apiData)) continue;
                 const lastSync = getSyncCursor(spec.resource);
-                const { merged, needsUpload } = processApiSyncResult(spec.getList(), apiData, !!lastSync);
+                const { merged, needsUpload, conflicts } = processApiSyncResult(spec.getList(), apiData, !!lastSync, spec.resource);
+                conflictTotal += conflicts || 0;
                 if (needsUpload) needsBatchUpload = true;
                 if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
                     spec.setList(merged);
@@ -605,7 +1079,8 @@ export async function syncFromApi() {
                     const url = lastSync ? `${spec.path}?since=${encodeURIComponent(getIncrementalSyncCursor(lastSync))}` : spec.path;
                     const apiData = await apiRequest(url);
                     if (!Array.isArray(apiData)) return;
-                    const { merged, needsUpload } = processApiSyncResult(spec.getList(), apiData, !!lastSync);
+                    const { merged, needsUpload, conflicts } = processApiSyncResult(spec.getList(), apiData, !!lastSync, spec.resource);
+                    conflictTotal += conflicts || 0;
                     if (needsUpload) needsBatchUpload = true;
                     if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
                         spec.setList(merged);
@@ -626,14 +1101,23 @@ export async function syncFromApi() {
         if (needsBatchUpload) {
             try {
                 const deleted = new Set(getDeletedIds().map(String));
-                // 缺 id 的本地改动会就地补 id 后照常推送（此前会被静默丢弃）
-                const dirtyOnly = (list) => selectDirtyItems(list, deleted).map(stripClientSyncFlags);
+                const conflicted = new Set(getSyncConflicts().map(conflictIdentity));
+                // 缺 id 的本地改动会就地补 id 后照常推送（此前会被静默丢弃）；
+                // 已进入冲突中心的记录不再自动上传，等待用户选择。
+                const dirtyOnly = (list, resource) => selectDirtyItems(list, deleted)
+                    .filter((item) => !conflicted.has(resource + ':' + String(item.id)))
+                    .map((item) => {
+                        const payload = stripClientSyncFlags(item);
+                        const base = getSyncBase(resource, item.id);
+                        if (base && base.updated_at) payload.base_updated_at = base.updated_at;
+                        return payload;
+                    });
 
-                const dirtyWeeklies = dirtyOnly(state.database);
-                const dirtyNotes = dirtyOnly(state.notesDatabase);
-                const dirtyBookmarks = dirtyOnly(state.bookmarksDatabase);
-                const dirtyFeeds = dirtyOnly(state.feedsDatabase);
-                const dirtyPrompts = dirtyOnly(state.promptsDatabase);
+                const dirtyWeeklies = dirtyOnly(state.database, 'weeklies');
+                const dirtyNotes = dirtyOnly(state.notesDatabase, 'notes');
+                const dirtyBookmarks = dirtyOnly(state.bookmarksDatabase, 'bookmarks');
+                const dirtyFeeds = dirtyOnly(state.feedsDatabase, 'feeds');
+                const dirtyPrompts = dirtyOnly(state.promptsDatabase, 'prompts');
 
                 const totalDirty = dirtyWeeklies.length + dirtyNotes.length + dirtyBookmarks.length + dirtyFeeds.length + dirtyPrompts.length;
 
@@ -644,7 +1128,7 @@ export async function syncFromApi() {
                     const pushedFeeds = makePushedTimestampMap(dirtyFeeds);
                     const pushedPrompts = makePushedTimestampMap(dirtyPrompts);
 
-                    await apiRequest('/api/sync/batch', {
+                    const res = await apiRequest('/api/sync/batch', {
                         method: 'POST',
                         body: JSON.stringify({
                             weeklies: dirtyWeeklies,
@@ -654,16 +1138,59 @@ export async function syncFromApi() {
                             prompts: dirtyPrompts
                         })
                     });
+                    const resourceLists = { weeklies: state.database, notes: state.notesDatabase, bookmarks: state.bookmarksDatabase, feeds: state.feedsDatabase, prompts: state.promptsDatabase };
+                    const conflictKeys = new Set(((res && res.conflicts) || []).map((entry) => entry.resource + ':' + String(entry.id)));
+                    for (const changed of (res && res.updated) || []) {
+                        if (conflictKeys.has(changed.resource + ':' + String(changed.id))) continue;
+                        const list = resourceLists[changed.resource];
+                        const item = (list || []).find((entry) => String(entry.id) === String(changed.id));
+                        if (item && changed.updated_at) {
+                            item.updated_at = changed.updated_at;
+                            rememberSyncBase(changed.resource, item, changed.updated_at);
+                        }
+                    }
+                    for (const conflict of (res && res.conflicts) || []) {
+                        const list = resourceLists[conflict.resource];
+                        const item = (list || []).find((entry) => String(entry.id) === String(conflict.id));
+                        if (item) {
+                            item._dirty = true;
+                            addSyncConflict(conflict.resource, item, conflict.cloud);
+                            conflictTotal++;
+                        }
+                    }
 
-                    clearPushedDirtyFlags(state.database, pushedWeeklies);
-                    clearPushedDirtyFlags(state.notesDatabase, pushedNotes);
-                    clearPushedDirtyFlags(state.bookmarksDatabase, pushedBookmarks);
-                    clearPushedDirtyFlags(state.feedsDatabase, pushedFeeds);
-                    clearPushedDirtyFlags(state.promptsDatabase, pushedPrompts);
+                    // 只清除服务端确认写入的条目：无效/越权/未落库的本地改动继续保持 dirty，
+                    // 否则一次成功响应会把它们静默丢掉。旧 Worker 不返回 updated 时退回原行为。
+                    const hasUpdatedField = !!(res && Array.isArray(res.updated));
+                    const updatedKeys = new Set(((res && res.updated) || []).map((entry) => entry.resource + ':' + String(entry.id)));
+                    // 服务端时间可能比本地推送时间晚 1–2 秒；把回传时间并入 map，
+                    // 否则 clearPushedDirtyFlags 会因「当前时间 > 推送时间」而永远清不掉。
+                    for (const changed of (res && res.updated) || []) {
+                        const map = { weeklies: pushedWeeklies, notes: pushedNotes, bookmarks: pushedBookmarks, feeds: pushedFeeds, prompts: pushedPrompts }[changed.resource];
+                        if (!map || !changed.updated_at) continue;
+                        const key = String(changed.id);
+                        const old = map.get(key) || 0;
+                        map.set(key, Math.max(old, toUpdatedTs(changed.updated_at)));
+                    }
+                    const onlyWritten = (map, resource) => !hasUpdatedField
+                        ? map
+                        : new Map([...map].filter(([id]) => updatedKeys.has(resource + ':' + String(id))));
+                    clearPushedDirtyFlags(state.database, onlyWritten(pushedWeeklies, 'weeklies'));
+                    clearPushedDirtyFlags(state.notesDatabase, onlyWritten(pushedNotes, 'notes'));
+                    clearPushedDirtyFlags(state.bookmarksDatabase, onlyWritten(pushedBookmarks, 'bookmarks'));
+                    clearPushedDirtyFlags(state.feedsDatabase, onlyWritten(pushedFeeds, 'feeds'));
+                    clearPushedDirtyFlags(state.promptsDatabase, onlyWritten(pushedPrompts, 'prompts'));
+
+                    // 服务端拒绝覆盖的记录继续保持 dirty，不能被“已同步”误清。
+                    for (const conflict of (res && res.conflicts) || []) {
+                        const list = resourceLists[conflict.resource];
+                        const item = (list || []).find((entry) => String(entry.id) === String(conflict.id));
+                        if (item) item._dirty = true;
+                    }
 
                     saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase(); savePromptsDatabase();
                 }
-                setSyncStatus('已同步', 'ok', 2000);
+                setSyncStatus(conflictTotal > 0 ? '同步冲突待处理' : '已同步', conflictTotal > 0 ? 'warn' : 'ok', conflictTotal > 0 ? 0 : 2000);
             } catch (e) {
                 hadError = true;
                 setSyncStatus('未同步', 'warn');
@@ -696,9 +1223,12 @@ export async function syncFromApi() {
                     syncFromApi();
                 }, 12000);
             }
+        } else if (conflictTotal > 0 || getSyncConflicts().length > 0) {
+            setSyncStatus('同步冲突待处理', 'warn');
         } else if (!needsBatchUpload) {
             setSyncStatus('已同步', 'ok', 2000);
         }
+        updateSyncConflictBanner();
     } finally {
         isSyncingInBg = false;
     }
@@ -740,47 +1270,67 @@ function handleSyncFailure(err) {
     }
 }
 
-function apiSyncResource(apiPath, item, method) {
+function apiSyncResource(resource, apiPath, item, method, opts = {}) {
     // 单条推送同样要保证 id：服务端缺 id 时会自增另赋，客户端将永远对不上
     if (method !== 'DELETE' && item) ensureLocalId(item);
-    const payload = method === 'DELETE' ? item : stampLocalUpdate({ ...item });
-    if (method !== 'DELETE' && item) {
-        item.updated_at = payload.updated_at;
-        item._dirty = true;
+    if (method === 'DELETE') {
+        return apiRequest(`${apiPath}/${item.id}`, { method: 'DELETE' })
+            .then((res) => { setSyncStatus('已同步', 'ok', 1800); return res; })
+            .catch((err) => { handleSyncFailure(err); return null; });
     }
-    const bm = method === 'DELETE'
-        ? { method: 'DELETE' }
-        : { method, body: JSON.stringify(stripClientSyncFlags(payload)) };
-    const id = method === 'POST' ? '' : `/${item.id}`;
-    return apiRequest(`${apiPath}${id}`, bm).then((res) => {
-        if (method !== 'DELETE') {
-            // 兜底：服务端若回填了 id（历史无 id 数据），以服务端为准再标记同步
-            if (item && item.id == null && res && res.id != null) item.id = res.id;
-            markSyncedItem(item, payload.updated_at);
+
+    const payload = stampLocalUpdate({ ...item });
+    item.updated_at = payload.updated_at;
+    item._dirty = true;
+    const base = getSyncBase(resource, item.id);
+    if (base && base.updated_at && !opts.force) payload.base_updated_at = base.updated_at;
+    if (opts.force) payload.force_sync = true;
+
+    return apiRequest('/api/sync/batch', {
+        method: 'POST',
+        body: JSON.stringify({ [resource]: [stripClientSyncFlags(payload)] })
+    }).then((res) => {
+        const conflict = (res && res.conflicts || []).find((entry) => String(entry.id) === String(item.id));
+        if (conflict) {
+            item._dirty = true;
+            addSyncConflict(resource, item, conflict.cloud);
+            setSyncStatus('同步冲突待处理', 'warn');
+            return res;
         }
+        const changed = (res && res.updated || []).find((entry) => String(entry.id) === String(item.id));
+        if (!changed) {
+            item._dirty = true;
+            setSyncStatus('未同步', 'warn');
+            return res;
+        }
+        if (changed.updated_at) {
+            item.updated_at = changed.updated_at;
+            rememberSyncBase(resource, item, changed.updated_at);
+        }
+        markSyncedItem(item, changed.updated_at || payload.updated_at);
         setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });
 }
 
-export function apiSyncWeekly(item, method) {
-    return apiSyncResource('/api/weeklies', item, method);
+export function apiSyncWeekly(item, method, opts) {
+    return apiSyncResource('weeklies', '/api/weeklies', item, method, opts);
 }
 
-export function apiSyncNote(item, method) {
-    return apiSyncResource('/api/notes', item, method);
+export function apiSyncNote(item, method, opts) {
+    return apiSyncResource('notes', '/api/notes', item, method, opts);
 }
 
-export function apiSyncBookmark(item, method) {
-    return apiSyncResource('/api/bookmarks', item, method);
+export function apiSyncBookmark(item, method, opts) {
+    return apiSyncResource('bookmarks', '/api/bookmarks', item, method, opts);
 }
 
-export function apiSyncPrompt(item, method) {
-    return apiSyncResource('/api/prompts', item, method);
+export function apiSyncPrompt(item, method, opts) {
+    return apiSyncResource('prompts', '/api/prompts', item, method, opts);
 }
 
-export function apiSyncFeed(item, method) {
-    return apiSyncResource('/api/feeds', item, method);
+export function apiSyncFeed(item, method, opts) {
+    return apiSyncResource('feeds', '/api/feeds', item, method, opts);
 }
 
 export function filterRealGuestItems(list, defaultIds) {
@@ -898,6 +1448,7 @@ function requestAutoSync(minGapMs = 2500) {
 }
 
 export function startAutoSyncEngine() {
+    initSyncConflictUI();
     if (autoSyncInterval) clearInterval(autoSyncInterval);
     // 省电：以前台切回/联网为主；前台常开时最多约每 5 分钟兜底一次（原 15 秒）
     autoSyncInterval = setInterval(() => {

@@ -2,24 +2,8 @@
  * Garden Sync & Stats
  * Single-RTT aggregated pull, delta batch push and the activity heatmap.
  */
-import {
-    jsonResponse,
-    isValidRecordId,
-    readTextCapped,
-    readJsonCapped,
-    checkRateLimitShared,
-    rateLimitedResponse
-} from './security.js';
-import {
-    extractTagsFromContent,
-    formatWeekly,
-    formatNote,
-    formatBookmark,
-    formatPrompt,
-    formatFeed,
-    fetchSoftDeletedIdSet,
-    OWNED_TABLES
-} from './garden-shared.js';
+import { jsonResponse, isValidRecordId, readTextCapped, readJsonCapped, checkRateLimitShared, rateLimitedResponse } from './security.js';
+import { extractTagsFromContent, formatWeekly, formatNote, formatBookmark, formatPrompt, formatFeed, fetchSoftDeletedIdSet, fetchOwnedRows, fetchUpdatedAtMap } from './garden-shared.js';
 
 export const D1_BATCH_MAX_SIZE = 100;
 
@@ -191,37 +175,42 @@ export async function handleSyncBatch(request, db, userId) {
     }
 
     const statements = [];
+    const conflicts = [];
+    const conflictSeen = new Set();
+    const pushedIds = { weeklies: [], notes: [], bookmarks: [], feeds: [], prompts: [] };
 
-    const fetchOwnedSet = async (tableName, items) => {
-        if (!OWNED_TABLES.has(tableName)) throw new Error('fetchOwnedSet: unknown table ' + tableName);
-        const ids = items.map(i => i.id).filter(id => id != null && id !== '' && isValidRecordId(id));
-        if (ids.length === 0) return new Set();
-        const allowed = new Set();
-        const CHUNK_SIZE = 80;
-        for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
-            const chunkIds = ids.slice(i, i + CHUNK_SIZE);
-            const placeholders = chunkIds.map((_, idx) => `?${idx + 1}`).join(',');
-            const res = await db.prepare(`SELECT id, user_id FROM ${tableName} WHERE id IN (${placeholders})`).bind(...chunkIds).all();
-            const existingMap = new Map((res.results || []).map(r => [r.id, r.user_id]));
-            for (const id of chunkIds) {
-                if (!existingMap.has(id) || Number(existingMap.get(id)) === Number(userId)) {
-                    allowed.add(id);
-                }
-            }
-        }
-        return allowed;
-    };
-
-    // 归属校验与墓碑校验并发执行：原来是 10 组串行 await（组内还按 80 个 id 再分块），
-    // 批量推送的 P95 全被往返次数拖住。分成两批并发，避免同时压 10 条查询。
-    const [allowedWeeklies, allowedNotes, allowedBookmarks, allowedFeeds, allowedPrompts] = await Promise.all([
-        fetchOwnedSet('weeklies', weeklies),
-        fetchOwnedSet('notes', notes),
-        fetchOwnedSet('bookmarks', bookmarks),
-        fetchOwnedSet('quick_feeds', feeds),
-        fetchOwnedSet('prompts', prompts)
+    // 归属校验、当前 updated_at 与墓碑校验并发执行；currentRows 用于乐观锁：
+    // 客户端带上 base_updated_at，服务端发现云端已变则拒绝覆盖。
+    const [ownedWeeklies, ownedNotes, ownedBookmarks, ownedFeeds, ownedPrompts] = await Promise.all([
+        fetchOwnedRows(db, 'weeklies', userId, weeklies),
+        fetchOwnedRows(db, 'notes', userId, notes),
+        fetchOwnedRows(db, 'bookmarks', userId, bookmarks),
+        fetchOwnedRows(db, 'quick_feeds', userId, feeds),
+        fetchOwnedRows(db, 'prompts', userId, prompts)
     ]);
+    const allowedWeeklies = ownedWeeklies.allowed;
+    const allowedNotes = ownedNotes.allowed;
+    const allowedBookmarks = ownedBookmarks.allowed;
+    const allowedFeeds = ownedFeeds.allowed;
+    const allowedPrompts = ownedPrompts.allowed;
 
+    const checkConflict = async (resource, item, currentRows, formatter, tableName) => {
+        if (!item || item.id == null || item.force_sync) return false;
+        const current = currentRows.get(Number(item.id));
+        if (!current || Number(current.is_deleted) === 1 || !item.base_updated_at) return false;
+        if (String(current.updated_at) === String(item.base_updated_at)) return false;
+        const key = resource + ":" + item.id;
+        if (!conflictSeen.has(key)) {
+            conflictSeen.add(key);
+            // 时间戳查询只取轻量列；真正冲突时才回读完整正文，避免每次推送都搬运大字段。
+            let full = current;
+            try {
+                full = await db.prepare('SELECT * FROM ' + tableName + ' WHERE id = ?1').bind(item.id).first() || current;
+            } catch (_) {}
+            conflicts.push({ resource, id: item.id, cloud: formatter(full) });
+        }
+        return true;
+    };
     const [deletedWeeklies, deletedNotes, deletedBookmarks, deletedFeeds, deletedPrompts] = await Promise.all([
         fetchSoftDeletedIdSet(db, 'weeklies', userId, weeklies),
         fetchSoftDeletedIdSet(db, 'notes', userId, notes),
@@ -235,6 +224,8 @@ export async function handleSyncBatch(request, db, userId) {
         if (weeklies.length > 1 && item.id === 1) continue;
         if (item.id != null && !allowedWeeklies.has(item.id)) continue;
         if (item.id != null && deletedWeeklies.has(Number(item.id))) continue;
+        if (await checkConflict('weeklies', item, ownedWeeklies.current, formatWeekly, 'weeklies')) continue;
+        pushedIds.weeklies.push(item.id);
         const weeklyData = item.weeklyData ? JSON.stringify(item.weeklyData) : null;
         const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
         statements.push(
@@ -251,6 +242,8 @@ export async function handleSyncBatch(request, db, userId) {
         if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
         if (item.id != null && !allowedNotes.has(item.id)) continue;
         if (item.id != null && deletedNotes.has(Number(item.id))) continue;
+        if (await checkConflict('notes', item, ownedNotes.current, formatNote, 'notes')) continue;
+        pushedIds.notes.push(item.id);
         const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
         statements.push(
             db.prepare(
@@ -266,6 +259,8 @@ export async function handleSyncBatch(request, db, userId) {
         if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
         if (item.id != null && !allowedBookmarks.has(item.id)) continue;
         if (item.id != null && deletedBookmarks.has(Number(item.id))) continue;
+        if (await checkConflict('bookmarks', item, ownedBookmarks.current, formatBookmark, 'bookmarks')) continue;
+        pushedIds.bookmarks.push(item.id);
         const image = item.image || item.img || null;
         const description = item.desc || item.description || '';
         statements.push(
@@ -282,6 +277,8 @@ export async function handleSyncBatch(request, db, userId) {
         if (feeds.length > 1 && item.id === 1) continue;
         if (item.id != null && !allowedFeeds.has(item.id)) continue;
         if (item.id != null && deletedFeeds.has(Number(item.id))) continue;
+        if (await checkConflict('feeds', item, ownedFeeds.current, formatFeed, 'quick_feeds')) continue;
+        if (item.id) pushedIds.feeds.push(item.id);
         const content = item.content || '';
         const type = item.type || (content.match(/^https?:\/\//i) ? 'link' : 'text');
         const mediaUrl = item.media_url || item.mediaUrl || null;
@@ -312,12 +309,14 @@ export async function handleSyncBatch(request, db, userId) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
         if (item.id != null && !allowedPrompts.has(item.id)) continue;
         if (item.id != null && deletedPrompts.has(Number(item.id))) continue;
+        if (await checkConflict('prompts', item, ownedPrompts.current, formatPrompt, 'prompts')) continue;
         const title = (item.title || '').trim();
         const content = (item.content || '').trim();
         if (!title || !content) continue;
         const project = (item.project || '通用').trim();
         const scene = (item.scene || '开发').trim();
         const description = (item.description || item.desc || '').trim();
+        pushedIds.prompts.push(item.id);
         const tags = (item.tags || '').trim();
         const isPinned = item.is_pinned ? 1 : 0;
         statements.push(
@@ -328,11 +327,26 @@ export async function handleSyncBatch(request, db, userId) {
             ).bind(item.id, title, project, scene, content, description, tags, isPinned, userId)
         );
     }
-
     if (statements.length > 0) {
         await executeStatementsInChunks(db, statements);
     }
-    return jsonResponse({ success: true, count: statements.length }, 200);
+
+    // 回读服务端真实 updated_at，客户端用它作为下一次乐观锁基线，避免本地时钟与服务端不一致。
+    const updated = [];
+    await Promise.all([
+        fetchUpdatedAtMap(db, 'weeklies', userId, pushedIds.weeklies).then(map => map.forEach((ts, id) => updated.push({ resource: 'weeklies', id, updated_at: ts }))),
+        fetchUpdatedAtMap(db, 'notes', userId, pushedIds.notes).then(map => map.forEach((ts, id) => updated.push({ resource: 'notes', id, updated_at: ts }))),
+        fetchUpdatedAtMap(db, 'bookmarks', userId, pushedIds.bookmarks).then(map => map.forEach((ts, id) => updated.push({ resource: 'bookmarks', id, updated_at: ts }))),
+        fetchUpdatedAtMap(db, 'quick_feeds', userId, pushedIds.feeds).then(map => map.forEach((ts, id) => updated.push({ resource: 'feeds', id, updated_at: ts }))),
+        fetchUpdatedAtMap(db, 'prompts', userId, pushedIds.prompts).then(map => map.forEach((ts, id) => updated.push({ resource: 'prompts', id, updated_at: ts })))
+    ]);
+    return jsonResponse({
+        success: true,
+        count: statements.length,
+        updated,
+        conflicts: conflicts.slice(0, 10),
+        conflictCount: conflicts.length
+    }, 200);
 }
 
 // ── Heatmap & Export ──
