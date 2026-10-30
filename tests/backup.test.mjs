@@ -1,5 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import fsSync from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import zlib from 'node:zlib';
+import { BACKUP_FORMAT, MANIFEST_HASH_NAME, MANIFEST_NAME, assertSafeR2Key, safeResolve, sha256File, sha256Text, verifyBackup } from '../scripts/backup-kit.mjs';
+import { exportD1Full, resetD1Database } from '../scripts/d1-export.mjs';
 
 // Node.js test environment mock for browser globals
 if (typeof globalThis.window === 'undefined') {
@@ -39,6 +46,7 @@ const {
     STORAGE_KEY_GUARD_INTERVAL
 } = await import('../public/js/backup.js');
 const { handleBackupEmail } = await import('../workers/src/garden-sync.js');
+
 const { rateLimitBuckets } = await import('../workers/src/security-network.js');
 const { state } = await import('../public/js/state.js');
 
@@ -342,4 +350,124 @@ test('Backup - 备份邮件支持收件人白名单并净化附件文件名', as
     } finally {
         globalThis.fetch = originalFetch;
     }
+});
+
+async function makeFullBackupFixture(root) {
+    await fs.mkdir(path.join(root, 'r2', 'uploads', '1'), { recursive: true });
+    const sql = 'CREATE TABLE notes (id INTEGER PRIMARY KEY, title TEXT);\n'
+        + "INSERT INTO notes (title) VALUES ('backup verify');\n";
+    await fs.writeFile(path.join(root, 'chillin-d1.sql.gz'), zlib.gzipSync(Buffer.from(sql)));
+    await fs.writeFile(path.join(root, 'r2', 'uploads', '1', 'a.txt'), 'image bytes');
+    const d1 = await fs.stat(path.join(root, 'chillin-d1.sql.gz'));
+    const object = await fs.stat(path.join(root, 'r2', 'uploads', '1', 'a.txt'));
+    const manifest = {
+        format: BACKUP_FORMAT,
+        createdAt: new Date().toISOString(),
+        appVersion: 'test',
+        target: 'local',
+        complete: true,
+        hashAlgorithm: 'sha256',
+        d1: {
+            file: 'chillin-d1.sql.gz', size: d1.size, sha256: await sha256File(path.join(root, 'chillin-d1.sql.gz')),
+            sqlSha256: sha256Text(sql), tables: ['notes'], migrations: []
+        },
+        r2: {
+            bucket: 'chillin-media',
+            objects: [{
+                key: 'uploads/1/a.txt', category: 'image', expectedSize: object.size,
+                mime: 'text/plain', path: 'r2/uploads/1/a.txt', size: object.size,
+                sha256: await sha256File(path.join(root, 'r2', 'uploads', '1', 'a.txt')), status: 'ok'
+            }],
+            totals: { objects: 1, bytes: object.size }
+        }
+    };
+    await fs.writeFile(path.join(root, MANIFEST_NAME), JSON.stringify(manifest, null, 2));
+    await fs.writeFile(path.join(root, MANIFEST_HASH_NAME), (await sha256File(path.join(root, MANIFEST_NAME))) + '\n');
+    return manifest;
+}
+
+test('Backup - 完整清单校验 D1 与每个 R2 对象的大小和 SHA-256', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chillin-full-backup-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    await makeFullBackupFixture(root);
+    const ok = await verifyBackup(root);
+    assert.equal(ok.ok, true, ok.errors.join('; '));
+    assert.equal(ok.stats.r2Objects, 1);
+    assert.equal(ok.stats.r2Verified, 1);
+    assert.equal(ok.stats.manifestHashVerified, true);
+
+    await fs.appendFile(path.join(root, 'r2', 'uploads', '1', 'a.txt'), 'tampered');
+    const broken = await verifyBackup(root);
+    assert.equal(broken.ok, false);
+    assert.ok(broken.errors.some((e) => /SHA-256|大小/.test(e)));
+});
+
+test('Backup - 清单路径与 R2 键拒绝目录穿越', async (t) => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'chillin-full-path-'));
+    t.after(() => fs.rm(root, { recursive: true, force: true }));
+    assert.throws(() => safeResolve(root, '../outside'), /越出/);
+    assert.throws(() => assertSafeR2Key('uploads/../secret'), /不能包含/);
+    assert.throws(() => assertSafeR2Key('/etc/passwd'), /绝对路径/);
+});
+
+test('Backup - D1 恢复前清空旧表：保留内部表，先删 FTS shadow 再删虚表', async () => {
+    let resetSql = '';
+    const run = (args) => {
+        if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--command')) {
+            return JSON.stringify([{ results: [
+                { name: 'notes' },
+                { name: '_cf_KV' },
+                { name: 'memory_fts' },
+                { name: 'memory_fts_data' },
+                { name: 'd1_migrations' }
+            ] }]);
+        }
+        if (args[0] === 'd1' && args[1] === 'execute' && args.includes('--file')) {
+            resetSql = fsSync.readFileSync(args[args.indexOf('--file') + 1], 'utf8');
+            return '';
+        }
+        throw new Error('unexpected command: ' + args.join(' '));
+    };
+    const dropped = resetD1Database(run, 'DB', '--remote');
+    assert.equal(dropped, 4);
+    assert.match(resetSql, /PRAGMA foreign_keys=OFF/);
+    assert.ok(!/_cf_KV/.test(resetSql), '不能删除 D1 内部 _cf_KV');
+    assert.ok(resetSql.indexOf('memory_fts_data') < resetSql.indexOf('"memory_fts"'), '先删 shadow 再删虚表');
+    assert.match(resetSql, /DROP TABLE IF EXISTS "d1_migrations"/);
+});
+
+test('Backup - D1 导出兼容 FTS5：schema 含虚表/触发器，数据只导真实表', async (t) => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'chillin-d1-export-'));
+    t.after(() => fs.rm(dir, { recursive: true, force: true }));
+    const out = path.join(dir, 'dump.sql');
+    const seen = [];
+    const run = (args) => {
+        seen.push(args);
+        const command = args.includes('--command') ? args[args.indexOf('--command') + 1] : '';
+        if (args[0] === 'd1' && args[1] === 'execute' && /SELECT type/.test(command)) {
+            return JSON.stringify([{ results: [
+                { type: 'table', name: 'notes', sql: 'CREATE TABLE notes (id INTEGER PRIMARY KEY);' },
+                { type: 'table', name: 'memory_fts', sql: 'CREATE VIRTUAL TABLE memory_fts USING fts5(title);' },
+                { type: 'trigger', name: 'trg_notes', sql: 'CREATE TRIGGER trg_notes AFTER INSERT ON notes BEGIN SELECT 1; END;' }
+            ] }]);
+        }
+        if (args[0] === 'd1' && args[1] === 'execute' && /SELECT name/.test(command)) {
+            return JSON.stringify([{ results: [{ name: 'notes' }] }]);
+        }
+        if (args[0] === 'd1' && args[1] === 'export') {
+            const idx = args.indexOf('--output');
+            fsSync.writeFileSync(args[idx + 1], 'INSERT INTO "notes" VALUES(1);\n');
+            return '';
+        }
+        throw new Error('unexpected command: ' + args.join(' '));
+    };
+
+    const result = exportD1Full({ run, binding: 'DB', target: '--remote', output: out });
+    const sql = await fs.readFile(out, 'utf8');
+    assert.deepEqual(result.tables, ['notes']);
+    assert.match(sql, /CREATE VIRTUAL TABLE memory_fts/);
+    assert.match(sql, /CREATE TRIGGER trg_notes/);
+    assert.match(sql, /INSERT INTO "notes"/);
+    assert.ok(!/memory_fts_data/.test(sql), 'FTS shadow 表不能进入数据导出');
+    assert.ok(seen.some((args) => args.includes('--no-schema')));
 });

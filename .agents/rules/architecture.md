@@ -74,3 +74,12 @@
 
 1. **迁移一致性**：所有数据库表结构变动必须在 `migrations/` 下按编号规范创建新的 `.sql` 迁移文件（如 `0015_xxx.sql`），禁止在代码中执行破坏性无记录 DDL；
 2. **边缘查询就近优化**：利用 D1 与 Worker 同机房特性，多表读取优先通过 `Promise.all` 并发预编译执行，禁止低效嵌套串行查询。
+
+### 3.1 完整备份与灾难恢复
+
+* **完整备份必须同时覆盖 D1 与 R2**：`npm run backup:full` 生成 `backups/full-<UTC>/`，内含 D1 SQL、`r2/uploads/`、`r2/books/` 和 `manifest.json`；清单逐个记录 R2 key、size、SHA-256、MIME，D1 记录 gzip/SQL 双层哈希、表清单与迁移版本。
+* **D1 含 FTS5 时不能直接 `wrangler d1 export`**（会报 “cannot export databases with virtual tables”）：`scripts/d1-export.mjs` 从 `sqlite_master` 取 schema（含 FTS 虚表与触发器），只对真实表导数据；恢复时由 0034 的触发器重建 `memory_fts`。
+* **恢复顺序固定为 R2 → D1**：先恢复对象，再恢复会立即指向这些对象的元数据；`npm run restore:full -- <dir> --yes` 是远端生产入口，默认先清空旧业务表（`--no-reset` 可保留），`--local` 用于演练，`--dry-run` 只校验不写入。
+* **校验是恢复前置条件**：`npm run backup:verify -- <dir>` 校验每个文件的大小与 SHA-256、D1 gzip/SQL 可解压、清单自哈希和路径穿越；任何一项失败都拒绝恢复。
+* **定期演练**：`npm run backup:drill` 在临时独立目录生成/复制/破坏/再校验最小备份；`Restore Drill` GitHub Actions 每周跑一次。真实生产包仍应每季度恢复到 staging D1/R2 抽查。
+* **R2 二进制不会自动异桶**：完整备份目录默认留在本机；必须复制到离线介质或另一个账号/桶，否则源桶丢失时清单本身无法恢复图片。历史 `backups/` 快照不重复打包，避免自我引用。

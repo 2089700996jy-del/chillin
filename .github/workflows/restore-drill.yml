@@ -1,0 +1,35 @@
+name: Restore Drill
+
+# 每周在干净的 GitHub runner 里生成一份最小备份，校验哈希、模拟隔离目录恢复，
+# 再跑一次 restore:full --dry-run；不需要 Cloudflare 凭据，也不会碰生产数据。
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: restore-drill
+  cancel-in-progress: false
+
+jobs:
+  drill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Isolated restore drill
+        run: npm run backup:drill

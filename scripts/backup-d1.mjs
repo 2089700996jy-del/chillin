@@ -16,6 +16,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import { createWrangler, exportD1Full } from './d1-export.mjs';
 import path from 'node:path';
 import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
@@ -41,10 +42,8 @@ const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const rawFile = path.join(outDir, `chillin-d1-${stamp}.sql`);
 
 console.log(`[backup] exporting ${binding} (${local ? 'local' : 'remote'}) → ${path.relative(root, rawFile)}`);
-execFileSync('npx', ['wrangler', 'd1', 'export', binding, target, '--output', rawFile], {
-    stdio: 'inherit',
-    shell: process.platform === 'win32'
-});
+const run = createWrangler(root);
+exportD1Full({ run, binding, target, output: rawFile });
 
 if (!fs.existsSync(rawFile)) {
     console.error('[backup] export produced no file');

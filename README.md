@@ -120,19 +120,22 @@ node scripts/migrate-files-to-r2.mjs --clear-data # 确认无误后清空 D1 里
 
 ## 数据备份与恢复
 
-数据现在分布在两处：**D1 存结构化数据**，**R2 存图片二进制 / 书籍正文 / 备份快照**（D1 里的图片 BLOB 迁移后即可用 `--clear-data` 清空）。建议每天导出一次快照（脚本见 [scripts/backup-d1.mjs](scripts/backup-d1.mjs)）：
+数据分布在两处：**D1 存结构化数据**，**R2 存图片二进制 / 书籍正文 / 备份快照**。日常轻量快照仍可用 [scripts/backup-d1.mjs](scripts/backup-d1.mjs)，但真正的灾难恢复请用完整备份（**D1 + R2 二进制 + 校验清单**）：
 
 ```bash
-npm run backup                # 导出远端库 → backups/chillin-d1-<UTC>.sql.gz（本地保留 14 份 + 上传 R2 一份）
-npm run backup -- --keep 30   # 自定义本地保留份数
-npm run backup -- --no-r2     # 只做本地快照，不上传 R2
+npm run backup:full                    # D1 SQL + R2 每个对象 → backups/full-<UTC>/
+npm run backup:full -- --no-r2         # 只导 D1 和清单，不下载 R2（会标记为不完整）
+npm run backup:full -- --no-upload     # 不把 D1/清单副本推到 R2
+npm run backup:verify -- backups/full-<UTC>   # 校验 D1 gzip、每个 R2 对象 size + SHA-256
+npm run backup:drill                   # 独立临时目录里的恢复演练（CI 每周跑）
 ```
 
-* `backups/` 已写入 `.gitignore`，**绝不会被提交**（快照内含密码哈希与全部内容）。
-* 云端副本存在 R2 的 `backups/` 前缀下，由 Worker 每小时定时任务清理：**最新 3 份永久保留**，其余超过 30 天自动删除；桶名可用 `CHILLIN_R2_BUCKET` 覆盖。上传失败（未登录/桶不存在）只告警，不影响本地快照。
-* 计划任务示例（Windows）：
-  `schtasks /create /tn "Chillin D1 Backup" /tr "cmd /c cd /d E:\Chillin && npm run backup" /sc daily /st 03:30`
-* 恢复：`npm run restore -- backups/chillin-d1-<时间戳>.sql.gz --yes`（脚本自动解压 gzip——备份只留 `.sql.gz`，裸 `.sql` 导出后即被删除；默认目标是**远端生产库**，所以必须显式 `--yes`，本地库用 `--local`。快照含建表语句，执行前请确认目标库）。
+* 完整备份目录含 `manifest.json`、`chillin-d1.sql.gz`、`r2/uploads/...`、`r2/books/...`；清单逐个记录 R2 key、size、SHA-256、MIME 与 D1 迁移版本。
+* **D1 已含 FTS5**，`wrangler d1 export` 会直接报 “cannot export databases with virtual tables”；备份脚本改为从 `sqlite_master` 取 schema、只对真实表导数据，恢复时由 0034 的触发器重建 `memory_fts`。
+* R2 二进制只在本地完整备份目录里；请定期把 `backups/full-*` 复制到**离线介质或另一个桶/账号**——源桶整体丢失时，只有这份目录能救命。R2 里的历史备份快照不重复打包，避免自我引用。
+* `backups/` 已写入 `.gitignore`，**绝不会被提交**（含密码哈希、图片与书籍正文）。
+* 一键恢复：`npm run restore:full -- backups/full-<UTC> --local`（本地演练）或 `-- --yes`（远端生产，先恢复 R2，再清空旧业务表并导入 D1；`--no-reset` 可保留旧表，`--dry-run` 只校验）。旧的 D1-only 恢复仍可用：`npm run restore -- backups/chillin-d1-<时间戳>.sql.gz --yes`。
+* 周级 `Restore Drill` GitHub Actions 会在干净 runner 上生成最小备份、校验哈希、模拟隔离目录恢复并跑 `restore:full --dry-run`；生产包仍建议每季度人工恢复到 staging D1/R2 抽查。
 
 ## 可观测性
 
@@ -170,7 +173,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/media.test.mjs`](tests/media.test.mjs) | 图片字节入 R2、Range/206 下发、令牌拒绝、历史 D1 BLOB 兼容、无绑定兜底写入、备份保留策略 |
 | [`tests/books.test.mjs`](tests/books.test.mjs) | 书目元数据 + R2 正文、跨用户隔离、同指纹 upsert、软删回收对象、删书连带清进度 |
 | [`tests/router.test.mjs`](tests/router.test.mjs) | 网关级接线：书库 CRUD、图片上传与令牌下发、未知子路径 404（走真实会话 Cookie） |
-| [`tests/backup.test.mjs`](tests/backup.test.mjs) | crc32 校验、ZIP 结构、备份打包内容、**服务端导出并入与离线降级**、Resend 邮件降级、**备份邮件限流/收件人白名单/文件名净化**、备份守卫状态机 |
+| [`tests/backup.test.mjs`](tests/backup.test.mjs) | crc32 校验、ZIP 结构、备份打包内容、**服务端导出并入与离线降级**、Resend 邮件降级、**备份邮件限流/收件人白名单/文件名净化**、备份守卫状态机、**完整 D1+R2 清单的 size/SHA-256 校验与路径穿越防护** |
 | [`tests/evergreen.test.mjs`](tests/evergreen.test.mjs) | 中英混排词数统计、主题标签合法性、时间跨度解析、目录页生命周期 |
 | [`tests/reader.test.mjs`](tests/reader.test.mjs) | TXT 解码（UTF-8 优先、GBK 兜底）、阅读进度写入保护（更旧写入被拒）、百分比夹紧与跨用户隔离 |
 | [`tests/wikilinks.test.mjs`](tests/wikilinks.test.mjs) | `[[wiki]]` 解析与别名、XSS 防护、反向链接与摘要、Markdown 图片/链接渲染 |
