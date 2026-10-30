@@ -794,6 +794,8 @@ test('Bot - 帮助文案不再宣称「直接发文字存入随手记」', () =>
     assert.match(BOT_HELP_TEXT, /记录：/);
     assert.match(BOT_HELP_TEXT, /收藏：/);
     assert.match(BOT_HELP_TEXT, /提示词：/);
+    assert.match(BOT_HELP_TEXT, /我的收藏/);
+    assert.match(BOT_HELP_TEXT, /删提示词/);
     assert.match(BOT_HELP_TEXT, /重置对话/);
 });
 
@@ -990,6 +992,84 @@ integration('Bot - 管家指令：收藏与提示词分别落库，格式不对�
     const invalidPrompt = await buildBotReply({}, db, 1, '提示词：只有标题');
     assert.match(invalidPrompt, /正文/);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM prompts').first()).n, 2, '缺正文不能落库');
+});
+
+integration('Bot - 管家列表/删除：先确认、可取消，确认后才软删', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await buildBotReply({}, db, 1, '收藏：Figma https://www.figma.com/file/manage');
+    const bookmark = await db.prepare('SELECT id, title FROM bookmarks WHERE user_id = 1').first();
+    const list = await buildBotReply({}, db, 1, '我的收藏');
+    assert.match(list, new RegExp('#' + bookmark.id));
+    assert.match(list, /Figma/);
+
+    const preview = await buildBotReply({}, db, 1, '删收藏 ' + bookmark.id);
+    assert.match(preview, /确认删除/);
+    assert.equal((await db.prepare('SELECT is_deleted FROM bookmarks WHERE id = ?1').bind(bookmark.id).first()).is_deleted, 0, '预览阶段绝不能软删');
+
+    const cancelled = await buildBotReply({}, db, 1, '取消');
+    assert.match(cancelled, /取消了/);
+    assert.equal((await db.prepare('SELECT is_deleted FROM bookmarks WHERE id = ?1').bind(bookmark.id).first()).is_deleted, 0);
+
+    await buildBotReply({}, db, 1, '删收藏 ' + bookmark.id);
+    await db.prepare('UPDATE bot_pending_actions SET created_at_ms = ?1 WHERE user_id = 1 AND is_deleted = 0')
+        .bind(Date.now() - 11 * 60 * 1000).run();
+    const expired = await buildBotReply({}, db, 1, '确认');
+    assert.match(expired, /过期/);
+    assert.equal((await db.prepare('SELECT is_deleted FROM bookmarks WHERE id = ?1').bind(bookmark.id).first()).is_deleted, 0);
+
+    await buildBotReply({}, db, 1, '删收藏 ' + bookmark.id);
+    const wrongConfirm = await buildBotReply({}, db, 1, '确认修改');
+    assert.match(wrongConfirm, /待确认的是删除/);
+    assert.equal((await db.prepare('SELECT is_deleted FROM bookmarks WHERE id = ?1').bind(bookmark.id).first()).is_deleted, 0);
+
+    const confirmed = await buildBotReply({}, db, 1, '确认');
+    assert.match(confirmed, /已删除收藏/);
+    assert.equal((await db.prepare('SELECT is_deleted FROM bookmarks WHERE id = ?1').bind(bookmark.id).first()).is_deleted, 1);
+    assert.match(await buildBotReply({}, db, 1, '我的收藏'), /还是空的/);
+
+    await buildBotReply({}, db, 1, '提示词：代码审查 | 请审查以下代码');
+    const prompt = await db.prepare('SELECT id FROM prompts WHERE user_id = 1').first();
+    assert.match(await buildBotReply({}, db, 1, '删提示词 ' + prompt.id), /确认删除/);
+    assert.match(await buildBotReply({}, db, 1, '确认'), /已删除提示词/);
+    assert.equal((await db.prepare('SELECT is_deleted FROM prompts WHERE id = ?1').bind(prompt.id).first()).is_deleted, 1);
+});
+
+integration('Bot - 管家编辑：先预览、确认后更新，不认识字段不乱写', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await buildBotReply({}, db, 1, '收藏：Figma https://www.figma.com/file/edit');
+    let bookmark = await db.prepare('SELECT id, type, title, description FROM bookmarks WHERE user_id = 1').first();
+    const bookmarkId = bookmark.id;
+    const preview = await buildBotReply({}, db, 1, '改收藏 ' + bookmarkId + ' 标题=Figma 新版 | 描述=新的备注');
+    assert.match(preview, /改后/);
+    assert.equal((await db.prepare('SELECT title, description FROM bookmarks WHERE id = ?1').bind(bookmarkId).first()).title, 'Figma', '预览阶段不能落库');
+
+    await buildBotReply({}, db, 1, '确认');
+    bookmark = await db.prepare('SELECT type, title, description FROM bookmarks WHERE id = ?1').bind(bookmarkId).first();
+    assert.equal(bookmark.title, 'Figma 新版');
+    assert.equal(bookmark.description, '新的备注');
+    assert.equal(bookmark.type, '🌐 网站', '没改分类时保留原分类');
+
+    await buildBotReply({}, db, 1, '提示词：[开发/代码] 代码审查 | 请审查以下代码');
+    let prompt = await db.prepare('SELECT id, title, scene, content FROM prompts WHERE user_id = 1').first();
+    const promptId = prompt.id;
+    await buildBotReply({}, db, 1, '改提示词 ' + promptId + ' 标题=代码评审 | 正文=请评审 | 以下代码 | 场景=代码');
+    prompt = await db.prepare('SELECT title, scene, content FROM prompts WHERE id = ?1').bind(promptId).first();
+    assert.equal(prompt.title, '代码审查', '预览阶段不能落库');
+
+    await buildBotReply({}, db, 1, '确认');
+    prompt = await db.prepare('SELECT title, scene, content FROM prompts WHERE id = ?1').bind(promptId).first();
+    assert.equal(prompt.title, '代码评审');
+    assert.equal(prompt.scene, '代码');
+    assert.equal(prompt.content, '请评审 | 以下代码', '正文里的竖线不能被字段分隔吞掉');
+    assert.match(await buildBotReply({}, db, 1, '我的提示词'), /代码评审/);
+
+    const bad = await buildBotReply({}, db, 1, '改收藏 ' + bookmarkId + ' 分类=不存在');
+    assert.match(bad, /分类不认识/);
+    assert.equal((await db.prepare('SELECT title FROM bookmarks WHERE id = ?1').bind(bookmarkId).first()).title, 'Figma 新版');
 });
 
 integration('Bot - 「记住：…」写进关于我，可查看、可遗忘（全程软删）', async () => {

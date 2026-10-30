@@ -34,6 +34,16 @@ const TYPE_EMOJI = {
     '🎵': '🎵 音乐'
 };
 
+export function normalizeBookmarkType(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+    if (BOOKMARK_CATEGORIES[raw]) return BOOKMARK_CATEGORIES[raw];
+    for (const [emoji, type] of Object.entries(TYPE_EMOJI)) {
+        if (raw === type || raw.startsWith(emoji)) return type;
+    }
+    return null;
+}
+
 export const BOOKMARK_RE = new RegExp(
     '^' + CMD_PREFIX + '(?:(?:收藏|记录收藏|存收藏|保存收藏|存进收藏|\/bookmark)[ \t]*[:：][ \t]*|(?:收藏一下|记录收藏一下|存一下收藏)[ \t]+)([\\s\\S]+)$',
     'i'

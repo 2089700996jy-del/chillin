@@ -13,7 +13,7 @@
  *   4. 聊天正文永不进日志（只记 id 与错误信息）。
  *
  * 指令（确定性正则，先垫一层）：
- *   帮助 / 记录：X / 收藏：X / 提示词：X / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
+ *   帮助 / 记录：X / 收藏：X / 提示词：X / 我的收藏 / 改收藏 3 / 删收藏 3 / 确认 / 取消 / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
  *   光杆「记录」= 确认把刚才暂存的图片/链接写进随手记（消息默认不落库，见 bot-media.js / bot-links.js）
  *   小宇宙链接 = 抓 title/cover 做速览（只认白名单域名），回「记录」才落成富链接卡片
  * 其余一律走对话模型：按语境自然回应，不默认共情、不自动写花园；仅有短期对话上下文。
@@ -25,6 +25,7 @@ import {
     BOOKMARK_BARE_RE, PROMPT_BARE_RE, BOOKMARK_BARE_REPLY, PROMPT_BARE_REPLY
 } from './bot-garden.js';
 export { parseBookmarkCommand, parsePromptCommand };
+import { maybeManageGarden } from './bot-butler.js';
 import { retrieveGardenMemories, generateFallbackReply, parseDateToYmd } from './rag.js';
 import { callCustomLlm, callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
@@ -55,6 +56,9 @@ export const BOT_HELP_TEXT = [
     '- 「记录：内容」：把内容存进**随手记**',
     '- 「收藏：<标题> <链接>」：存进**收藏**；只发链接也行，标题自动取域名',
     '- 「提示词：<标题> | <正文>」：存进**提示词库**；前面可加「[项目/场景]」',
+    '- 「我的收藏」/「我的提示词」：看最近 10 条和编号',
+    '- 「改收藏 3 标题=... | 链接=...」：先预览，回「确认」才改；「删收藏 3」也先确认再软删',
+    '- 「改提示词 3 标题=... | 正文=...」/「删提示词 3」：同样先预览或确认，删除只软删',
     '- 发图片：我先说说看到什么，回「记录」才存进随手记',
     '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片；读不到就自己写标题——「记录：<标题> <链接>」',
     '- 「记住：内容」：写进「关于我」，以后都记得',
@@ -246,6 +250,7 @@ const CHAT_SYSTEM_PROMPT = [
     '1. 你自己没有写入能力：不要在没看到系统回执时说「已保存 / 已记录 / 存好了 / 已经存进花园」。这些动作真的发生了的话，系统会自己回执，不需要你替它说。',
     '2. 【系统真的会做的事，要照实说，别答成「我没有写入能力」】写入、提醒、上网都由指令通道执行：'
         + '「记录：<内容>」存进随手记、「收藏：<标题> <链接>」存进收藏、「提示词：<标题> | <正文>」存进提示词库、' +
+        '「我的收藏」「我的提示词」看编号、「改收藏 3 标题=...」先预览再确认、「删收藏 3」先确认再软删、' +
         '「记住：<内容>」写进「关于我」档案、「忘记 <关键词>」删掉档案里的条目、'
         + '「搜 <关键词>」翻花园历史记录、「问 <问题>」结合记忆回答、「你记得我什么」看档案、'
         + '「记录」确认刚发的那张图片或那条链接、「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
@@ -372,6 +377,10 @@ export async function runCommand(env, db, userId, content) {
 
     const record = parseRecordCommand(text);
     if (record) return runRecord(db, userId, record);
+
+    // 管家管理：列表 / 编辑 / 删除先落待确认动作，回「确认」才执行。
+    const manageReply = await maybeManageGarden(db, userId, normalizeCommandText(text));
+    if (manageReply !== null) return manageReply;
 
     // 管家写花园：收藏与提示词都走确定性格式，不靠模型猜字段。
     const bookmark = parseBookmarkCommand(text);
