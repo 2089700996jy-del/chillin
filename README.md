@@ -57,6 +57,8 @@ functions/          Pages Functions 反向代理（**必须位于仓库根**，�
 
 ## 本地开发
 
+> 需要 Node.js ≥ 22.5（`npm test` 的 `pretest` 会硬拦旧版本）。
+
 前端是纯静态资源，任意静态服务器即可预览：
 
 ```bash
