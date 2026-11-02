@@ -10790,6 +10790,11 @@ select:focus-visible,
 .agent-markdown h2 { margin: 12px 0 6px; font-size: 15px; }
 .agent-markdown p { margin: 5px 0; }
 .agent-markdown ul, .agent-markdown ol { margin: 5px 0; padding-left: 20px; }
+.agent-append-panel { margin: 10px 0 0; padding: 12px; border-radius: 12px; background: rgba(var(--label-rgb), 0.03); border: 0.5px solid rgba(var(--label-rgb), 0.1); }
+.agent-append-hint { margin: 0 0 8px; font-size: 11px; line-height: 1.5; color: var(--text-color-light); }
+.agent-append-select { width: 100%; min-height: 36px; padding: 6px 9px; border-radius: 9px; border: 0.5px solid rgba(var(--label-rgb), 0.16); background: var(--card-bg); color: var(--text-color); font-size: 13px; }
+.agent-append-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+.agent-append-actions button { min-height: 30px; padding: 4px 9px; font-size: 12px; }
 .agent-approval-inbox { margin: 4px 0 14px; padding: 12px; border-radius: 14px; background: rgba(255, 159, 10, 0.08); border: 0.5px solid rgba(255, 159, 10, 0.22); }
 .agent-inbox-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .agent-inbox-head strong { font-size: 13px; color: var(--text-color); }

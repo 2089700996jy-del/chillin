@@ -265,7 +265,9 @@ export async function listApprovalInbox(db, userId, limit = 20) {
             payload: {
                 title: cleanText(payload.title, 80),
                 preview: cleanText(payload.content, 180),
-                content_length: String(payload.content || '').length
+                content_length: String(payload.content || '').length,
+                note_id: Number(payload.note_id) || 0,
+                note_title: cleanText(payload.note_title, 80)
             }
         };
     });

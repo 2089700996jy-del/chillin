@@ -12,6 +12,7 @@ import {
     getGoalDetail,
     listGoalSummaries,
     requestSaveDraft,
+    requestAppendDraft,
     decideApproval,
     deleteGoal,
     handleAgentGoalApi
@@ -466,4 +467,61 @@ sqliteTest('Agent goals - 审批收件箱跨目标聚合、按用户隔离且不
     const renewed = await requestSaveDraft(db, 1, expiredGoal);
     assert.notEqual(renewed.approval.id, expired.approval.id);
     assert.equal(renewed.approval.status, 'pending');
+});
+
+sqliteTest('Agent goals - 追加笔记审批校验归属、只追加一次且不覆盖原文', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    const ownNote = await db.prepare(
+        `INSERT INTO notes (title, content, date, user_id, annotations, is_deleted, created_at, updated_at)
+         VALUES ('目标笔记', '原文第一段', date('now', '+8 hours'), 1, '[]', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+         RETURNING id`
+    ).first();
+    const otherNote = await db.prepare(
+        `INSERT INTO notes (title, content, date, user_id, annotations, is_deleted, created_at, updated_at)
+         VALUES ('别人的笔记', '不能碰', date('now', '+8 hours'), 2, '[]', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+         RETURNING id`
+    ).first();
+
+    const goalId = await createGoal(db, 1, { title: '追加目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '唯一任务', description: '产出', depends_on: [] }] })
+    });
+    await startGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('追加正文') });
+
+    await assert.rejects(
+        requestAppendDraft(db, 1, goalId, { note_id: otherNote.id }),
+        (err) => err && err.code === 'NOTE_NOT_FOUND'
+    );
+
+    const requested = await requestAppendDraft(db, 1, goalId, { note_id: ownNote.id });
+    assert.equal(requested.approval.action_type, 'append_note');
+    assert.equal(requested.approval.payload.note_id, ownNote.id);
+    assert.equal(requested.approval.payload.note_title, '目标笔记');
+
+    const request = new Request('https://chillin.test/api/agent/approvals');
+    const response = await handleAgentGoalApi(request, {}, new URL(request.url), db, 1);
+    const inbox = await response.json();
+    assert.equal(inbox.pending_count, 1);
+    assert.equal(inbox.approvals[0].action_type, 'append_note');
+    assert.equal(inbox.approvals[0].payload.note_title, '目标笔记');
+    assert.equal(Object.hasOwn(inbox.approvals[0].payload, 'content'), false);
+
+    const decided = await decideApproval(db, 1, requested.approval.id, { decision: 'approve' });
+    assert.equal(decided.approval.status, 'approved');
+    assert.equal(decided.approval.result.appended, true);
+    let note = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(ownNote.id).first();
+    assert.ok(note.content.startsWith('原文第一段'));
+    assert.match(note.content, /追加正文/);
+    const afterApprove = note.content;
+
+    const again = await decideApproval(db, 1, requested.approval.id, { decision: 'approve' });
+    assert.equal(again.already_decided, true);
+    note = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(ownNote.id).first();
+    assert.equal(note.content, afterApprove, '重复审批不能追加第二次');
+
+    const other = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(otherNote.id).first();
+    assert.equal(other.content, '不能碰');
 });

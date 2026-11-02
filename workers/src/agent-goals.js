@@ -235,6 +235,56 @@ export async function requestSaveDraft(db, userId, goalId) {
     return { approval: formatApproval(row) };
 }
 
+export async function requestAppendDraft(db, userId, goalId, payload = {}) {
+    const noteId = Number(payload && payload.note_id);
+    if (!Number.isInteger(noteId) || noteId <= 0) {
+        throw new AgentError(400, 'note_id 无效', 'INVALID_NOTE_ID');
+    }
+    const goal = await getGoalRow(db, userId, goalId);
+    if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
+    const result = cleanMultiline(goal.result_md, 30000);
+    if (!result) throw new AgentError(409, '目标还没有可追加的结果', 'GOAL_NO_RESULT');
+    const note = await db.prepare(
+        'SELECT id, title FROM notes WHERE id = ?1 AND user_id = ?2 AND IFNULL(is_deleted, 0) = 0'
+    ).bind(noteId, userId).first();
+    if (!note) throw new AgentError(404, '笔记不存在或已删除', 'NOTE_NOT_FOUND');
+
+    await db.prepare(
+        `UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours')
+         WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'append_note' AND status = 'pending'
+           AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+8 hours')`
+    ).bind(goalId, userId).run();
+    const existing = await db.prepare(
+        `SELECT * FROM agent_approvals
+         WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'append_note' AND status = 'pending'
+         ORDER BY id DESC LIMIT 1`
+    ).bind(goalId, userId).first();
+    if (existing) return { approval: formatApproval(existing) };
+
+    const body = {
+        title: cleanText(goal.title, 80),
+        note_id: noteId,
+        note_title: cleanText(note.title, 80) || '未命名笔记',
+        content: result
+    };
+    try {
+        const row = await db.prepare(
+            `INSERT INTO agent_approvals (goal_id, user_id, action_type, status, payload_json, expires_at)
+             VALUES (?1, ?2, 'append_note', 'pending', ?3, datetime('now', '+8 hours', '+1 day'))
+             RETURNING *`
+        ).bind(goalId, userId, JSON.stringify(body)).first();
+        return { approval: formatApproval(row) };
+    } catch (err) {
+        const pending = await db.prepare(
+            `SELECT * FROM agent_approvals
+             WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'append_note' AND status = 'pending'
+             ORDER BY id DESC LIMIT 1`
+        ).bind(goalId, userId).first();
+        if (pending) return { approval: formatApproval(pending) };
+        throw err;
+    }
+}
+
 export async function decideApproval(db, userId, approvalId, payload = {}) {
     const decision = payload.decision === 'approve' ? 'approve' : (payload.decision === 'reject' ? 'reject' : '');
     if (!decision) throw new AgentError(400, 'decision 必须是 approve 或 reject', 'INVALID_DECISION');
@@ -280,6 +330,24 @@ export async function decideApproval(db, userId, approvalId, payload = {}) {
                  RETURNING id`
             ).bind(title, content, userId).first();
             result = { note_id: Number(note.id) };
+        } else if (decision === 'approve' && row.action_type === 'append_note') {
+            const body = JSON.parse(row.payload_json || '{}');
+            const noteId = Number(body.note_id);
+            const content = cleanMultiline(body.content, 30000);
+            if (!Number.isInteger(noteId) || noteId <= 0) throw new AgentError(409, '审批目标笔记无效', 'INVALID_NOTE_ID');
+            if (!content) throw new AgentError(409, '审批内容为空', 'APPROVAL_EMPTY');
+            // 原子追加：不覆盖原文，也不把用户刚编辑的内容读出来再写回。
+            const appended = await db.prepare(
+                `UPDATE notes SET content = CASE
+                    WHEN TRIM(COALESCE(content, '')) = '' THEN ?1
+                    ELSE content || char(10) || char(10) || ?1 END,
+                    updated_at = datetime('now', '+8 hours')
+                 WHERE id = ?2 AND user_id = ?3 AND IFNULL(is_deleted, 0) = 0`
+            ).bind(content, noteId, userId).run();
+            if (!appended.meta || Number(appended.meta.changes) === 0) {
+                throw new AgentError(404, '目标笔记不存在或已删除', 'NOTE_NOT_FOUND');
+            }
+            result = { note_id: noteId, appended: true };
         }
         await db.prepare(
             `UPDATE agent_approvals SET status = ?1, result_json = ?2, decision_note = ?3,
@@ -378,6 +446,12 @@ export async function handleAgentGoalApi(request, env, url, db, userId, deps = {
         if (match && method === 'POST') {
             const goalId = idFrom(match[1]);
             return jsonResponse(await requestSaveDraft(db, userId, goalId), 201);
+        }
+
+        match = path.match(/^\/api\/agent\/goals\/(\d+)\/append-draft$/);
+        if (match && method === 'POST') {
+            const goalId = idFrom(match[1]);
+            return jsonResponse(await requestAppendDraft(db, userId, goalId, await readBody(request)), 201);
         }
 
         match = path.match(/^\/api\/agent\/approvals\/(\d+)$/);

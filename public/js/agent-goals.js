@@ -87,16 +87,28 @@ function renderSteps(steps) {
     }).join('') + '</ol></section>';
 }
 
+function approvalCopy(item) {
+    const payload = item.payload || {};
+    const append = item.action_type === 'append_note';
+    return {
+        title: append ? '追加到「' + (payload.note_title || '未命名笔记') + '」' : (payload.title || '保存为笔记草稿'),
+        description: append
+            ? '把目标结果追加到这篇笔记末尾，不覆盖原文。同意后只写一次。'
+            : '把目标结果保存为一条笔记草稿。同意后只写一次。',
+        approveText: append ? '同意并追加' : '同意并保存'
+    };
+}
+
 function renderApprovals(approvals) {
     const pending = (approvals || []).filter((item) => item.status === 'pending');
     if (!pending.length) return '';
     return '<section class="agent-goal-section"><h4>待审批</h4>' + pending.map((item) => {
-        const title = item.payload && item.payload.title ? item.payload.title : '保存为笔记草稿';
-        return '<div class="agent-approval"><div><strong>' + escapeHtml(title) + '</strong>' +
-            '<p>把目标结果保存为一条笔记草稿。同意后只写一次。</p></div>' +
+        const copy = approvalCopy(item);
+        return '<div class="agent-approval"><div><strong>' + escapeHtml(copy.title) + '</strong>' +
+            '<p>' + escapeHtml(copy.description) + '</p></div>' +
             '<div class="agent-approval-actions">' +
-            '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject">拒绝</button>' +
-            '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve">同意并保存</button>' +
+            '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">拒绝</button>' +
+            '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">' + escapeHtml(copy.approveText) + '</button>' +
             '</div></div>';
     }).join('') + '</section>';
 }
@@ -115,8 +127,20 @@ function renderDetail(data) {
     }
     if (goal.status === 'paused') actions.push(actionButton('continue', '恢复并继续', { primary: true }));
     if (['active', 'paused', 'planned'].includes(goal.status)) actions.push(actionButton('complete', '标记完成'));
-    if (goal.status === 'completed' && goal.result_md) actions.push(actionButton('save-draft', '保存为笔记草稿', { primary: true }));
+    if (goal.status === 'completed' && goal.result_md) {
+        actions.push(actionButton('save-draft', '保存为笔记草稿', { primary: true }));
+        actions.push(actionButton('append-draft', '追加到已有笔记'));
+    }
 
+    const appendPanel = goal.status === 'completed' && goal.result_md
+        ? '<div class="agent-append-panel" id="agent-append-panel" hidden>' +
+            '<p class="agent-append-hint">选择一篇笔记，创建审批；同意后只把目标结果追加到末尾，不覆盖原文。</p>' +
+            '<select id="agent-append-note" class="agent-append-select" aria-label="选择要追加的笔记"><option value="">加载中…</option></select>' +
+            '<div class="agent-append-actions">' +
+            '<button type="button" class="btn-text" data-append-cancel>取消</button>' +
+            '<button type="button" class="btn-primary" data-append-submit>创建追加审批</button>' +
+            '</div></div>'
+        : '';
     const result = goal.result_md
         ? '<section class="agent-goal-section"><h4>目标结果</h4><div class="agent-goal-result agent-markdown">' + markdownToHtml(goal.result_md) + '</div></section>'
         : '';
@@ -131,7 +155,7 @@ function renderDetail(data) {
         (goal.description ? '<p class="agent-goal-description">' + escapeHtml(goal.description) + '</p>' : '') + '</div>' +
         '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span></div>' +
         progressBar(progress) + error +
-        '<div class="agent-goal-actions">' + actions.join('') + '</div>' +
+        '<div class="agent-goal-actions">' + actions.join('') + '</div>' + appendPanel +
         '<section class="agent-goal-section"><h4>计划</h4>' +
         (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
         '</section>' + result + renderApprovals(data.approvals) + renderSteps(data.steps) +
@@ -172,16 +196,16 @@ function renderInbox(data) {
         '<div class="agent-inbox-head"><strong>待审批</strong><span>' + total + ' 条</span></div>' +
         approvals.map((item) => {
             const payload = item.payload || {};
-            const title = payload.title || '保存为笔记草稿';
+            const copy = approvalCopy(item);
             return '<div class="agent-inbox-item">' +
                 '<div class="agent-inbox-meta"><button type="button" class="btn-text agent-inbox-goal" data-inbox-goal="' + item.goal_id + '">' +
                 escapeHtml(item.goal_title || '未命名目标') + '</button>' +
                 '<span>' + escapeHtml(item.requested_at || '') + '</span></div>' +
-                '<strong>' + escapeHtml(title) + '</strong>' +
+                '<strong>' + escapeHtml(copy.title) + '</strong>' +
                 (payload.preview ? '<p class="agent-inbox-preview">' + escapeHtml(payload.preview) + '</p>' : '') +
                 '<div class="agent-inbox-actions">' +
-                '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject">拒绝</button>' +
-                '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve">同意并保存</button>' +
+                '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">拒绝</button>' +
+                '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">' + escapeHtml(copy.approveText) + '</button>' +
                 '</div></div>';
         }).join('') +
         (remaining ? '<p class="agent-inbox-more">还有 ' + remaining + ' 条，先处理上面的即可。</p>' : '')
@@ -240,6 +264,10 @@ async function runAction(action) {
     if (action === 'complete') {
         const ok = await confirmDialog('把目标标记为完成？未完成的任务不会继续执行。', { confirmText: '标记完成', danger: false });
         if (!ok) return;
+    }
+    if (action === 'append-draft') {
+        await toggleAppendPanel();
+        return;
     }
 
     const token = ++autoToken;
@@ -305,7 +333,7 @@ async function retryTask(taskId) {
     }
 }
 
-async function decideApproval(approvalId, decision, goalId = null) {
+async function decideApproval(approvalId, decision, goalId = null, actionType = 'save_note') {
     if (busy) return;
     busy = true;
     const targetGoalId = goalId || currentGoalId;
@@ -316,7 +344,8 @@ async function decideApproval(approvalId, decision, goalId = null) {
             body: JSON.stringify({ decision }),
             timeout: 30000
         });
-        showToast(decision === 'approve' ? '已保存为笔记草稿' : '已拒绝保存', 'success');
+        const approvedText = actionType === 'append_note' ? '已追加到笔记' : '已保存为笔记草稿';
+        showToast(decision === 'approve' ? approvedText : '已拒绝保存', 'success');
         if (targetGoalId && currentGoalId === targetGoalId) {
             await openGoal(targetGoalId);
         } else {
@@ -325,6 +354,64 @@ async function decideApproval(approvalId, decision, goalId = null) {
         await refreshInbox().catch(() => {});
     } catch (err) {
         showToast(err.message || '审批失败', 'error');
+    } finally {
+        busy = false;
+    }
+}
+
+async function loadAppendNotes() {
+    const select = document.getElementById('agent-append-note');
+    if (!select) return;
+    try {
+        const notes = await apiRequest('/api/notes', { timeout: 30000 });
+        const list = (Array.isArray(notes) ? notes : []).slice(0, 50);
+        if (!list.length) {
+            setHtml(select, '<option value="">还没有笔记，先创建一篇</option>');
+            return;
+        }
+        setHtml(select, list.map((note) => '<option value="' + Number(note.id) + '">' +
+            escapeHtml((note.title || '无标题').slice(0, 60)) + ' · ' + escapeHtml(note.date || '') + '</option>').join(''));
+    } catch (err) {
+        setHtml(select, '<option value="">笔记加载失败</option>');
+        showToast(err.message || '笔记列表加载失败', 'error');
+    }
+}
+
+async function toggleAppendPanel() {
+    const panel = document.getElementById('agent-append-panel');
+    if (!panel) return;
+    if (!panel.hidden) {
+        panel.hidden = true;
+        return;
+    }
+    panel.hidden = false;
+    await loadAppendNotes();
+}
+
+async function submitAppendDraft() {
+    if (!currentGoalId || busy) return;
+    const select = document.getElementById('agent-append-note');
+    const noteId = Number(select && select.value);
+    if (!Number.isInteger(noteId) || noteId <= 0) {
+        showToast('先选一篇要追加的笔记', 'error');
+        return;
+    }
+    const goalId = currentGoalId;
+    busy = true;
+    try {
+        await apiRequest('/api/agent/goals/' + goalId + '/append-draft', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ note_id: noteId }),
+            timeout: 30000
+        });
+        showToast('已创建追加审批，去收件箱同意后生效', 'success');
+        const data = await apiRequest('/api/agent/goals/' + goalId, { timeout: 30000 });
+        renderDetail(data);
+        void refreshInbox().catch(() => {});
+        void refreshList().catch(() => {});
+    } catch (err) {
+        showToast(err.message || '创建追加审批失败', 'error');
     } finally {
         busy = false;
     }
@@ -385,9 +472,23 @@ function bindEvents() {
             await retryTask(taskRetry.getAttribute('data-task-retry'));
             return;
         }
+        if (target.closest('[data-append-cancel]')) {
+            const panel = document.getElementById('agent-append-panel');
+            if (panel) panel.hidden = true;
+            return;
+        }
+        if (target.closest('[data-append-submit]')) {
+            await submitAppendDraft();
+            return;
+        }
         const approval = target.closest('[data-approval-id]');
         if (approval) {
-            await decideApproval(approval.getAttribute('data-approval-id'), approval.getAttribute('data-decision'));
+            await decideApproval(
+                approval.getAttribute('data-approval-id'),
+                approval.getAttribute('data-decision'),
+                null,
+                approval.getAttribute('data-action-type') || 'save_note'
+            );
         }
     });
     listEl.addEventListener('click', async (event) => {
@@ -413,7 +514,12 @@ function bindEvents() {
         }
         const approval = target.closest('[data-approval-id]');
         if (approval) {
-            await decideApproval(approval.getAttribute('data-approval-id'), approval.getAttribute('data-decision'));
+            await decideApproval(
+                approval.getAttribute('data-approval-id'),
+                approval.getAttribute('data-decision'),
+                null,
+                approval.getAttribute('data-action-type') || 'save_note'
+            );
         }
     });
 }
