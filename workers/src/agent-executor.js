@@ -221,7 +221,8 @@ export async function runNextTask(options) {
         trigger = 'continue',
         agentRunner = runAgent,
         checkpointModel,
-        planModel
+        planModel,
+        sendBot
     } = options || {};
 
     const goalRow = await getGoalRow(db, userId, goalId);
@@ -388,7 +389,7 @@ export async function runNextTask(options) {
 
     tasks = await listTasks(db, userId, goalId);
     if (allTasksCompleted(tasks) && ['active', 'planned', 'paused'].includes(latestStatus)) {
-        if (await blockCompletionIfNeeded({ env, db, userId, goalId, goal: latestGoal || goalRow, tasks })) return snapshotFor(db, userId, goalId);
+        if (await blockCompletionIfNeeded({ env, db, userId, goalId, goal: latestGoal || goalRow, tasks, deps: { sendBot } })) return snapshotFor(db, userId, goalId);
         await finishGoal(db, userId, goalId, run.id, tasks, 'completed', '', env, goalRow.title);
     } else if (holdStatus) {
         if (holdStatus !== 'deleted') {

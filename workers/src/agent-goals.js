@@ -150,11 +150,12 @@ export async function createGoal(db, userId, payload = {}) {
     const title = cleanText(payload.title, 80);
     const description = cleanMultiline(payload.description, 4000);
     if (!title) throw new AgentError(400, '目标标题不能为空', 'GOAL_TITLE_REQUIRED');
+    const autoSend = payload.auto_send === true || Number(payload.auto_send) === 1 ? 1 : 0;
     const row = await db.prepare(
-        `INSERT INTO agent_goals (user_id, title, description, status, created_at, updated_at)
-         VALUES (?1, ?2, ?3, 'draft', datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+        `INSERT INTO agent_goals (user_id, title, description, status, auto_send, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 'draft', ?4, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
          RETURNING *`
-    ).bind(userId, title, description).first();
+    ).bind(userId, title, description, autoSend).first();
     return getSnapshot(db, userId, row.id);
 }
 

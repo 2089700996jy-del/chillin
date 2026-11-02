@@ -637,6 +637,29 @@ sqliteTest('Agent goals - 要求 Bot 发送但没有发送审批时不能标记�
     assert.equal(done.goal.status, 'completed');
 });
 
+sqliteTest('Agent goals - 勾选自动发送后，完成后自动创建并同意发送审批', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id,status,bot_token,baseurl,ilink_bot_id,ilink_user_id,is_deleted) VALUES (1,'bound','token','https://ilinkai.weixin.qq.com','bot','user',0)"
+    ).run();
+    const goalId = await createGoal(db, 1, { title: '自动发送目标，结果发给bot', auto_send: true }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '写结论', depends_on: [] }] })
+    });
+    let sent = '';
+    const done = await runNextTask({
+        env: {}, db, userId: 1, goalId,
+        agentRunner: okRunner('自动发送正文'),
+        sendBot: async (text) => { sent = text; }
+    });
+    assert.equal(done.goal.status, 'completed');
+    assert.equal(sent, '自动发送正文');
+    const approval = await db.prepare("SELECT * FROM agent_approvals WHERE goal_id = ?1 AND action_type = 'send_bot_message'").bind(goalId).first();
+    assert.equal(approval.status, 'approved');
+    assert.equal(JSON.parse(approval.result_json).sent, true);
+});
+
 sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async () => {
     const search = await runWebTool(
         { LLM_API_KEY: 'test' },

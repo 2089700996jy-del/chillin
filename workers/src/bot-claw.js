@@ -17,6 +17,7 @@
  */
 import { jsonResponse } from './security.js';
 import { truncateUtf8, buildBotReply, claimBotMessage } from './bot-commands.js';
+import { toClawText } from './bot-text.js';
 import { extractClawImageItems } from './bot-media.js';
 import { handleClawImageMessage } from './bot-image-flow.js';
 const ILINK_DEFAULT_BASE = 'https://ilinkai.weixin.qq.com';
@@ -55,9 +56,7 @@ const POLL_ERROR_BACKOFF_MS = 1000;
 const POLL_ERROR_BACKOFF_MAX_MS = 5000;
 /** 等一会儿再拉；单测可把退避压到几毫秒 */
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-
 // ─────────────────────────── 传输层 ───────────────────────────
-
 /** 官方要求每个请求带一个随机 uint32 的 base64（防重放） */
 export function ilinkUin() {
     return btoa(String(Math.floor(Math.random() * 4294967295)));
@@ -152,6 +151,7 @@ export async function fetchClawUpdates(options) {
 export async function sendClawText(options) {
     const opts = options || {};
     const fetchImpl = opts.fetchImpl || fetch;
+    const text = toClawText(opts.text);
     const body = {
         msg: {
             from_user_id: String(opts.botId || ''),
@@ -160,7 +160,7 @@ export async function sendClawText(options) {
             message_type: 2,
             message_state: 2,
             context_token: String(opts.contextToken || ''),
-            item_list: [{ type: 1, text_item: { text: truncateUtf8(opts.text, MAX_CLAW_REPLY_BYTES) } }]
+            item_list: [{ type: 1, text_item: { text: truncateUtf8(text, MAX_CLAW_REPLY_BYTES) } }]
         },
         base_info: { channel_version: ILINK_CHANNEL_VERSION, bot_agent: ILINK_BOT_AGENT }
     };

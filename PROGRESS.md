@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-02。当前前端/Worker：**v2.5.210**（Worker/Pages 已部署、D1 迁移 0001–0041 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-02。当前前端/Worker：**v2.5.211**（Worker/Pages 已部署、D1 迁移 0001–0042 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
@@ -10,7 +10,7 @@
 - **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
 - **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓封面/标题/详情做成卡片（单集详情取 `description`、缺失时用 `shownotes` 去标签，播客页取简介；v2.5.140 起不再抓时长），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
 - 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0041`；远端应用状态以 `npm run ship` 的迁移检查为准）
+- 数据库：Cloudflare D1（`migrations/0001`–`0042`；远端应用状态以 `npm run ship` 的迁移检查为准）
 - 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
 - GitHub：`https://github.com/2089700996jy-del/chillin`
@@ -47,6 +47,7 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.211 | Bot 排版与权限：Markdown 转微信纯文本；创建目标自动规划并开始；目标级 `auto_send` 勾选后自动创建并同意发送审批；迁移 0042；已部署 |
 | v2.5.210 | Bot 发送修复：入站 `context_token` 持久化并回传，`sendmessage` ret 非 0 抛错；审批/目标动作 800ms 防连点；迁移 0041；已部署 |
 | v2.5.209 | 失败目标若含阻塞任务，面板直接提供“重新规划剩余”，保留已完成结果；已部署 |
 | v2.5.208 | 保护收口：阻塞任务拦截“继续”并提供重新规划；Bot 发送未审批自动创建审批并暂停；花园检索只在明确涉及用户记录时启用；已部署 |

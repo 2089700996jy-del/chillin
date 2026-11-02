@@ -9,7 +9,7 @@
  */
 import { callCustomLlm } from './llm.js';
 import { getGoalRow, listTasks, cleanText, cleanMultiline, touchGoal } from './agent-store.js';
-import { notifyAgentUser, notificationText, requestAgentProposal } from './agent-approvals.js';
+import { notifyAgentUser, notificationText, requestAgentProposal, decideApproval } from './agent-approvals.js';
 
 export function budgetExceeded(goal) {
     const maxCalls = Number(goal.max_tool_calls || 48);
@@ -170,20 +170,20 @@ function goalWantsBotSend(goal, tasks) {
  * 目标要求 Bot 发送时，必须有 pending/approved 的 send_bot_message 审批。
  * 没有则暂停目标并通知，不能把“只写了草稿”的目标标成完成。
  */
-export async function blockCompletionIfNeeded({ env, db, userId, goalId, goal, tasks }) {
+export async function blockCompletionIfNeeded({ env, db, userId, goalId, goal, tasks, deps = {} }) {
     if (!goalWantsBotSend(goal, tasks)) return false;
-    const approval = await db.prepare(
-        "SELECT status FROM agent_approvals WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'send_bot_message' AND status IN ('pending', 'approved') ORDER BY id DESC LIMIT 1"
+    let approval = await db.prepare(
+        "SELECT id, status FROM agent_approvals WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'send_bot_message' AND status IN ('pending', 'approved') ORDER BY id DESC LIMIT 1"
     ).bind(goalId, userId).first();
     if (approval && approval.status === 'approved') return false;
-    let message = approval ? '目标要求 Bot 发送，发送审批还在等待处理' : '';
+    let message = '';
     if (!approval) {
         const last = [...(tasks || [])].reverse().find((item) => item.status === 'completed' && item.output_md);
         const content = last ? last.output_md : '';
         if (content) {
             try {
-                await requestAgentProposal(db, userId, goalId, last.id, { action: 'send_bot_message', content }, env);
-                message = '目标要求 Bot 发送，已创建发送审批，请到收件箱确认';
+                const created = await requestAgentProposal(db, userId, goalId, last.id, { action: 'send_bot_message', content }, env);
+                approval = { id: created.approval.id, status: 'pending' };
             } catch (err) {
                 message = '目标要求 Bot 发送，但创建发送审批失败：' + (err && err.message || 'unknown');
             }
@@ -191,6 +191,15 @@ export async function blockCompletionIfNeeded({ env, db, userId, goalId, goal, t
             message = '目标要求 Bot 发送，但还没有 send_bot_message 审批';
         }
     }
+    if (goal.auto_send && approval && approval.status === 'pending') {
+        try {
+            await decideApproval(db, userId, approval.id, { decision: 'approve' }, deps);
+            return false;
+        } catch (err) {
+            message = '目标要求 Bot 发送，自动发送失败：' + (err && err.message || 'unknown');
+        }
+    }
+    if (!message) message = approval ? '目标要求 Bot 发送，发送审批还在等待处理' : '目标要求 Bot 发送，但还没有 send_bot_message 审批';
     await db.prepare(
         `UPDATE agent_goals SET status = 'paused', error = ?1, updated_at = datetime('now', '+8 hours')
          WHERE id = ?2 AND user_id = ?3 AND COALESCE(is_deleted, 0) = 0`

@@ -60,6 +60,7 @@ export function formatGoal(row, tasks = []) {
         created_at: row.created_at || '',
         updated_at: row.updated_at || '',
         completed_at: row.completed_at || '',
+        auto_send: Boolean(Number(row.auto_send || 0)),
         progress: counts,
         budget: {
             max_tool_calls: Number(row.max_tool_calls || 48),

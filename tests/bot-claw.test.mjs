@@ -21,6 +21,7 @@ import {
     handleClawApi,
     pollClawAccounts
 } from '../workers/src/bot-claw.js';
+import { toClawText } from '../workers/src/bot-text.js';
 import {
     extractClawImageItems,
     resolveClawImageUrl,
@@ -242,6 +243,13 @@ test('ClawBot - 回复消息带回传的 context_token，正文截到 4000 字�
     const long = st.calls[1].body.msg.item_list[0].text_item.text;
     assert.ok(Buffer.byteLength(long, 'utf8') <= 4000, '截断后不能超过 4000 字节');
     assert.ok(long.endsWith('…'));
+});
+
+test('Bot text - Markdown 转成微信可读纯文本', () => {
+    const out = toClawText('## 今日三条\n**标题**\n- 要点一\n[来源](https://example.com/a)\n\n\n结尾');
+    assert.equal(out, '【今日三条】\n【标题】\n• 要点一\n来源：https://example.com/a\n\n结尾');
+    assert.ok(!out.includes('**'));
+    assert.ok(!out.includes('##'));
 });
 
 test('ClawBot - sendmessage 返回 ret 非 0 必须抛错，不能假装已发送', async () => {

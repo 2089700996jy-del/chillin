@@ -34,6 +34,7 @@ let badgeTimer = null;
 let form = null;
 let titleInput = null;
 let descInput = null;
+let autoSendInput = null;
 let currentGoalId = null;
 let autoToken = 0;
 let busy = false;
@@ -520,12 +521,12 @@ function bindEvents() {
     form.addEventListener('submit', async (event) => {
         event.preventDefault();
         const title = titleInput.value.trim();
-        if (!title) return;
+        if (!title || isRapidClick('create-goal')) return;
         try {
             const data = await apiRequest('/api/agent/goals', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ title, description: descInput.value.trim() }),
+                body: JSON.stringify({ title, description: descInput.value.trim(), auto_send: Boolean(autoSendInput && autoSendInput.checked) }),
                 timeout: 30000
             });
             titleInput.value = '';
@@ -533,7 +534,14 @@ function bindEvents() {
             currentGoalId = data.goal.id;
             renderDetail(data);
             void refreshList().catch(() => {});
-            showToast('目标已创建，点“生成计划”继续', 'success');
+            try {
+                const planned = await postGoal('/api/agent/goals/' + currentGoalId + '/plan', 65000);
+                renderDetail(planned);
+                showToast('计划已生成，开始执行', 'success');
+                await runAction('start');
+            } catch (planErr) {
+                showToast('目标已创建，但自动规划失败：' + (planErr.message || '请手动重试'), 'error');
+            }
         } catch (err) {
             showToast(err.message || '创建目标失败', 'error');
         }
@@ -627,6 +635,7 @@ export function initAgentGoals() {
     form = document.getElementById('agent-goal-form');
     titleInput = document.getElementById('agent-goal-title');
     descInput = document.getElementById('agent-goal-desc');
+    autoSendInput = document.getElementById('agent-goal-auto-send');
     if (!listPane || !detailPane || !listEl || !form || !titleInput || !descInput) return;
     bindEvents();
     refreshInbox().catch(() => {});
