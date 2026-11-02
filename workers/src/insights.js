@@ -292,11 +292,10 @@ export function buildThreadCandidates(candidates, nowMs = Date.now(), limit = 3)
         }));
 }
 
-/** GET /api/insights/threads?days=180&limit=6（只返回短句证据，不返回全文） */
-export async function handleInsightThreads(url, db, userId) {
-    const days = limitParam(url.searchParams.get('days'), INSIGHT_DAYS_DEFAULT, INSIGHT_DAYS_MAX);
-    const limit = limitParam(url.searchParams.get('limit'), INSIGHT_LIMIT_DEFAULT, INSIGHT_LIMIT_MAX);
-    const since = '-' + days + ' days';
+/** 统一加载线索候选：随手记/笔记/周记，按东八区时间窗过滤并保留可追溯 id。 */
+export async function loadInsightRecords(db, userId, days = INSIGHT_DAYS_DEFAULT) {
+    const safeDays = Math.min(Math.max(Number(days) || INSIGHT_DAYS_DEFAULT, 1), INSIGHT_DAYS_MAX);
+    const since = '-' + safeDays + ' days';
     const [feeds, notes, weeklies] = await Promise.all([
         db.prepare("SELECT id, content, tags, created_at, updated_at FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND datetime(updated_at) >= datetime('now', '+8 hours', ?2) ORDER BY updated_at DESC, id DESC LIMIT 240").bind(userId, since).all(),
         db.prepare("SELECT id, title, content, date, created_at, updated_at FROM notes WHERE user_id = ?1 AND is_deleted = 0 AND datetime(updated_at) >= datetime('now', '+8 hours', ?2) ORDER BY updated_at DESC, id DESC LIMIT 240").bind(userId, since).all(),
@@ -314,6 +313,14 @@ export async function handleInsightThreads(url, db, userId) {
     for (const row of (weeklies && weeklies.results) || []) {
         records.push({ type: 'weekly', id: row.id, title: row.title, text: [row.summary, row.content].filter(Boolean).join(' '), at: parseRecordMs(row.date) || parseRecordMs(row.created_at) || parseRecordMs(row.updated_at) });
     }
+    return records;
+}
+
+/** GET /api/insights/threads?days=180&limit=6（只返回短句证据，不返回全文） */
+export async function handleInsightThreads(url, db, userId) {
+    const days = limitParam(url.searchParams.get('days'), INSIGHT_DAYS_DEFAULT, INSIGHT_DAYS_MAX);
+    const limit = limitParam(url.searchParams.get('limit'), INSIGHT_LIMIT_DEFAULT, INSIGHT_LIMIT_MAX);
+    const records = await loadInsightRecords(db, userId, days);
     return jsonResponse({ success: true, threads: buildRecurringThreads(records, { limit, nowMs: Date.now() }), scanned: records.length, days }, 200);
 }
 

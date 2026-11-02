@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-02。当前前端/Worker：**v2.5.195**（Worker/Pages 已部署、D1 迁移 0001–0038 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-02。当前前端/Worker：**v2.5.196**（Worker/Pages 已部署、D1 迁移 0001–0038 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
@@ -32,11 +32,11 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/agent-goals.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 38 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 39 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
-- 智能与记忆：`ai.js`、`ai-tools.js`、`ai-runtime.js`、`agent-store.js`、`agent-executor.js`、`agent-goals.js`、`rag.js`、`rag-index.js`、`llm.js`
+- 智能与记忆：`ai.js`、`ai-tools.js`、`agent-tools-expanded.js`、`ai-runtime.js`、`agent-store.js`、`agent-executor.js`、`agent-goals.js`、`rag.js`、`rag-index.js`、`llm.js`
 - 长期线索与行动：`insights.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
 - Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-image-flow.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
@@ -47,9 +47,8 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.196 | 只读工具：周记/随手记/收藏/提示词列表 + `search_memory` + `get_recurring_threads`；工具4→10；已部署 |
 | v2.5.195 | 阶段 1 只读 Agent；阶段 2 目标/任务持久化、暂停/继续/重试、`save_note` 审批；27 套件 / 382 用例；已部署 |
-| v2.5.165 | /api/sync/pull keyset 分页 + 周记 60 条/批；328→330 |
-| v2.5.166 | 推送订阅上传失败显式提示 + 重试；330→331 |
 | v2.5.167 | AI 回响来源跳转兼容筛选/分页；收藏扩窗；331 |
 | v2.5.168 | Bot 提醒追问 10 分钟（慢任务 2 小时）+ 失败退避重试；0033 |
 | v2.5.169 | ClawBot 扫码重定向/异常终态；二维码以服务端状态为准；331→335 |

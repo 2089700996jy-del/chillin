@@ -31,7 +31,7 @@
 ### 2.2 严格领域模块归档
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 
-（`workers/src/` 共 **38 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、10 个智能与记忆模块（含 Agent 工具层、Agent 循环、目标存储/执行/规划与长期线索）、1 个审计、15 个 Bot 模块（对话编排 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **39 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、11 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/规划与长期线索）、1 个审计、15 个 Bot 模块（对话编排 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -51,7 +51,8 @@
 | [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持 `rag.js` 不越过 500 行红线。 |
 | [`workers/src/llm.js`](../../workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式与非流式包装、敏感词合规审查。 |
 | [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：优先走只读 Agent 工具循环；模型不可用，或记录类问题没有触发任何工具时，退回 RAG 以确保基于真实数据；SSE 额外推送 `tool` 轨迹事件。 |
-| [`workers/src/ai-tools.js`](../../workers/src/ai-tools.js) | Agent 只读工具层 | 四个只读工具（花园概览 / 最近记录 / 关键词检索 / 读取单条）与 Tool Gateway：JSON Schema 参数校验、用户隔离、软删过滤、时间窗、引用返回；阶段 1 硬拒绝任何非 `read` 工具。 |
+| [`workers/src/ai-tools.js`](../../workers/src/ai-tools.js) | Agent 只读工具层 | 四个基础只读工具（花园概览 / 最近记录 / 关键词检索 / 读取单条）与 Tool Gateway：JSON Schema 参数校验、用户隔离、软删过滤、时间窗、引用返回；硬拒绝任何非 `read` 工具。 |
+| [`workers/src/agent-tools-expanded.js`](../../workers/src/agent-tools-expanded.js) | Agent 扩展只读工具 | 阶段 3 的花园垂直列表（周记 / 随手记 / 收藏 / 提示词）、混合检索 `search_memory`（FTS5/LIKE + wikilink/共同标签关联扩展）与长期线索 `get_recurring_threads`；全部按 `user_id` 隔离、过滤软删并返回 `[类型#id]` 引用，不写库。 |
 | [`workers/src/ai-runtime.js`](../../workers/src/ai-runtime.js) | Agent Runtime | Function Calling 多步循环：最多 6 步 / 8 次工具调用、45 秒总预算、20 秒单次模型超时、重复调用熔断、工具错误回传、模型失败降级、引用白名单清洗；只负责读，不写库、不审批。 |
 | [`workers/src/agent-store.js`](../../workers/src/agent-store.js) | Agent 目标存储层 | 目标 / 任务 / 运行 / 步骤 / 审批五张表的查询与格式化：所有读写强制 `user_id` 归属、目标软删、依赖只认前序 `seq`、任务状态机与进度汇总；不调用模型、不写业务内容。 |
 | [`workers/src/agent-executor.js`](../../workers/src/agent-executor.js) | Agent 目标执行器 | 一次 API 请求只推进一个任务：恢复中断的运行、选下一个依赖就绪任务、调用阶段 1 只读 Agent 循环、把结构化结果写进 `agent_steps`、按 `max_attempts` 重试、全部完成时汇总 `result_md`；暂停后拒绝自动推进，失败耗尽后目标进入 `failed` 等用户重试或改计划。 |

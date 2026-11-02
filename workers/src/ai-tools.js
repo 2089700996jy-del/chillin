@@ -1,14 +1,16 @@
 /**
  * Agent 只读工具层：工具契约、参数校验、执行网关与花园查询。
  *
- * 阶段 1 的硬边界：
+ * 阶段 3 扩展了周记/随手记/收藏/提示词、混合检索与长期线索；
+ * 边界仍然不变：
  * - 只暴露 read 工具，不允许写库、发消息、出站抓取；
  * - 所有查询按 user_id 隔离、过滤软删；
- * - 工具结果必须带 note/type/id 引用，供回答追溯；
+ * - 工具结果必须带 type/id 引用，供回答追溯；
  * - 模型只能调用注册表里的工具，不能直接碰 D1。
  */
 import { MEMORY_TABLES, normalizeMemoryRow } from './rag-index.js';
 import { tokenizeQuery, scoreMemoryChunk, east8NowParts, pad2 } from './rag.js';
+import { EXPANDED_AGENT_TOOLS } from './agent-tools-expanded.js';
 
 const TYPE_NAMES = MEMORY_TABLES.map((cfg) => cfg.type);
 
@@ -258,7 +260,7 @@ export const AGENT_TOOLS = [
     },
     {
         name: 'get_note',
-        description: '读取一条花园记录的正文。必须先用 list_recent_notes 或 search_notes 拿到 type 和 id。',
+        description: '读取一条花园记录的正文。必须先用 list_recent_notes、search_notes、search_memory 或对应列表工具拿到 type 和 id。',
         risk: 'read',
         timeoutMs: 5000,
         parameters: {
@@ -271,7 +273,8 @@ export const AGENT_TOOLS = [
             additionalProperties: false
         },
         handler: getNote
-    }
+    },
+    ...EXPANDED_AGENT_TOOLS
 ];
 
 const TOOL_MAP = new Map(AGENT_TOOLS.map((tool) => [tool.name, tool]));
@@ -345,7 +348,7 @@ function errorResult(code, message) {
 export async function executeAgentTool(db, userId, name, rawArgs) {
     const tool = TOOL_MAP.get(String(name || ''));
     if (!tool) return errorResult('UNKNOWN_TOOL', '未注册的工具');
-    if (tool.risk !== 'read') return errorResult('TOOL_FORBIDDEN', '阶段 1 只允许只读工具');
+    if (tool.risk !== 'read') return errorResult('TOOL_FORBIDDEN', '阶段 3 仍只允许只读工具');
 
     let args = rawArgs;
     if (typeof args === 'string') {
