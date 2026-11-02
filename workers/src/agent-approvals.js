@@ -146,6 +146,52 @@ export async function requestAppendDraft(db, userId, goalId, payload = {}, env =
  * Agent 在任务中主动提出的写入提案。与 requestSaveDraft 不同，内容来自当前任务，
  * 不要求目标已经有 result_md；但仍然只创建审批，不直接写 notes。
  */
+export function validateProposalArgs(args) {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return '参数必须是对象';
+    const allowed = new Set(['action', 'title', 'note_id', 'content']);
+    for (const key of Object.keys(args)) {
+        if (!allowed.has(key)) return '未知参数：' + key;
+    }
+    if (args.action !== 'save_note' && args.action !== 'append_note') return 'action 必须是 save_note 或 append_note';
+    if (typeof args.content !== 'string' || !args.content.trim()) return 'content 不能为空';
+    if (args.content.length > MAX_APPROVAL_CONTENT) return 'content 太长';
+    if (args.action === 'append_note') {
+        const noteId = Number(args.note_id);
+        if (!Number.isInteger(noteId) || noteId <= 0) return '追加提案必须提供有效 note_id';
+    }
+    return '';
+}
+
+export async function runProposalTool(db, userId, goalId, taskId, args, env) {
+    const validationError = validateProposalArgs(args);
+    if (validationError) {
+        return { ok: false, tool: 'propose_write', error: { code: 'INVALID_ARGUMENTS', message: validationError }, citations: [] };
+    }
+    try {
+        const { approval, created } = await requestAgentProposal(db, userId, goalId, taskId, args, env);
+        return {
+            ok: true,
+            tool: 'propose_write',
+            data: {
+                approval_id: approval.id,
+                action: approval.action_type,
+                status: approval.status,
+                created: Boolean(created),
+                title: approval.payload && approval.payload.title || '',
+                note_title: approval.payload && approval.payload.note_title || ''
+            },
+            citations: []
+        };
+    } catch (err) {
+        return {
+            ok: false,
+            tool: 'propose_write',
+            error: { code: err && err.code || 'PROPOSAL_FAILED', message: err && err.message || '创建写入提案失败' },
+            citations: []
+        };
+    }
+}
+
 export async function requestAgentProposal(db, userId, goalId, taskId, payload = {}, env = null) {
     const action = payload.action === 'append_note' ? 'append_note'
         : (payload.action === 'save_note' ? 'save_note' : '');

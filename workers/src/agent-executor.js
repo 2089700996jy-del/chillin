@@ -9,7 +9,8 @@
  */
 import { runAgent } from './ai-runtime.js';
 import { executeAgentTool } from './ai-tools.js';
-import { requestAgentProposal, notifyAgentUser, notificationText } from './agent-approvals.js';
+import { checkpointAfterTask } from './agent-checkpoint.js';
+import { runProposalTool, notifyAgentUser, notificationText } from './agent-approvals.js';
 import {
     AgentError,
     getGoalRow,
@@ -48,6 +49,32 @@ const PROPOSE_WRITE_TOOL = {
     }
 };
 const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write。只有任务明确要求保存或追加笔记时才调用；它只创建待审批，不会直接写库。调用后如实说“已创建待审批”，不要声称已经写入。';
+
+function budgetExceeded(goal) {
+    const maxCalls = Number(goal.max_tool_calls || 48);
+    const maxMs = Number(goal.max_minutes || 30) * 60000;
+    return Number(goal.used_tool_calls || 0) >= maxCalls || Number(goal.used_ms || 0) >= maxMs;
+}
+
+async function addBudgetUsage(db, userId, goalId, toolCalls, durationMs) {
+    const sql = `UPDATE agent_goals SET used_tool_calls = used_tool_calls + ?1, used_ms = used_ms + ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND user_id = ?4`;
+    await db.prepare(sql).bind(Math.max(0, Number(toolCalls) || 0), Math.max(0, Number(durationMs) || 0), goalId, userId).run();
+}
+
+async function failForBudget(db, userId, goalId, goal, env) {
+    const message = '目标预算已用完（工具 ' + Number(goal.used_tool_calls || 0) + '/' + Number(goal.max_tool_calls || 48) + '，用时 ' + Math.round(Number(goal.used_ms || 0) / 6000) / 10 + '/' + Number(goal.max_minutes || 30) + ' 分钟）';
+    await db.prepare(
+        `UPDATE agent_goals SET status = 'failed', error = ?1, completed_at = datetime('now', '+8 hours'),
+            updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
+    ).bind(message, goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_runs SET status = 'failed', error = ?1, current_task_id = NULL, lease_until = NULL,
+            next_run_at = NULL, finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours')
+         WHERE goal_id = ?2 AND user_id = ?3 AND status IN ('queued', 'running', 'waiting_approval', 'paused')`
+    ).bind(message, goalId, userId).run();
+    await notifyAgentUser(env, db, userId, { title: '目标预算用完', body: '「' + notificationText(goal.title, 60) + '」' + message + '，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
+    return message;
+}
 
 function timestampMs(value) {
     const text = String(value == null ? '' : value).trim();
@@ -93,52 +120,6 @@ function taskPrompt(goal, task, tasks) {
         '如果信息不足以完成，明确写出缺什么，不要用空话填充。',
         '如果任务明确要求保存或追加笔记，调用 propose_write 创建待审批；不要直接声称已写入。'
     ].filter(Boolean).join('\n');
-}
-
-function validateProposalArgs(args) {
-    if (!args || typeof args !== 'object' || Array.isArray(args)) return '参数必须是对象';
-    const allowed = new Set(['action', 'title', 'note_id', 'content']);
-    for (const key of Object.keys(args)) {
-        if (!allowed.has(key)) return '未知参数：' + key;
-    }
-    if (args.action !== 'save_note' && args.action !== 'append_note') return 'action 必须是 save_note 或 append_note';
-    if (typeof args.content !== 'string' || !args.content.trim()) return 'content 不能为空';
-    if (args.content.length > 30000) return 'content 太长';
-    if (args.action === 'append_note') {
-        const noteId = Number(args.note_id);
-        if (!Number.isInteger(noteId) || noteId <= 0) return '追加提案必须提供有效 note_id';
-    }
-    return '';
-}
-
-async function runProposalTool(db, userId, goalId, taskId, args, env) {
-    const validationError = validateProposalArgs(args);
-    if (validationError) {
-        return { ok: false, tool: 'propose_write', error: { code: 'INVALID_ARGUMENTS', message: validationError }, citations: [] };
-    }
-    try {
-        const { approval, created } = await requestAgentProposal(db, userId, goalId, taskId, args, env);
-        return {
-            ok: true,
-            tool: 'propose_write',
-            data: {
-                approval_id: approval.id,
-                action: approval.action_type,
-                status: approval.status,
-                created: Boolean(created),
-                title: approval.payload && approval.payload.title || '',
-                note_title: approval.payload && approval.payload.note_title || ''
-            },
-            citations: []
-        };
-    } catch (err) {
-        return {
-            ok: false,
-            tool: 'propose_write',
-            error: { code: err && err.code || 'PROPOSAL_FAILED', message: err && err.message || '创建写入提案失败' },
-            citations: []
-        };
-    }
 }
 
 function finalResult(tasks) {
@@ -262,7 +243,9 @@ export async function runNextTask(options) {
         userId,
         goalId,
         trigger = 'continue',
-        agentRunner = runAgent
+        agentRunner = runAgent,
+        checkpointModel,
+        planModel
     } = options || {};
 
     const goalRow = await getGoalRow(db, userId, goalId);
@@ -272,6 +255,10 @@ export async function runNextTask(options) {
     if (goalRow.status === 'cancelled') throw new AgentError(409, '目标已取消', 'GOAL_CANCELLED');
     if (goalRow.status === 'failed') throw new AgentError(409, '目标已失败，请先重试失败任务或重新规划', 'GOAL_FAILED');
     if (goalRow.status === 'draft') throw new AgentError(409, '请先生成计划', 'GOAL_NO_PLAN');
+    if (['active', 'planned'].includes(goalRow.status) && budgetExceeded(goalRow)) {
+        await failForBudget(db, userId, goalId, goalRow, env);
+        return snapshotFor(db, userId, goalId);
+    }
 
     let tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '目标还没有任务', 'GOAL_NO_TASKS');
@@ -371,6 +358,7 @@ export async function runNextTask(options) {
     if (failure) {
         const attempts = Number(task.attempts || 0) + 1;
         const exhausted = await markTaskFailure(db, userId, goalId, run.id, task, step.id, attempts, failure.slice(0, 300), durationMs, holdStatus);
+        await addBudgetUsage(db, userId, goalId, 0, durationMs);
         if (exhausted && !holdStatus) {
             await notifyAgentUser(env, db, userId, { title: '目标失败', body: '「' + notificationText(goalRow.title, 60) + '」重试次数已用完，去查看原因。', tag: 'agent-goal-' + goalId }).catch(() => {});
         }
@@ -391,6 +379,13 @@ export async function runNextTask(options) {
         tool_trace: result.toolTrace || [],
         stop_reason: result.stopReason || 'final'
     }), durationMs, step.id, userId).run();
+    await addBudgetUsage(db, userId, goalId, Array.isArray(result.toolTrace) ? result.toolTrace.length : 0, durationMs);
+    const checkpoint = await checkpointAfterTask({
+        env, db, userId, goalId, task, output, checkpointModel, planModel
+    });
+    if (checkpoint.action === 'replan') {
+        console.log('[agent] replanned remaining goal=' + goalId + ' tasks=' + checkpoint.tasks);
+    }
     const runStatus = holdStatus === 'cancelled' ? 'cancelled'
         : (holdStatus === 'failed' ? 'failed'
             : (holdStatus === 'completed' ? 'completed' : (holdStatus ? 'paused' : 'queued')));

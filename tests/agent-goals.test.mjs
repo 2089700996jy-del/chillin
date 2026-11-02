@@ -28,6 +28,7 @@ import {
 } from '../workers/src/agent-executor.js';
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
 import { requestAgentProposal } from '../workers/src/agent-approvals.js';
+import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
@@ -588,6 +589,285 @@ sqliteTest('Agent goals - 追加笔记审批校验归属、只追加一次且不
 
     const other = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(otherNote.id).first();
     assert.equal(other.content, '不能碰');
+});
+
+sqliteTest('Agent checkpoint - 结果不足时只重规划未完成任务', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: '检查点目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '已完成', description: '完成', depends_on: [] },
+                { title: '原剩余一', description: '剩余', depends_on: [0] },
+                { title: '原剩余二', description: '剩余', depends_on: [1] }
+            ]
+        })
+    });
+    await db.prepare(
+        "UPDATE agent_tasks SET status = 'completed', output_md = '已有结果' WHERE goal_id = ?1 AND user_id = 1 AND seq = 0"
+    ).bind(goalId).run();
+    const tasks = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1 ORDER BY seq').bind(goalId).all();
+    const completedTask = tasks.results.find((task) => task.seq === 0);
+
+    const checkpoint = await checkpointAfterTask({
+        env: { LLM_API_KEY: 'test' },
+        db,
+        userId: 1,
+        goalId,
+        task: completedTask,
+        output: '结果不足',
+        checkpointModel: async () => '{"action":"replan","reason":"缺少证据"}',
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '补充证据', description: '补证据', depends_on: [] },
+                { title: '重写结论', description: '再总结', depends_on: [0] }
+            ]
+        })
+    });
+    assert.equal(checkpoint.action, 'replan');
+    const after = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1 ORDER BY seq').bind(goalId).all();
+    const rows = after.results;
+    assert.equal(rows[0].status, 'completed', '已完成任务必须保留');
+    assert.equal(rows[0].output_md, '已有结果');
+    assert.equal(rows.filter((task) => task.status === 'pending').length, 2);
+    assert.equal(rows[1].title, '补充证据');
+    assert.deepEqual(JSON.parse(rows[2].depends_on), [1], '新任务依赖要映射到新 seq');
+    const goal = await db.prepare('SELECT * FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goal.status, 'active');
+    assert.equal(goal.plan_version, 2);
+
+    const second = await checkpointAfterTask({
+        env: { LLM_API_KEY: 'test' }, db, userId: 1, goalId, task: rows[0], output: '还是不足',
+        checkpointModel: async () => '{"action":"replan","reason":"再试"}',
+        planModel: async () => '{"tasks":[{"title":"最后一步","depends_on":[]}]}'
+    });
+    assert.equal(second.action, 'replan');
+    await db.prepare("UPDATE agent_goals SET plan_version = 3 WHERE id = ?1").bind(goalId).run();
+    const limited = await checkpointAfterTask({
+        env: { LLM_API_KEY: 'test' }, db, userId: 1, goalId, task: rows[0], output: '不足',
+        checkpointModel: async () => '{"action":"replan","reason":"继续"}',
+        planModel: async () => '{"tasks":[{"title":"不应生成"}]}'
+    });
+    assert.equal(limited.action, 'continue', '计划版本达到上限后不再重规划');
+});
+
+sqliteTest('Agent checkpoint - 执行器完成一个任务后按检查点重规划，不标记目标完成', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: '执行器检查点' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '第一步', depends_on: [] },
+                { title: '第二步', depends_on: [0] }
+            ]
+        })
+    });
+    const result = await runNextTask({
+        env: { LLM_API_KEY: 'test' },
+        db,
+        userId: 1,
+        goalId,
+        agentRunner: okRunner('第一步结果'),
+        checkpointModel: async () => '{"action":"replan","reason":"第一步结果不足"}',
+        planModel: async () => '{"tasks":[{"title":"补充后继续","depends_on":[]}]}'
+    });
+    assert.equal(result.goal.status, 'active');
+    const rows = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1 ORDER BY seq').bind(goalId).all();
+    assert.equal(rows.results[0].status, 'completed');
+    assert.equal(rows.results[1].title, '补充后继续');
+    assert.equal(rows.results[1].status, 'pending');
+});
+
+sqliteTest('Agent budget - 预算用完后不再执行任务，正常任务会累计用量', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const blockedId = await createGoal(db, 1, { title: '预算已满目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, blockedId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '不该执行', depends_on: [] }] })
+    });
+    await db.prepare(
+        "UPDATE agent_goals SET max_tool_calls = 1, used_tool_calls = 1 WHERE id = ?1 AND user_id = 1"
+    ).bind(blockedId).run();
+    const blocked = await runNextTask({
+        env: {}, db, userId: 1, goalId: blockedId,
+        agentRunner: async () => { throw new Error('预算耗尽时不应调用模型'); }
+    });
+    assert.equal(blocked.goal.status, 'failed');
+    assert.match(blocked.goal.error, /预算已用完/);
+    const blockedTasks = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1').bind(blockedId).all();
+    assert.equal(blockedTasks.results[0].status, 'pending');
+
+    const okId = await createGoal(db, 1, { title: '预算累计目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, okId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '执行一次', depends_on: [] }] })
+    });
+    const done = await runNextTask({
+        env: {}, db, userId: 1, goalId: okId,
+        agentRunner: async () => ({
+            reply: '完成', sources: [],
+            toolTrace: [{ name: 'list_recent_notes' }, { name: 'get_note' }],
+            stopReason: 'final'
+        })
+    });
+    assert.equal(done.goal.status, 'completed');
+    const used = await db.prepare('SELECT used_tool_calls, used_ms FROM agent_goals WHERE id = ?1').bind(okId).first();
+    assert.equal(used.used_tool_calls, 2);
+    assert.ok(used.used_ms > 0);
+});
+
+sqliteTest('Agent evals - 10 个固定目标回归', async () => {
+    const scenarios = [
+        {
+            name: '整理笔记',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '整理最近 AI 笔记' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '收集', depends_on: [] }, { title: '提纲', depends_on: [0] }] }) });
+                await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('收集完成') });
+                const done = await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('提纲完成') });
+                assert.equal(done.goal.status, 'completed');
+                assert.match(done.goal.result_md, /收集完成/);
+                assert.match(done.goal.result_md, /提纲完成/);
+            }
+        },
+        {
+            name: '主题引用',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '提炼三条主题' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '主题', depends_on: [] }] }) });
+                const done = await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('主题一 [笔记#1]') });
+                assert.match(done.goal.result_md, /\[笔记#1\]/);
+            }
+        },
+        {
+            name: '保存提案',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '保存提案评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '写结论', depends_on: [] }] }) });
+                await runNextTask({
+                    env: {}, db, userId: 1, goalId,
+                    agentRunner: async (options) => {
+                        const tool = await options.executeTool(db, 1, 'propose_write', { action: 'save_note', title: '评测笔记', content: '评测正文' });
+                        assert.equal(tool.ok, true);
+                        return { reply: '已创建待审批', sources: [], toolTrace: [{ name: 'propose_write' }], stopReason: 'final' };
+                    }
+                });
+                const approval = await db.prepare("SELECT * FROM agent_approvals WHERE goal_id = ?1 AND action_type = 'save_note'").bind(goalId).first();
+                assert.ok(approval);
+                const notesBefore = await db.prepare('SELECT COUNT(*) AS n FROM notes WHERE user_id = 1').first();
+                assert.equal(notesBefore.n, 0);
+                await decideApproval(db, 1, approval.id, { decision: 'approve' });
+                const notesAfter = await db.prepare('SELECT COUNT(*) AS n FROM notes WHERE user_id = 1').first();
+                assert.equal(notesAfter.n, 1);
+            }
+        },
+        {
+            name: '追加提案',
+            run: async (db) => {
+                const note = await db.prepare(
+                    "INSERT INTO notes (title, content, date, user_id, annotations, is_deleted, created_at, updated_at) VALUES ('评测目标', '原文', date('now', '+8 hours'), 1, '[]', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours')) RETURNING id"
+                ).first();
+                const goalId = await createGoal(db, 1, { title: '追加提案评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '追加', depends_on: [] }] }) });
+                await runNextTask({
+                    env: {}, db, userId: 1, goalId,
+                    agentRunner: async (options) => {
+                        const tool = await options.executeTool(db, 1, 'propose_write', { action: 'append_note', note_id: note.id, content: '追加正文' });
+                        assert.equal(tool.ok, true);
+                        return { reply: '已创建待审批', sources: [], toolTrace: [{ name: 'propose_write' }], stopReason: 'final' };
+                    }
+                });
+                const approval = await db.prepare("SELECT * FROM agent_approvals WHERE goal_id = ?1 AND action_type = 'append_note'").bind(goalId).first();
+                await decideApproval(db, 1, approval.id, { decision: 'approve' });
+                const after = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(note.id).first();
+                assert.match(after.content, /原文/);
+                assert.match(after.content, /追加正文/);
+            }
+        },
+        {
+            name: '失败重试',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '失败重试评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '重试', depends_on: [] }] }) });
+                await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: async () => { throw new Error('第一次失败'); } });
+                let goal = await db.prepare('SELECT * FROM agent_goals WHERE id = ?1').bind(goalId).first();
+                assert.notEqual(goal.status, 'completed');
+                const done = await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('重试成功') });
+                assert.equal(done.goal.status, 'completed');
+            }
+        },
+        {
+            name: '暂停继续',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '暂停继续评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '一', depends_on: [] }, { title: '二', depends_on: [0] }] }) });
+                await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('一完成') });
+                await pauseGoal(db, 1, goalId);
+                const paused = await db.prepare('SELECT * FROM agent_goals WHERE id = ?1').bind(goalId).first();
+                assert.equal(paused.status, 'paused');
+            }
+        },
+        {
+            name: '取消目标',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '取消评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '待办', depends_on: [] }] }) });
+                const cancelled = await cancelGoal(db, 1, goalId);
+                assert.equal(cancelled.goal.status, 'cancelled');
+                assert.equal(cancelled.tasks[0].status, 'skipped');
+            }
+        },
+        {
+            name: '检查点重规划',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '检查点评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '先做', depends_on: [] }, { title: '后做', depends_on: [0] }] }) });
+                const result = await runNextTask({
+                    env: { LLM_API_KEY: 'test' }, db, userId: 1, goalId,
+                    agentRunner: okRunner('结果不足'),
+                    checkpointModel: async () => '{"action":"replan","reason":"缺证据"}',
+                    planModel: async () => '{"tasks":[{"title":"补证据","depends_on":[]}]}'
+                });
+                assert.equal(result.goal.status, 'active');
+                const rows = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1 ORDER BY seq').bind(goalId).all();
+                assert.equal(rows.results[0].status, 'completed');
+                assert.equal(rows.results[1].title, '补证据');
+            }
+        },
+        {
+            name: '预算耗尽',
+            run: async (db) => {
+                const goalId = await createGoal(db, 1, { title: '预算评测' }).then((s) => s.goal.id);
+                await generatePlan(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [{ title: '不跑', depends_on: [] }] }) });
+                await db.prepare('UPDATE agent_goals SET used_tool_calls = 48 WHERE id = ?1').bind(goalId).run();
+                const result = await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('不应执行') });
+                assert.equal(result.goal.status, 'failed');
+                assert.match(result.goal.error, /预算已用完/);
+            }
+        },
+        {
+            name: '跨用户隔离',
+            run: async (db) => {
+                await seedUser(db, 2);
+                const goalId = await createGoal(db, 1, { title: '隔离评测' }).then((s) => s.goal.id);
+                const others = await listGoalSummaries(db, 2);
+                assert.equal(others.length, 0);
+                await assert.rejects(getGoalDetail(db, 2, goalId), (err) => err && err.code === 'GOAL_NOT_FOUND');
+            }
+        }
+    ];
+
+    for (const scenario of scenarios) {
+        const db = createTestDb();
+        await seedUser(db, 1);
+        try {
+            await scenario.run(db);
+        } catch (err) {
+            err.message = '[' + scenario.name + '] ' + err.message;
+            throw err;
+        }
+    }
 });
 
 sqliteTest('Agent goals - 暂停后可编辑目标，取消会停止剩余任务', async () => {

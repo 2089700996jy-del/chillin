@@ -60,7 +60,13 @@ export function formatGoal(row, tasks = []) {
         created_at: row.created_at || '',
         updated_at: row.updated_at || '',
         completed_at: row.completed_at || '',
-        progress: counts
+        progress: counts,
+        budget: {
+            max_tool_calls: Number(row.max_tool_calls || 48),
+            used_tool_calls: Number(row.used_tool_calls || 0),
+            max_minutes: Number(row.max_minutes || 30),
+            used_ms: Number(row.used_ms || 0)
+        }
     };
 }
 
