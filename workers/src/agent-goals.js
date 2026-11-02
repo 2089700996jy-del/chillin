@@ -199,6 +199,12 @@ export async function requestSaveDraft(db, userId, goalId) {
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     const result = cleanMultiline(goal.result_md, 30000);
     if (!result) throw new AgentError(409, '目标还没有可保存的结果', 'GOAL_NO_RESULT');
+    // 过期但仍占着 pending 的记录会挡住新审批；先标记过期，再查现有记录。
+    await db.prepare(
+        `UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours')
+         WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'save_note' AND status = 'pending'
+           AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+8 hours')`
+    ).bind(goalId, userId).run();
     const existing = await db.prepare(
         `SELECT * FROM agent_approvals
          WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'save_note' AND status = 'pending'

@@ -461,4 +461,9 @@ sqliteTest('Agent goals - 审批收件箱跨目标聚合、按用户隔离且不
     assert.equal(body.pending_count, 0);
     const expiredDetail = await getGoalDetail(db, 1, expiredGoal);
     assert.equal(expiredDetail.approvals.length, 0);
+
+    // 过期记录不能让“再次保存”永远拿回旧审批；应自动作废旧记录并新建一条。
+    const renewed = await requestSaveDraft(db, 1, expiredGoal);
+    assert.notEqual(renewed.approval.id, expired.approval.id);
+    assert.equal(renewed.approval.status, 'pending');
 });
