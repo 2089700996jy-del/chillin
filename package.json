@@ -1,10 +1,11 @@
 {
   "name": "chillin",
-  "version": "2.5.201",
+  "version": "2.5.202",
   "description": "Chillin 数字花园 - 个人数字花园",
   "private": true,
   "type": "module",
   "scripts": {
+    "pretest": "node scripts/check-node.mjs",
     "test": "node --test",
     "bump": "node scripts/bump-version.mjs",
     "bump:patch": "node scripts/bump-version.mjs patch",
@@ -25,6 +26,6 @@
     "wrangler": "^4.145.0"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.5"
   }
 }

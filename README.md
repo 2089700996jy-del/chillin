@@ -191,7 +191,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/bot-web.test.mjs`](tests/bot-web.test.mjs) | 联网检索：三档分流闸门（花园线索强制回本地）、上游 DeepSeek/Jina 双形态 JSON 与 markdown 解析去重、`need_content` 正文优先于 summary、相对时间并成具体日期（东八区）、半截 JSON 一律不当来源、失败分类与文案、6 小时缓存与每人每天 100 次上限（命中缓存不扣额度）与每分钟 2 次突发闸、合成死线退化与出处按需（真实 SQLite）；v2.5.150 起先做 4s 死线的检索词规划（`planWebQueries`）再多条并行检索（最多 3 条、按 `rerank_score` 去重排序、部分失败不影响整体）；上游适配层在同名的 `workers/src/bot-search.js` |
 | [`tests/docs.test.mjs`](tests/docs.test.mjs) | **文档一致性门禁**：README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、架构规约模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致 |
 
-> 标注「真实 SQLite」的用例用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；在更旧的 Node 上这些用例会自动跳过（CI 同时跑 Node 20 与 22）。
+> 标注「真实 SQLite」的用例用 `node:sqlite`（Node ≥ 22.5）在内存库里**依次执行 migrations/**，因此同时验证了「处理函数 → SQL → 数据库结构」的一致性；CI 与本地发布统一以 Node ≥ 22.5 为基线，不再保留 Node 20 兼容矩阵。
 
 发布时用脚本联动 **8 处**版本号（`package.json`、`public/version.json`、`public/js/version.js`、`public/sw.js`、`public/index.html`、`workers/api.js`、`PROGRESS.md`、架构报告），**不要手改单个文件**：
 

@@ -8,8 +8,8 @@
 
 1. **测试引擎选型**：
    * 本项目测试体系保持**零第三方外部依赖**；
-   * 采用 Node.js 20+ 原生内置测试运行器：`node --test` 与严格断言库 `node:assert/strict`；
-   * 涉及 SQL / 会话的集成用例使用 `node:sqlite`（Node ≥ 22.5）在内存库中执行真实 migrations，旧版本 Node 会自动跳过（CI 同时跑 20 与 22）；
+   * 采用 Node.js 22.5+ 原生内置测试运行器：`node --test` 与严格断言库 `node:assert/strict`；
+   * 涉及 SQL / 会话的集成用例使用 `node:sqlite`（Node ≥ 22.5）在内存库中执行真实 migrations；`npm test` 的 `pretest` 会硬拦低版本 Node，CI 与本地发布统一使用 Node 22；
    * 严禁引入 Jest、Vitest、Mocha 等重型测试框架与成百上千个衍生依赖包。
 2. **零容忍质量红线**：
    * 每次代码提交或发布前，必须在终端执行 `npm test`，所有用例必须 **100% 全部通过 (0 Fail, 0 Skip)**；

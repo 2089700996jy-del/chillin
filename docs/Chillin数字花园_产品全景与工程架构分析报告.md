@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.201 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
+> **报告版本**：v2.5.202 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v248`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0038 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
+> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v249`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0038 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -285,7 +285,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 采用 Node.js 20+ 原生测试运行器（`npm test` ➔ `node --test`），无需安装 Jest/Vitest 等第三方重型工具：
 * **27 个测试套件**覆盖全栈业务、安全红线与文档一致性：`a11y`、`agent`、`agent-goals`、`architecture`、`auth`、`backup`、`bot-claw`、`bot-health`、`bot-outreach`、`bot-reminders`、`bot-web`、`books`、`css`、`docs`、`evergreen`、`garden`、`insights`、`media`、`pwa-update`、`rag`、`reader`、`router`、`search`、`security`、`sw`、`sync`、`wikilinks`；
 * **382 个严密测试用例**：覆盖维基链接解析、反向引用高亮、每日心绪 04:00 换日算法、IndexedDB 存储降级、定期备份守卫检测、CSP 强制无 unsafe-inline、Trusted Types 唯一收口、会话令牌哈希与设备列表、改密与全量导出、旧哈希透明升级、接口 no-store、备份邮件限流与白名单、toast live region、**PWA 更新提示去重（连续 updatefound/controllerchange 只留一条 banner、不再叠 toast）**、FakeD1 真实迁移一致性、FakeR2 对象读写与 Range/206、书库跨用户隔离、网关路由接线、**全入口请求体限长**（含网关兜底、账号接口、批量同步、备份邮件）与批量上限、**Service Worker 缓存写入走 waitUntil**、文档与代码一致性门禁等；
-* **测试全量执行约 5–6 秒**（2026-10-27 本机实测 5511 ms，含 `node:sqlite` 集成用例；10 万次 PBKDF2 让认证类用例变慢约 1 秒；Node 20 上集成用例自动跳过），保证代码提交即验证；CI 以 **Node 20 + 22 双矩阵**全自动跑通（见 [`.github/workflows/ci.yml`](https://github.com/2089700996jy-del/chillin/blob/main/.github/workflows/ci.yml)）。
+* **测试全量执行约 5–6 秒**（2026-10-27 本机实测 5511 ms，含 `node:sqlite` 集成用例；10 万次 PBKDF2 让认证类用例变慢约 1 秒；低于 Node 22.5 会被 `pretest` 硬拦），保证代码提交即验证；CI 与本地发布统一以 **Node 22.5+ 单基线**全自动跑通（见 [`.github/workflows/ci.yml`](https://github.com/2089700996jy-del/chillin/blob/main/.github/workflows/ci.yml)）。
 
 ---
 

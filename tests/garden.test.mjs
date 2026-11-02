@@ -20,7 +20,7 @@ import { handleExport } from '../workers/src/garden-export.js';
 import { scanAndAudit } from '../workers/src/audit.js';
 import { isOwnedRecord } from '../workers/src/garden-shared.js';
 
-// node:sqlite 需要 Node >= 22.5；旧版本上这些集成用例跳过（CI 同时跑 20/22）
+// node:sqlite 需要 Node >= 22.5；项目已统一到 Node 22.5+ 基线
 const integration = sqliteTest;
 
 const jsonRequest = (url, body, method = 'POST') => new Request(url, {
@@ -416,7 +416,7 @@ test('TestInfra - 缺 node:sqlite 时集成用例带可读原因跳过（不静�
     if (sqliteAvailable) {
         assert.equal(sqliteSkip, false, '有 node:sqlite 时不应跳过任何用例');
     } else {
-        assert.match(String(sqliteSkip), /node:sqlite 需要 Node/, '跳过原因必须说明是运行环境问题，否则 CI 的 Node 20 腿全绿却说不清');
+        assert.match(String(sqliteSkip), /node:sqlite 需要 Node/, '跳过原因必须说明是运行环境问题，否则旧环境全绿却说不清');
     }
 });
 

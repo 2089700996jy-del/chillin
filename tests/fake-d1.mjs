@@ -5,8 +5,8 @@
  * datetime() 等），因此这些用例能真正验证「代码与 migrations 是否一致」，
  * 而不是验证我们自己写的假 SQL 解析器。
  *
- * node:sqlite 需要 Node >= 22.5；更旧的 Node 上 sqliteAvailable 为 false，
- * 调用方应据此跳过（test.skip），CI 因此同时跑 Node 20 与 22。
+ * node:sqlite 需要 Node >= 22.5；项目不再支持更低 Node（npm test 的 pretest 会硬拦）。
+ * sqliteAvailable 保留为防御性检查，避免直接运行 node --test 时静默写坏数据库用例。
  */
 import test from 'node:test';
 import fs from 'node:fs';
@@ -24,8 +24,8 @@ export const sqliteAvailable = Boolean(DatabaseSync);
 
 /**
  * 传给 node:test 的 skip 选项：可用时为 false，不可用时是一句可读的原因。
- * 裸 true 会让 CI 的 Node 20 腿只显示「skipped N」，看不出是「本机 Node 太旧」
- * 还是「用例写坏了」——38 条 SQL 集成用例会整批消失而无人察觉。
+ * 裸 true 只会显示「skipped N」，看不出是「本机 Node 太旧」还是「用例写坏了」——
+ * SQL 集成用例会整批消失而无人察觉。
  */
 export const sqliteSkip = sqliteAvailable
     ? false
