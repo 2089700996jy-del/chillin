@@ -378,9 +378,20 @@ export async function handlePushSubscribe(request, db) {
         return jsonResponse({ error: '订阅数据不完整' }, 400);
     }
 
-    await db.prepare("INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now', '+8 hours'), datetime('now', '+8 hours')) ON CONFLICT(user_id, endpoint) DO UPDATE SET updated_at = datetime('now', '+8 hours')")
-        .bind(session.user_id, sub.endpoint, sub.keys.p256dh, sub.keys.auth)
-        .run();
+    const deviceId = String(sub.device_id || '').trim().slice(0, 80);
+    if (deviceId) {
+        // 同一设备换 endpoint 时先清掉旧行，避免同一浏览器收到重复推送。
+        await db.prepare('DELETE FROM push_subscriptions WHERE user_id = ?1 AND device_id = ?2 AND endpoint <> ?3')
+            .bind(session.user_id, deviceId, sub.endpoint).run();
+        await db.prepare(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device_id, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+            ON CONFLICT(user_id, endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth,
+                device_id = excluded.device_id, updated_at = datetime('now', '+8 hours')`)
+            .bind(session.user_id, sub.endpoint, sub.keys.p256dh, sub.keys.auth, deviceId).run();
+    } else {
+        await db.prepare("INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at, updated_at) VALUES (?1, ?2, ?3, ?4, datetime('now', '+8 hours'), datetime('now', '+8 hours')) ON CONFLICT(user_id, endpoint) DO UPDATE SET updated_at = datetime('now', '+8 hours')")
+            .bind(session.user_id, sub.endpoint, sub.keys.p256dh, sub.keys.auth).run();
+    }
 
     return jsonResponse({ success: true }, 200);
 }

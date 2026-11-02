@@ -11,6 +11,7 @@ import {
     handleRevokeSession,
     handleLogoutAll,
     handleChangePassword,
+    handlePushSubscribe,
     tokenHash,
 } from '../workers/src/auth.js';
 
@@ -60,6 +61,28 @@ integration('Auth - register stores a hashed session and login verifies PBKDF2',
     const wrong = await handleLogin(jsonRequest('https://x/api/auth/login', { username: 'tester', password: 'not-the-password' }), env, db);
     assert.equal(wrong.status, 401);
     assert.equal((await sessionRows(db)).length, 2, 'a failed login must not create a session');
+});
+
+integration('Auth - push subscription is deduped by device id', async () => {
+    const db = createTestDb();
+    const registered = await handleRegister(jsonRequest('https://x/api/auth/register', { username: 'pushuser', password: 'passw0rd1' }), env, db);
+    const { token } = await registered.json();
+    const subscribe = (body) => new Request('https://x/api/push/subscribe', {
+        method: 'POST',
+        headers: { Cookie: 'chillin_session=' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+    const sub = (endpoint, deviceId) => ({ endpoint, keys: { p256dh: 'key', auth: 'auth' }, device_id: deviceId });
+
+    assert.equal((await handlePushSubscribe(subscribe(sub('https://push.example/a', 'device-1')), db)).status, 200);
+    assert.equal((await handlePushSubscribe(subscribe(sub('https://push.example/b', 'device-1')), db)).status, 200);
+    let rows = (await db.prepare('SELECT endpoint, device_id FROM push_subscriptions WHERE user_id = (SELECT user_id FROM sessions)').all()).results;
+    assert.equal(rows.length, 1, '同一设备换 endpoint 不能留下两条');
+    assert.equal(rows[0].endpoint, 'https://push.example/b');
+
+    assert.equal((await handlePushSubscribe(subscribe(sub('https://push.example/c', 'device-2')), db)).status, 200);
+    rows = (await db.prepare('SELECT endpoint FROM push_subscriptions WHERE user_id = (SELECT user_id FROM sessions) ORDER BY endpoint').all()).results;
+    assert.equal(rows.length, 2, '不同设备仍各自保留一条');
 });
 
 integration('Auth - refresh rotates the cookie session, and devices can be listed and revoked', async () => {

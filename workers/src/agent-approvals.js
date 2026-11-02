@@ -27,9 +27,12 @@ export async function notifyAgentUser(env, db, userId, payload = {}) {
     if (!env || !db || !userId) return { sent: 0 };
     if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return { sent: 0 };
     const subs = await db.prepare(
-        'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1'
+        'SELECT id, device_id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1 ORDER BY id ASC'
     ).bind(userId).all();
-    const rows = subs && Array.isArray(subs.results) ? subs.results : [];
+    const all = subs && Array.isArray(subs.results) ? subs.results : [];
+    const deviceRows = all.filter((row) => row.device_id);
+    // 有设备标识时按设备各推一条；历史无标识的重复订阅只保留最新一条，避免一次事件推多条。
+    const rows = deviceRows.length ? deviceRows : (all.length ? [all[all.length - 1]] : []);
     if (!rows.length) return { sent: 0 };
     webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
     const body = JSON.stringify({

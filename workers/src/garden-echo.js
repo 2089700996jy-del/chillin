@@ -86,8 +86,11 @@ export async function handleEchoGenerate(request, env, ctx, db, userId) {
     // 尝试发送推送通知
     ctx.waitUntil((async () => {
         try {
-            const subs = await db.prepare('SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1').bind(userId).all();
-            if (subs && subs.results && subs.results.length > 0) {
+            const subs = await db.prepare('SELECT id, device_id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1 ORDER BY id ASC').bind(userId).all();
+            const all = (subs && subs.results) || [];
+            const deviceRows = all.filter((row) => row.device_id);
+            const rows = deviceRows.length ? deviceRows : (all.length ? [all[all.length - 1]] : []);
+            if (rows.length > 0) {
                 webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
                 const payload = JSON.stringify({
                     title: 'Chillin',
@@ -95,7 +98,7 @@ export async function handleEchoGenerate(request, env, ctx, db, userId) {
                     icon: '/icons/transparent.png',
                     url: '/'
                 });
-                const pushPromises = subs.results.map(async sub => {
+                const pushPromises = rows.map(async sub => {
                     try {
                         await webPush.sendNotification({ endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } }, payload);
                     } catch (err) {

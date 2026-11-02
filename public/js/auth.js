@@ -882,10 +882,30 @@ async function syncPushSubscription(subscription) {
     }
 }
 
+function getPushDeviceId() {
+    try {
+        const key = 'chillin_push_device_id';
+        let id = localStorage.getItem(key);
+        if (!id) {
+            id = (typeof crypto !== 'undefined' && crypto.randomUUID)
+                ? crypto.randomUUID()
+                : (Date.now().toString(36) + Math.random().toString(36).slice(2));
+            localStorage.setItem(key, id);
+        }
+        return id;
+    } catch (_) {
+        return '';
+    }
+}
+
 async function sendSubscriptionToServer(subscription) {
+    const payload = typeof subscription.toJSON === 'function'
+        ? subscription.toJSON()
+        : { endpoint: subscription.endpoint, keys: subscription.keys || {} };
+    payload.device_id = getPushDeviceId();
     await apiRequest('/api/push/subscribe', {
         method: 'POST',
-        body: JSON.stringify(subscription)
+        body: JSON.stringify(payload)
     });
 }
 /** 「关于我」档案条目：应用内查看 / 编辑 / 遗忘（与微信端共用同一份记忆） */
