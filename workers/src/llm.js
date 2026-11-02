@@ -89,6 +89,42 @@ export async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
     return false;
 }
 
+export async function callCustomLlmWithTools(env, messages, tools, options = {}) {
+    const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
+    const apiKey = env.LLM_API_KEY;
+    const model = env.LLM_MODEL || 'deepseek-flash';
+    if (!apiKey) return null;
+
+    const url = `${apiBase.replace(/\/$/, '')}/chat/completions`;
+    const body = {
+        model,
+        messages,
+        temperature: options.temperature == null ? 0.2 : options.temperature,
+        thinking: { type: 'disabled' }
+    };
+    if (Array.isArray(tools) && tools.length) {
+        body.tools = tools;
+        body.tool_choice = options.toolChoice || 'auto';
+    }
+
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`Custom LLM API error (${res.status}): ${errText}`);
+    }
+    const data = await res.json();
+    const message = data.choices && data.choices[0] && data.choices[0].message;
+    if (!message || typeof message !== 'object') return null;
+    return message;
+}
+
 export async function callCustomLlmWithMessages(env, messages) {
     const apiBase = env.LLM_API_BASE || 'https://api.deepseek.com/v1';
     const apiKey = env.LLM_API_KEY;

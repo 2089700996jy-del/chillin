@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-10-30T06:41:38.279Z · 提交数：443
+> 生成时间：2026-11-02T06:10:56.669Z · 提交数：444
 
 ## 2026-10-30
 
@@ -18,6 +18,7 @@
 
 ### 🐛 缺陷修复
 
+- **auth**: cap PBKDF2 iterations at Workers limit
 - **ui**: regroup account security settings
 - **insights**: filter generic pronoun topics
 - **sync**: normalize conflict signatures for legacy field aliases

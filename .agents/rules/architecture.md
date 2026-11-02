@@ -31,7 +31,7 @@
 ### 2.2 严格领域模块归档
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 
-（`workers/src/` 共 **33 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、5 个智能与记忆模块（含长期线索）、1 个审计、15 个 Bot 模块（对话编排 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **38 个模块**：3 个安全原语、1 个鉴权、7 个花园业务域、10 个智能与记忆模块（含 Agent 工具层、Agent 循环、目标存储/执行/规划与长期线索）、1 个审计、15 个 Bot 模块（对话编排 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -50,7 +50,12 @@
 | [`workers/src/rag.js`](../../workers/src/rag.js) | 记忆回响 RAG 引擎 | 自然语言时间范围解析、停用词过滤、分词、多轮上下文继承、全资产多特征加权打分与兜底回复。 |
 | [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持 `rag.js` 不越过 500 行红线。 |
 | [`workers/src/llm.js`](../../workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式与非流式包装、敏感词合规审查。 |
-| [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：RAG 召回 → 模型调用 → SSE 流式推送（从网关下沉而来）。 |
+| [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：优先走只读 Agent 工具循环；模型不可用，或记录类问题没有触发任何工具时，退回 RAG 以确保基于真实数据；SSE 额外推送 `tool` 轨迹事件。 |
+| [`workers/src/ai-tools.js`](../../workers/src/ai-tools.js) | Agent 只读工具层 | 四个只读工具（花园概览 / 最近记录 / 关键词检索 / 读取单条）与 Tool Gateway：JSON Schema 参数校验、用户隔离、软删过滤、时间窗、引用返回；阶段 1 硬拒绝任何非 `read` 工具。 |
+| [`workers/src/ai-runtime.js`](../../workers/src/ai-runtime.js) | Agent Runtime | Function Calling 多步循环：最多 6 步 / 8 次工具调用、45 秒总预算、20 秒单次模型超时、重复调用熔断、工具错误回传、模型失败降级、引用白名单清洗；只负责读，不写库、不审批。 |
+| [`workers/src/agent-store.js`](../../workers/src/agent-store.js) | Agent 目标存储层 | 目标 / 任务 / 运行 / 步骤 / 审批五张表的查询与格式化：所有读写强制 `user_id` 归属、目标软删、依赖只认前序 `seq`、任务状态机与进度汇总；不调用模型、不写业务内容。 |
+| [`workers/src/agent-executor.js`](../../workers/src/agent-executor.js) | Agent 目标执行器 | 一次 API 请求只推进一个任务：恢复中断的运行、选下一个依赖就绪任务、调用阶段 1 只读 Agent 循环、把结构化结果写进 `agent_steps`、按 `max_attempts` 重试、全部完成时汇总 `result_md`；暂停后拒绝自动推进，失败耗尽后目标进入 `failed` 等用户重试或改计划。 |
+| [`workers/src/agent-goals.js`](../../workers/src/agent-goals.js) | Agent 目标 API 与规划 | 目标 CRUD、模型生成计划（最多 8 个任务、依赖只能引用前序下标、非法输出回落确定性三步计划）、开始/继续/暂停/完成/重试任务，以及唯一写副作用 `save_note` 的审批（同意才写 `notes`，重复审批幂等，拒绝不写）。 |
 | [`workers/src/audit.js`](../../workers/src/audit.js) | 自动化安全与审计 | 定时 Cron UGC 违规扫描与隔离区备份、违规规则集、审计日志保留清理。 |
 | [`workers/src/bot-commands.js`](../../workers/src/bot-commands.js) | Bot 对话编排（chat-first；v2.5.176 聊天提示词改为按语境自然回应，不默认共情、不习惯性建议/总结、不机械限长） | ClawBot 的消息分流层：**默认只聊天、不写库**（意图反转），只有显式「记录：…」才落随手记、「记住 / 忘记」才动档案（光杆「记录」= 确认把待存图片写进随手记，图片默认不落库）；`claimBotMessage` 幂等排重、「搜 X」检索记忆、「问 X」走 Echo AI（独立限流桶）；来源脚注默认不附，只有用户追问依据时才给，且标签统一成「[类型] YYYY-MM-DD」（v2.5.148 起联网答案也默认不带来源，追问时把上一轮存下的出处原样还给他，不再出站）；v2.5.134 起所有指令先过 `normalizeCommandText`（剥成对包裹符与句末标点，被引号包着的「记录：…」也认），系统提示词同时明令模型不得自称「已保存 / 存好了」；v2.5.139 起把「系统真的会做的事」的指令清单写进提示词（模型不再答「我没有写入能力」），并对光杆「记住」与「提醒我…」两类请求走确定性回复：前者要内容，后者如实说没法定点提醒；v2.5.145 起时间锚点连星期一起给（只给日期时模型会把「这周六周日」算错一天）。 |
 | [`workers/src/bot-image-flow.js`](../../workers/src/bot-image-flow.js) | Bot 多图编排 | 一条消息多张图、连续图片批次与深度看图问答：默认快速逐张识图，多图先合进 `bot_pending_media` 待存批次；用户问到表格/图表/截图共同问题时把整批图交给模型，追问时从 R2 取回原图；回「记录」才按张落随手记，未确认绝不动业务表。 |

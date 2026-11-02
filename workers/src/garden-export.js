@@ -39,7 +39,12 @@ export async function handleExport(db, userId) {
         preferences,
         chatTurns,
         reminders,
-        claw
+        claw,
+        agentGoals,
+        agentTasks,
+        agentRuns,
+        agentSteps,
+        agentApprovals
     ] = await Promise.all([
         db.prepare('SELECT id, username, created_at FROM users WHERE id = ?1').bind(userId).first(),
         db.prepare('SELECT * FROM weeklies WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
@@ -55,7 +60,12 @@ export async function handleExport(db, userId) {
         db.prepare('SELECT pref_key, label, content, source, created_at, updated_at FROM bot_preferences WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id ASC').bind(userId).all(),
         db.prepare('SELECT role, content, created_at FROM bot_chat_turns WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 200').bind(userId).all(),
         db.prepare('SELECT text, fire_at_ms, status, fired_at_ms, created_at FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
-        db.prepare('SELECT status, bound_at_ms, last_poll_at, outreach_enabled FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0').bind(userId).first()
+        db.prepare('SELECT status, bound_at_ms, last_poll_at, outreach_enabled FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0').bind(userId).first(),
+        db.prepare('SELECT * FROM agent_goals WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC').bind(userId).all(),
+        db.prepare('SELECT * FROM agent_tasks WHERE user_id = ?1 ORDER BY goal_id ASC, seq ASC').bind(userId).all(),
+        db.prepare('SELECT * FROM agent_runs WHERE user_id = ?1 ORDER BY id DESC').bind(userId).all(),
+        db.prepare('SELECT * FROM agent_steps WHERE user_id = ?1 ORDER BY id ASC').bind(userId).all(),
+        db.prepare('SELECT * FROM agent_approvals WHERE user_id = ?1 ORDER BY id ASC').bind(userId).all()
     ]);
 
     const weeklyRows = (weeklies.results || []).map(formatWeekly);
@@ -127,7 +137,12 @@ export async function handleExport(db, userId) {
             botProfile: profileRows.length,
             botPreferences: preferenceRows.length,
             botChatTurns: chatRows.length,
-            botReminders: reminderRows.length
+            botReminders: reminderRows.length,
+            agentGoals: (agentGoals.results || []).length,
+            agentTasks: (agentTasks.results || []).length,
+            agentRuns: (agentRuns.results || []).length,
+            agentSteps: (agentSteps.results || []).length,
+            agentApprovals: (agentApprovals.results || []).length
         },
         weeklies: weeklyRows,
         notes: noteRows,
@@ -156,6 +171,13 @@ export async function handleExport(db, userId) {
             }))
         },
         health: healthRows,
+        agent: {
+            goals: agentGoals.results || [],
+            tasks: agentTasks.results || [],
+            runs: agentRuns.results || [],
+            steps: agentSteps.results || [],
+            approvals: agentApprovals.results || []
+        },
         bot: {
             profile: profileRows,
             preferences: preferenceRows,

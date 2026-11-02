@@ -157,7 +157,7 @@ test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async
 
     const BUDGET = {
         jsTotalGzip: 168 * 1024,   // 当前实测 162.1 KB；v2.5.192 新增 insights 线索页与行动入口
-        cssTotalGzip: 48 * 1024,   // 当前实测 35.9 KB
+        cssTotalGzip: 50 * 1024,   // 当前实测 48.9 KB；目标/任务面板新增约 1.8 KB gzip
         singleFileGzip: 20 * 1024  // 当前最大是 public/js/reader.js 13.6 KB
     };
 

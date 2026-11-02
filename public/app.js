@@ -24,6 +24,7 @@ import { initNotes } from './js/notes.js';
 import { initBookmarks } from './js/bookmarks.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
+import { initAgentGoals } from './js/agent-goals.js';
 import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
@@ -293,6 +294,7 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('bookmarks', initBookmarks);
     safeInit('feeds', initFeeds);
     safeInit('echoAi', initEchoAi);
+    safeInit('agentGoals', initAgentGoals);
     safeInit('search', initSearch);
     safeInit('wikilinks', initWikilinks);
     safeInit('dailySpark', initDailySpark);

@@ -199,6 +199,36 @@ window.addEventListener('keydown', (e) => {
 });
 
 
+function renderToolTraceElement(events) {
+    const box = document.createElement('div');
+    box.className = 'ai-tool-trace';
+    box.style.cssText = 'margin:0 0 8px;padding:7px 10px;border-radius:10px;background:rgba(120,120,128,0.08);font-size:11px;color:rgba(60,60,67,0.62);line-height:1.45;';
+    const title = document.createElement('div');
+    title.style.cssText = 'font-weight:600;color:rgba(28,28,30,0.72);margin-bottom:2px;';
+    title.textContent = 'Agent 调用了 ' + events.length + ' 次只读工具';
+    box.appendChild(title);
+    const labels = {
+        get_garden_overview: '查看花园概览',
+        list_recent_notes: '浏览最近记录',
+        search_notes: '搜索记录',
+        get_note: '读取记录'
+    };
+    events.slice(0, 8).forEach((event) => {
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;gap:8px;';
+        const left = document.createElement('span');
+        left.textContent = labels[event.name] || event.name || '工具';
+        const right = document.createElement('span');
+        right.style.cssText = 'flex-shrink:0;color:rgba(60,60,67,0.42);';
+        right.textContent = event.ok
+            ? (event.count ? String(event.count) + ' 条' : '完成')
+            : '失败';
+        row.appendChild(left);
+        row.appendChild(right);
+        box.appendChild(row);
+    });
+    return box;
+}
 
 async function sendAiChatMessage() {
     if (!aiChatInput || !aiChatBody) return;
@@ -242,6 +272,8 @@ async function sendAiChatMessage() {
             let fullText = '';
             let isFirstChunk = true;
             let sourcesMounted = false;
+            let toolTraceEl = null;
+            const toolEvents = [];
 
             const escapeSourceId = (value) => {
                 const str = String(value);
@@ -370,6 +402,17 @@ async function sendAiChatMessage() {
                                 setHtml(bubbleEl, escapeHtml(payload.error));
                                 break;
                             }
+                            if (payload.type === 'tool') {
+                                toolEvents.push(payload);
+                                const nextTrace = renderToolTraceElement(toolEvents);
+                                if (toolTraceEl) toolTraceEl.replaceWith(nextTrace);
+                                else botMsgDiv.insertBefore(nextTrace, bubbleEl);
+                                toolTraceEl = nextTrace;
+                                continue;
+                            }
+                            if (payload.type === 'agent') {
+                                continue;
+                            }
                             if (payload.type === 'rag' && payload.sources) {
                                 mountSources(payload.sources);
                                 if (!payload.sources.length) {
@@ -397,6 +440,9 @@ async function sendAiChatMessage() {
         } else if (response.ok) {
             const res = await response.json();
             if (res && res.reply) {
+                if (Array.isArray(res.tool_calls) && res.tool_calls.length) {
+                    botMsgDiv.insertBefore(renderToolTraceElement(res.tool_calls), bubbleEl);
+                }
                 if (Array.isArray(res.sources) && res.sources.length) {
                     const box = renderSourcesBoxElement(res.sources);
                     botMsgDiv.insertBefore(box, bubbleEl);

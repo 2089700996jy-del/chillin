@@ -34,9 +34,9 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.194">
+    <link rel="stylesheet" href="style.css?v=2.5.195">
     <!-- 首屏入口预热：只提前拉 app.js（14.7KB）。实测 4/12 个模块的 modulepreload 会抢 249KB CSS 的带宽，反而拖慢 LCP -->
-    <link rel="modulepreload" href="/app.js?v=2.5.194">
+    <link rel="modulepreload" href="/app.js?v=2.5.195">
 </head>
 <body>
 
@@ -245,6 +245,10 @@
                                 <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                                 <span>本周回顾</span>
                             </button>
+                            <button class="btn-ai-pill btn-ai-pill-secondary" id="btn-open-agent-goals" title="目标与任务">
+                                <svg class="ui-icon-inline" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1"/></svg>
+                                <span>目标</span>
+                            </button>
                         </div>
                     </div>
                     <div class="heatmap-grid" id="heatmap-grid"></div>
@@ -300,7 +304,7 @@
             </div>
             <div class="notion-collection-gallery" id="gallery-container"></div>
             <div id="weekly-load-more-container" class="weekly-load-more-slot"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.194</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.195</button>
         </section>
 
         <!-- ========================================== -->
@@ -524,7 +528,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.194</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.195</button>
         </section>
 
         <!-- ========================================== -->
@@ -669,7 +673,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.194</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.195</button>
         </section>
 
         <!-- ========================================== -->
@@ -817,7 +821,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.194</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.195</button>
         </section>
 
         <!-- ========================================== -->
@@ -933,7 +937,7 @@
                 <span class="timeline-filter__count" data-date-count aria-live="polite"></span>
             </div>
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.194</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.195</button>
         </section>
 
     </main>
@@ -972,6 +976,37 @@
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
                     </button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+
+    <!-- Agent 目标与任务 Modal：目标 → 计划 → 逐任务执行 → 审批 -->
+    <div class="modal-overlay agent-goals-overlay" id="agent-goals-modal">
+        <div class="agent-goals-card" role="dialog" aria-modal="true" aria-labelledby="agent-goals-title">
+            <div class="sheet-pull-handle"></div>
+            <div class="agent-goals-header">
+                <div>
+                    <h3 id="agent-goals-title" class="agent-goals-title">目标与任务</h3>
+                    <p class="agent-goals-subtitle">把复杂目标拆成可执行计划，进度会保存，关闭页面也不会丢。</p>
+                </div>
+                <button type="button" class="btn-icon ios-modal-close-btn" id="btn-close-agent-goals" aria-label="关闭" title="关闭">
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
+                        <line x1="2" y1="2" x2="10" y2="10"></line>
+                        <line x1="10" y1="2" x2="2" y2="10"></line>
+                    </svg>
+                </button>
+            </div>
+            <div class="agent-goals-body">
+                <section id="agent-goals-list-pane">
+                    <form id="agent-goal-form" class="agent-goal-form">
+                        <input type="text" id="agent-goal-title" class="agent-goal-title-input" maxlength="80" placeholder="想完成什么？例如：把最近的 AI 笔记整理成提纲" autocomplete="off" required aria-label="目标标题">
+                        <textarea id="agent-goal-desc" class="agent-goal-desc-input" maxlength="4000" rows="2" placeholder="补充一点背景或想要的结果（可选）" aria-label="目标说明"></textarea>
+                        <button type="submit" class="btn-primary agent-goal-create-btn">创建目标</button>
+                    </form>
+                    <div id="agent-goals-list" class="agent-goals-list" aria-live="polite"></div>
+                </section>
+                <section id="agent-goals-detail-pane" class="agent-goals-detail" hidden></section>
             </div>
         </div>
     </div>
@@ -1549,7 +1584,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.194"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.195"></script>
     <!-- 同步冲突保护：本地/云端版本不静默覆盖 -->
     <div id="sync-conflict-banner" class="sync-conflict-banner" hidden>
         <button type="button" id="sync-conflict-open" class="sync-conflict-banner-btn" aria-label="处理同步冲突">
@@ -1574,6 +1609,6 @@
             </details>
         </div>
     </div>
-    <script type="module" src="app.js?v=2.5.194"></script>
+    <script type="module" src="app.js?v=2.5.195"></script>
 </body>
 </html>

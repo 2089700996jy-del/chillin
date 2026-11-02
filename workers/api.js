@@ -78,6 +78,7 @@ import {
 } from './src/garden-echo.js';
 import { handleInsightThreads, handleInsightReminder } from './src/insights.js';
 import { handleExport } from './src/garden-export.js';
+import { handleAgentGoalApi } from './src/agent-goals.js';
 import { handleClawApi } from './src/bot-claw.js';
 import { handleBotProfileApi } from './src/bot-memory.js';
 import { handleBotPreferencesApi } from './src/bot-preferences.js';
@@ -85,7 +86,7 @@ import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.194';
+const APP_VERSION = '2.5.195';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -142,6 +143,9 @@ async function router(path, method, request, env, ctx) {
         return jsonResponse({ error: '未登录或登录已过期' }, 401);
     }
     await ensureSoftDeleteSchema(db);
+
+    // Agent 目标与任务：目标 CRUD、计划、逐任务执行、审批
+    if (path.startsWith('/api/agent/')) return handleAgentGoalApi(request, env, url, db, userId);
 
     // 微信 ClawBot（iLink）绑定与扫码：私人操作，挂在登录态之后
     if (path.startsWith('/api/bot/claw')) return handleClawApi(request, env, url, db, userId);

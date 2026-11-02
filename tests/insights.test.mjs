@@ -109,7 +109,7 @@ integration('Insights - 点「明晚提醒」会落成一条 pending 的微信�
     const request = new Request('https://example.com/api/reminders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: '继续想想：阳台改造', fire_at_ms: NOW + DAY })
+        body: JSON.stringify({ text: '继续想想：阳台改造', fire_at_ms: Date.now() + DAY })
     });
     const res = await handleInsightReminder(request, db, 1);
     assert.equal(res.status, 201);
