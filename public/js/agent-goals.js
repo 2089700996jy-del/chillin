@@ -134,7 +134,7 @@ function renderDetail(data) {
         '<section class="agent-goal-section"><h4>计划</h4>' +
         (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
         '</section>' + result + renderApprovals(data.approvals) + renderSteps(data.steps) +
-        '<p class="agent-goal-footnote">进度已保存。关闭页面不会丢失，下次打开目标继续即可。</p>'
+        '<p class="agent-goal-footnote">进度已保存；关闭页面后后台仍会每分钟继续推进一个任务，重新打开即可查看。</p>'
     );
     listPane.hidden = true;
     detailPane.hidden = false;
@@ -229,8 +229,11 @@ async function runAction(action) {
         renderDetail(data);
         void refreshList().catch(() => {});
 
+        // 后台 cron 可能已经接管下一个任务：此时 run 仍是 running，
+        // 页面不要再用 continue 追着打（任务认领会互相让路，连发只会得到空快照）。
+        const backendBusy = () => Boolean(data.run && ['running', 'waiting_approval'].includes(data.run.status));
         let guard = 0;
-        while (token === autoToken && data.goal && data.goal.status === 'active' && data.can_continue && guard < 8) {
+        while (token === autoToken && data.goal && data.goal.status === 'active' && data.can_continue && !backendBusy() && guard < 8) {
             guard += 1;
             await new Promise((resolve) => setTimeout(resolve, 450));
             if (token !== autoToken) break;

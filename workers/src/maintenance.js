@@ -4,8 +4,9 @@
  * 两条 cron（见 wrangler.toml）：
  * - '* * * * *'  微信 ClawBot：先处理用户自己设的定点提醒（到点必达，单轮最多 5 条），
  *               再看要不要主动关怀（每天至多一次，绝大多数分钟只做几次廉价判断），
- *               最后长轮询一次调用内在 55s 预算里持续拉取新消息并按指令回复
- *               （服务端约 18s 无消息即返回，只拉一轮会让每分钟空转 42s）
+ *               然后长轮询一次调用内在 55s 预算里持续拉取新消息并按指令回复
+ *               （服务端约 18s 无消息即返回，只拉一轮会让每分钟空转 42s）；
+ *               最后推进最多一个到期的 Agent 目标任务（关闭页面后的后台续跑）。
  * - '13 * * * *' 每小时维护：UGC 扫描、Session 清理、限流窗口清理、R2 备份保留、审计日志保留
  *
  * 两次触发共用一个 scheduled 入口，靠 event.cron 分流——否则每分钟一次的触发
@@ -19,6 +20,7 @@ import { pruneOldBackups } from './garden-media.js';
 import { pollClawAccounts } from './bot-claw.js';
 import { runOutreachChecks } from './bot-outreach.js';
 import { runReminderChecks } from './bot-reminders.js';
+import { runAutoResume } from './agent-scheduler.js';
 
 /** 每分钟触发的那条 cron 表达式，与 wrangler.toml 保持一致 */
 export const CLAW_CRON = '* * * * *';
@@ -63,6 +65,11 @@ export async function runScheduled(env, event, pollOptions, ctx) {
         if (!opts.defer && ctx && typeof ctx.waitUntil === 'function') opts.defer = (task) => ctx.waitUntil(task);
         try { await pollClawAccounts(env, env.DB, undefined, opts); }
         catch (err) { console.error('[scheduled] bot poll failed:', err); }
+        // Bot 消息优先；之后最多推进一个 Agent 任务，让关闭页面的目标仍能按分钟续跑。
+        try {
+            const r = await runAutoResume(env);
+            if (r.processed) console.log('[scheduled] agent auto resume: processed=' + r.processed + ' failed=' + r.failed);
+        } catch (err) { console.error('[scheduled] agent auto resume failed:', err); }
         return;
     }
     await runHourlyMaintenance(env);

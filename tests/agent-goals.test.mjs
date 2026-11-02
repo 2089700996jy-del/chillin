@@ -24,6 +24,7 @@ import {
     runNextTask
 } from '../workers/src/agent-executor.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
+import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
 
 const TASK_PLAN = JSON.stringify({
     tasks: [
@@ -313,4 +314,87 @@ sqliteTest('Agent goals - 两个并发同意只写一条笔记', async () => {
     const count = await db.prepare('SELECT COUNT(*) AS n FROM notes WHERE user_id = 1').first();
     assert.equal(Number(count.n), 1);
     assert.equal(outcomes.filter((item) => item.approval.status === 'approved').length >= 1, true);
+});
+
+sqliteTest('Agent goals - 后台 cron 在页面关闭后每次只推进一个任务', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await planGoal(db, goalId);
+
+    const first = await startGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('第一段产出') });
+    assert.equal(first.tasks[0].status, 'completed');
+    assert.equal(first.tasks[1].status, 'pending');
+    assert.equal(first.run.status, 'queued');
+
+    const queued = await db.prepare('SELECT * FROM agent_runs WHERE goal_id = ?1 ORDER BY id DESC LIMIT 1')
+        .bind(goalId).first();
+    assert.equal(queued.status, 'queued');
+    assert.ok(queued.next_run_at, '任务完成后必须留下后台续跑时间');
+    assert.equal(queued.lease_until, null);
+
+    await db.prepare("UPDATE agent_runs SET next_run_at = datetime('now', '+8 hours', '-1 seconds') WHERE id = ?1")
+        .bind(queued.id).run();
+    const auto = await runAutoResume({ DB: db }, { agentRunner: okRunner('第二段产出') });
+    assert.equal(auto.processed, 1);
+    let snap = await getGoalDetail(db, 1, goalId);
+    assert.equal(snap.tasks[1].status, 'completed');
+    assert.equal(snap.tasks[2].status, 'pending');
+    assert.equal(snap.run.status, 'queued');
+    assert.equal(snap.run.trigger, 'auto');
+
+    await db.prepare("UPDATE agent_runs SET next_run_at = datetime('now', '+8 hours', '-1 seconds') WHERE id = ?1")
+        .bind(queued.id).run();
+    await runAutoResume({ DB: db }, { agentRunner: okRunner('第三段产出') });
+    snap = await getGoalDetail(db, 1, goalId);
+    assert.equal(snap.goal.status, 'completed');
+    assert.equal(snap.run.status, 'completed');
+    assert.equal(snap.steps.length, 3);
+});
+
+sqliteTest('Agent goals - 后台认领带租约，暂停的目标不会被 cron 抢跑', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await planGoal(db, goalId);
+    await startGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('第一段') });
+
+    await db.prepare("UPDATE agent_runs SET next_run_at = datetime('now', '+8 hours', '-1 seconds') WHERE goal_id = ?1")
+        .bind(goalId).run();
+    const claimed = await claimDueAgentRun(db);
+    assert.ok(claimed, '到期的 queued run 应被认领');
+    assert.equal(claimed.status, 'running');
+    assert.ok(claimed.lease_until, '认领后必须持有租约');
+    assert.equal(await claimDueAgentRun(db), null, '同一时刻不能重复认领');
+
+    await pauseGoal(db, 1, goalId);
+    await db.prepare("UPDATE agent_runs SET lease_until = datetime('now', '+8 hours', '-1 seconds') WHERE id = ?1")
+        .bind(claimed.id).run();
+    assert.equal(await claimDueAgentRun(db), null, '暂停的目标即使租约过期也不能被后台带走');
+});
+
+sqliteTest('Agent goals - 租约过期后的运行会被下一分钟回收，不重复步骤', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await planGoal(db, goalId);
+    let snap = await startGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('第一段') });
+    const second = snap.tasks[1];
+    const run = await db.prepare('SELECT * FROM agent_runs WHERE goal_id = ?1 ORDER BY id DESC LIMIT 1')
+        .bind(goalId).first();
+
+    // 模拟第二个任务开始后进程崩溃：任务停在 running，租约已经过期。
+    await db.prepare(
+        "UPDATE agent_tasks SET status = 'running', started_at = datetime('now', '+8 hours', '-5 minutes'), updated_at = datetime('now', '+8 hours', '-5 minutes') WHERE id = ?1"
+    ).bind(second.id).run();
+    await db.prepare(
+        "UPDATE agent_runs SET status = 'running', current_task_id = ?1, lease_until = datetime('now', '+8 hours', '-1 seconds'), next_run_at = NULL WHERE id = ?2"
+    ).bind(second.id, run.id).run();
+
+    const auto = await runAutoResume({ DB: db }, { agentRunner: okRunner('恢复后的第二段') });
+    assert.equal(auto.processed, 1);
+    snap = await getGoalDetail(db, 1, goalId);
+    assert.equal(snap.tasks[1].status, 'completed');
+    assert.equal(snap.tasks[1].output_md, '恢复后的第二段');
+    assert.equal(snap.steps.length, 2);
 });

@@ -2,7 +2,7 @@
  * Agent 目标执行器：一次只推进一个任务，任务结果写入 agent_tasks / agent_steps。
  *
  * 设计约束：
- * - 不把整个目标塞进一次 Worker 请求；每次 API 调用只跑一个任务，页面关闭后状态仍在；
+ * - 不把整个目标塞进一次 Worker 请求；每次 API 调用或 cron tick 只跑一个任务，页面关闭后由 agent-scheduler 续跑；
  * - 任务依赖只按 seq 检查，先顺序执行，不做并行；
  * - 失败按 max_attempts 重试，耗尽后目标进入 failed，等待用户重试或改计划；
  * - 执行只调用阶段 1 的只读工具循环，不在这里写业务数据。
@@ -22,6 +22,21 @@ import {
 } from './agent-store.js';
 
 const TASK_TIMEOUT_MS = 50000;
+const LIVE_TASK_GRACE_MS = 120000;
+const TASK_LEASE_SQL = "datetime('now', '+8 hours', '+180 seconds')";
+const TASK_STARTED_AT_SQL = "datetime('now', '+8 hours')";
+
+function timestampMs(value) {
+    const text = String(value == null ? '' : value).trim();
+    if (!text) return 0;
+    if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(text)) return Date.parse(text);
+    return Date.parse(text.replace(' ', 'T') + '+08:00');
+}
+
+function isLiveRunningTask(task) {
+    const at = timestampMs(task && (task.updated_at || task.started_at));
+    return at > 0 && Date.now() - at < LIVE_TASK_GRACE_MS;
+}
 
 function withTimeout(promise, ms, message) {
     let timer = null;
@@ -105,6 +120,7 @@ async function finishGoal(db, userId, goalId, runId, tasks, status = 'completed'
     ).bind(status, result, error, runId, goalId, userId).run();
     await db.prepare(
         `UPDATE agent_runs SET status = ?1, result_md = ?2, error = ?3, current_task_id = NULL,
+            lease_until = NULL, next_run_at = NULL,
             finished_at = ${completedAt}, updated_at = ${completedAt}
          WHERE id = ?4 AND user_id = ?5`
     ).bind(status === 'completed' ? 'completed' : 'failed', result, error, runId, userId).run();
@@ -127,8 +143,14 @@ async function markTaskFailure(db, userId, goalId, runId, task, stepId, attempts
     if (holdStatus) {
         await db.prepare(
             `UPDATE agent_runs SET status = ?1, error = ?2, current_task_id = NULL,
-                updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND user_id = ?4`
-        ).bind(holdStatus === 'cancelled' ? 'cancelled' : 'paused', error, runId, userId).run();
+                lease_until = NULL, next_run_at = NULL, updated_at = datetime('now', '+8 hours')
+             WHERE id = ?3 AND user_id = ?4`
+        ).bind(
+            holdStatus === 'cancelled' ? 'cancelled' : (holdStatus === 'completed' ? 'completed' : 'paused'),
+            error,
+            runId,
+            userId
+        ).run();
         if (holdStatus !== 'deleted') {
             await touchGoal(db, userId, goalId, { error, last_run_id: runId });
         }
@@ -137,13 +159,16 @@ async function markTaskFailure(db, userId, goalId, runId, task, stepId, attempts
     if (exhausted) {
         await db.prepare(
             `UPDATE agent_runs SET status = 'failed', error = ?1, current_task_id = NULL,
-                finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours')
+                lease_until = NULL, next_run_at = NULL, finished_at = datetime('now', '+8 hours'),
+                updated_at = datetime('now', '+8 hours')
              WHERE id = ?2 AND user_id = ?3`
         ).bind(error, runId, userId).run();
         await touchGoal(db, userId, goalId, { status: 'failed', error, last_run_id: runId });
     } else {
         await db.prepare(
             `UPDATE agent_runs SET status = 'queued', error = ?1, current_task_id = NULL,
+                lease_until = NULL,
+                next_run_at = datetime('now', '+8 hours', '+120 seconds'),
                 updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
         ).bind(error, runId, userId).run();
         await touchGoal(db, userId, goalId, { status: 'active', error: '', last_run_id: runId });
@@ -176,14 +201,18 @@ export async function runNextTask(options) {
     let tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '目标还没有任务', 'GOAL_NO_TASKS');
 
-    // 上一次执行中断：把遗留的 running 任务放回队列，而不是假装它成功了
-    const interrupted = tasks.find((task) => task.status === 'running');
-    if (interrupted) {
+    // 并发调用保护：另一个请求/cron 正在跑同一个任务时，不能把它当成“中断”重置。
+    // 只有超过 120s 没有更新的 running 才可能是进程崩溃留下的，才允许回收。
+    const running = tasks.filter((task) => task.status === 'running');
+    if (running.some(isLiveRunningTask)) {
+        return snapshotFor(db, userId, goalId);
+    }
+    if (running.length) {
         await db.prepare(
             `UPDATE agent_tasks SET status = 'pending', error = '上次执行中断，已重新排队',
                 started_at = NULL, updated_at = datetime('now', '+8 hours')
-             WHERE id = ?1 AND user_id = ?2`
-        ).bind(interrupted.id, userId).run();
+             WHERE goal_id = ?1 AND user_id = ?2 AND status = 'running'`
+        ).bind(goalId, userId).run();
         tasks = await listTasks(db, userId, goalId);
     }
 
@@ -233,7 +262,8 @@ export async function runNextTask(options) {
 
     await db.prepare(
         `UPDATE agent_runs SET status = 'running', current_task_id = ?1, error = '',
-            updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
+            lease_until = ${TASK_LEASE_SQL}, next_run_at = NULL,
+            updated_at = ${TASK_STARTED_AT_SQL} WHERE id = ?2 AND user_id = ?3`
     ).bind(task.id, run.id, userId).run();
     await touchGoal(db, userId, goalId, { status: 'active', error: '', last_run_id: run.id });
 
@@ -279,9 +309,14 @@ export async function runNextTask(options) {
         stop_reason: result.stopReason || 'final'
     }), durationMs, step.id, userId).run();
     const runStatus = holdStatus === 'cancelled' ? 'cancelled'
-        : (holdStatus === 'failed' ? 'failed' : (holdStatus ? 'paused' : 'queued'));
+        : (holdStatus === 'failed' ? 'failed'
+            : (holdStatus === 'completed' ? 'completed' : (holdStatus ? 'paused' : 'queued')));
+    const nextRunAt = runStatus === 'queued'
+        ? "datetime('now', '+8 hours', '+10 seconds')"
+        : 'NULL';
     await db.prepare(
         `UPDATE agent_runs SET status = ?1, current_task_id = NULL, error = '',
+            lease_until = NULL, next_run_at = ${nextRunAt},
             updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
     ).bind(runStatus, run.id, userId).run();
 
@@ -334,7 +369,8 @@ export async function pauseGoal(db, userId, goalId) {
     if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
     await touchGoal(db, userId, goalId, { status: 'paused' });
     await db.prepare(
-        `UPDATE agent_runs SET status = 'paused', updated_at = datetime('now', '+8 hours')
+        `UPDATE agent_runs SET status = 'paused', lease_until = NULL, next_run_at = NULL,
+            updated_at = datetime('now', '+8 hours')
          WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running', 'waiting_approval')`
     ).bind(goalId, userId).run();
     return snapshotFor(db, userId, goalId);
@@ -354,6 +390,7 @@ export async function completeGoal(db, userId, goalId) {
     if (run) {
         await db.prepare(
             `UPDATE agent_runs SET status = 'completed', result_md = ?1, current_task_id = NULL,
+                lease_until = NULL, next_run_at = NULL,
                 finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours')
              WHERE id = ?2 AND user_id = ?3`
         ).bind(result, run.id, userId).run();
