@@ -9,7 +9,8 @@
  */
 import { runAgent } from './ai-runtime.js';
 import { executeAgentTool } from './ai-tools.js';
-import { checkpointAfterTask } from './agent-checkpoint.js';
+import { checkpointAfterTask, budgetExceeded, addBudgetUsage, failForBudget } from './agent-checkpoint.js';
+import { WEB_AGENT_TOOLS, runWebTool } from './agent-web.js';
 import { runProposalTool, notifyAgentUser, notificationText } from './agent-approvals.js';
 import {
     AgentError,
@@ -34,11 +35,11 @@ const PROPOSE_WRITE_TOOL = {
     type: 'function',
     function: {
         name: 'propose_write',
-        description: '创建一个待用户审批的写入提案，不会直接写库。仅在任务明确要求保存或追加笔记时调用。',
+        description: '创建一个待用户审批的写入/发送提案，不会直接写库或发送。仅在任务明确要求保存、追加笔记或发 Bot 时调用。',
         parameters: {
             type: 'object',
             properties: {
-                action: { type: 'string', enum: ['save_note', 'append_note'] },
+                action: { type: 'string', enum: ['save_note', 'append_note', 'send_bot_message'] },
                 title: { type: 'string', minLength: 1, maxLength: 80, description: '保存为新笔记时的标题；追加时可省略' },
                 note_id: { type: 'integer', minimum: 1, description: '追加时必须提供目标笔记 id' },
                 content: { type: 'string', minLength: 1, maxLength: 30000, description: '要写入的 Markdown 正文' }
@@ -48,33 +49,7 @@ const PROPOSE_WRITE_TOOL = {
         }
     }
 };
-const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write。只有任务明确要求保存或追加笔记时才调用；它只创建待审批，不会直接写库。调用后如实说“已创建待审批”，不要声称已经写入。';
-
-function budgetExceeded(goal) {
-    const maxCalls = Number(goal.max_tool_calls || 48);
-    const maxMs = Number(goal.max_minutes || 30) * 60000;
-    return Number(goal.used_tool_calls || 0) >= maxCalls || Number(goal.used_ms || 0) >= maxMs;
-}
-
-async function addBudgetUsage(db, userId, goalId, toolCalls, durationMs) {
-    const sql = `UPDATE agent_goals SET used_tool_calls = used_tool_calls + ?1, used_ms = used_ms + ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND user_id = ?4`;
-    await db.prepare(sql).bind(Math.max(0, Number(toolCalls) || 0), Math.max(0, Number(durationMs) || 0), goalId, userId).run();
-}
-
-async function failForBudget(db, userId, goalId, goal, env) {
-    const message = '目标预算已用完（工具 ' + Number(goal.used_tool_calls || 0) + '/' + Number(goal.max_tool_calls || 48) + '，用时 ' + Math.round(Number(goal.used_ms || 0) / 6000) / 10 + '/' + Number(goal.max_minutes || 30) + ' 分钟）';
-    await db.prepare(
-        `UPDATE agent_goals SET status = 'failed', error = ?1, completed_at = datetime('now', '+8 hours'),
-            updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
-    ).bind(message, goalId, userId).run();
-    await db.prepare(
-        `UPDATE agent_runs SET status = 'failed', error = ?1, current_task_id = NULL, lease_until = NULL,
-            next_run_at = NULL, finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours')
-         WHERE goal_id = ?2 AND user_id = ?3 AND status IN ('queued', 'running', 'waiting_approval', 'paused')`
-    ).bind(message, goalId, userId).run();
-    await notifyAgentUser(env, db, userId, { title: '目标预算用完', body: '「' + notificationText(goal.title, 60) + '」' + message + '，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
-    return message;
-}
+const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write 与 web_search/fetch_url。需要外部事实时先检索；需要保存、追加或发 Bot 时用 propose_write，它只创建待审批，不会直接写库或发送。调用后如实说“已创建待审批”，不要声称已经写入或发送。';
 
 function timestampMs(value) {
     const text = String(value == null ? '' : value).trim();
@@ -118,7 +93,7 @@ function taskPrompt(goal, task, tasks) {
         '直接输出可以交给下一个任务使用的 Markdown 结果。',
         '如果任务涉及用户的记录、主题、偏好或统计，必须先调用只读工具取真实数据，并保留 [类型#id] 引用；没有证据就说明不足，不要编造。',
         '如果信息不足以完成，明确写出缺什么，不要用空话填充。',
-        '如果任务明确要求保存或追加笔记，调用 propose_write 创建待审批；不要直接声称已写入。'
+        '如果任务明确要求保存/追加笔记或发 Bot，调用 propose_write 创建待审批；不要直接声称已写入或已发送。'
     ].filter(Boolean).join('\n');
 }
 
@@ -338,11 +313,14 @@ export async function runNextTask(options) {
             userId,
             question: taskPrompt(goalRow, task, tasks),
             history: [],
-            extraTools: [PROPOSE_WRITE_TOOL],
+            extraTools: [PROPOSE_WRITE_TOOL, ...WEB_AGENT_TOOLS],
             extraInstructions: PROPOSE_WRITE_INSTRUCTIONS,
-            executeTool: (toolDb, toolUserId, name, args) => name === 'propose_write'
-                ? runProposalTool(toolDb, toolUserId, goalId, task.id, args, env)
-                : executeAgentTool(toolDb, toolUserId, name, args)
+            executeTool: (toolDb, toolUserId, name, args) => {
+                if (name === 'web_search' || name === 'fetch_url') return runWebTool(env, name, args);
+                return name === 'propose_write'
+                    ? runProposalTool(toolDb, toolUserId, goalId, task.id, args, env)
+                    : executeAgentTool(toolDb, toolUserId, name, args);
+            }
         }), TASK_TIMEOUT_MS, 'TASK_TIMEOUT');
         if (!result || typeof result.reply !== 'string' || !result.reply.trim()) {
             failure = (result && result.stopReason) ? `任务没有产出（${result.stopReason}）` : '任务没有产出';
@@ -383,6 +361,12 @@ export async function runNextTask(options) {
     const checkpoint = await checkpointAfterTask({
         env, db, userId, goalId, task, output, checkpointModel, planModel
     });
+    if (checkpoint.action === 'blocked') {
+        await db.prepare("UPDATE agent_tasks SET status = 'blocked', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(task.id, userId).run();
+        await pauseGoal(db, userId, goalId);
+        await notifyAgentUser(env, db, userId, { title: '目标已暂停', body: '「' + notificationText(goalRow.title, 60) + '」的任务结果标记为阻塞，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
+        return snapshotFor(db, userId, goalId);
+    }
     if (checkpoint.action === 'replan') {
         console.log('[agent] replanned remaining goal=' + goalId + ' tasks=' + checkpoint.tasks);
     }

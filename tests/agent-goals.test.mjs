@@ -29,6 +29,7 @@ import {
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
 import { requestAgentProposal } from '../workers/src/agent-approvals.js';
 import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
+import { runWebTool } from '../workers/src/agent-web.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
@@ -591,6 +592,77 @@ sqliteTest('Agent goals - 追加笔记审批校验归属、只追加一次且不
     assert.equal(other.content, '不能碰');
 });
 
+sqliteTest('Agent checkpoint - BLOCKED 结果会暂停目标并把任务标记为 blocked', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: '阻塞识别目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '一', depends_on: [] }, { title: '二', depends_on: [0] }] })
+    });
+    const snapshot = await runNextTask({
+        env: {}, db, userId: 1, goalId,
+        agentRunner: okRunner('## 结论\n\n**阻塞（BLOCKED）**：没有联网工具，无法完成。')
+    });
+    assert.equal(snapshot.goal.status, 'paused');
+    const task = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1 AND seq = 0').bind(goalId).first();
+    assert.equal(task.status, 'blocked');
+    const run = await db.prepare('SELECT * FROM agent_runs WHERE goal_id = ?1 ORDER BY id DESC LIMIT 1').bind(goalId).first();
+    assert.equal(run.status, 'paused');
+});
+
+sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async () => {
+    const search = await runWebTool(
+        { LLM_API_KEY: 'test' },
+        'web_search',
+        { query: '今天 AI 新闻' },
+        {
+            fetchImpl: async () => new Response(JSON.stringify({
+                data: [{ title: 'AI 新闻', url: 'https://example.com/ai', summary: '今日事件', site_name: '示例', rerank_score: 1 }]
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+        }
+    );
+    assert.equal(search.ok, true);
+    assert.equal(search.data.results[0].title, 'AI 新闻');
+    assert.equal(search.data.results[0].url, 'https://example.com/ai');
+
+    const bad = await runWebTool({}, 'fetch_url', { url: 'http://127.0.0.1/secret' });
+    assert.equal(bad.ok, false);
+    assert.equal(bad.error.code, 'INVALID_URL');
+
+    const page = await runWebTool({}, 'fetch_url', { url: 'https://example.com/page' }, {
+        fetchImpl: async () => ({ ok: true, status: 200, text: async () => 'Example page body' })
+    });
+    assert.equal(page.ok, true);
+    assert.match(page.data.content, /Example page body/);
+});
+
+sqliteTest('Agent proposals - 发 Bot 消息也走审批，未绑定或发送失败不产生假结果', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: 'Bot 发送目标' }).then((s) => s.goal.id);
+    const proposal = await requestAgentProposal(db, 1, goalId, 9, {
+        action: 'send_bot_message', content: '今天没有新的 AI 事件。'
+    });
+    assert.equal(proposal.approval.action_type, 'send_bot_message');
+    assert.equal(proposal.approval.payload.channel, 'bot');
+    await assert.rejects(
+        decideApproval(db, 1, proposal.approval.id, { decision: 'approve' }),
+        (err) => err && err.code === 'BOT_NOT_BOUND'
+    );
+    const stillPending = await db.prepare('SELECT status FROM agent_approvals WHERE id = ?1').bind(proposal.approval.id).first();
+    assert.equal(stillPending.status, 'pending', '未绑定 Bot 时审批退回 pending，不能假装已发送');
+
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id,status,bot_token,baseurl,ilink_bot_id,ilink_user_id,is_deleted) VALUES (1,'bound','token','https://ilinkai.weixin.qq.com','bot','user',0)"
+    ).run();
+    let sentText = '';
+    const sent = await decideApproval(db, 1, proposal.approval.id, { decision: 'approve' }, {
+        sendBot: async (text) => { sentText = text; }
+    });
+    assert.equal(sent.approval.result.sent, true);
+    assert.equal(sentText, '今天没有新的 AI 事件。');
+});
+
 sqliteTest('Agent checkpoint - 结果不足时只重规划未完成任务', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -705,11 +777,14 @@ sqliteTest('Agent budget - 预算用完后不再执行任务，正常任务会�
     });
     const done = await runNextTask({
         env: {}, db, userId: 1, goalId: okId,
-        agentRunner: async () => ({
-            reply: '完成', sources: [],
-            toolTrace: [{ name: 'list_recent_notes' }, { name: 'get_note' }],
-            stopReason: 'final'
-        })
+        agentRunner: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 5));
+            return {
+                reply: '完成', sources: [],
+                toolTrace: [{ name: 'list_recent_notes' }, { name: 'get_note' }],
+                stopReason: 'final'
+            };
+        }
     });
     assert.equal(done.goal.status, 'completed');
     const used = await db.prepare('SELECT used_tool_calls, used_ms FROM agent_goals WHERE id = ?1').bind(okId).first();

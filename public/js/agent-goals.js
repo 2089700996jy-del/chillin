@@ -99,12 +99,15 @@ function renderSteps(steps) {
 function approvalCopy(item) {
     const payload = item.payload || {};
     const append = item.action_type === 'append_note';
+    const send = item.action_type === 'send_bot_message';
     return {
-        title: append ? '追加到「' + (payload.note_title || '未命名笔记') + '」' : (payload.title || '保存为笔记草稿'),
-        description: append
-            ? '把目标结果追加到这篇笔记末尾，不覆盖原文。同意后只写一次。'
-            : '把目标结果保存为一条笔记草稿。同意后只写一次。',
-        approveText: append ? '同意并追加' : '同意并保存'
+        title: send ? '通过微信 Bot 发送' : (append ? '追加到「' + (payload.note_title || '未命名笔记') + '」' : (payload.title || '保存为笔记草稿')),
+        description: send
+            ? '把这条消息发送到你已绑定的微信 Bot。同意后只发送一次。'
+            : (append
+                ? '把目标结果追加到这篇笔记末尾，不覆盖原文。同意后只写一次。'
+                : '把目标结果保存为一条笔记草稿。同意后只写一次。'),
+        approveText: send ? '同意并发送' : (append ? '同意并追加' : '同意并保存')
     };
 }
 

@@ -9,11 +9,40 @@
  */
 import { callCustomLlm } from './llm.js';
 import { getGoalRow, listTasks, cleanText, cleanMultiline, touchGoal } from './agent-store.js';
+import { notifyAgentUser, notificationText } from './agent-approvals.js';
+
+export function budgetExceeded(goal) {
+    const maxCalls = Number(goal.max_tool_calls || 48);
+    const maxMs = Number(goal.max_minutes || 30) * 60000;
+    return Number(goal.used_tool_calls || 0) >= maxCalls || Number(goal.used_ms || 0) >= maxMs;
+}
+
+export async function addBudgetUsage(db, userId, goalId, toolCalls, durationMs) {
+    const sql = `UPDATE agent_goals SET used_tool_calls = used_tool_calls + ?1, used_ms = used_ms + ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND user_id = ?4`;
+    await db.prepare(sql).bind(Math.max(0, Number(toolCalls) || 0), Math.max(0, Number(durationMs) || 0), goalId, userId).run();
+}
+
+export async function failForBudget(db, userId, goalId, goal, env) {
+    const message = '目标预算已用完（工具 ' + Number(goal.used_tool_calls || 0) + '/' + Number(goal.max_tool_calls || 48) + '，用时 ' + Math.round(Number(goal.used_ms || 0) / 6000) / 10 + '/' + Number(goal.max_minutes || 30) + ' 分钟）';
+    await db.prepare(
+        `UPDATE agent_goals SET status = 'failed', error = ?1, completed_at = datetime('now', '+8 hours'),
+            updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
+    ).bind(message, goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_runs SET status = 'failed', error = ?1, current_task_id = NULL, lease_until = NULL,
+            next_run_at = NULL, finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours')
+         WHERE goal_id = ?2 AND user_id = ?3 AND status IN ('queued', 'running', 'waiting_approval', 'paused')`
+    ).bind(message, goalId, userId).run();
+    await notifyAgentUser(env, db, userId, { title: '目标预算用完', body: '「' + notificationText(goal.title, 60) + '」' + message + '，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
+    return message;
+}
+
 
 const MAX_PLANS = 3;
 const MAX_TASKS = 8;
 const MAX_NEW_TASKS = 4;
 const CHECKPOINT_TIMEOUT_MS = 15000;
+const BLOCKED_RE = /(?:BLOCKED|阻塞|无法完成|未能完成|缺少[^\n]{0,20}(?:工具|来源|数据)|没有[^\n]{0,20}(?:工具|来源|数据))/i;
 
 function parseJson(text) {
     const raw = String(text || '').trim().replace(/^\u0060\u0060\u0060(?:json)?/i, '').replace(/\u0060\u0060\u0060$/, '').trim();
@@ -60,8 +89,8 @@ function checkpointPrompt(goal, task, output, pending) {
         '当前任务：' + task.title,
         '任务结果：\n' + cleanMultiline(output, 4000),
         '剩余任务：' + pending.map((item) => item.title).join('、'),
-        '只有在结果明显缺失、未完成当前任务要求、或与已有结果矛盾时才 replan；不确定就 continue。',
-        '只输出 JSON：{"action":"continue"} 或 {"action":"replan","reason":"一句话原因"}。'
+        '只有在结果明显缺失、未完成当前任务要求、或与已有结果矛盾时才 replan；明确被工具/来源/权限卡住时选 blocked；不确定就 continue。',
+        '只输出 JSON：{"action":"continue"}、{"action":"replan","reason":"..."} 或 {"action":"blocked","reason":"..."}。'
     ].filter(Boolean).join('\n');
 }
 
@@ -137,6 +166,7 @@ async function replanRemaining({ env, db, userId, goalId, reason, planModel }) {
  */
 export async function checkpointAfterTask({ env, db, userId, goalId, task, output, checkpointModel, planModel }) {
     if (!env || !db || !task) return { action: 'continue' };
+    if (BLOCKED_RE.test(String(output || ''))) return { action: 'blocked', reason: '任务结果标记为阻塞' };
     const tasks = await listTasks(db, userId, goalId);
     const pending = tasks.filter((item) => ['pending', 'ready'].includes(item.status));
     if (!pending.length) return { action: 'continue' };
@@ -155,7 +185,9 @@ export async function checkpointAfterTask({ env, db, userId, goalId, task, outpu
     } catch (err) {
         console.error('[agent-checkpoint] assess failed:', err && err.message ? err.message : err);
     }
-    if (!decision || decision.action !== 'replan') return { action: 'continue' };
+    if (!decision) return { action: 'continue' };
+    if (decision.action === 'blocked') return { action: 'blocked', reason: cleanText(decision.reason, 300) || '检查点判定阻塞' };
+    if (decision.action !== 'replan') return { action: 'continue' };
     const reason = cleanText(decision.reason, 300) || '当前结果不足';
     const result = await replanRemaining({ env, db, userId, goalId, reason, planModel });
     return result.replanned ? { action: 'replan', ...result } : { action: 'continue', reason: result.reason || 'replan_failed' };

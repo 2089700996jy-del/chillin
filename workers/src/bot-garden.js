@@ -400,7 +400,7 @@ async function listApprovalsFromBot(db, userId) {
         const payload = item.payload || {};
         const what = item.action_type === 'append_note'
             ? '追加到「' + (payload.note_title || '未命名笔记') + '」'
-            : '保存为「' + (payload.title || '目标草稿') + '」';
+            : (item.action_type === 'send_bot_message' ? '通过 Bot 发送' : '保存为「' + (payload.title || '目标草稿') + '」');
         return '#' + item.id + ' ' + what + ' · 目标：' + clip(item.goal_title, 24);
     });
     return '待审批 ' + inbox.pending_count + ' 条（最多显示 10 条）：\n' + lines.join('\n')
@@ -450,6 +450,7 @@ export async function maybeRunAgentCommand(env, db, userId, text) {
             if (approval.action_type === 'append_note') {
                 return '已追加到「' + clip(approval.payload && approval.payload.note_title, 40) + '」✅';
             }
+            if (approval.action_type === 'send_bot_message') return '已通过 Bot 发送 ✅';
             const noteId = approval.result && approval.result.note_id;
             return noteId ? '已保存为笔记 #' + noteId + ' ✅' : '已同意并写入 ✅';
         }

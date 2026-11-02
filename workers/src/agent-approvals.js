@@ -155,7 +155,7 @@ export function validateProposalArgs(args) {
     for (const key of Object.keys(args)) {
         if (!allowed.has(key)) return '未知参数：' + key;
     }
-    if (args.action !== 'save_note' && args.action !== 'append_note') return 'action 必须是 save_note 或 append_note';
+    if (!['save_note', 'append_note', 'send_bot_message'].includes(args.action)) return 'action 不支持';
     if (typeof args.content !== 'string' || !args.content.trim()) return 'content 不能为空';
     if (args.content.length > MAX_APPROVAL_CONTENT) return 'content 太长';
     if (args.action === 'append_note') {
@@ -196,9 +196,8 @@ export async function runProposalTool(db, userId, goalId, taskId, args, env) {
 }
 
 export async function requestAgentProposal(db, userId, goalId, taskId, payload = {}, env = null) {
-    const action = payload.action === 'append_note' ? 'append_note'
-        : (payload.action === 'save_note' ? 'save_note' : '');
-    if (!action) throw new AgentError(400, 'action 必须是 save_note 或 append_note', 'INVALID_PROPOSAL_ACTION');
+    const action = ['save_note', 'append_note', 'send_bot_message'].includes(payload.action) ? payload.action : '';
+    if (!action) throw new AgentError(400, 'action 不支持', 'INVALID_PROPOSAL_ACTION');
     const content = cleanMultiline(payload.content, MAX_APPROVAL_CONTENT);
     if (!content) throw new AgentError(400, '提案内容不能为空', 'PROPOSAL_EMPTY');
     const goal = await getGoalRow(db, userId, goalId);
@@ -210,6 +209,10 @@ export async function requestAgentProposal(db, userId, goalId, taskId, payload =
         source: 'agent',
         task_id: Number(taskId) || 0
     };
+    if (action === 'send_bot_message') {
+        body.title = 'Bot 消息';
+        body.channel = 'bot';
+    }
     if (action === 'append_note') {
         const noteId = Number(payload.note_id);
         if (!Number.isInteger(noteId) || noteId <= 0) {
@@ -227,13 +230,13 @@ export async function requestAgentProposal(db, userId, goalId, taskId, payload =
     if (created) {
         const target = action === 'append_note'
             ? '追加到「' + body.note_title + '」'
-            : '保存为新笔记「' + body.title + '」';
+            : (action === 'send_bot_message' ? '通过 Bot 发送一条消息' : '保存为新笔记「' + body.title + '」');
         await notifyApproval(env, db, userId, goalId, 'Agent 提案：' + target);
     }
     return { approval: formatApproval(row), created };
 }
 
-export async function decideApproval(db, userId, approvalId, payload = {}) {
+export async function decideApproval(db, userId, approvalId, payload = {}, deps = {}) {
     const decision = payload.decision === 'approve' ? 'approve' : (payload.decision === 'reject' ? 'reject' : '');
     if (!decision) throw new AgentError(400, 'decision 必须是 approve 或 reject', 'INVALID_DECISION');
     const row = await db.prepare(
@@ -278,6 +281,28 @@ export async function decideApproval(db, userId, approvalId, payload = {}) {
                  RETURNING id`
             ).bind(title, content, userId).first();
             result = { note_id: Number(note.id) };
+        } else if (decision === 'approve' && row.action_type === 'send_bot_message') {
+            const body = JSON.parse(row.payload_json || '{}');
+            const content = cleanMultiline(body.content, 4000);
+            if (!content) throw new AgentError(409, '审批内容为空', 'APPROVAL_EMPTY');
+            const account = await db.prepare(
+                "SELECT bot_token, baseurl, ilink_bot_id, ilink_user_id FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0 AND status = 'bound' ORDER BY id DESC LIMIT 1"
+            ).bind(userId).first();
+            if (!account) throw new AgentError(409, '未绑定可用的微信 Bot', 'BOT_NOT_BOUND');
+            if (deps.sendBot) {
+                await deps.sendBot(content, account);
+            } else {
+                const { sendClawText } = await import('./bot-claw.js');
+                await sendClawText({
+                    token: account.bot_token,
+                    baseurl: account.baseurl,
+                    botId: account.ilink_bot_id,
+                    toUserId: account.ilink_user_id,
+                    contextToken: '',
+                    text: content
+                });
+            }
+            result = { sent: true, channel: 'bot' };
         } else if (decision === 'approve' && row.action_type === 'append_note') {
             const body = JSON.parse(row.payload_json || '{}');
             const noteId = Number(body.note_id);
