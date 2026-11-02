@@ -133,6 +133,7 @@ function renderDetail(data) {
     const hasBlocked = tasks.some((task) => task.status === 'blocked');
     const actions = [];
     if (['draft', 'planned', 'failed'].includes(goal.status)) actions.push(actionButton('plan', goal.status === 'failed' ? '重新规划' : '生成计划', { primary: goal.status !== 'planned' }));
+    if (goal.status === 'failed' && hasBlocked) actions.push(actionButton('replan', '重新规划剩余', { primary: true }));
     if (goal.status === 'planned') actions.push(actionButton('start', '开始执行', { primary: true }));
     if (goal.status === 'active') {
         actions.push(actionButton('continue', '继续执行', { primary: true }));
