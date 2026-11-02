@@ -9,7 +9,7 @@
  */
 import { runAgent } from './ai-runtime.js';
 import { executeAgentTool } from './ai-tools.js';
-import { checkpointAfterTask, budgetExceeded, addBudgetUsage, failForBudget } from './agent-checkpoint.js';
+import { checkpointAfterTask, blockCompletionIfNeeded, budgetExceeded, addBudgetUsage, failForBudget } from './agent-checkpoint.js';
 import { WEB_AGENT_TOOLS, runWebTool } from './agent-web.js';
 import { runProposalTool, notifyAgentUser, notificationText } from './agent-approvals.js';
 import {
@@ -91,7 +91,8 @@ function taskPrompt(goal, task, tasks) {
         deps ? `已完成的前置结果：\n${deps}` : '',
         '只完成当前任务，不要提前做后续任务，也不要声称已经写入任何数据。',
         '直接输出可以交给下一个任务使用的 Markdown 结果。',
-        '如果任务涉及用户的记录、主题、偏好或统计，必须先调用只读工具取真实数据，并保留 [类型#id] 引用；没有证据就说明不足，不要编造。',
+        '只有当任务明确涉及用户自己的花园记录、笔记、偏好、历史或统计时，才使用花园只读工具；如果只是外部新闻/事实/资料，直接用 web_search/fetch_url，不要先在花园里搜索。',
+        '如果任务要求发 Bot/微信，调用 propose_write(action=send_bot_message) 创建审批，不要直接发送。',
         '如果信息不足以完成，明确写出缺什么，不要用空话填充。',
         '如果任务明确要求保存/追加笔记或发 Bot，调用 propose_write 创建待审批；不要直接声称已写入或已发送。'
     ].filter(Boolean).join('\n');
@@ -237,6 +238,9 @@ export async function runNextTask(options) {
 
     let tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '目标还没有任务', 'GOAL_NO_TASKS');
+    if (tasks.some((item) => item.status === 'blocked')) {
+        throw new AgentError(409, '有阻塞任务，请先重新规划剩余任务', 'GOAL_BLOCKED');
+    }
 
     // 并发调用保护：另一个请求/cron 正在跑同一个任务时，不能把它当成“中断”重置。
     // 只有超过 120s 没有更新的 running 才可能是进程崩溃留下的，才允许回收。
@@ -384,6 +388,7 @@ export async function runNextTask(options) {
 
     tasks = await listTasks(db, userId, goalId);
     if (allTasksCompleted(tasks) && ['active', 'planned', 'paused'].includes(latestStatus)) {
+        if (await blockCompletionIfNeeded({ env, db, userId, goalId, goal: latestGoal || goalRow, tasks })) return snapshotFor(db, userId, goalId);
         await finishGoal(db, userId, goalId, run.id, tasks, 'completed', '', env, goalRow.title);
     } else if (holdStatus) {
         if (holdStatus !== 'deleted') {
@@ -417,6 +422,9 @@ export async function continueGoal(options) {
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     const tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '请先生成计划', 'GOAL_NO_PLAN');
+    if (tasks.some((item) => item.status === 'blocked')) {
+        throw new AgentError(409, '有阻塞任务，请先重新规划剩余任务', 'GOAL_BLOCKED');
+    }
     if (goal.status === 'paused') {
         await touchGoal(db, userId, goalId, { status: 'active', error: '' });
     } else if (!['active', 'planned'].includes(goal.status)) {

@@ -8,7 +8,7 @@ import { handlePostFeed, handlePostBookmark, handlePostPrompt } from './garden-r
 import { readPendingMedia, clearPendingMedia, parsePendingImageBatch } from './bot-memory.js';
 import { buildManualLinkCard } from './bot-links.js';
 import { checkRateLimitShared } from './security.js';
-import { createGoal, generatePlan, getGoalDetail, listGoalSummaries, decideApproval } from './agent-goals.js';
+import { createGoal, generatePlan, getGoalDetail, listGoalSummaries, decideApproval, replanGoal } from './agent-goals.js';
 import { pauseGoal } from './agent-executor.js';
 import { queueGoal } from './agent-scheduler.js';
 import { AgentError, listApprovalInbox } from './agent-store.js';
@@ -434,6 +434,10 @@ export async function maybeRunAgentCommand(env, db, userId, text) {
             const result = await queueGoal(db, userId, goalId, 'bot');
             if (!result.queued) return '目标 #' + goalId + ' 正在执行，稍后看结果就行。';
             return '目标 #' + goalId + ' 已排队 ✅ 下一分钟后台会推进一个任务，回复「看目标 ' + goalId + '」查看。';
+        }
+        if ((match = raw.match(/^(?:重新规划|重规划)\s*#?(\d+)$/i))) {
+            const planned = await replanGoal(db, userId, Number(match[1]), env);
+            return '目标 #' + planned.goal.id + ' 已重新规划剩余任务，回复「开始 ' + planned.goal.id + '」继续。';
         }
         if ((match = raw.match(/^(?:暂停目标|暂停)\s*#?(\d+)$/i))) {
             const goalId = Number(match[1]);

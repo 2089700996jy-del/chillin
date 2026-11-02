@@ -40,6 +40,9 @@ export async function queueGoal(db, userId, goalId, trigger = 'bot') {
     }
     const tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '目标还没有任务', 'GOAL_NO_TASKS');
+    if (tasks.some((item) => item.status === 'blocked')) {
+        throw new AgentError(409, '有阻塞任务，请先重新规划剩余任务', 'GOAL_BLOCKED');
+    }
 
     const active = await getActiveRunRow(db, userId, goalId);
     if (active && active.status === 'running') {

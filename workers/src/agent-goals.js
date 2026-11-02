@@ -25,6 +25,7 @@ import {
     retryTask
 } from './agent-executor.js';
 import { requestSaveDraft, requestAppendDraft, decideApproval } from './agent-approvals.js';
+import { replanRemaining } from './agent-checkpoint.js';
 export { requestSaveDraft, requestAppendDraft, decideApproval };
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -99,7 +100,8 @@ function planPrompt(goal) {
                 '把用户目标拆成 3–6 个有依赖顺序的执行任务。',
                 '每个任务必须是一个可独立完成的动作，不是空泛的阶段名。',
                 '任务数量最多 8 个；depends_on 只能引用前面任务的下标（从 0 开始）。',
-                '只做用户花园内可完成的整理、检索、提炼、写作任务；不要规划发消息、改数据、联网提交等副作用动作。',
+                '先判断目标是否涉及用户自己的花园记录：只有明确提到「我的记录 / 笔记 / 花园 / 之前记过 / 我的偏好」等，才规划花园检索；外部新闻、事实、资料直接用 web_search/fetch_url。',
+                '如果目标要求通过 Bot/微信发送，最后一步必须是“创建 send_bot_message 审批”，不能直接发送；写入/发送只能走 propose_write 审批。',
                 '',
                 '输出格式：',
                 '{"tasks":[{"title":"任务标题","description":"具体做什么、产出什么","depends_on":[]}]}',
@@ -217,6 +219,16 @@ export async function getGoalDetail(db, userId, goalId) {
     return snapshot;
 }
 
+export async function replanGoal(db, userId, goalId, env = null) {
+    const goal = await getGoalRow(db, userId, goalId);
+    if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
+    if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
+    if (goal.status === 'active') throw new AgentError(409, '执行中的目标不能重新规划，请先暂停', 'GOAL_RUNNING');
+    const result = await replanRemaining({ env, db, userId, goalId, reason: '用户手动重新规划剩余任务' });
+    if (!result.replanned) throw new AgentError(409, '没有可重规划的剩余任务', 'GOAL_NO_REPLAN');
+    return getSnapshot(db, userId, goalId);
+}
+
 async function readBody(request) {
     const raw = await readTextCapped(request, MAX_BODY_BYTES);
     if (!raw.ok) throw new AgentError(413, '请求内容过大', 'BODY_TOO_LARGE');
@@ -261,6 +273,12 @@ export async function handleAgentGoalApi(request, env, url, db, userId, deps = {
             const goalId = idFrom(match[1]);
             const result = await generatePlan(db, userId, goalId, { env, planModel: deps.planModel });
             return jsonResponse(result, 200);
+        }
+
+        match = path.match(/^\/api\/agent\/goals\/(\d+)\/replan$/);
+        if (match && method === 'POST') {
+            const goalId = idFrom(match[1]);
+            return jsonResponse(await replanGoal(db, userId, goalId, env), 200);
         }
 
         match = path.match(/^\/api\/agent\/goals\/(\d+)\/start$/);

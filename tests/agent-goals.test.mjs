@@ -608,6 +608,33 @@ sqliteTest('Agent checkpoint - BLOCKED 结果会暂停目标并把任务标记�
     assert.equal(task.status, 'blocked');
     const run = await db.prepare('SELECT * FROM agent_runs WHERE goal_id = ?1 ORDER BY id DESC LIMIT 1').bind(goalId).first();
     assert.equal(run.status, 'paused');
+    await assert.rejects(
+        continueGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('不应执行') }),
+        (err) => err && err.code === 'GOAL_BLOCKED'
+    );
+});
+
+sqliteTest('Agent goals - 要求 Bot 发送但没有发送审批时不能标记完成', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: '今天的三条新闻通过bot发送给我' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '写好消息正文', depends_on: [] }] })
+    });
+    const paused = await runNextTask({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('这是草稿正文') });
+    assert.equal(paused.goal.status, 'paused');
+    const autoApproval = await db.prepare("SELECT * FROM agent_approvals WHERE goal_id = ?1 AND action_type = 'send_bot_message' AND status = 'pending'").bind(goalId).first();
+    assert.ok(autoApproval, '要求 Bot 发送时必须自动创建发送审批');
+
+    const proposal = await requestAgentProposal(db, 1, goalId, 1, {
+        action: 'send_bot_message', content: '今天的三条新闻'
+    });
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id,status,bot_token,baseurl,ilink_bot_id,ilink_user_id,is_deleted) VALUES (1,'bound','token','https://ilinkai.weixin.qq.com','bot','user',0)"
+    ).run();
+    await decideApproval(db, 1, proposal.approval.id, { decision: 'approve' }, { sendBot: async () => {} });
+    const done = await continueGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner('已发送') });
+    assert.equal(done.goal.status, 'completed');
 });
 
 sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async () => {

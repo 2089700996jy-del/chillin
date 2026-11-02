@@ -130,6 +130,7 @@ function renderDetail(data) {
     const goal = data.goal;
     const progress = goal.progress || { total: 0, completed: 0, failed: 0 };
     const tasks = data.tasks || [];
+    const hasBlocked = tasks.some((task) => task.status === 'blocked');
     const actions = [];
     if (['draft', 'planned', 'failed'].includes(goal.status)) actions.push(actionButton('plan', goal.status === 'failed' ? '重新规划' : '生成计划', { primary: goal.status !== 'planned' }));
     if (goal.status === 'planned') actions.push(actionButton('start', '开始执行', { primary: true }));
@@ -137,7 +138,7 @@ function renderDetail(data) {
         actions.push(actionButton('continue', '继续执行', { primary: true }));
         actions.push(actionButton('pause', '暂停'));
     }
-    if (goal.status === 'paused') actions.push(actionButton('continue', '恢复并继续', { primary: true }));
+    if (goal.status === 'paused') actions.push(hasBlocked ? actionButton('replan', '重新规划剩余', { primary: true }) : actionButton('continue', '恢复并继续', { primary: true }));
     if (['active', 'paused', 'planned'].includes(goal.status)) actions.push(actionButton('complete', '标记完成'));
     if (['draft', 'planned', 'failed', 'paused'].includes(goal.status)) actions.push(actionButton('edit', '编辑目标'));
     if (!['completed', 'cancelled'].includes(goal.status)) actions.push(actionButton('cancel', '取消目标'));
@@ -314,6 +315,9 @@ async function runAction(action) {
             data = await postGoal('/api/agent/goals/' + goalId + '/start');
         } else if (action === 'continue') {
             data = await postGoal('/api/agent/goals/' + goalId + '/continue');
+        } else if (action === 'replan') {
+            data = await postGoal('/api/agent/goals/' + goalId + '/replan', 65000);
+            showToast('剩余任务已重新规划，点“继续执行”继续', 'success');
         } else if (action === 'pause') {
             data = await postGoal('/api/agent/goals/' + goalId + '/pause', 30000);
         } else if (action === 'complete') {

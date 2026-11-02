@@ -9,7 +9,7 @@
  */
 import { callCustomLlm } from './llm.js';
 import { getGoalRow, listTasks, cleanText, cleanMultiline, touchGoal } from './agent-store.js';
-import { notifyAgentUser, notificationText } from './agent-approvals.js';
+import { notifyAgentUser, notificationText, requestAgentProposal } from './agent-approvals.js';
 
 export function budgetExceeded(goal) {
     const maxCalls = Number(goal.max_tool_calls || 48);
@@ -107,7 +107,7 @@ function replanPrompt(goal, completed, pending, reason) {
     ].filter(Boolean).join('\n');
 }
 
-async function replanRemaining({ env, db, userId, goalId, reason, planModel }) {
+export async function replanRemaining({ env, db, userId, goalId, reason, planModel }) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) return { replanned: false };
     if (Number(goal.plan_version || 0) >= MAX_PLANS) return { replanned: false, reason: 'plan_limit' };
@@ -158,6 +158,50 @@ async function replanRemaining({ env, db, userId, goalId, reason, planModel }) {
         error: ''
     });
     return { replanned: true, tasks: nextTasks.length, plan_version: Number(goal.plan_version || 0) + 1 };
+}
+
+function goalWantsBotSend(goal, tasks) {
+    const text = [goal.title, goal.description, ...(tasks || []).map((task) => task.title + ' ' + task.description)].join(' ');
+    return /bot|微信|wechat/i.test(text) && /发送|发我|推送|发给/i.test(text);
+}
+
+/**
+ * 所有任务完成后、真正标记完成前的硬门槛：
+ * 目标要求 Bot 发送时，必须有 pending/approved 的 send_bot_message 审批。
+ * 没有则暂停目标并通知，不能把“只写了草稿”的目标标成完成。
+ */
+export async function blockCompletionIfNeeded({ env, db, userId, goalId, goal, tasks }) {
+    if (!goalWantsBotSend(goal, tasks)) return false;
+    const approval = await db.prepare(
+        "SELECT status FROM agent_approvals WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'send_bot_message' AND status IN ('pending', 'approved') ORDER BY id DESC LIMIT 1"
+    ).bind(goalId, userId).first();
+    if (approval && approval.status === 'approved') return false;
+    let message = approval ? '目标要求 Bot 发送，发送审批还在等待处理' : '';
+    if (!approval) {
+        const last = [...(tasks || [])].reverse().find((item) => item.status === 'completed' && item.output_md);
+        const content = last ? last.output_md : '';
+        if (content) {
+            try {
+                await requestAgentProposal(db, userId, goalId, last.id, { action: 'send_bot_message', content }, env);
+                message = '目标要求 Bot 发送，已创建发送审批，请到收件箱确认';
+            } catch (err) {
+                message = '目标要求 Bot 发送，但创建发送审批失败：' + (err && err.message || 'unknown');
+            }
+        } else {
+            message = '目标要求 Bot 发送，但还没有 send_bot_message 审批';
+        }
+    }
+    await db.prepare(
+        `UPDATE agent_goals SET status = 'paused', error = ?1, updated_at = datetime('now', '+8 hours')
+         WHERE id = ?2 AND user_id = ?3 AND COALESCE(is_deleted, 0) = 0`
+    ).bind(message, goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_runs SET status = 'paused', current_task_id = NULL, lease_until = NULL,
+            next_run_at = NULL, updated_at = datetime('now', '+8 hours')
+         WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running', 'waiting_approval', 'paused')`
+    ).bind(goalId, userId).run();
+    await notifyAgentUser(env, db, userId, { title: '目标已暂停', body: '「' + notificationText(goal.title, 60) + '」' + message, tag: 'agent-goal-' + goalId }).catch(() => {});
+    return true;
 }
 
 /**
