@@ -37,6 +37,16 @@ let descInput = null;
 let currentGoalId = null;
 let autoToken = 0;
 let busy = false;
+let lastClickKey = '';
+let lastClickAt = 0;
+
+function isRapidClick(key, windowMs = 800) {
+    const now = Date.now();
+    if (key === lastClickKey && now - lastClickAt < windowMs) return true;
+    lastClickKey = key;
+    lastClickAt = now;
+    return false;
+}
 
 function label(status) {
     return STATUS_LABELS[status] || status || '未知';
@@ -275,6 +285,7 @@ async function postGoal(path, timeout = 65000) {
 async function runAction(action) {
     const goalId = currentGoalId;
     if (!goalId) return;
+    if (isRapidClick('goal:' + action + ':' + goalId)) return;
     // 暂停必须能在自动推进的请求飞行途中生效；其余动作仍串行，避免并发操作同一目标。
     if (busy && action !== 'pause') return;
     if (action === 'delete') {
@@ -406,7 +417,7 @@ async function retryTask(taskId) {
 }
 
 async function decideApproval(approvalId, decision, goalId = null, actionType = 'save_note') {
-    if (busy) return;
+    if (busy || isRapidClick('approval:' + approvalId + ':' + decision)) return;
     busy = true;
     const targetGoalId = goalId || currentGoalId;
     try {

@@ -7,7 +7,7 @@
  *   收信：POST /ilink/bot/getupdates（长轮询，实测无消息时服务端约 18s 返回），
  *         响应里的 get_updates_buf 是必须持久化的游标。
  *   回信：POST /ilink/bot/sendmessage。带上来信消息的 context_token 表示「接着这句话回」；
- *         置空同样能送达（v2.5.110 实测：无人说话时用空 context_token 主动开口，HTTP 200 且用户收到），
+ *         2026-11 实测空 context_token 可能返回 200 + ret=-2 prepare failed，因此主动发送使用最近入站 token，
  *         这是 bot-outreach 主动关怀的传输基础。
  * 分层：传输层是上面几个可注入 fetchImpl 的纯函数；
  * 接入层 /api/bot/claw/* 挂在登录态鉴权之后；每分钟 cron 走 pollClawAccounts 收信，业务指令复用 bot-commands。
@@ -149,7 +149,6 @@ export async function fetchClawUpdates(options) {
         errcode: data && data.errcode
     };
 }
-
 export async function sendClawText(options) {
     const opts = options || {};
     const fetchImpl = opts.fetchImpl || fetch;
@@ -171,11 +170,11 @@ export async function sendClawText(options) {
         body: JSON.stringify(body)
     });
     if (!res.ok) throw new Error('sendmessage http ' + res.status);
+    const data = await res.json().catch(() => null);
+    if (data && data.ret != null && Number(data.ret) !== 0) throw new Error('sendmessage ret=' + data.ret + (data.errmsg ? ' ' + data.errmsg : ''));
     return true;
 }
-
 // ─────────────────────────── 报文解析 ───────────────────────────
-
 /** 取纯文本：item_list 里 type=1 的 text_item（多条拼接） */
 export function extractClawText(msg) {
     if (!msg || !Array.isArray(msg.item_list)) return '';
@@ -456,6 +455,7 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
         console.log('[bot-claw] 重复消息已忽略');
         return;
     }
+    if (msg.context_token) await db.prepare("UPDATE bot_claw_accounts SET last_context_token = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(account.id, String(msg.context_token).slice(0, 500)).run();
     // 有图就走存图通道（秒回、不经模型也不占对话限流桶）；图 + 文字时文字自动变成配文
     const reply = hasImage
         ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)

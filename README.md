@@ -26,7 +26,7 @@
 
 * **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，reader/upload/prompts 按路由动态 `import()`；模块 SW 走 stale-while-revalidate
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
-* **数据**：**Cloudflare D1**（SQLite，40 个迁移 0001–0040，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
+* **数据**：**Cloudflare D1**（SQLite，41 个迁移 0001–0041，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker
 * **依赖**：运行时**零第三方请求**（DOMPurify 自托管于 `public/vendor/`），构建期仅 `wrangler` 与 `web-push`
 
@@ -49,7 +49,7 @@ workers/src/        43 个领域模块（security / security-network / security-
                     bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
                     bot-web / bot-search / bot-media / bot-image-flow / bot-vision / bot-links /
                     maintenance）
-migrations/         D1 迁移 0001–0040（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily、Bot 提醒追问状态机与退避重试、长期记忆 FTS5 索引与关联召回、Bot 管家待确认动作、Bot 交流偏好、多图待存批次、Agent 目标/任务/运行/步骤/审批、Agent 单目标预算、Push 设备去重）
+migrations/         D1 迁移 0001–0041（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily、Bot 提醒追问状态机与退避重试、长期记忆 FTS5 索引与关联召回、Bot 管家待确认动作、Bot 交流偏好、多图待存批次、Agent 目标/任务/运行/步骤/审批、Agent 单目标预算、Push 设备去重、Bot 最近入站 context_token）
 tests/              Node 原生单测（node:test，零第三方测试框架）
 functions/          Pages Functions 反向代理（**必须位于仓库根**，不能放进发布目录）
 .agents/rules/      开发规约（架构 / UI / PWA 同步 / 安全 / 工程流程）

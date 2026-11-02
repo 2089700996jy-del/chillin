@@ -286,7 +286,7 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
             const content = cleanMultiline(body.content, 4000);
             if (!content) throw new AgentError(409, '审批内容为空', 'APPROVAL_EMPTY');
             const account = await db.prepare(
-                "SELECT bot_token, baseurl, ilink_bot_id, ilink_user_id FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0 AND status = 'bound' ORDER BY id DESC LIMIT 1"
+                "SELECT bot_token, baseurl, ilink_bot_id, ilink_user_id, last_context_token FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0 AND status = 'bound' ORDER BY id DESC LIMIT 1"
             ).bind(userId).first();
             if (!account) throw new AgentError(409, '未绑定可用的微信 Bot', 'BOT_NOT_BOUND');
             if (deps.sendBot) {
@@ -298,7 +298,7 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
                     baseurl: account.baseurl,
                     botId: account.ilink_bot_id,
                     toUserId: account.ilink_user_id,
-                    contextToken: '',
+                    contextToken: account.last_context_token || '',
                     text: content
                 });
             }

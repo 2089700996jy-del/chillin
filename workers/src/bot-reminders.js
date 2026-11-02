@@ -253,7 +253,7 @@ export function reminderAskText(text) {
 }
 
 async function loadBoundAccount(db, userId) {
-    const row = await db.prepare("SELECT id, user_id, bot_token, baseurl, ilink_bot_id, ilink_user_id FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0 AND status = 'bound' ORDER BY id DESC LIMIT 1")
+    const row = await db.prepare("SELECT id, user_id, bot_token, baseurl, ilink_bot_id, ilink_user_id, last_context_token FROM bot_claw_accounts WHERE user_id = ?1 AND is_deleted = 0 AND status = 'bound' ORDER BY id DESC LIMIT 1")
         .bind(userId).first();
     return row || null;
 }
@@ -428,7 +428,7 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
                 baseurl: account.baseurl,
                 botId: account.ilink_bot_id,
                 toUserId: account.ilink_user_id,
-                contextToken: '',
+                contextToken: account.last_context_token || '',
                 text: firedText,
                 fetchImpl
             });
@@ -481,7 +481,7 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
                 baseurl: account.baseurl,
                 botId: account.ilink_bot_id,
                 toUserId: account.ilink_user_id,
-                contextToken: '',
+                contextToken: account.last_context_token || '',
                 text: askText,
                 fetchImpl
             });

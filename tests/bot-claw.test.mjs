@@ -244,6 +244,14 @@ test('ClawBot - 回复消息带回传的 context_token，正文截到 4000 字�
     assert.ok(long.endsWith('…'));
 });
 
+test('ClawBot - sendmessage 返回 ret 非 0 必须抛错，不能假装已发送', async () => {
+    const st = stubFetch({ '/ilink/bot/sendmessage': () => ({ json: { ret: -2, errmsg: 'prepare failed' } }) });
+    await assert.rejects(
+        () => sendClawText({ token: 'T', baseurl: OFFICIAL, toUserId: 'u', text: '你好', fetchImpl: st.impl }),
+        /ret=-2/
+    );
+});
+
 /** 建一个已绑定账号，bound_at_ms 取当前时间，避免被「绑定前积压」规则丢掉 */
 async function seedAccount(db, overrides = {}) {
     const row = {

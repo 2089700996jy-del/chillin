@@ -421,7 +421,7 @@ async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
             baseurl: account.baseurl,
             botId: account.ilink_bot_id,
             toUserId: account.ilink_user_id,
-            contextToken: '',
+            contextToken: account.last_context_token || '',
             text,
             fetchImpl
         });
