@@ -7,6 +7,7 @@
  * - 失败按 max_attempts 重试，耗尽后目标进入 failed，等待用户重试或改计划；
  * - 执行只调用阶段 1 的只读工具循环，不在这里写业务数据。
  */
+import webPush from 'web-push';
 import { runAgent } from './ai-runtime.js';
 import {
     AgentError,
@@ -25,6 +26,47 @@ const TASK_TIMEOUT_MS = 50000;
 const LIVE_TASK_GRACE_MS = 120000;
 const TASK_LEASE_SQL = "datetime('now', '+8 hours', '+180 seconds')";
 const TASK_STARTED_AT_SQL = "datetime('now', '+8 hours')";
+
+function notificationText(value, max = 120) {
+    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/** 目标完成/失败、审批创建时复用已有 Web Push 订阅；没有 VAPID 或订阅时静默跳过。 */
+export async function notifyAgentUser(env, db, userId, payload = {}) {
+    if (!env || !db || !userId) return { sent: 0 };
+    if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return { sent: 0 };
+    const subs = await db.prepare(
+        'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1'
+    ).bind(userId).all();
+    const rows = subs && Array.isArray(subs.results) ? subs.results : [];
+    if (!rows.length) return { sent: 0 };
+    webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
+    const body = JSON.stringify({
+        title: notificationText(payload.title || 'Chillin', 40),
+        body: notificationText(payload.body, 120),
+        icon: '/icons/transparent.png',
+        url: payload.url || '/',
+        tag: notificationText(payload.tag || 'agent', 40)
+    });
+    let sent = 0;
+    await Promise.all(rows.map(async (sub) => {
+        try {
+            await webPush.sendNotification(
+                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+                body
+            );
+            sent += 1;
+        } catch (err) {
+            if (err && (err.statusCode === 404 || err.statusCode === 410)) {
+                try { await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?1').bind(sub.endpoint).run(); }
+                catch (_) { /* 清理失败不影响主流程 */ }
+            } else {
+                console.error('[agent-notify] push failed:', err && err.message ? err.message : err);
+            }
+        }
+    }));
+    return { sent };
+}
 
 function timestampMs(value) {
     const text = String(value == null ? '' : value).trim();
@@ -110,7 +152,7 @@ async function ensureRun(db, userId, goalId, trigger) {
     return createRun(db, userId, goalId, trigger);
 }
 
-async function finishGoal(db, userId, goalId, runId, tasks, status = 'completed', error = '') {
+async function finishGoal(db, userId, goalId, runId, tasks, status = 'completed', error = '', env = null, goalTitle = '') {
     const result = finalResult(tasks);
     const completedAt = "datetime('now', '+8 hours')";
     await db.prepare(
@@ -124,6 +166,11 @@ async function finishGoal(db, userId, goalId, runId, tasks, status = 'completed'
             finished_at = ${completedAt}, updated_at = ${completedAt}
          WHERE id = ?4 AND user_id = ?5`
     ).bind(status === 'completed' ? 'completed' : 'failed', result, error, runId, userId).run();
+    await notifyAgentUser(env, db, userId, {
+        title: status === 'completed' ? '目标完成' : '目标失败',
+        body: '「' + notificationText(goalTitle, 60) + '」' + (status === 'completed' ? '已完成，去查看结果。' : '执行失败，去查看原因。'),
+        tag: 'agent-goal-' + goalId
+    }).catch(() => {});
 }
 
 async function markTaskFailure(db, userId, goalId, runId, task, stepId, attempts, error, durationMs, holdStatus = '') {
@@ -219,7 +266,7 @@ export async function runNextTask(options) {
     if (allTasksCompleted(tasks)) {
         const active = await getActiveRunRow(db, userId, goalId);
         const run = active || await getRunRow(db, userId, goalId);
-        if (run) await finishGoal(db, userId, goalId, run.id, tasks, 'completed');
+        if (run) await finishGoal(db, userId, goalId, run.id, tasks, 'completed', '', env, goalRow.title);
         return snapshotFor(db, userId, goalId);
     }
 
@@ -231,7 +278,7 @@ export async function runNextTask(options) {
             : '任务依赖未满足，暂时没有可执行任务';
         const active = await getActiveRunRow(db, userId, goalId);
         const run = active || await getRunRow(db, userId, goalId);
-        if (run) await finishGoal(db, userId, goalId, run.id, tasks, 'failed', message);
+        if (run) await finishGoal(db, userId, goalId, run.id, tasks, 'failed', message, env, goalRow.title);
         return snapshotFor(db, userId, goalId);
     }
 
@@ -290,7 +337,10 @@ export async function runNextTask(options) {
     const holdStatus = ['paused', 'cancelled', 'completed', 'failed'].includes(latestStatus) ? latestStatus : '';
     if (failure) {
         const attempts = Number(task.attempts || 0) + 1;
-        await markTaskFailure(db, userId, goalId, run.id, task, step.id, attempts, failure.slice(0, 300), durationMs, holdStatus);
+        const exhausted = await markTaskFailure(db, userId, goalId, run.id, task, step.id, attempts, failure.slice(0, 300), durationMs, holdStatus);
+        if (exhausted && !holdStatus) {
+            await notifyAgentUser(env, db, userId, { title: '目标失败', body: '「' + notificationText(goalRow.title, 60) + '」重试次数已用完，去查看原因。', tag: 'agent-goal-' + goalId }).catch(() => {});
+        }
         return snapshotFor(db, userId, goalId);
     }
 
@@ -322,7 +372,7 @@ export async function runNextTask(options) {
 
     tasks = await listTasks(db, userId, goalId);
     if (allTasksCompleted(tasks) && ['active', 'planned', 'paused'].includes(latestStatus)) {
-        await finishGoal(db, userId, goalId, run.id, tasks, 'completed');
+        await finishGoal(db, userId, goalId, run.id, tasks, 'completed', '', env, goalRow.title);
     } else if (holdStatus) {
         if (holdStatus !== 'deleted') {
             await touchGoal(db, userId, goalId, { last_run_id: run.id });

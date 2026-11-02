@@ -29,6 +29,8 @@ let listPane = null;
 let detailPane = null;
 let listEl = null;
 let inboxEl = null;
+let badgeEl = null;
+let badgeTimer = null;
 let form = null;
 let titleInput = null;
 let descInput = null;
@@ -38,6 +40,13 @@ let busy = false;
 
 function label(status) {
     return STATUS_LABELS[status] || status || '未知';
+}
+
+function updatePendingBadge(count) {
+    if (!badgeEl) return;
+    const n = Math.max(0, Number(count) || 0);
+    badgeEl.textContent = n > 99 ? '99+' : String(n);
+    badgeEl.hidden = n === 0;
 }
 
 function progressBar(progress) {
@@ -188,6 +197,7 @@ function renderInbox(data) {
     if (!approvals.length) {
         inboxEl.hidden = true;
         setHtml(inboxEl, '');
+        updatePendingBadge(0);
         return;
     }
     const total = Number(data.pending_count || approvals.length);
@@ -211,6 +221,7 @@ function renderInbox(data) {
         (remaining ? '<p class="agent-inbox-more">还有 ' + remaining + ' 条，先处理上面的即可。</p>' : '')
     );
     inboxEl.hidden = false;
+    updatePendingBadge(data.pending_count);
 }
 
 async function refreshInbox() {
@@ -531,9 +542,16 @@ export function initAgentGoals() {
     detailPane = document.getElementById('agent-goals-detail-pane');
     listEl = document.getElementById('agent-goals-list');
     inboxEl = document.getElementById('agent-approval-inbox');
+    badgeEl = document.getElementById('agent-pending-badge');
     form = document.getElementById('agent-goal-form');
     titleInput = document.getElementById('agent-goal-title');
     descInput = document.getElementById('agent-goal-desc');
     if (!listPane || !detailPane || !listEl || !form || !titleInput || !descInput) return;
     bindEvents();
+    refreshInbox().catch(() => {});
+    if (!badgeTimer) {
+        badgeTimer = setInterval(() => {
+            if (!document.hidden) refreshInbox().catch(() => {});
+        }, 60000);
+    }
 }

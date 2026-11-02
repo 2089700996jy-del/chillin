@@ -21,7 +21,7 @@
 
 import {
     parseBookmarkCommand, parsePromptCommand, runBookmarkCommand, runPromptCommand,
-    runRecord, runCommitPendingMedia, saveFeed,
+    runRecord, runCommitPendingMedia, saveFeed, maybeRunAgentCommand,
     BOOKMARK_BARE_RE, PROMPT_BARE_RE, BOOKMARK_BARE_REPLY, PROMPT_BARE_REPLY
 } from './bot-garden.js';
 export { parseBookmarkCommand, parsePromptCommand };
@@ -56,6 +56,9 @@ export const BOT_HELP_TEXT = [
     '',
     '- 直接跟我说话：聊天、吐槽、问问题都行',
     '- 「记录：内容」：把内容存进**随手记**',
+    '- 「目标：标题」：创建目标并自动拆计划；「我的目标」「看目标 编号」看进度',
+    '- 「开始 编号」：排队执行目标；「暂停 编号」暂停；「审批」看写入审批',
+    '- 「同意 编号」/「拒绝 编号」：处理保存或追加笔记的审批',
     '- 「收藏：<标题> <链接>」：存进**收藏**；只发链接也行，标题自动取域名',
     '- 「提示词：<标题> | <正文>」：存进**提示词库**；前面可加「[项目/场景]」',
     '- 「我的收藏」/「我的提示词」：看最近 10 条和编号',
@@ -385,6 +388,10 @@ export async function runCommand(env, db, userId, content) {
     // 健康打卡：一天一行，重复打卡是合并而不是新增（判别与执行都在 bot-health）
     const healthReply = await maybeRunHealthCommand(db, userId, text, nowMs);
     if (healthReply !== null) return healthReply;
+
+    // 目标 Agent：建目标 / 看进度 / 排队继续 / 审批，复用网页端同一套函数
+    const agentReply = await maybeRunAgentCommand(env, db, userId, text);
+    if (agentReply !== null) return agentReply;
 
     const remember = parseRememberCommand(text);
     if (remember) return runRemember(db, userId, remember);

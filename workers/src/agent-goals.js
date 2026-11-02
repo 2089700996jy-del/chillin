@@ -23,7 +23,8 @@ import {
     continueGoal,
     pauseGoal,
     completeGoal,
-    retryTask
+    retryTask,
+    notifyAgentUser
 } from './agent-executor.js';
 
 const MAX_BODY_BYTES = 64 * 1024;
@@ -194,7 +195,7 @@ export async function getGoalDetail(db, userId, goalId) {
     return snapshot;
 }
 
-export async function requestSaveDraft(db, userId, goalId) {
+export async function requestSaveDraft(db, userId, goalId, env = null) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     const result = cleanMultiline(goal.result_md, 30000);
@@ -232,10 +233,15 @@ export async function requestSaveDraft(db, userId, goalId) {
         if (pending) return { approval: formatApproval(pending) };
         throw err;
     }
+    await notifyAgentUser(env, db, userId, {
+        title: '待审批',
+        body: '把「' + cleanText(goal.title, 40) + '」保存为新笔记',
+        tag: 'agent-approval-' + goalId
+    }).catch(() => {});
     return { approval: formatApproval(row) };
 }
 
-export async function requestAppendDraft(db, userId, goalId, payload = {}) {
+export async function requestAppendDraft(db, userId, goalId, payload = {}, env = null) {
     const noteId = Number(payload && payload.note_id);
     if (!Number.isInteger(noteId) || noteId <= 0) {
         throw new AgentError(400, 'note_id 无效', 'INVALID_NOTE_ID');
@@ -273,6 +279,11 @@ export async function requestAppendDraft(db, userId, goalId, payload = {}) {
              VALUES (?1, ?2, 'append_note', 'pending', ?3, datetime('now', '+8 hours', '+1 day'))
              RETURNING *`
         ).bind(goalId, userId, JSON.stringify(body)).first();
+        await notifyAgentUser(env, db, userId, {
+            title: '待审批',
+            body: '把「' + cleanText(goal.title, 40) + '」追加到「' + (body.note_title || '未命名笔记') + '」',
+            tag: 'agent-approval-' + goalId
+        });
         return { approval: formatApproval(row) };
     } catch (err) {
         const pending = await db.prepare(
@@ -445,13 +456,13 @@ export async function handleAgentGoalApi(request, env, url, db, userId, deps = {
         match = path.match(/^\/api\/agent\/goals\/(\d+)\/save-draft$/);
         if (match && method === 'POST') {
             const goalId = idFrom(match[1]);
-            return jsonResponse(await requestSaveDraft(db, userId, goalId), 201);
+            return jsonResponse(await requestSaveDraft(db, userId, goalId, env), 201);
         }
 
         match = path.match(/^\/api\/agent\/goals\/(\d+)\/append-draft$/);
         if (match && method === 'POST') {
             const goalId = idFrom(match[1]);
-            return jsonResponse(await requestAppendDraft(db, userId, goalId, await readBody(request)), 201);
+            return jsonResponse(await requestAppendDraft(db, userId, goalId, await readBody(request), env), 201);
         }
 
         match = path.match(/^\/api\/agent\/approvals\/(\d+)$/);

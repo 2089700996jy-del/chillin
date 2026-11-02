@@ -3951,6 +3951,26 @@ body.eyecare-reader-body .sidebar-header {
   border-color: rgba(var(--neutral-rgb), 0.28);
 }
 
+.agent-pending-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  margin-left: 1px;
+  border-radius: 9999px;
+  background: var(--danger-color);
+  color: var(--white);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+
+.agent-pending-badge[hidden] {
+  display: none;
+}
+
 .heatmap-grid {
   display: flex;
   gap: 4px;

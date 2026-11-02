@@ -8,6 +8,7 @@
  * - 只认领 status='active' 且未软删的目标；暂停/审批/完成的目标不会被后台偷跑。
  */
 import { runNextTask } from './agent-executor.js';
+import { AgentError, getGoalRow, listTasks, getActiveRunRow, getSnapshot, touchGoal } from './agent-store.js';
 
 /** 每次 cron 最多推进一个目标，给 Bot 长轮询留出预算，也避免重复烧模型 */
 export const AUTO_RESUME_LIMIT = 1;
@@ -18,6 +19,52 @@ export const AUTO_RETRY_DELAY_SECONDS = 120;
 
 function capText(value, max = 300) {
     return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
+}
+
+/**
+ * 只排队、不执行：给 Bot 这类不能长时间阻塞的入口用。
+ * 真正推进交给每分钟 cron 的 claimDueAgentRun，回复可以立即返回。
+ */
+export async function queueGoal(db, userId, goalId, trigger = 'bot') {
+    const goal = await getGoalRow(db, userId, goalId);
+    if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
+    if (['completed', 'cancelled'].includes(goal.status)) {
+        throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
+    }
+    if (goal.status === 'failed') {
+        throw new AgentError(409, '目标已失败，请先重试失败任务或重新规划', 'GOAL_FAILED');
+    }
+    if (goal.status === 'draft') throw new AgentError(409, '请先生成计划', 'GOAL_NO_PLAN');
+    if (goal.status === 'waiting_approval') {
+        throw new AgentError(409, '目标正在等待审批，请先处理审批', 'GOAL_WAITING_APPROVAL');
+    }
+    const tasks = await listTasks(db, userId, goalId);
+    if (!tasks.length) throw new AgentError(409, '目标还没有任务', 'GOAL_NO_TASKS');
+
+    const active = await getActiveRunRow(db, userId, goalId);
+    if (active && active.status === 'running') {
+        return { queued: false, reason: 'running', snapshot: await getSnapshot(db, userId, goalId) };
+    }
+    if (active) {
+        await db.prepare(
+            `UPDATE agent_runs SET status = 'queued', trigger = ?1,
+                next_run_at = datetime('now', '+8 hours', '-1 seconds'),
+                lease_until = NULL, current_task_id = NULL, error = '',
+                updated_at = datetime('now', '+8 hours')
+             WHERE id = ?2 AND user_id = ?3`
+        ).bind(trigger, active.id, userId).run();
+        await touchGoal(db, userId, goalId, { status: 'active', error: '', last_run_id: active.id });
+        return { queued: true, run_id: Number(active.id), snapshot: await getSnapshot(db, userId, goalId) };
+    }
+
+    const run = await db.prepare(
+        `INSERT INTO agent_runs (goal_id, user_id, trigger, status, next_run_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, 'queued', datetime('now', '+8 hours', '-1 seconds'),
+                 datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+         RETURNING *`
+    ).bind(goalId, userId, trigger).first();
+    await touchGoal(db, userId, goalId, { status: 'active', error: '', last_run_id: run.id });
+    return { queued: true, run_id: Number(run.id), snapshot: await getSnapshot(db, userId, goalId) };
 }
 
 /**

@@ -24,6 +24,8 @@ import {
     retryTask,
     runNextTask
 } from '../workers/src/agent-executor.js';
+import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
+import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
 
@@ -467,6 +469,65 @@ sqliteTest('Agent goals - 审批收件箱跨目标聚合、按用户隔离且不
     const renewed = await requestSaveDraft(db, 1, expiredGoal);
     assert.notEqual(renewed.approval.id, expired.approval.id);
     assert.equal(renewed.approval.status, 'pending');
+});
+
+sqliteTest('Agent goals - Bot 用同一套目标函数建计划、排队、查看与暂停，不阻塞执行', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db, 1);
+    await planGoal(db, goalId);
+
+    let reply = await maybeRunAgentCommand({}, db, 1, '我的目标');
+    assert.match(reply, new RegExp('#' + goalId));
+    assert.match(reply, /把最近的 AI 笔记/);
+
+    const routed = await buildBotReply({}, db, 1, '我的目标');
+    assert.match(routed, new RegExp('#' + goalId));
+
+    reply = await maybeRunAgentCommand({}, db, 1, '开始 ' + goalId);
+    assert.match(reply, /已排队/);
+    const run = await db.prepare('SELECT * FROM agent_runs WHERE goal_id = ?1 AND user_id = 1').bind(goalId).first();
+    assert.equal(run.status, 'queued');
+    assert.equal(run.trigger, 'bot');
+    const tasks = await db.prepare('SELECT * FROM agent_tasks WHERE goal_id = ?1 ORDER BY seq').bind(goalId).all();
+    assert.equal(tasks.results[0].status, 'pending', 'Bot 只排队，不能在请求里执行任务');
+
+    reply = await maybeRunAgentCommand({}, db, 1, '看目标 ' + goalId);
+    assert.match(reply, /待开始|进行中/);
+    assert.match(reply, /1\.\s*\[待执行\]/);
+
+    reply = await maybeRunAgentCommand({}, db, 1, '审批');
+    assert.match(reply, /没有待审批/);
+
+    reply = await maybeRunAgentCommand({}, db, 1, '暂停 ' + goalId);
+    assert.match(reply, /已暂停/);
+    const goal = await db.prepare('SELECT * FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goal.status, 'paused');
+
+    assert.equal(await maybeRunAgentCommand({}, db, 1, '今天天气如何'), null);
+});
+
+sqliteTest('Agent goals - Bot 审批命令复用收件箱，同意后只写一条笔记', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: 'Bot 审批保存' }).then((s) => s.goal.id);
+    await db.prepare(
+        "UPDATE agent_goals SET status = 'completed', result_md = '## 结果\n可保存正文' WHERE id = ?1 AND user_id = 1"
+    ).bind(goalId).run();
+    const approval = (await requestSaveDraft(db, 1, goalId)).approval;
+
+    let reply = await maybeRunAgentCommand({}, db, 1, '审批');
+    assert.match(reply, new RegExp('#' + approval.id));
+    assert.match(reply, /保存为/);
+
+    reply = await maybeRunAgentCommand({}, db, 1, '同意 ' + approval.id);
+    assert.match(reply, /已保存为笔记/);
+    const notes = await db.prepare('SELECT * FROM notes WHERE user_id = 1 AND is_deleted = 0').all();
+    assert.equal(notes.results.length, 1);
+    assert.match(notes.results[0].content, /可保存正文/);
+
+    reply = await maybeRunAgentCommand({}, db, 1, '审批');
+    assert.match(reply, /没有待审批/);
 });
 
 sqliteTest('Agent goals - 追加笔记审批校验归属、只追加一次且不覆盖原文', async () => {
