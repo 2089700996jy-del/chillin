@@ -64,7 +64,24 @@ function withTimeout(promise, ms) {
 }
 
 async function readPageText(res) {
-    const text = await res.text();
+    let text = '';
+    if (res && res.body && typeof res.body.getReader === 'function') {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let bytes = 0;
+        try {
+            while (bytes < 256 * 1024) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                bytes += value.length;
+                text += decoder.decode(value, { stream: true });
+            }
+        } finally {
+            try { await reader.cancel(); } catch (_) { /* 已断开 */ }
+        }
+    } else {
+        text = await res.text();
+    }
     return String(text || '').replace(/\s+/g, ' ').trim().slice(0, FETCH_MAX_CHARS);
 }
 
