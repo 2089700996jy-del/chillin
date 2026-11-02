@@ -398,3 +398,67 @@ sqliteTest('Agent goals - 租约过期后的运行会被下一分钟回收，不
     assert.equal(snap.tasks[1].output_md, '恢复后的第二段');
     assert.equal(snap.steps.length, 2);
 });
+
+sqliteTest('Agent goals - 审批收件箱跨目标聚合、按用户隔离且不返回全文', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    async function completedGoal(title, output) {
+        const goalId = await createGoal(db, 1, { title }).then((s) => s.goal.id);
+        await generatePlan(db, 1, goalId, {
+            planModel: async () => JSON.stringify({ tasks: [{ title: '唯一任务', description: '产出', depends_on: [] }] })
+        });
+        await startGoal({ env: {}, db, userId: 1, goalId, agentRunner: okRunner(output) });
+        return goalId;
+    }
+
+    const firstGoal = await completedGoal('收件箱目标一', '第一条可保存正文');
+    const secondGoal = await completedGoal('收件箱目标二', '第二条可保存正文');
+    const first = await requestSaveDraft(db, 1, firstGoal);
+    const second = await requestSaveDraft(db, 1, secondGoal);
+
+    let request = new Request('https://chillin.test/api/agent/approvals');
+    let response = await handleAgentGoalApi(request, {}, new URL(request.url), db, 1);
+    assert.equal(response.status, 200);
+    let body = await response.json();
+    assert.equal(body.pending_count, 2);
+    assert.equal(body.approvals.length, 2);
+    assert.deepEqual(new Set(body.approvals.map((item) => item.goal_id)), new Set([firstGoal, secondGoal]));
+    assert.ok(body.approvals.every((item) => item.goal_title));
+    assert.ok(body.approvals.every((item) => item.payload.preview));
+    assert.equal(Object.hasOwn(body.approvals[0].payload, 'content'), false, '收件箱不能返回完整正文');
+    const firstItem = body.approvals.find((item) => item.goal_id === firstGoal);
+    assert.match(firstItem.payload.preview, /第一条可保存正文/);
+
+    request = new Request('https://chillin.test/api/agent/approvals');
+    response = await handleAgentGoalApi(request, {}, new URL(request.url), db, 2);
+    body = await response.json();
+    assert.equal(body.pending_count, 0);
+    assert.equal(body.approvals.length, 0);
+
+    await decideApproval(db, 1, first.approval.id, { decision: 'approve' });
+    request = new Request('https://chillin.test/api/agent/approvals');
+    response = await handleAgentGoalApi(request, {}, new URL(request.url), db, 1);
+    body = await response.json();
+    assert.equal(body.pending_count, 1);
+    assert.equal(body.approvals[0].goal_id, secondGoal);
+
+    await decideApproval(db, 1, second.approval.id, { decision: 'reject' });
+    request = new Request('https://chillin.test/api/agent/approvals');
+    response = await handleAgentGoalApi(request, {}, new URL(request.url), db, 1);
+    body = await response.json();
+    assert.equal(body.pending_count, 0);
+
+    // 过期审批不再出现在收件箱和目标详情里，避免点开后才报 410。
+    const expiredGoal = await completedGoal('过期审批目标', '过期正文');
+    const expired = await requestSaveDraft(db, 1, expiredGoal);
+    await db.prepare("UPDATE agent_approvals SET expires_at = datetime('now', '+8 hours', '-1 minute') WHERE id = ?1")
+        .bind(expired.approval.id).run();
+    request = new Request('https://chillin.test/api/agent/approvals');
+    response = await handleAgentGoalApi(request, {}, new URL(request.url), db, 1);
+    body = await response.json();
+    assert.equal(body.pending_count, 0);
+    const expiredDetail = await getGoalDetail(db, 1, expiredGoal);
+    assert.equal(expiredDetail.approvals.length, 0);
+});

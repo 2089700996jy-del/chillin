@@ -28,6 +28,7 @@ let modal = null;
 let listPane = null;
 let detailPane = null;
 let listEl = null;
+let inboxEl = null;
 let form = null;
 let titleInput = null;
 let descInput = null;
@@ -157,6 +158,43 @@ function renderList(goals) {
     }).join(''));
 }
 
+function renderInbox(data) {
+    if (!inboxEl) return;
+    const approvals = (data && data.approvals) || [];
+    if (!approvals.length) {
+        inboxEl.hidden = true;
+        setHtml(inboxEl, '');
+        return;
+    }
+    const total = Number(data.pending_count || approvals.length);
+    const remaining = Math.max(0, total - approvals.length);
+    setHtml(inboxEl,
+        '<div class="agent-inbox-head"><strong>待审批</strong><span>' + total + ' 条</span></div>' +
+        approvals.map((item) => {
+            const payload = item.payload || {};
+            const title = payload.title || '保存为笔记草稿';
+            return '<div class="agent-inbox-item">' +
+                '<div class="agent-inbox-meta"><button type="button" class="btn-text agent-inbox-goal" data-inbox-goal="' + item.goal_id + '">' +
+                escapeHtml(item.goal_title || '未命名目标') + '</button>' +
+                '<span>' + escapeHtml(item.requested_at || '') + '</span></div>' +
+                '<strong>' + escapeHtml(title) + '</strong>' +
+                (payload.preview ? '<p class="agent-inbox-preview">' + escapeHtml(payload.preview) + '</p>' : '') +
+                '<div class="agent-inbox-actions">' +
+                '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject">拒绝</button>' +
+                '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve">同意并保存</button>' +
+                '</div></div>';
+        }).join('') +
+        (remaining ? '<p class="agent-inbox-more">还有 ' + remaining + ' 条，先处理上面的即可。</p>' : '')
+    );
+    inboxEl.hidden = false;
+}
+
+async function refreshInbox() {
+    if (!inboxEl) return;
+    const res = await apiRequest('/api/agent/approvals?limit=20', { timeout: 30000 });
+    renderInbox(res);
+}
+
 async function refreshList() {
     const res = await apiRequest('/api/agent/goals', { timeout: 30000 });
     renderList(res.goals || []);
@@ -175,6 +213,7 @@ function showList() {
     detailPane.hidden = true;
     listPane.hidden = false;
     refreshList().catch((err) => showToast(err.message || '目标列表加载失败', 'error'));
+    refreshInbox().catch(() => {});
 }
 
 async function postGoal(path, timeout = 65000) {
@@ -222,6 +261,7 @@ async function runAction(action) {
             showToast('已发起保存审批，请在下方确认', 'success');
             data = await apiRequest('/api/agent/goals/' + goalId, { timeout: 30000 });
             renderDetail(data);
+            void refreshInbox().catch(() => {});
             return;
         } else {
             return;
@@ -265,9 +305,10 @@ async function retryTask(taskId) {
     }
 }
 
-async function decideApproval(approvalId, decision) {
-    if (!currentGoalId || busy) return;
+async function decideApproval(approvalId, decision, goalId = null) {
+    if (busy) return;
     busy = true;
+    const targetGoalId = goalId || currentGoalId;
     try {
         await apiRequest('/api/agent/approvals/' + approvalId, {
             method: 'POST',
@@ -276,7 +317,12 @@ async function decideApproval(approvalId, decision) {
             timeout: 30000
         });
         showToast(decision === 'approve' ? '已保存为笔记草稿' : '已拒绝保存', 'success');
-        await openGoal(currentGoalId);
+        if (targetGoalId && currentGoalId === targetGoalId) {
+            await openGoal(targetGoalId);
+        } else {
+            await refreshList().catch(() => {});
+        }
+        await refreshInbox().catch(() => {});
     } catch (err) {
         showToast(err.message || '审批失败', 'error');
     } finally {
@@ -353,6 +399,23 @@ function bindEvents() {
             showToast(err.message || '目标加载失败', 'error');
         }
     });
+    inboxEl?.addEventListener('click', async (event) => {
+        const target = event.target instanceof Element ? event.target : null;
+        if (!target) return;
+        const goalLink = target.closest('[data-inbox-goal]');
+        if (goalLink) {
+            try {
+                await openGoal(goalLink.getAttribute('data-inbox-goal'));
+            } catch (err) {
+                showToast(err.message || '目标加载失败', 'error');
+            }
+            return;
+        }
+        const approval = target.closest('[data-approval-id]');
+        if (approval) {
+            await decideApproval(approval.getAttribute('data-approval-id'), approval.getAttribute('data-decision'));
+        }
+    });
 }
 
 export function initAgentGoals() {
@@ -361,6 +424,7 @@ export function initAgentGoals() {
     listPane = document.getElementById('agent-goals-list-pane');
     detailPane = document.getElementById('agent-goals-detail-pane');
     listEl = document.getElementById('agent-goals-list');
+    inboxEl = document.getElementById('agent-approval-inbox');
     form = document.getElementById('agent-goal-form');
     titleInput = document.getElementById('agent-goal-title');
     descInput = document.getElementById('agent-goal-desc');

@@ -14,6 +14,7 @@ import {
     getGoalRow,
     getSnapshot,
     listGoals,
+    listApprovalInbox,
     formatApproval,
     touchGoal
 } from './agent-store.js';
@@ -315,6 +316,10 @@ export async function handleAgentGoalApi(request, env, url, db, userId, deps = {
         }
         if (path === '/api/agent/goals' && method === 'POST') {
             return jsonResponse(await createGoal(db, userId, await readBody(request)), 201);
+        }
+        if (path === '/api/agent/approvals' && method === 'GET') {
+            const limit = url.searchParams.get('limit');
+            return jsonResponse(await listApprovalInbox(db, userId, limit), 200);
         }
 
         let match = path.match(/^\/api\/agent\/goals\/(\d+)$/);

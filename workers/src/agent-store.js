@@ -222,13 +222,54 @@ export async function listSteps(db, userId, runId, limit = 40) {
 
 export async function listApprovalRows(db, userId, goalId, limit = 20) {
     const res = await db.prepare(
-        'SELECT * FROM agent_approvals WHERE goal_id = ?1 AND user_id = ?2 ORDER BY id DESC LIMIT ?3'
+        "SELECT * FROM agent_approvals WHERE goal_id = ?1 AND user_id = ?2 AND (expires_at IS NULL OR expires_at > datetime('now', '+8 hours')) ORDER BY id DESC LIMIT ?3"
     ).bind(goalId, userId, limit).all();
     return (res && res.results) || [];
 }
 
 export async function listApprovals(db, userId, goalId, limit = 20) {
     return (await listApprovalRows(db, userId, goalId, limit)).map(formatApproval);
+}
+
+/**
+ * 跨目标的审批收件箱：只返回未过期、所属目标未删除的 pending，
+ * 正文只给短预览，避免一次把多条 30k 草稿全部发给前端。
+ */
+export async function listApprovalInbox(db, userId, limit = 20) {
+    const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+    const rows = await db.prepare(
+        `SELECT a.*, g.title AS goal_title
+         FROM agent_approvals a
+         JOIN agent_goals g ON g.id = a.goal_id AND g.user_id = a.user_id
+         WHERE a.user_id = ?1
+           AND a.status = 'pending'
+           AND COALESCE(g.is_deleted, 0) = 0
+           AND (a.expires_at IS NULL OR a.expires_at > datetime('now', '+8 hours'))
+         ORDER BY a.id DESC LIMIT ?2`
+    ).bind(userId, safeLimit).all();
+    const total = await db.prepare(
+        `SELECT COUNT(*) AS n
+         FROM agent_approvals a
+         JOIN agent_goals g ON g.id = a.goal_id AND g.user_id = a.user_id
+         WHERE a.user_id = ?1
+           AND a.status = 'pending'
+           AND COALESCE(g.is_deleted, 0) = 0
+           AND (a.expires_at IS NULL OR a.expires_at > datetime('now', '+8 hours'))`
+    ).bind(userId).first();
+    const approvals = ((rows && rows.results) || []).map((row) => {
+        const approval = formatApproval(row);
+        const payload = approval.payload || {};
+        return {
+            ...approval,
+            goal_title: cleanText(row.goal_title, 80),
+            payload: {
+                title: cleanText(payload.title, 80),
+                preview: cleanText(payload.content, 180),
+                content_length: String(payload.content || '').length
+            }
+        };
+    });
+    return { approvals, pending_count: Number((total && total.n) || 0) };
 }
 
 export async function getSnapshot(db, userId, goalId) {
