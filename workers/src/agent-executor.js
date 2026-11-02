@@ -7,8 +7,9 @@
  * - 失败按 max_attempts 重试，耗尽后目标进入 failed，等待用户重试或改计划；
  * - 执行只调用阶段 1 的只读工具循环，不在这里写业务数据。
  */
-import webPush from 'web-push';
 import { runAgent } from './ai-runtime.js';
+import { executeAgentTool } from './ai-tools.js';
+import { requestAgentProposal, notifyAgentUser, notificationText } from './agent-approvals.js';
 import {
     AgentError,
     getGoalRow,
@@ -27,46 +28,26 @@ const LIVE_TASK_GRACE_MS = 120000;
 const TASK_LEASE_SQL = "datetime('now', '+8 hours', '+180 seconds')";
 const TASK_STARTED_AT_SQL = "datetime('now', '+8 hours')";
 
-function notificationText(value, max = 120) {
-    return String(value == null ? '' : value).replace(/\s+/g, ' ').trim().slice(0, max);
-}
-
-/** 目标完成/失败、审批创建时复用已有 Web Push 订阅；没有 VAPID 或订阅时静默跳过。 */
-export async function notifyAgentUser(env, db, userId, payload = {}) {
-    if (!env || !db || !userId) return { sent: 0 };
-    if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY) return { sent: 0 };
-    const subs = await db.prepare(
-        'SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1'
-    ).bind(userId).all();
-    const rows = subs && Array.isArray(subs.results) ? subs.results : [];
-    if (!rows.length) return { sent: 0 };
-    webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
-    const body = JSON.stringify({
-        title: notificationText(payload.title || 'Chillin', 40),
-        body: notificationText(payload.body, 120),
-        icon: '/icons/transparent.png',
-        url: payload.url || '/',
-        tag: notificationText(payload.tag || 'agent', 40)
-    });
-    let sent = 0;
-    await Promise.all(rows.map(async (sub) => {
-        try {
-            await webPush.sendNotification(
-                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                body
-            );
-            sent += 1;
-        } catch (err) {
-            if (err && (err.statusCode === 404 || err.statusCode === 410)) {
-                try { await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?1').bind(sub.endpoint).run(); }
-                catch (_) { /* 清理失败不影响主流程 */ }
-            } else {
-                console.error('[agent-notify] push failed:', err && err.message ? err.message : err);
-            }
+/** 任务 Agent 额外获得的写入提案工具；它只创建审批，不直接写 notes。 */
+const PROPOSE_WRITE_TOOL = {
+    type: 'function',
+    function: {
+        name: 'propose_write',
+        description: '创建一个待用户审批的写入提案，不会直接写库。仅在任务明确要求保存或追加笔记时调用。',
+        parameters: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['save_note', 'append_note'] },
+                title: { type: 'string', minLength: 1, maxLength: 80, description: '保存为新笔记时的标题；追加时可省略' },
+                note_id: { type: 'integer', minimum: 1, description: '追加时必须提供目标笔记 id' },
+                content: { type: 'string', minLength: 1, maxLength: 30000, description: '要写入的 Markdown 正文' }
+            },
+            required: ['action', 'content'],
+            additionalProperties: false
         }
-    }));
-    return { sent };
-}
+    }
+};
+const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write。只有任务明确要求保存或追加笔记时才调用；它只创建待审批，不会直接写库。调用后如实说“已创建待审批”，不要声称已经写入。';
 
 function timestampMs(value) {
     const text = String(value == null ? '' : value).trim();
@@ -109,8 +90,55 @@ function taskPrompt(goal, task, tasks) {
         '只完成当前任务，不要提前做后续任务，也不要声称已经写入任何数据。',
         '直接输出可以交给下一个任务使用的 Markdown 结果。',
         '如果任务涉及用户的记录、主题、偏好或统计，必须先调用只读工具取真实数据，并保留 [类型#id] 引用；没有证据就说明不足，不要编造。',
-        '如果信息不足以完成，明确写出缺什么，不要用空话填充。'
+        '如果信息不足以完成，明确写出缺什么，不要用空话填充。',
+        '如果任务明确要求保存或追加笔记，调用 propose_write 创建待审批；不要直接声称已写入。'
     ].filter(Boolean).join('\n');
+}
+
+function validateProposalArgs(args) {
+    if (!args || typeof args !== 'object' || Array.isArray(args)) return '参数必须是对象';
+    const allowed = new Set(['action', 'title', 'note_id', 'content']);
+    for (const key of Object.keys(args)) {
+        if (!allowed.has(key)) return '未知参数：' + key;
+    }
+    if (args.action !== 'save_note' && args.action !== 'append_note') return 'action 必须是 save_note 或 append_note';
+    if (typeof args.content !== 'string' || !args.content.trim()) return 'content 不能为空';
+    if (args.content.length > 30000) return 'content 太长';
+    if (args.action === 'append_note') {
+        const noteId = Number(args.note_id);
+        if (!Number.isInteger(noteId) || noteId <= 0) return '追加提案必须提供有效 note_id';
+    }
+    return '';
+}
+
+async function runProposalTool(db, userId, goalId, taskId, args, env) {
+    const validationError = validateProposalArgs(args);
+    if (validationError) {
+        return { ok: false, tool: 'propose_write', error: { code: 'INVALID_ARGUMENTS', message: validationError }, citations: [] };
+    }
+    try {
+        const { approval, created } = await requestAgentProposal(db, userId, goalId, taskId, args, env);
+        return {
+            ok: true,
+            tool: 'propose_write',
+            data: {
+                approval_id: approval.id,
+                action: approval.action_type,
+                status: approval.status,
+                created: Boolean(created),
+                title: approval.payload && approval.payload.title || '',
+                note_title: approval.payload && approval.payload.note_title || ''
+            },
+            citations: []
+        };
+    } catch (err) {
+        return {
+            ok: false,
+            tool: 'propose_write',
+            error: { code: err && err.code || 'PROPOSAL_FAILED', message: err && err.message || '创建写入提案失败' },
+            citations: []
+        };
+    }
 }
 
 function finalResult(tasks) {
@@ -322,7 +350,12 @@ export async function runNextTask(options) {
             db,
             userId,
             question: taskPrompt(goalRow, task, tasks),
-            history: []
+            history: [],
+            extraTools: [PROPOSE_WRITE_TOOL],
+            extraInstructions: PROPOSE_WRITE_INSTRUCTIONS,
+            executeTool: (toolDb, toolUserId, name, args) => name === 'propose_write'
+                ? runProposalTool(toolDb, toolUserId, goalId, task.id, args, env)
+                : executeAgentTool(toolDb, toolUserId, name, args)
         }), TASK_TIMEOUT_MS, 'TASK_TIMEOUT');
         if (!result || typeof result.reply !== 'string' || !result.reply.trim()) {
             failure = (result && result.stopReason) ? `任务没有产出（${result.stopReason}）` : '任务没有产出';

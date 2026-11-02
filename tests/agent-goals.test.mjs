@@ -15,6 +15,8 @@ import {
     requestAppendDraft,
     decideApproval,
     deleteGoal,
+    updateGoal,
+    cancelGoal,
     handleAgentGoalApi
 } from '../workers/src/agent-goals.js';
 import {
@@ -25,6 +27,7 @@ import {
     runNextTask
 } from '../workers/src/agent-executor.js';
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
+import { requestAgentProposal } from '../workers/src/agent-approvals.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
@@ -585,4 +588,130 @@ sqliteTest('Agent goals - 追加笔记审批校验归属、只追加一次且不
 
     const other = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(otherNote.id).first();
     assert.equal(other.content, '不能碰');
+});
+
+sqliteTest('Agent goals - 暂停后可编辑目标，取消会停止剩余任务', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await createGoal(db, 1, { title: '可编辑目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '任务一', depends_on: [] }, { title: '任务二', depends_on: [0] }] })
+    });
+    await pauseGoal(db, 1, goalId);
+    const edited = await updateGoal(db, 1, goalId, { title: '改过的目标', description: '新的说明' });
+    assert.equal(edited.goal.status, 'draft');
+    assert.equal(edited.goal.title, '改过的目标');
+    assert.equal(edited.tasks.length, 0, '编辑后重置为草稿，等待重新规划');
+
+    const cancelId = await createGoal(db, 1, { title: '要取消的目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, cancelId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '待执行任务', depends_on: [] }] })
+    });
+    const cancelled = await cancelGoal(db, 1, cancelId);
+    assert.equal(cancelled.goal.status, 'cancelled');
+    assert.equal(cancelled.tasks[0].status, 'skipped');
+    await assert.rejects(cancelGoal(db, 1, cancelId + 999), (err) => err && err.code === 'GOAL_NOT_FOUND');
+});
+
+sqliteTest('Agent proposals - Agent 只能创建审批，同意后才写笔记且校验归属', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+    const ownNote = await db.prepare(
+        `INSERT INTO notes (title, content, date, user_id, annotations, is_deleted, created_at, updated_at)
+         VALUES ('Agent 目标笔记', '原文', date('now', '+8 hours'), 1, '[]', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+         RETURNING id`
+    ).first();
+    const otherNote = await db.prepare(
+        `INSERT INTO notes (title, content, date, user_id, annotations, is_deleted, created_at, updated_at)
+         VALUES ('别人的笔记', '不能碰', date('now', '+8 hours'), 2, '[]', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+         RETURNING id`
+    ).first();
+    const goalId = await createGoal(db, 1, { title: 'Agent 提案目标' }).then((s) => s.goal.id);
+
+    await assert.rejects(
+        requestAgentProposal(db, 1, goalId, 42, { action: 'append_note', note_id: otherNote.id, content: '越权' }),
+        (err) => err && err.code === 'NOTE_NOT_FOUND'
+    );
+
+    const proposal = await requestAgentProposal(db, 1, goalId, 42, {
+        action: 'append_note',
+        note_id: ownNote.id,
+        content: '## Agent 结果\n\n这是提案正文。'
+    });
+    assert.equal(proposal.created, true);
+    assert.equal(proposal.approval.action_type, 'append_note');
+    assert.equal(proposal.approval.status, 'pending');
+    assert.equal(proposal.approval.payload.source, 'agent');
+    assert.equal(proposal.approval.payload.task_id, 42);
+    let note = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(ownNote.id).first();
+    assert.equal(note.content, '原文', '提案阶段绝不能直接写库');
+
+    const approved = await decideApproval(db, 1, proposal.approval.id, { decision: 'approve' });
+    assert.equal(approved.approval.result.appended, true);
+    note = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(ownNote.id).first();
+    assert.match(note.content, /原文/);
+    assert.match(note.content, /这是提案正文/);
+
+    const save = await requestAgentProposal(db, 1, goalId, 42, {
+        action: 'save_note',
+        title: 'Agent 新笔记',
+        content: '保存正文'
+    });
+    const saved = await decideApproval(db, 1, save.approval.id, { decision: 'approve' });
+    const savedNote = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = 1').bind(saved.approval.result.note_id).first();
+    assert.equal(savedNote.title, 'Agent 新笔记');
+    assert.equal(savedNote.content, '保存正文');
+});
+
+sqliteTest('Agent proposals - 任务执行器提供 propose_write，只产生审批不直接写库', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const note = await db.prepare(
+        `INSERT INTO notes (title, content, date, user_id, annotations, is_deleted, created_at, updated_at)
+         VALUES ('任务目标笔记', '任务原文', date('now', '+8 hours'), 1, '[]', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
+         RETURNING id`
+    ).first();
+    const goalId = await createGoal(db, 1, { title: '任务提案目标' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({ tasks: [{ title: '唯一任务', description: '产出并提案', depends_on: [] }] })
+    });
+
+    let sawTool = false;
+    const result = await runNextTask({
+        env: {},
+        db,
+        userId: 1,
+        goalId,
+        agentRunner: async (options) => {
+            const defs = options.extraTools || [];
+            assert.ok(defs.some((tool) => tool.function.name === 'propose_write'));
+            const toolResult = await options.executeTool(db, 1, 'propose_write', {
+                action: 'append_note',
+                note_id: note.id,
+                content: '任务提案正文'
+            });
+            assert.equal(toolResult.ok, true);
+            sawTool = true;
+            return {
+                reply: '已创建待审批，没有直接写入。',
+                sources: [],
+                toolTrace: [{ name: 'propose_write', ok: true }],
+                stopReason: 'final'
+            };
+        }
+    });
+    assert.equal(sawTool, true);
+    assert.equal(result.goal.status, 'completed');
+
+    const approval = await db.prepare('SELECT * FROM agent_approvals WHERE goal_id = ?1 AND user_id = 1').bind(goalId).first();
+    assert.equal(approval.action_type, 'append_note');
+    assert.equal(JSON.parse(approval.payload_json).source, 'agent');
+    assert.ok(JSON.parse(approval.payload_json).task_id > 0);
+    const before = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(note.id).first();
+    assert.equal(before.content, '任务原文', '任务结束也不能直接写库');
+
+    await decideApproval(db, 1, approval.id, { decision: 'approve' });
+    const after = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(note.id).first();
+    assert.match(after.content, /任务提案正文/);
 });

@@ -191,16 +191,19 @@ export async function runAgent(options) {
         onEvent,
         callModel = callCustomLlmWithTools,
         executeTool = executeAgentTool,
+        extraTools = [],
+        extraInstructions = '',
         modelTimeoutMs = MODEL_TIMEOUT_MS,
         deadlineMs = AGENT_DEADLINE_MS
     } = options || {};
 
+    const systemPrompt = buildSystemPrompt() + (extraInstructions ? '\n' + String(extraInstructions) : '');
     const messages = [
-        { role: 'system', content: buildSystemPrompt() },
+        { role: 'system', content: systemPrompt },
         ...normalizeHistory(history),
         { role: 'user', content: String(question || '') }
     ];
-    const toolDefs = getAgentToolDefs();
+    const toolDefs = [...getAgentToolDefs(), ...(Array.isArray(extraTools) ? extraTools : [])];
     const sourceMap = new Map();
     const toolTrace = [];
     const repeatCounts = new Map();

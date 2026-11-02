@@ -136,11 +136,23 @@ function renderDetail(data) {
     }
     if (goal.status === 'paused') actions.push(actionButton('continue', '恢复并继续', { primary: true }));
     if (['active', 'paused', 'planned'].includes(goal.status)) actions.push(actionButton('complete', '标记完成'));
+    if (['draft', 'planned', 'failed', 'paused'].includes(goal.status)) actions.push(actionButton('edit', '编辑目标'));
+    if (!['completed', 'cancelled'].includes(goal.status)) actions.push(actionButton('cancel', '取消目标'));
     if (goal.status === 'completed' && goal.result_md) {
         actions.push(actionButton('save-draft', '保存为笔记草稿', { primary: true }));
         actions.push(actionButton('append-draft', '追加到已有笔记'));
     }
 
+    const editPanel = ['draft', 'planned', 'failed', 'paused'].includes(goal.status)
+        ? '<div class="agent-edit-panel" id="agent-edit-panel" hidden>' +
+            '<p class="agent-edit-hint">保存后会重置计划为草稿，需要重新生成计划。</p>' +
+            '<input type="text" id="agent-edit-title" class="agent-goal-title-input" maxlength="80" value="' + escapeHtml(goal.title) + '" aria-label="目标标题">' +
+            '<textarea id="agent-edit-desc" class="agent-goal-desc-input" maxlength="4000" rows="2" aria-label="目标说明">' + escapeHtml(goal.description || '') + '</textarea>' +
+            '<div class="agent-edit-actions">' +
+            '<button type="button" class="btn-text" data-edit-cancel>取消</button>' +
+            '<button type="button" class="btn-primary" data-edit-submit>保存并重置计划</button>' +
+            '</div></div>'
+        : '';
     const appendPanel = goal.status === 'completed' && goal.result_md
         ? '<div class="agent-append-panel" id="agent-append-panel" hidden>' +
             '<p class="agent-append-hint">选择一篇笔记，创建审批；同意后只把目标结果追加到末尾，不覆盖原文。</p>' +
@@ -164,7 +176,7 @@ function renderDetail(data) {
         (goal.description ? '<p class="agent-goal-description">' + escapeHtml(goal.description) + '</p>' : '') + '</div>' +
         '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span></div>' +
         progressBar(progress) + error +
-        '<div class="agent-goal-actions">' + actions.join('') + '</div>' + appendPanel +
+        '<div class="agent-goal-actions">' + actions.join('') + '</div>' + editPanel + appendPanel +
         '<section class="agent-goal-section"><h4>计划</h4>' +
         (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
         '</section>' + result + renderApprovals(data.approvals) + renderSteps(data.steps) +
@@ -276,6 +288,14 @@ async function runAction(action) {
         const ok = await confirmDialog('把目标标记为完成？未完成的任务不会继续执行。', { confirmText: '标记完成', danger: false });
         if (!ok) return;
     }
+    if (action === 'cancel') {
+        const ok = await confirmDialog('取消这个目标？未完成的任务会停止，但记录会保留。', { confirmText: '取消目标', danger: true });
+        if (!ok) return;
+    }
+    if (action === 'edit') {
+        toggleEditPanel();
+        return;
+    }
     if (action === 'append-draft') {
         await toggleAppendPanel();
         return;
@@ -295,6 +315,8 @@ async function runAction(action) {
             data = await postGoal('/api/agent/goals/' + goalId + '/pause', 30000);
         } else if (action === 'complete') {
             data = await postGoal('/api/agent/goals/' + goalId + '/complete', 30000);
+        } else if (action === 'cancel') {
+            data = await postGoal('/api/agent/goals/' + goalId + '/cancel', 30000);
         } else if (action === 'save-draft') {
             await postGoal('/api/agent/goals/' + goalId + '/save-draft', 30000);
             showToast('已发起保存审批，请在下方确认', 'success');
@@ -327,6 +349,37 @@ async function runAction(action) {
         }
     } finally {
         if (token === autoToken) busy = false;
+    }
+}
+
+function toggleEditPanel() {
+    const panel = document.getElementById('agent-edit-panel');
+    if (panel) panel.hidden = !panel.hidden;
+}
+
+async function saveGoalEdit() {
+    if (!currentGoalId || busy) return;
+    const title = (document.getElementById('agent-edit-title')?.value || '').trim();
+    const description = (document.getElementById('agent-edit-desc')?.value || '').trim();
+    if (!title) {
+        showToast('目标标题不能为空', 'error');
+        return;
+    }
+    busy = true;
+    try {
+        const data = await apiRequest('/api/agent/goals/' + currentGoalId, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, description }),
+            timeout: 30000
+        });
+        renderDetail(data);
+        void refreshList().catch(() => {});
+        showToast('目标已更新，请重新生成计划', 'success');
+    } catch (err) {
+        showToast(err.message || '保存目标失败', 'error');
+    } finally {
+        busy = false;
     }
 }
 
@@ -481,6 +534,15 @@ function bindEvents() {
         const taskRetry = target.closest('[data-task-retry]');
         if (taskRetry) {
             await retryTask(taskRetry.getAttribute('data-task-retry'));
+            return;
+        }
+        if (target.closest('[data-edit-cancel]')) {
+            const panel = document.getElementById('agent-edit-panel');
+            if (panel) panel.hidden = true;
+            return;
+        }
+        if (target.closest('[data-edit-submit]')) {
+            await saveGoalEdit();
             return;
         }
         if (target.closest('[data-append-cancel]')) {
