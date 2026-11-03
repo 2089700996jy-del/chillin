@@ -115,65 +115,128 @@ function renderBudget(budget) {
     '</div>';
 }
 
-function renderSuperDeck(goal, tasks, steps) {
+function renderGlobalSuperDeck(goals) {
+    if (!goals || !goals.length) return '';
+    const totalGoals = goals.length;
+    const activeGoals = goals.filter((g) => g.status === 'active').length;
+    const runningTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.running || 0), 0);
+    const pendingTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.pending || 0), 0);
+    const completedTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.completed || 0), 0);
+    const failedTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.failed || 0), 0);
+
+    const latestGoal = [...goals].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
+    const latestTime = latestGoal && latestGoal.updated_at ? latestGoal.updated_at.slice(11, 19) : '';
+
+    const isRunning = runningTasks > 0;
+    const badgeText = isRunning
+        ? '🟢 Super-Agent 运行中 (' + runningTasks + ' 并发 Worker)'
+        : (activeGoals > 0 ? '⚡ Super-Agent 调度就绪 (定时巡检已激活)' : '💤 Super-Agent 待命就绪');
+
+    return '<section class="agent-global-deck">' +
+        '<div class="global-deck-head">' +
+            '<div class="global-deck-title-wrap">' +
+                '<span class="global-deck-badge">' + escapeHtml(badgeText) + '</span>' +
+                '<span class="global-deck-sub">全局多目标协同矩阵 · 3 并发 Worker 弹性集群</span>' +
+            '</div>' +
+            (latestTime ? '<span class="global-deck-time">最近活跃 ' + escapeHtml(latestTime) + '</span>' : '') +
+        '</div>' +
+        '<div class="global-deck-stats">' +
+            '<div class="global-stat-card">' +
+                '<span class="global-stat-num">' + activeGoals + '<small>/' + totalGoals + '</small></span>' +
+                '<span class="global-stat-label">活跃目标</span>' +
+            '</div>' +
+            '<div class="global-stat-card">' +
+                '<span class="global-stat-num">' + runningTasks + '<small>/3</small></span>' +
+                '<span class="global-stat-label">并发负载</span>' +
+            '</div>' +
+            '<div class="global-stat-card">' +
+                '<span class="global-stat-num">' + pendingTasks + '</span>' +
+                '<span class="global-stat-label">等待任务</span>' +
+            '</div>' +
+            '<div class="global-stat-card">' +
+                '<span class="global-stat-num">' + completedTasks + '</span>' +
+                '<span class="global-stat-label">累计达成</span>' +
+            '</div>' +
+        '</div>' +
+    '</section>';
+}
+
+function renderSuperDeck(goal, tasks, steps, run) {
     if (!tasks || !tasks.length) return '';
     const total = tasks.length;
     const completed = tasks.filter((t) => t.status === 'completed').length;
     const runningTasks = tasks.filter((t) => t.status === 'running');
     const runningCount = runningTasks.length;
+    const failedCount = tasks.filter((t) => t.status === 'failed').length;
+    const blockedCount = tasks.filter((t) => t.status === 'blocked').length;
     const completedSeq = new Set(tasks.filter((t) => t.status === 'completed').map((t) => Number(t.seq)));
     const readyTasks = tasks.filter((t) => ['pending', 'ready'].includes(t.status) && (t.depends_on || []).every((d) => completedSeq.has(Number(d))));
     const readyCount = readyTasks.length;
+    const waitingCount = Math.max(0, total - completed - runningCount - failedCount - blockedCount - readyCount);
+
+    const runSeq = run && run.id ? 'Run #' + run.id : '';
+    const latestTime = (run && run.updated_at ? run.updated_at : (goal.updated_at || '')).slice(11, 19);
 
     const slots = [1, 2, 3].map((slotNum) => {
+        const slotTitle = '并发槽位 ' + slotNum;
         const workerTag = 'Worker-' + slotNum;
+        if (slotNum <= runningCount) {
+            const runTask = runningTasks[slotNum - 1];
+            return {
+                name: slotTitle + ' (动态指派)',
+                status: 'running',
+                desc: '执行中: ' + (runTask ? runTask.title : '推进中')
+            };
+        }
+        const readyIdx = slotNum - runningCount - 1;
+        if (goal.status === 'active' && readyIdx >= 0 && readyIdx < readyCount) {
+            const rTask = readyTasks[readyIdx];
+            return {
+                name: slotTitle + ' (队列调度)',
+                status: 'ready',
+                desc: '队列就绪: ' + (rTask ? rTask.title : '待派发')
+            };
+        }
         const workerSteps = (steps || []).filter((s) => {
             const inW = s.input && s.input.worker_id;
             const outW = s.output && s.output.worker_id;
             return inW === workerTag || outW === workerTag;
         });
         const latestStep = workerSteps.length ? workerSteps[workerSteps.length - 1] : null;
-        let slotStatus = 'idle';
-        let slotDesc = '待命就绪 (Idle)';
-
-        if (latestStep) {
+        if (latestStep && latestStep.status === 'completed') {
             const matchingTask = tasks.find((t) => t.id === latestStep.task_id);
             const title = matchingTask ? matchingTask.title : (latestStep.input && latestStep.input.title) || '';
-            if (latestStep.status === 'running' || (matchingTask && matchingTask.status === 'running')) {
-                slotStatus = 'running';
-                slotDesc = '执行中: ' + (title || '推进中');
-            } else if (latestStep.status === 'failed') {
-                slotStatus = 'failed';
-                slotDesc = '受阻: ' + (title || '待重试');
-            } else {
-                slotStatus = 'completed';
-                slotDesc = '完成: ' + (title || '已交付');
-            }
-        } else if (goal.status === 'active' && slotNum <= runningCount) {
-            slotStatus = 'running';
-            const runTask = runningTasks[slotNum - 1];
-            slotDesc = '执行中: ' + (runTask ? runTask.title : '推进中');
-        } else if (goal.status === 'active' && readyCount > 0 && slotNum <= readyCount) {
-            slotStatus = 'ready';
-            slotDesc = '队列就绪 (Ready)';
+            return {
+                name: slotTitle + ' (就绪备用)',
+                status: 'completed',
+                desc: '上次产出: ' + (title || '已交付')
+            };
         }
-
-        return { name: workerTag, status: slotStatus, desc: slotDesc };
+        return {
+            name: slotTitle + ' (待命空闲)',
+            status: 'idle',
+            desc: '待命空闲 (Idle)'
+        };
     });
 
-    const isRunning = goal.status === 'active' || runningCount > 0;
-    const badgeText = isRunning ? '⚡ Router 并发调度运转中' : (goal.status === 'completed' ? '✨ 协同链路全量达成' : '💤 Router 协同待命');
+    const isRunning = runningCount > 0;
+    const badgeText = isRunning
+        ? '⚡ Router 正在并发执行 (' + runningCount + ' 活跃 Worker)'
+        : (goal.status === 'completed'
+            ? '✨ 协同链路全量达成'
+            : (goal.status === 'active' ? '🟢 Router 调度待命 (准备派发就绪任务)' : '💤 Router 协同待命'));
 
     return '<section class="agent-super-deck">' +
         '<div class="super-deck-head">' +
             '<div class="super-deck-title-wrap">' +
                 '<span class="super-deck-badge">' + escapeHtml(badgeText) + '</span>' +
-                '<span class="super-deck-sub">DeepSeek 架构 · Router + 3 独立 Worker 矩阵</span>' +
+                '<span class="super-deck-sub">Router 统一协调 · 3 槽位并发 Worker 矩阵</span>' +
             '</div>' +
             '<div class="super-deck-metrics">' +
-                '<span>活跃槽位: <strong>' + (isRunning ? Math.max(1, runningCount) : 0) + '/3</strong></span>' +
-                '<span>DAG 就绪: <strong>' + readyCount + '</strong></span>' +
-                '<span>协同进度: <strong>' + completed + '/' + total + '</strong></span>' +
+                '<span>并发槽位: <strong>' + runningCount + '/3</strong></span>' +
+                '<span>待办就绪: <strong>' + readyCount + '</strong>' + (waitingCount > 0 ? ' (前序等待 ' + waitingCount + ')' : '') + '</span>' +
+                '<span>任务状态: <strong>' + completed + '</strong> 达成' + (failedCount + blockedCount > 0 ? ' · <strong>' + (failedCount + blockedCount) + '</strong> 异常' : '') + '</span>' +
+                (runSeq || latestTime ? '<span>批次时间: <strong>' + (runSeq ? runSeq + ' · ' : '') + (latestTime || '-') + '</strong></span>' : '') +
             '</div>' +
         '</div>' +
         '<div class="super-deck-slots">' +
@@ -392,11 +455,11 @@ function renderDetail(data) {
         '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span></div>' +
         progressBar(progress) + error + renderBudget(goal.budget) +
         '<div class="agent-goal-actions">' + actions.join('') + '</div>' + editPanel + appendPanel +
-        renderSuperDeck(goal, tasks, data.steps) +
+        renderSuperDeck(goal, tasks, data.steps, data.run) +
         '<section class="agent-goal-section"><h4>计划</h4>' +
         (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
         '</section>' + result + renderApprovals(data.approvals) + renderSteps(data.steps) +
-        '<p class="agent-goal-footnote">进度已保存；关闭页面后后台仍会每分钟继续推进一个任务，重新打开即可查看。</p>'
+        '<p class="agent-goal-footnote">进度已实时保存；关闭页面后后台调度器每分钟最高并发派发 3 个 Worker 推进任务，重新打开即可查看最新进展。</p>'
     );
     listPane.hidden = true;
     detailPane.hidden = false;
@@ -407,16 +470,18 @@ function renderList(goals) {
         setHtml(listEl, '<p class="agent-goals-empty">还没有目标。写下你想完成的一件事，AI 会先给出计划。</p>');
         return;
     }
-    setHtml(listEl, goals.map((goal) => {
+    const globalDeckHtml = renderGlobalSuperDeck(goals);
+    const itemsHtml = goals.map((goal) => {
         const p = goal.progress || {};
         return '<button type="button" class="agent-goal-item" data-agent-goal="' + goal.id + '">' +
             '<div class="agent-goal-item-head"><strong>' + escapeHtml(goal.title) + '</strong>' +
             '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span></div>' +
             (goal.description ? '<p>' + escapeHtml(goal.description) + '</p>' : '') +
-            '<div class="agent-goal-item-meta"><span>' + Number(p.completed || 0) + '/' + Number(p.total || 0) + ' 步</span>' +
+            '<div class="agent-goal-item-meta"><span>' + Number(p.completed || 0) + '/' + Number(p.total || 0) + ' 步' + (Number(p.running || 0) > 0 ? ' · ⚡ ' + p.running + ' 运行中' : '') + '</span>' +
             '<span>' + escapeHtml(goal.updated_at || '') + '</span></div>' +
             '</button>';
-    }).join(''));
+    }).join('');
+    setHtml(listEl, globalDeckHtml + '<div class="agent-goals-stream">' + itemsHtml + '</div>');
 }
 
 function renderInbox(data) {
@@ -859,3 +924,5 @@ export function initAgentGoals() {
         }, 60000);
     }
 }
+
+export { renderSuperDeck, renderGlobalSuperDeck };

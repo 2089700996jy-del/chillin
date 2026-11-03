@@ -10943,6 +10943,20 @@ select:focus-visible,
 .agent-deliverable-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .agent-deliverable-actions button { min-height: 32px; font-size: 12px; }
 
+/* Super-Agent 全局调度中枢 (Global Super-Deck) */
+.agent-global-deck { margin: 0 0 14px; padding: 12px 14px; border-radius: 14px; background: rgba(var(--label-rgb), 0.03); border: 0.5px solid var(--surface-hairline); }
+.global-deck-head { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.global-deck-title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.global-deck-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); background: rgba(52, 199, 89, 0.12); color: var(--ios-green); }
+.global-deck-sub { font-size: 10px; color: var(--text-color-light); }
+.global-deck-time { font-size: 10px; color: var(--text-color-light); }
+.global-deck-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.global-stat-card { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 8px 4px; border-radius: 10px; background: rgba(var(--label-rgb), 0.04); border: 0.5px solid var(--surface-hairline); }
+.global-stat-num { font-size: 14px; font-weight: 700; color: var(--text-color); line-height: 1.2; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.global-stat-num small { font-size: 10px; font-weight: 400; color: var(--text-color-light); }
+.global-stat-label { font-size: 10px; color: var(--text-color-light); margin-top: 2px; }
+.agent-goals-stream { display: flex; flex-direction: column; gap: 8px; }
+
 /* Super-Agent 协同路由矩阵 (Super-Agent Deck) */
 .agent-super-deck { margin: 12px 0 16px; padding: 12px 14px; border-radius: 14px; background: rgba(var(--label-rgb), 0.03); border: 0.5px solid var(--surface-hairline); }
 .super-deck-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
@@ -10967,6 +10981,7 @@ select:focus-visible,
   .agent-goals-card { width: 100%; max-width: 100%; height: 88vh; max-height: 88vh; border-radius: 24px 24px 0 0; border-bottom: none; border-left: none; border-right: none; }
   .agent-goals-header { padding: 18px 16px 10px; }
   .agent-goals-body { padding: 0 16px 16px; }
+  .global-deck-stats { grid-template-columns: repeat(2, 1fr); }
   .agent-approval { flex-direction: column; }
   .agent-approval-actions { align-self: flex-end; }
 }

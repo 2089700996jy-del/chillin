@@ -162,6 +162,7 @@ export async function listGoalRows(db, userId, limit = 50) {
         `SELECT g.*,
             (SELECT COUNT(*) FROM agent_tasks t WHERE t.goal_id = g.id) AS total_tasks,
             (SELECT COUNT(*) FROM agent_tasks t WHERE t.goal_id = g.id AND t.status = 'completed') AS completed_tasks,
+            (SELECT COUNT(*) FROM agent_tasks t WHERE t.goal_id = g.id AND t.status = 'running') AS running_tasks,
             (SELECT COUNT(*) FROM agent_tasks t WHERE t.goal_id = g.id AND t.status IN ('failed', 'blocked')) AS failed_tasks
          FROM agent_goals g
          WHERE g.user_id = ?1 AND COALESCE(g.is_deleted, 0) = 0
@@ -173,16 +174,22 @@ export async function listGoalRows(db, userId, limit = 50) {
 
 export async function listGoals(db, userId, limit = 50) {
     const rows = await listGoalRows(db, userId, limit);
-    return rows.map((row) => ({
-        ...formatGoal(row, []),
-        progress: {
-            total: Number(row.total_tasks || 0),
-            completed: Number(row.completed_tasks || 0),
-            failed: Number(row.failed_tasks || 0),
-            pending: Math.max(0, Number(row.total_tasks || 0) - Number(row.completed_tasks || 0) - Number(row.failed_tasks || 0)),
-            running: 0
-        }
-    }));
+    return rows.map((row) => {
+        const total = Number(row.total_tasks || 0);
+        const completed = Number(row.completed_tasks || 0);
+        const running = Number(row.running_tasks || 0);
+        const failed = Number(row.failed_tasks || 0);
+        return {
+            ...formatGoal(row, []),
+            progress: {
+                total,
+                completed,
+                running,
+                failed,
+                pending: Math.max(0, total - completed - running - failed)
+            }
+        };
+    });
 }
 
 export async function listTaskRows(db, userId, goalId) {

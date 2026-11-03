@@ -112,6 +112,9 @@ export async function replanRemaining({ env, db, userId, goalId, reason, planMod
     if (!goal) return { replanned: false };
     if (Number(goal.plan_version || 0) >= MAX_PLANS) return { replanned: false, reason: 'plan_limit' };
     const tasks = await listTasks(db, userId, goalId);
+    if (tasks.some((item) => item.status === 'running')) {
+        return { replanned: false, reason: 'tasks_running' };
+    }
     const completed = tasks.filter((item) => item.status === 'completed');
     const pending = tasks.filter((item) => ['pending', 'ready', 'failed', 'skipped', 'blocked'].includes(item.status));
     if (!pending.length) return { replanned: false, reason: 'no_pending' };
@@ -138,7 +141,8 @@ export async function replanRemaining({ env, db, userId, goalId, reason, planMod
         `DELETE FROM agent_tasks WHERE goal_id = ?1 AND user_id = ?2
          AND status IN ('pending', 'ready', 'failed', 'skipped', 'blocked')`
     ).bind(goalId, userId).run();
-    const offset = completed.length ? Math.max(...completed.map((item) => Number(item.seq) || 0)) + 1 : 0;
+    const retained = await listTasks(db, userId, goalId);
+    const offset = retained.length ? Math.max(...retained.map((item) => Number(item.seq) || 0)) + 1 : 0;
     const inserts = nextTasks.map((task, index) => db.prepare(
         `INSERT INTO agent_tasks (goal_id, user_id, seq, title, description, depends_on, status, max_attempts)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', 3)`
@@ -221,6 +225,7 @@ export async function checkpointAfterTask({ env, db, userId, goalId, task, outpu
     if (!env || !db || !task) return { action: 'continue' };
     if (BLOCKED_RE.test(String(output || ''))) return { action: 'blocked', reason: '任务结果标记为阻塞' };
     const tasks = await listTasks(db, userId, goalId);
+    if (tasks.some((item) => item.status === 'running')) return { action: 'continue', reason: 'tasks_running' };
     const pending = tasks.filter((item) => ['pending', 'ready'].includes(item.status));
     if (!pending.length) return { action: 'continue' };
     const goal = await getGoalRow(db, userId, goalId);

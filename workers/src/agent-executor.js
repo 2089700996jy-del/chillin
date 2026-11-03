@@ -379,7 +379,7 @@ export async function runNextTask(options) {
     if (!anyFailed && !holdStatus && completedBatch.length > 0) {
         const remainingTasks = await listTasks(db, userId, goalId);
         const pendingRemaining = remainingTasks.filter((item) => ['pending', 'ready'].includes(item.status));
-        if (pendingRemaining.length > 0) {
+        if (pendingRemaining.length > 0 && !remainingTasks.some((t) => t.status === 'running')) {
             const lastCompleted = completedBatch[completedBatch.length - 1];
             const checkpoint = await checkpointAfterTask({
                 env, db, userId, goalId, task: lastCompleted.task, output: lastCompleted.output, checkpointModel, planModel

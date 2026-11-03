@@ -30,11 +30,11 @@ import {
 } from '../workers/src/agent-executor.js';
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
 import { requestAgentProposal } from '../workers/src/agent-approvals.js';
-import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
+import { checkpointAfterTask, replanRemaining } from '../workers/src/agent-checkpoint.js';
 import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns, distillWebText } from '../workers/src/agent-web.js';
 import { savePreference } from '../workers/src/bot-preferences.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
-import { nextReadyTask, allReadyTasks, formatGoal } from '../workers/src/agent-store.js';
+import { nextReadyTask, allReadyTasks, formatGoal, listTasks } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
 
 const TASK_PLAN = JSON.stringify({
@@ -1449,4 +1449,126 @@ sqliteTest('Super Agent - 并发批次内有任务失败时严禁触发 replan �
     assert.equal(snap.tasks[1].status, 'pending', '失败任务应保留 pending 状态等待重试');
     assert.equal(snap.tasks[1].attempts, 1);
     assert.equal(snap.tasks[2].status, 'pending', '后续任务不被误删');
+});
+
+sqliteTest('Agent goals - 有任务 running 时禁止重规划，且保留任务 offset 精确接续防碰撞', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+
+    // 生成包含 3 个任务的初始计划
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '任务 A', description: 'desc A', depends_on: [] },
+                { title: '任务 B', description: 'desc B', depends_on: [] },
+                { title: '任务 C', description: 'desc C', depends_on: [0] }
+            ]
+        })
+    });
+
+    const tasks = await listTasks(db, 1, goalId);
+    assert.equal(tasks.length, 3);
+
+    // 模拟 Task A 完成，Task B 正在并发 running
+    await db.prepare("UPDATE agent_tasks SET status = 'completed', output_md = 'A完成' WHERE id = ?1").bind(tasks[0].id).run();
+    await db.prepare("UPDATE agent_tasks SET status = 'running' WHERE id = ?1").bind(tasks[1].id).run();
+
+    // 1. 尝试直接调用 replanRemaining，必须被拦截，不得覆盖或打乱 DAG
+    const directReplan = await replanRemaining({
+        env: { LLM_API_KEY: 'test-key' },
+        db,
+        userId: 1,
+        goalId,
+        reason: '结果不符预期',
+        planModel: async () => JSON.stringify({ tasks: [{ title: '抢跑新任务', description: 'desc', depends_on: [] }] })
+    });
+    assert.equal(directReplan.replanned, false);
+    assert.equal(directReplan.reason, 'tasks_running');
+
+    // 2. 尝试调用 checkpointAfterTask，同样必须安全 continue
+    const checkpoint = await checkpointAfterTask({
+        env: { LLM_API_KEY: 'test-key' },
+        db,
+        userId: 1,
+        goalId,
+        task: tasks[0],
+        output: '阶段成果',
+        checkpointModel: async () => JSON.stringify({ action: 'replan', reason: '需要重排' }),
+        planModel: async () => JSON.stringify({ tasks: [{ title: '新任务', description: 'desc', depends_on: [] }] })
+    });
+    assert.equal(checkpoint.action, 'continue');
+    assert.equal(checkpoint.reason, 'tasks_running');
+
+    // 3. 将 Task B 也标记完成（seq 为 1），此时调用 replanRemaining 应该安全重算 offset
+    await db.prepare("UPDATE agent_tasks SET status = 'completed', output_md = 'B完成' WHERE id = ?1").bind(tasks[1].id).run();
+    const safeReplan = await replanRemaining({
+        env: { LLM_API_KEY: 'test-key' },
+        db,
+        userId: 1,
+        goalId,
+        reason: '后续任务策略调整',
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '新任务 D', description: '接续任务', depends_on: [] },
+                { title: '新任务 E', description: '汇聚任务', depends_on: [0] }
+            ]
+        })
+    });
+    assert.equal(safeReplan.replanned, true);
+    assert.equal(safeReplan.tasks, 2);
+
+    const updatedTasks = await listTasks(db, 1, goalId);
+    // 保留了已完成的 Task A (seq=0) 和 Task B (seq=1)
+    assert.equal(updatedTasks[0].seq, 0);
+    assert.equal(updatedTasks[0].status, 'completed');
+    assert.equal(updatedTasks[1].seq, 1);
+    assert.equal(updatedTasks[1].status, 'completed');
+    // 新增任务 D 必须严格从 seq=2 开始，新增任务 E 从 seq=3 开始，杜绝碰撞
+    assert.equal(updatedTasks[2].seq, 2);
+    assert.equal(updatedTasks[2].title, '新任务 D');
+    assert.equal(updatedTasks[3].seq, 3);
+    assert.equal(updatedTasks[3].title, '新任务 E');
+    assert.deepEqual(updatedTasks[3].depends_on, [2]);
+});
+
+test('Super-Agent 看板 - 目标详情面板如实展示槽位与批次时间，列表页呈现全局调度中枢', async () => {
+    globalThis.window = { location: { origin: 'http://localhost', hostname: 'localhost' } };
+    globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    const { renderSuperDeck, renderGlobalSuperDeck } = await import('../public/js/agent-goals.js');
+
+    // Case 1: active 目标但当前无 running 任务时，槽位必须如实为 0/3（非虚构 1/3）
+    const idleGoal = { id: 1, title: '测试目标', status: 'active', updated_at: '2026-11-03 15:30:00' };
+    const idleTasks = [
+        { id: 101, seq: 0, title: '任务一', status: 'completed' },
+        { id: 102, seq: 1, title: '任务二', status: 'pending', depends_on: [0] }
+    ];
+    const idleHtml = renderSuperDeck(idleGoal, idleTasks, [], { id: 5, updated_at: '2026-11-03 15:30:10' });
+    assert.match(idleHtml, /并发槽位: <strong>0\/3<\/strong>/, '必须真实显示 0/3 槽位占用');
+    assert.match(idleHtml, /Run #5 · 15:30:10/, '必须显示批次 Run 序号与最后更新时间');
+    assert.match(idleHtml, /队列就绪: 任务二/, '就绪任务反映在槽位预分配中');
+
+    // Case 2: 2 个任务正在并发执行时，如实展示 2/3
+    const runningTasks = [
+        { id: 101, seq: 0, title: '任务一', status: 'running' },
+        { id: 102, seq: 1, title: '任务二', status: 'running' },
+        { id: 103, seq: 2, title: '任务三', status: 'pending', depends_on: [0, 1] }
+    ];
+    const runningHtml = renderSuperDeck(idleGoal, runningTasks, [], null);
+    assert.match(runningHtml, /并发槽位: <strong>2\/3<\/strong>/, '必须如实显示 2/3');
+    assert.match(runningHtml, /执行中: 任务一/);
+    assert.match(runningHtml, /执行中: 任务二/);
+    assert.match(runningHtml, /待命空闲 \(Idle\)/, '空闲的第三槽位应显示待命空闲');
+
+    // Case 3: 全局跨目标多 Agent 看板
+    const goalsList = [
+        { id: 1, title: '目标 A', status: 'active', progress: { total: 4, completed: 1, running: 2, pending: 1, failed: 0 }, updated_at: '2026-11-03 16:00:00' },
+        { id: 2, title: '目标 B', status: 'completed', progress: { total: 3, completed: 3, running: 0, pending: 0, failed: 0 }, updated_at: '2026-11-03 15:00:00' }
+    ];
+    const globalHtml = renderGlobalSuperDeck(goalsList);
+    assert.match(globalHtml, /Super-Agent 运行中 \(2 并发 Worker\)/);
+    assert.match(globalHtml, /1<small>\/2<\/small>/, '活跃目标数 1/2');
+    assert.match(globalHtml, /2<small>\/3<\/small>/, '并发负载 2/3');
+    assert.match(globalHtml, /累计达成/, '指标卡展示累计达成');
+    assert.match(globalHtml, /最近活跃 16:00:00/, '展示全局最近活跃时分秒');
 });
