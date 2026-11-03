@@ -26,7 +26,8 @@ import {
 } from './agent-executor.js';
 import { requestSaveDraft, requestAppendDraft, decideApproval } from './agent-approvals.js';
 import { replanRemaining } from './agent-checkpoint.js';
-export { requestSaveDraft, requestAppendDraft, decideApproval };
+import { loadPreferencePrompt } from './bot-preferences.js';
+export { requestSaveDraft, requestAppendDraft, decideApproval, planPrompt };
 
 const MAX_BODY_BYTES = 64 * 1024;
 
@@ -91,7 +92,10 @@ export function normalizePlan(value, goal) {
     return { tasks, fallback: false };
 }
 
-function planPrompt(goal) {
+function planPrompt(goal, userPreferences = '') {
+    const prefBlock = userPreferences
+        ? '\n用户个人偏好与风格约束：\n' + userPreferences + '\n拆解任务时须严格贴合用户的偏好与习惯（如回复长度、语气要求等）。'
+        : '';
     return [
         { role: 'system', content: '你是任务规划器。只输出 JSON，不要输出 Markdown 代码块以外的解释。' },
         {
@@ -101,7 +105,7 @@ function planPrompt(goal) {
                 '每个任务必须是一个可独立完成的动作，不是空泛的阶段名。',
                 '任务数量最多 8 个；depends_on 只能引用前面任务的下标（从 0 开始）。',
                 '先判断目标是否涉及用户自己的花园记录：只有明确提到「我的记录 / 笔记 / 花园 / 之前记过 / 我的偏好」等，才规划花园检索；外部新闻、事实、资料直接用 web_search/fetch_url。',
-                '如果目标要求通过 Bot/微信发送，最后一步必须是“创建 send_bot_message 审批”，不能直接发送；写入/发送只能走 propose_write 审批。',
+                '如果目标要求通过 Bot/微信发送，最后一步必须是“创建 send_bot_message 审批”，不能直接发送；写入/发送只能走 propose_write 审批。' + prefBlock,
                 '',
                 '输出格式：',
                 '{"tasks":[{"title":"任务标题","description":"具体做什么、产出什么","depends_on":[]}]}',
@@ -124,7 +128,8 @@ export async function generatePlan(db, userId, goalId, options = {}) {
 
     let raw = '';
     try {
-        raw = await planModel(options.env || {}, planPrompt({ title: goal.title, description: goal.description }));
+        const userPreferences = await loadPreferencePrompt(db, userId).catch(() => '');
+        raw = await planModel(options.env || {}, planPrompt({ title: goal.title, description: goal.description }, userPreferences));
     } catch (err) {
         console.error('[agent-goals] plan model failed:', err && err.message ? err.message : err);
     }

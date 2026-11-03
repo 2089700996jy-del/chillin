@@ -147,6 +147,14 @@ export async function verifyHostDns(host, deps = {}) {
     return true;
 }
 
+export function distillWebText(text, maxChars = 3600) {
+    const raw = String(text || '').replace(/\s+/g, ' ').trim();
+    if (raw.length <= maxChars) return raw;
+    const headLen = Math.floor(maxChars * 0.65);
+    const tailLen = Math.floor(maxChars * 0.30);
+    return raw.slice(0, headLen) + '\n\n[...篇幅较长，中间细节自动蒸馏收缩以保护执行上下文，保留核心主干与结论...]\n\n' + raw.slice(-tailLen);
+}
+
 async function readPageText(res) {
     if (!res) return '';
     const contentLength = Number(res.headers && typeof res.headers.get === 'function' ? res.headers.get('content-length') : 0);
@@ -318,11 +326,12 @@ export async function runWebTool(env, name, args = {}, deps = {}) {
                 if (timer) clearTimeout(timer);
             }
 
+            const distilled = distillWebText(text, 3600);
             return {
                 ok: true, tool,
-                data: { url, content: text, length: text.length },
+                data: { url, content: distilled, original_length: text.length, length: distilled.length },
                 citations: [{ type: '网页', id: url, title: url, snippet: text.slice(0, 200) }],
-                truncated: text.length >= FETCH_MAX_CHARS
+                truncated: text.length > distilled.length
             };
         }
         return { ok: false, tool, error: { code: 'UNKNOWN_TOOL', message: '未注册的联网工具' }, citations: [] };

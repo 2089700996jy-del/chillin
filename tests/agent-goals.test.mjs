@@ -17,19 +17,22 @@ import {
     deleteGoal,
     updateGoal,
     cancelGoal,
-    handleAgentGoalApi
+    handleAgentGoalApi,
+    planPrompt
 } from '../workers/src/agent-goals.js';
 import {
     startGoal,
     continueGoal,
     pauseGoal,
     retryTask,
-    runNextTask
+    runNextTask,
+    taskPrompt
 } from '../workers/src/agent-executor.js';
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
 import { requestAgentProposal } from '../workers/src/agent-approvals.js';
 import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
-import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns } from '../workers/src/agent-web.js';
+import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns, distillWebText } from '../workers/src/agent-web.js';
+import { savePreference } from '../workers/src/bot-preferences.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
@@ -1206,4 +1209,51 @@ sqliteTest('Agent proposals - 任务执行器提供 propose_write，只产生审
     await decideApproval(db, 1, approval.id, { decision: 'approve' });
     const after = await db.prepare('SELECT content FROM notes WHERE id = ?1').bind(note.id).first();
     assert.match(after.content, /任务提案正文/);
+});
+
+sqliteTest('Personal Agent - 目标规划与任务执行均注入用户个人偏好认知', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await savePreference(db, 1, { key: 'length', label: '回复长度', content: '严格极简，少铺垫，直接列出结论' });
+    await savePreference(db, 1, { key: 'tone', label: '日常聊天', content: '自然客观，禁止客服式套话' });
+
+    // 1. 验证 planPrompt 渲染
+    const prompt = planPrompt({ title: '技术调研', description: 'WebAssembly 现状' }, '- 回复长度：严格极简\n- 日常聊天：自然客观');
+    assert.ok(Array.isArray(prompt));
+    assert.match(prompt[1].content, /用户个人偏好与风格约束/);
+    assert.match(prompt[1].content, /严格极简/);
+
+    // 2. 验证 taskPrompt 渲染
+    const tPrompt = taskPrompt(
+        { title: '长期目标', description: '说明' },
+        { seq: 0, title: '第一步', description: '步骤要求', depends_on: [] },
+        [],
+        '- 回复长度：严格极简'
+    );
+    assert.match(tPrompt, /执行风格与个人偏好约束/);
+    assert.match(tPrompt, /严格极简/);
+
+    // 3. 验证端到端 generatePlan 携带偏好传入 planModel
+    let capturedPrompt = '';
+    const goalId = await createGoal(db, 1, { title: '端到端偏好测试' }).then((s) => s.goal.id);
+    await generatePlan(db, 1, goalId, {
+        planModel: async (_, msgs) => {
+            capturedPrompt = msgs[1].content;
+            return JSON.stringify({ tasks: [{ title: '完成动作', depends_on: [] }] });
+        }
+    });
+    assert.match(capturedPrompt, /用户个人偏好与风格约束/);
+    assert.match(capturedPrompt, /严格极简，少铺垫/);
+});
+
+test('Super Agent - 网页抓取支持自动蒸馏收缩保护执行上下文', () => {
+    const shortText = '这是一个简短的网页内容，只有几十个字。';
+    assert.equal(distillWebText(shortText, 100), shortText);
+
+    const longText = 'A'.repeat(2000) + '中间细节信息' + 'B'.repeat(2000);
+    const distilled = distillWebText(longText, 1000);
+    assert.ok(distilled.length < longText.length);
+    assert.match(distilled, /自动蒸馏收缩以保护执行上下文/);
+    assert.ok(distilled.startsWith('A'.repeat(100)));
+    assert.ok(distilled.endsWith('B'.repeat(100)));
 });

@@ -36,6 +36,7 @@ let titleInput = null;
 let descInput = null;
 let autoSendInput = null;
 let currentGoalId = null;
+let latestGoalResult = '';
 let autoToken = 0;
 let busy = false;
 let lastClickKey = '';
@@ -112,6 +113,37 @@ function renderBudget(budget) {
             '</div>' +
         '</div>' +
     '</div>';
+}
+
+function renderDeliverableCard(goal, tasks) {
+    if (!goal || !goal.result_md) return '';
+    const completedTasks = (tasks || []).filter((t) => t.status === 'completed').length;
+    const totalTasks = (tasks || []).length;
+    const budget = goal.budget || {};
+    const usedTools = Number(budget.used_tool_calls || 0);
+    const usedSec = Math.round(Number(budget.used_ms || 0) / 1000);
+
+    return '<section class="agent-deliverable-card">' +
+        '<div class="agent-deliverable-head">' +
+            '<div class="agent-deliverable-badge-wrap">' +
+                '<span class="agent-deliverable-badge">🎉 全景成果交付草稿 (Staging Deliverable)</span>' +
+                (goal.completed_at ? '<span class="agent-deliverable-time">完成于 ' + escapeHtml(goal.completed_at.slice(11, 19)) + '</span>' : '') +
+            '</div>' +
+            '<div class="agent-deliverable-stats">' +
+                '<span>✅ 任务达成: <strong>' + completedTasks + '/' + totalTasks + '</strong></span>' +
+                '<span>⚡ 工具调用: <strong>' + usedTools + '</strong> 次</span>' +
+                '<span>⏱ 累计耗时: <strong>' + usedSec + 's</strong></span>' +
+            '</div>' +
+        '</div>' +
+        '<div class="agent-deliverable-body agent-markdown">' +
+            markdownToHtml(goal.result_md) +
+        '</div>' +
+        '<div class="agent-deliverable-actions">' +
+            '<button type="button" class="btn-primary agent-goal-action" data-goal-action="save-draft">📥 一键批准并保存为新笔记</button>' +
+            '<button type="button" class="btn-secondary agent-goal-action" data-goal-action="append-draft">📎 追加到已有笔记</button>' +
+            '<button type="button" class="btn-text agent-deliverable-copy" data-copy-result>📋 复制成果 Markdown</button>' +
+        '</div>' +
+    '</section>';
 }
 
 function renderTask(task) {
@@ -226,6 +258,7 @@ function renderApprovals(approvals) {
 function renderDetail(data) {
     if (!data || !data.goal) return;
     const goal = data.goal;
+    latestGoalResult = goal.result_md || '';
     const progress = goal.progress || { total: 0, completed: 0, failed: 0 };
     const tasks = data.tasks || [];
     const hasBlocked = tasks.some((task) => task.status === 'blocked');
@@ -266,7 +299,9 @@ function renderDetail(data) {
             '</div></div>'
         : '';
     const result = goal.result_md
-        ? '<section class="agent-goal-section"><h4>目标结果</h4><div class="agent-goal-result agent-markdown">' + markdownToHtml(goal.result_md) + '</div></section>'
+        ? (goal.status === 'completed'
+            ? renderDeliverableCard(goal, tasks)
+            : '<section class="agent-goal-section"><h4>阶段目标结果</h4><div class="agent-goal-result agent-markdown">' + markdownToHtml(goal.result_md) + '</div></section>')
         : '';
     const error = goal.error
         ? '<div class="agent-goal-error"><strong>⚠️ 中断原因：</strong>' + escapeHtml(goal.error) +
@@ -642,6 +677,20 @@ function bindEvents() {
         if (!target) return;
         if (target.closest('[data-agent-back]')) {
             showList();
+            return;
+        }
+        const copyBtn = target.closest('[data-copy-result]');
+        if (copyBtn) {
+            const content = latestGoalResult || '';
+            if (content && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(content).then(() => {
+                    showToast('成果 Markdown 已复制到剪贴板', 'success');
+                }).catch(() => {
+                    showToast('复制失败，请手动选取', 'error');
+                });
+            } else {
+                showToast(content ? '当前环境不支持快捷复制' : '暂无成果可复制', 'error');
+            }
             return;
         }
         const goalAction = target.closest('[data-goal-action]');

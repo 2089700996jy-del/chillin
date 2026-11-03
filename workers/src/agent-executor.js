@@ -12,6 +12,7 @@ import { executeAgentTool } from './ai-tools.js';
 import { checkpointAfterTask, blockCompletionIfNeeded, budgetExceeded, addBudgetUsage, failForBudget } from './agent-checkpoint.js';
 import { WEB_AGENT_TOOLS, runWebTool } from './agent-web.js';
 import { runProposalTool, notifyAgentUser, notificationText } from './agent-approvals.js';
+import { loadPreferencePrompt } from './bot-preferences.js';
 import {
     AgentError,
     getGoalRow,
@@ -73,14 +74,14 @@ function withTimeout(promise, ms, message) {
     });
 }
 
-function taskPrompt(goal, task, tasks) {
+export function taskPrompt(goal, task, tasks, userPreferences = '') {
     const bySeq = new Map(tasks.map((item) => [Number(item.seq), item]));
     const deps = (task.depends_on || [])
         .map((seq) => bySeq.get(Number(seq)))
         .filter((item) => item && item.status === 'completed')
         .map((item) => `【${item.title}】\n${item.output_md}`)
         .join('\n\n')
-        .slice(-6000);
+        .slice(-4000);
 
     return [
         '你正在执行一个长期目标中的一个任务。',
@@ -89,6 +90,7 @@ function taskPrompt(goal, task, tasks) {
         `当前任务（第 ${task.seq + 1} 个）：${task.title}`,
         task.description ? `任务要求：${task.description}` : '',
         deps ? `已完成的前置结果：\n${deps}` : '',
+        userPreferences ? `执行风格与个人偏好约束：\n${userPreferences}` : '',
         '只完成当前任务，不要提前做后续任务，也不要声称已经写入任何数据。',
         '直接输出可以交给下一个任务使用的 Markdown 结果。',
         '只有当任务明确涉及用户自己的花园记录、笔记、偏好、历史或统计时，才使用花园只读工具；如果只是外部新闻/事实/资料，直接用 web_search/fetch_url，不要先在花园里搜索。',
@@ -312,11 +314,12 @@ export async function runNextTask(options) {
     let result;
     let failure = '';
     try {
+        const userPreferences = await loadPreferencePrompt(db, userId).catch(() => '');
         result = await withTimeout(agentRunner({
             env,
             db,
             userId,
-            question: taskPrompt(goalRow, task, tasks),
+            question: taskPrompt(goalRow, task, tasks, userPreferences),
             history: [],
             extraTools: [PROPOSE_WRITE_TOOL, ...WEB_AGENT_TOOLS],
             extraInstructions: PROPOSE_WRITE_INSTRUCTIONS,

@@ -10930,6 +10930,19 @@ select:focus-visible,
 .agent-step-tool-trace { margin-top: 4px; font-size: 11px; color: var(--text-color-light); }
 .agent-trace-pill { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 10px; background: rgba(var(--label-rgb), 0.05); color: var(--text-color); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .agent-step-input-summary { margin-top: 3px; font-size: 11px; color: var(--text-color-light); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+/* Agent 成果全景草稿看板 (Staging Deliverable) */
+.agent-deliverable-card { margin: 16px 0 20px; padding: 16px; border-radius: 16px; background: rgba(var(--label-rgb), 0.03); border: 1px solid rgba(var(--label-rgb), 0.12); }
+.agent-deliverable-head { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 0.5px solid var(--surface-hairline); }
+.agent-deliverable-badge-wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+.agent-deliverable-badge { font-size: 12px; font-weight: 600; padding: 3px 8px; border-radius: var(--radius-pill); background: rgba(52, 199, 89, 0.12); color: var(--ios-green); }
+.agent-deliverable-time { font-size: 11px; color: var(--text-color-light); }
+.agent-deliverable-stats { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--text-color-light); }
+.agent-deliverable-stats strong { color: var(--text-color); }
+.agent-deliverable-body { margin: 10px 0 14px; padding: 12px 14px; background: rgba(var(--neutral-rgb), 0.06); border-radius: 12px; border: 0.5px solid var(--surface-hairline); max-height: 380px; overflow-y: auto; }
+.agent-deliverable-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.agent-deliverable-actions button { min-height: 32px; font-size: 12px; }
+
 @media (max-width: 620px) {
   .modal-overlay.agent-goals-overlay { align-items: flex-end; padding: 0; }
   .agent-goals-card { width: 100%; max-width: 100%; height: 88vh; max-height: 88vh; border-radius: 24px 24px 0 0; border-bottom: none; border-left: none; border-right: none; }
