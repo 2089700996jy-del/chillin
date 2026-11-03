@@ -245,7 +245,7 @@ function renderFeeds() {
                 <div class="feed-header">
                     <div class="feed-tags">${tagHtml}</div>
                     <div class="feed-actions">
-                        <span class="feed-date">${escapeHtml(feed.created_at || '')}</span>
+                        <span class="feed-date">${escapeHtml(feed.created_at || '')}${feed._dirty ? '<span class="sync-dirty-dot" title="本地暂存，待同步到云端" aria-label="本地暂存"></span>' : ''}</span>
                         <button class="feed-action-btn feed-copy-btn" data-feed-id="${escapeHtml(String(feed.id))}" type="button" title="复制内容" aria-label="复制内容">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         </button>

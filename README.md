@@ -24,7 +24,7 @@
 
 ## 技术栈
 
-* **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，reader/upload/prompts 按路由动态 `import()`；模块 SW 走 stale-while-revalidate
+* **前端**：原生 HTML5 + Vanilla CSS + 原生 ES Modules（**无打包器、无视图框架**），首屏无框架开销；只预热入口 `app.js`，reader/upload/prompts/agent-goals 按路由动态 `import()`；模块 SW 走 stale-while-revalidate
 * **后端**：Cloudflare Workers（`workers/api.js` 为纯路由网关，业务逻辑下沉 `workers/src/`）
 * **数据**：**Cloudflare D1**（SQLite，42 个迁移 0001–0042，全部查询参数化绑定）存结构化数据；**Cloudflare R2**（桶 `chillin-media`）存图片二进制、阅读器书籍正文与 D1 备份快照，D1 只保留元数据
 * **反向代理**：Cloudflare Pages Functions（`functions/api/[[path]].js`）把 `/api/*` 同源转发到 Worker

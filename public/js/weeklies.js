@@ -135,7 +135,8 @@ const renderCards = (filter = weeklyCategoryFilter) => {
         
         const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
         
-        setHtml(card, `${coverHtml}<div class="notion-collection-card__content"><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}</div></div>`);
+        const dirtyDot = item._dirty ? ' <span class="sync-dirty-dot" title="本地暂存，待同步到云端" aria-label="本地暂存"></span>' : '';
+        setHtml(card, `${coverHtml}<div class="notion-collection-card__content"><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}${dirtyDot}</div></div>`);
         card.addEventListener('click', () => openArticle(item));
         galleryContainer.appendChild(card);
         rendered += 1;

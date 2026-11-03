@@ -24,7 +24,6 @@ import { initNotes } from './js/notes.js';
 import { initBookmarks } from './js/bookmarks.js';
 import { initFeeds } from './js/feeds.js';
 import { initEchoAi } from './js/echo-ai.js';
-import { initAgentGoals } from './js/agent-goals.js';
 import { initSearch } from './js/search.js';
 import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
@@ -62,14 +61,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const uploadBtn = target.closest('.btn-upload-image');
         const promptTab = target.closest('.segment-btn[data-subtab]');
         const bookInput = target.closest('#book-file-input');
-        const feature = uploadBtn ? 'upload' : (promptTab ? 'prompts' : (bookInput ? 'reader' : null));
+        const goalsBtn = target.closest('#btn-open-agent-goals');
+        const feature = uploadBtn ? 'upload' : (promptTab ? 'prompts' : (bookInput ? 'reader' : (goalsBtn ? 'agent-goals' : null)));
         if (!feature || isFeatureReady(feature)) return;
         e.preventDefault();
         e.stopImmediatePropagation();
         loadFeature(feature)
             .then(() => {
                 replayingLazyClick = true;
-                try { (uploadBtn || promptTab || bookInput).click(); }
+                try { (uploadBtn || promptTab || bookInput || goalsBtn).click(); }
                 finally { replayingLazyClick = false; }
             })
             .catch((err) => console.error('[lazy] ' + feature + ' failed', err));
@@ -97,6 +97,17 @@ document.addEventListener('DOMContentLoaded', () => {
         const previewImg = target.closest('img[data-preview-image]');
         if (previewImg && typeof window.previewImage === 'function') {
             window.previewImage(previewImg.getAttribute('src'));
+            return;
+        }
+
+        // 标签胶囊：点击快速通过搜索面板进行全域标签检索
+        const tagPill = target.closest('.feed-tag-pill');
+        if (tagPill && typeof actions.openGlobalSearch === 'function') {
+            const tag = tagPill.textContent.trim();
+            if (tag) {
+                actions.openGlobalSearch(tag);
+                return;
+            }
         }
     });
 
@@ -294,7 +305,6 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('bookmarks', initBookmarks);
     safeInit('feeds', initFeeds);
     safeInit('echoAi', initEchoAi);
-    safeInit('agentGoals', initAgentGoals);
     safeInit('search', initSearch);
     safeInit('wikilinks', initWikilinks);
     safeInit('dailySpark', initDailySpark);
@@ -303,6 +313,13 @@ document.addEventListener('DOMContentLoaded', () => {
     safeInit('router', initRouter);
 
     loadLocalData();
+
+    // 空闲时预热 agent-goals 模块，刷新待审批徽标并保证首次点击零延迟
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => loadFeature('agent-goals').catch(() => {}));
+    } else {
+        setTimeout(() => loadFeature('agent-goals').catch(() => {}), 2000);
+    }
 
     // 会话恢复：优先本地 Bearer（旧版），其次服务端 HttpOnly Cookie（新版）
     restoreCookieSession()

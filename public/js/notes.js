@@ -190,7 +190,8 @@ const renderNotes = () => {
         // 如果笔记有批注，显示批注数量气泡
         const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
         
-        setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-meta"><span class="note-item-date">${escapeHtml(note.date)}</span><span class="note-item-arrow" aria-hidden="true">›</span></div>`);
+        const dirtyDot = note._dirty ? ' <span class="sync-dirty-dot" title="本地暂存，待同步到云端" aria-label="本地暂存"></span>' : '';
+        setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-meta"><span class="note-item-date">${escapeHtml(note.date)}${dirtyDot}</span><span class="note-item-arrow" aria-hidden="true">›</span></div>`);
         el.addEventListener('click', () => openNoteEditor(note.id));
         notesListContainer.appendChild(el);
     });

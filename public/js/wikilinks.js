@@ -229,6 +229,238 @@ export async function navigateToWikilink(targetTitle) {
 }
 
 /**
+ * Renders an interactive local relationship topology graph using Canvas 2D.
+ * Connects current item to incoming backlinks and outgoing wikilinks.
+ */
+export function renderLocalGraph(canvas, centerTitle, centerType, backlinks = [], outgoingTitles = []) {
+    if (!canvas || typeof canvas.getContext !== 'function') return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect ? canvas.getBoundingClientRect() : { width: 320, height: 180 };
+    const width = rect.width || canvas.parentElement?.clientWidth || 320;
+    const height = 180;
+    const dpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+
+    canvas.width = Math.round(width * dpr);
+    canvas.height = Math.round(height * dpr);
+    if (canvas.style) {
+        canvas.style.width = width + 'px';
+        canvas.style.height = height + 'px';
+    }
+    ctx.scale(dpr, dpr);
+
+    const isDark = typeof document !== 'undefined' && document.body && (
+        document.body.classList.contains('dark') || document.body.classList.contains('dark-reader-body')
+    );
+    const cx = width / 2;
+    const cy = height / 2;
+
+    const nodeMap = new Map();
+    for (const b of backlinks) {
+        const key = b.type + ':' + b.id;
+        if (!nodeMap.has(key)) {
+            nodeMap.set(key, {
+                id: b.id,
+                title: b.title,
+                type: b.type,
+                dir: 'in',
+                color: b.type === 'weekly' ? '#34C759' : (b.type === 'feed' ? '#FF9500' : '#007AFF')
+            });
+        }
+    }
+    for (const title of outgoingTitles) {
+        const clean = String(title || '').trim();
+        if (!clean || clean.toLowerCase() === centerTitle.toLowerCase()) continue;
+        const key = 'out:' + clean.toLowerCase();
+        if (!nodeMap.has(key)) {
+            nodeMap.set(key, {
+                id: null,
+                title: clean,
+                type: 'wikilink',
+                dir: 'out',
+                color: '#AF52DE'
+            });
+        }
+    }
+
+    const connectedNodes = Array.from(nodeMap.values());
+    const box = canvas.closest ? canvas.closest('.wikilinks-graph-box') : null;
+    if (connectedNodes.length === 0) {
+        if (box) box.style.display = 'none';
+        else canvas.style.display = 'none';
+        return;
+    }
+    if (box) box.style.display = 'flex';
+    canvas.style.display = 'block';
+
+    const count = connectedNodes.length;
+    const rx = Math.min(width * 0.38, 140);
+    const ry = 58;
+
+    connectedNodes.forEach((node, i) => {
+        const angle = (2 * Math.PI / count) * i - Math.PI / 2;
+        node.x = cx + rx * Math.cos(angle);
+        node.y = cy + ry * Math.sin(angle);
+        node.r = 11;
+    });
+
+    const centerNode = {
+        x: cx,
+        y: cy,
+        r: 15,
+        title: centerTitle,
+        type: centerType,
+        isCenter: true,
+        color: '#0066CC'
+    };
+
+    let hoveredNode = null;
+
+    function draw() {
+        ctx.clearRect(0, 0, width, height);
+
+        // Draw edges
+        ctx.lineWidth = 1.2;
+        for (const node of connectedNodes) {
+            ctx.beginPath();
+            ctx.moveTo(centerNode.x, centerNode.y);
+            ctx.lineTo(node.x, node.y);
+            if (hoveredNode && (hoveredNode === node || hoveredNode === centerNode)) {
+                ctx.strokeStyle = isDark ? 'rgba(74, 158, 255, 0.65)' : 'rgba(0, 102, 204, 0.45)';
+                ctx.lineWidth = 1.8;
+            } else {
+                ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)';
+                ctx.lineWidth = 1.2;
+            }
+            ctx.stroke();
+        }
+
+        // Draw connected nodes
+        for (const node of connectedNodes) {
+            const isHover = hoveredNode === node;
+            ctx.beginPath();
+            ctx.arc(node.x, node.y, isHover ? node.r + 2 : node.r, 0, Math.PI * 2);
+            ctx.fillStyle = node.color;
+            ctx.fill();
+            ctx.lineWidth = isHover ? 2.5 : 1.5;
+            ctx.strokeStyle = isDark ? '#1C222C' : '#FFFFFF';
+            ctx.stroke();
+
+            // Label
+            ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+            ctx.fillStyle = isDark ? '#A5AFBE' : '#677181';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            const labelY = node.y + (node.y > cy ? 16 : -16);
+            const shortText = node.title.length > 7 ? node.title.slice(0, 6) + '…' : node.title;
+            ctx.fillText(shortText, node.x, labelY);
+        }
+
+        // Draw center node
+        const isCenterHover = hoveredNode === centerNode;
+        ctx.beginPath();
+        ctx.arc(centerNode.x, centerNode.y, isCenterHover ? centerNode.r + 2 : centerNode.r, 0, Math.PI * 2);
+        ctx.fillStyle = centerNode.color;
+        ctx.fill();
+        ctx.lineWidth = 2.5;
+        ctx.strokeStyle = isDark ? '#1C222C' : '#FFFFFF';
+        ctx.stroke();
+
+        ctx.font = 'bold 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+        ctx.fillStyle = isDark ? '#EEF1F6' : '#1B1F28';
+        ctx.textAlign = 'center';
+        ctx.fillText(centerNode.title.length > 8 ? centerNode.title.slice(0, 7) + '…' : centerNode.title, cx, cy + 22);
+
+        // Tooltip if hover
+        if (hoveredNode && !hoveredNode.isCenter) {
+            const tipText = (hoveredNode.dir === 'in' ? '⬅ 被引用: ' : '➡ 正向链接: ') + hoveredNode.title;
+            ctx.font = '11px -apple-system, sans-serif';
+            const tw = ctx.measureText(tipText).width;
+            const tx = Math.min(Math.max(hoveredNode.x, tw / 2 + 8), width - tw / 2 - 8);
+            const ty = hoveredNode.y > cy ? hoveredNode.y - 20 : hoveredNode.y + 24;
+
+            ctx.fillStyle = isDark ? 'rgba(20, 25, 34, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+            ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.1)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            if (typeof ctx.roundRect === 'function') {
+                ctx.roundRect(tx - tw / 2 - 6, ty - 9, tw + 12, 18, 6);
+            } else {
+                ctx.rect(tx - tw / 2 - 6, ty - 9, tw + 12, 18);
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = isDark ? '#EEF1F6' : '#1B1F28';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(tipText, tx, ty);
+        }
+    }
+
+    draw();
+
+    function getNodeAt(x, y) {
+        if (Math.hypot(x - centerNode.x, y - centerNode.y) <= centerNode.r + 4) return centerNode;
+        for (const node of connectedNodes) {
+            if (Math.hypot(x - node.x, y - node.y) <= node.r + 4) return node;
+        }
+        return null;
+    }
+
+    if (canvas._cleanGraphListeners) canvas._cleanGraphListeners();
+
+    const onMouseMove = (e) => {
+        const cRect = canvas.getBoundingClientRect();
+        const mx = e.clientX - cRect.left;
+        const my = e.clientY - cRect.top;
+        const hit = getNodeAt(mx, my);
+        if (hit !== hoveredNode) {
+            hoveredNode = hit;
+            canvas.style.cursor = hit ? (hit.isCenter ? 'default' : 'pointer') : 'default';
+            draw();
+        }
+    };
+
+    const onMouseLeave = () => {
+        if (hoveredNode) {
+            hoveredNode = null;
+            draw();
+        }
+    };
+
+    const onClick = (e) => {
+        const cRect = canvas.getBoundingClientRect();
+        const mx = e.clientX - cRect.left;
+        const my = e.clientY - cRect.top;
+        const hit = getNodeAt(mx, my);
+        if (!hit || hit.isCenter) return;
+
+        if (hit.type === 'note' && hit.id) {
+            actions.openNoteEditor?.(parseInt(hit.id, 10) || hit.id);
+        } else if (hit.type === 'weekly' && hit.id) {
+            const item = (state.database || []).find(d => String(d.id) === String(hit.id));
+            if (item) actions.openArticle?.(item);
+        } else if (hit.type === 'feed') {
+            actions.switchView?.('feeds');
+        } else if (hit.type === 'wikilink' || hit.dir === 'out') {
+            navigateToWikilink(hit.title);
+        }
+    };
+
+    canvas.addEventListener('mousemove', onMouseMove);
+    canvas.addEventListener('mouseleave', onMouseLeave);
+    canvas.addEventListener('click', onClick);
+
+    canvas._cleanGraphListeners = () => {
+        canvas.removeEventListener('mousemove', onMouseMove);
+        canvas.removeEventListener('mouseleave', onMouseLeave);
+        canvas.removeEventListener('click', onClick);
+    };
+}
+
+/**
  * Renders the Backlinks section in Note or Weekly view.
  *
  * @param {HTMLElement|null} containerEl
@@ -244,8 +476,22 @@ export function renderBacklinksSection(containerEl, targetTitle, currentId, curr
     }
 
     const backlinks = findBacklinks(targetTitle, currentId, currentType);
+    let outgoingTitles = [];
+    if (currentType === 'note') {
+        const currentNote = (state.notesDatabase || []).find(n => String(n.id) === String(currentId));
+        if (currentNote) outgoingTitles = extractWikilinks(currentNote.content);
+    } else if (currentType === 'weekly') {
+        const currentWeekly = (state.database || []).find(w => String(w.id) === String(currentId));
+        if (currentWeekly) outgoingTitles = extractWikilinks((currentWeekly.content || '') + ' ' + (currentWeekly.summary || ''));
+    }
+
     const countEl = containerEl.querySelector('[data-backlinks-count]') || containerEl.querySelector('#note-backlinks-count') || containerEl.querySelector('#weekly-backlinks-count');
     if (countEl) countEl.textContent = String(backlinks.length);
+
+    const canvas = containerEl.querySelector('.wikilinks-local-graph');
+    if (canvas) {
+        renderLocalGraph(canvas, targetTitle, currentType, backlinks, outgoingTitles);
+    }
 
     const listEl = containerEl.querySelector('.backlinks-list');
     if (!listEl) return;
@@ -550,5 +796,6 @@ export function initWikilinks() {
     actions.navigateToWikilink = navigateToWikilink;
     actions.parseWikilinksToHtml = parseWikilinksToHtml;
     actions.renderBacklinksSection = renderBacklinksSection;
+    actions.renderLocalGraph = renderLocalGraph;
     actions.renderOutgoingLinksStrip = renderOutgoingLinksStrip;
 }

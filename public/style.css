@@ -3507,6 +3507,22 @@ body.in-reader-book .reader-main {
   flex-shrink: 0;
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
+
+#view-reader-book.zen-mode .reader-nav-bottom {
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 24px);
+}
+
+#view-reader-book.zen-mode .reader-sidebar {
+  display: none;
+}
+
+#view-reader-book.zen-mode .chapter-title-display {
+  opacity: 0.35;
+  transition: opacity 0.25s ease;
+}
+
 .reader-nav-bottom .btn-nav {
   background: rgba(var(--neutral-rgb), 0.1);
   border: 1px solid rgba(0, 0, 0, 0.04);
@@ -4226,8 +4242,15 @@ body.keyboard-open .fab-btn {
   padding: 0;
 }
 
+@media (hover: hover) {
+  .feed-action-btn {
+    opacity: 0;
+  }
+}
+
 .feed-item-card:hover .feed-action-btn,
-.feed-action-btn:focus {
+.feed-action-btn:focus,
+.feed-action-btn:focus-visible {
   opacity: 0.9;
 }
 
@@ -4257,6 +4280,17 @@ body.keyboard-open .fab-btn {
   color: var(--text-color-light);
 }
 
+.sync-dirty-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--ios-orange);
+  margin-left: 5px;
+  vertical-align: middle;
+  box-shadow: 0 0 0 1px rgba(255, 149, 0, 0.2);
+}
+
 .feed-tags {
   display: flex;
   gap: 6px;
@@ -4268,6 +4302,13 @@ body.keyboard-open .fab-btn {
   border-radius: 12px;
   background: rgba(var(--neutral-rgb), 0.08);
   color: var(--text-color-light);
+  cursor: pointer;
+  transition: background-color 0.16s ease, color 0.16s ease;
+}
+
+.feed-tag-pill:hover {
+  background: rgba(0, 102, 204, 0.12);
+  color: var(--accent-text, var(--ios-blue));
 }
 
 .feed-content-text {
@@ -8838,6 +8879,24 @@ body.dark-reader-body #btn-enable-push {
 
 .backlinks-header {
   margin-bottom: 12px;
+}
+
+.wikilinks-graph-box {
+  margin: 14px 0 16px;
+  background: rgba(var(--neutral-rgb), 0.03);
+  border-radius: 14px;
+  border: 1px solid var(--border-color, var(--ios-separator));
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.wikilinks-local-graph {
+  display: block;
+  width: 100%;
+  max-width: 680px;
+  height: 180px;
 }
 
 .backlinks-list {

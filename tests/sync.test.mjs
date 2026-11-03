@@ -306,3 +306,11 @@ test('Sync - 本地存档损坏时安全降级为空值（不再让裸 JSON.pars
     }
 });
 
+test('Sync - 离线脏数据具有微状态感知提示样式', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const css = await fs.readFile(path.join(process.cwd(), 'public', 'style.css'), 'utf8');
+    assert.match(css, /\.sync-dirty-dot\s*\{/, 'style.css 应定义 .sync-dirty-dot 样式');
+    assert.match(css, /var\(--ios-orange\)/, '未同步指示点应使用 --ios-orange 醒目标识');
+});
+

@@ -142,3 +142,12 @@ test('Reader - rebuildBookText 容忍缺字段、乱序与空输入', () => {
     assert.equal(rebuildBookText([{ index: 0, content: '无标题正文' }]), '无标题正文');
     assert.equal((rebuildBookText([{ title: '第1章' }, { title: '第2章' }]) || '').trim(), '第1章\n\n第2章', '正文缺失时不能抛错');
 });
+
+test('Reader - 沉浸阅读模式（Zen Mode）样式与双击切换接线', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const css = await fs.readFile(path.join(process.cwd(), 'public', 'style.css'), 'utf8');
+    const readerSrc = await fs.readFile(path.join(process.cwd(), 'public', 'js', 'reader.js'), 'utf8');
+    assert.match(css, /#view-reader-book\.zen-mode\s+\.reader-nav-bottom/, 'style.css 应定义沉浸模式隐藏底栏');
+    assert.match(readerSrc, /reader-content-area[\s\S]*?dblclick/, 'reader.js 应绑定双击沉浸模式切换');
+});

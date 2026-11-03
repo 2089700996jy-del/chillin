@@ -105,9 +105,9 @@ test('Architecture - frontend modules have valid imports and no undeclared funct
     }
 });
 
-test('Architecture - reader/upload/prompts 走路由级动态 import，首屏不静态引入', async () => {
+test('Architecture - reader/upload/prompts/agent-goals 走路由级动态 import，首屏不静态引入', async () => {
     const app = await fs.readFile(path.join(root, 'public', 'app.js'), 'utf8');
-    for (const name of ['reader', 'upload', 'prompts']) {
+    for (const name of ['reader', 'upload', 'prompts', 'agent-goals']) {
         assert.doesNotMatch(
             app,
             new RegExp("from ['\"]\\./js/" + name + "\\.js['\"]"),
@@ -118,14 +118,14 @@ test('Architecture - reader/upload/prompts 走路由级动态 import，首屏不
     assert.match(app, /loadFeature\(feature\)/, '首击兜底应显式加载对应 feature');
 
     const loader = await fs.readFile(path.join(root, 'public', 'js', 'feature-loader.js'), 'utf8');
-    for (const name of ['reader', 'upload', 'prompts']) {
+    for (const name of ['reader', 'upload', 'prompts', 'agent-goals']) {
         assert.ok(loader.includes("import('./" + name + ".js')"), 'feature-loader 缺少 ' + name + ' 的动态 import');
     }
     assert.match(loader, /const pending = new Map\(\)/, '并发导航必须复用同一个加载 Promise');
     assert.match(loader, /pending\.delete\(name\)/, '加载失败要允许重试');
 
     const router = await fs.readFile(path.join(root, 'public', 'js', 'router.js'), 'utf8');
-    for (const name of ['reader', 'prompts', 'upload']) {
+    for (const name of ['reader', 'prompts', 'upload', 'agent-goals']) {
         assert.match(router, new RegExp("loadFeature\\('" + name + "'\\)"), 'router 没有按路由加载 ' + name);
     }
 });
@@ -156,7 +156,7 @@ test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async
     const gzipSize = async (p) => zlib.gzipSync(await fs.readFile(p)).length;
 
     const BUDGET = {
-        jsTotalGzip: 171 * 1024,   // 当前实测 170.1 KB；v2.5.205 推送设备 id 去重
+        jsTotalGzip: 175 * 1024,   // 当前实测 173.5 KB；新增 [[双链]] 局部轻量关系拓扑图 (Local Knowledge Graph)
         cssTotalGzip: 50 * 1024,   // 当前实测 48.9 KB；目标/任务面板新增约 1.8 KB gzip
         singleFileGzip: 20 * 1024  // 当前最大是 public/js/reader.js 13.6 KB
     };

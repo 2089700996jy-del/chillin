@@ -160,3 +160,13 @@ test('Search - 输入防抖 120ms，Enter 立即 flush', () => {
     assert.match(src, /searchDebounceTimer = setTimeout\(/, '输入应走 setTimeout，而不是每个按键同步全量扫描');
     assert.match(src, /if \(searchDebounceTimer\) \{[\s\S]*?renderGlobalSearchResults/, 'Enter 必须先 flush 挂起的搜索，否则会选中上一条结果');
 });
+
+test('Search - 支持初始查询参数并挂载到 actions 注册表供标签快速检索', () => {
+    const searchSrc = fs.readFileSync(path.join(root, 'public/js/search.js'), 'utf8');
+    const actionsSrc = fs.readFileSync(path.join(root, 'public/js/actions.js'), 'utf8');
+    const appSrc = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
+    assert.match(searchSrc, /openGlobalSearch\(initialQuery = ''\)/, 'openGlobalSearch 应支持带入初始 query');
+    assert.match(searchSrc, /actions\.openGlobalSearch = openGlobalSearch/, 'search.js 应将 openGlobalSearch 注册到 actions');
+    assert.match(actionsSrc, /openGlobalSearch: null/, 'actions 注册表应声明 openGlobalSearch 占位');
+    assert.match(appSrc, /actions\.openGlobalSearch\(tag\)/, 'app.js 应委托标签点击触发全局搜索');
+});

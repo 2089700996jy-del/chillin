@@ -148,13 +148,13 @@ export function initSearch() {
         }
     ];
 
-    function openGlobalSearch() {
+    function openGlobalSearch(initialQuery = '') {
         if (!globalSearchModal) return;
         globalSearchModal.classList.add('show');
         if (globalSearchInput) {
-            globalSearchInput.value = '';
+            globalSearchInput.value = initialQuery || '';
             globalSearchInput.focus();
-            renderGlobalSearchResults('');
+            renderGlobalSearchResults(initialQuery || '');
         }
     }
 
@@ -480,6 +480,7 @@ export function initSearch() {
     }
 
     actions.jumpToElement = jumpToElement;
+    actions.openGlobalSearch = openGlobalSearch;
 
     return { openGlobalSearch, closeGlobalSearch, jumpToElement };
 }

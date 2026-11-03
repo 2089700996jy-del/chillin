@@ -1068,6 +1068,15 @@ document.addEventListener('touchmove', (e) => {
     // P2：网络恢复后自动补推断网期间积压的阅读进度
     window.addEventListener('online', () => { flushQueuedProgress(); });
 
+    // 双击正文区域平滑切换心流沉浸模式（Zen Mode：自动隐藏底栏与目录，纯粹享受文字）
+    document.getElementById('reader-content-area')?.addEventListener('dblclick', () => {
+        const bookView = document.getElementById('view-reader-book');
+        if (bookView) {
+            const isZen = bookView.classList.toggle('zen-mode');
+            showToast(isZen ? '进入沉浸阅读（双击退出）' : '已退出沉浸模式', 'info');
+        }
+    });
+
     actions.renderBookshelf = renderBookshelf;
     actions.clearReaderSession = clearReaderSession;
 

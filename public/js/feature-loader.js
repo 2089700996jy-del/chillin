@@ -13,6 +13,7 @@ const LOADERS = {
     reader: () => import('./reader.js').then((m) => m.initReader),
     prompts: () => import('./prompts.js').then((m) => m.initPrompts),
     upload: () => import('./upload.js').then((m) => m.initUpload),
+    'agent-goals': () => import('./agent-goals.js').then((m) => m.initAgentGoals),
 };
 
 const pending = new Map();

@@ -164,3 +164,12 @@ test('Markdown - extractImageMatches 同时抽取 Markdown 与 HTML 图片（not
     assert.deepEqual(extractImageMatches(''), [], '空输入不应抛错');
     assert.equal(extractImageMatches('![](u.png)')[0].alt, '配图', '空 alt 用「配图」兜底');
 });
+
+test('Wikilinks - renderLocalGraph 支持双向引用拓扑图渲染且安全容错', async () => {
+    const { renderLocalGraph } = await import('../public/js/wikilinks.js');
+    assert.equal(typeof renderLocalGraph, 'function', 'renderLocalGraph 必须导出为函数');
+    assert.doesNotThrow(() => {
+        renderLocalGraph(null, '测试中心', 'note', [], []);
+        renderLocalGraph({ getContext: () => null }, '测试中心', 'note', [{ id: 1, title: '引用', type: 'note' }], ['正向']);
+    });
+});

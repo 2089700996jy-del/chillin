@@ -48,6 +48,7 @@ const applyRoute = (route) => {
         const modal = document.getElementById('ai-chat-modal');
         if (modal) modal.classList.add('show');
         ui.aiModalInHistory = true;
+        loadFeature('agent-goals').catch(warnLazy('agent-goals'));
         return;
     }
     const modal = document.getElementById('ai-chat-modal');
@@ -127,6 +128,7 @@ const switchView = (targetViewId, opts = {}) => {
     const prevActiveId = document.querySelector('.view-section.active')?.id || '';
     if (prevActiveId === 'view-reader-book' && targetViewId !== 'reader-book') {
         actions.clearReaderSession?.();
+        document.getElementById('view-reader-book')?.classList.remove('zen-mode');
     }
 
     views.forEach(view => view.classList.remove('active'));
