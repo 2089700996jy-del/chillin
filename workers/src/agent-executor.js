@@ -36,8 +36,7 @@ const MAX_CONCURRENT_WORKERS = 3;
 function timestampMs(value) {
     const text = String(value == null ? '' : value).trim();
     if (!text) return 0;
-    if (/[zZ]$|[+-]\d{2}:\d{2}$/.test(text)) return Date.parse(text);
-    return Date.parse(text.replace(' ', 'T') + '+08:00');
+    return Date.parse(/[zZ]$|[+-]\d{2}:\d{2}$/.test(text) ? text : text.replace(' ', 'T') + '+08:00');
 }
 
 function isLiveRunningTask(task) {
@@ -47,12 +46,10 @@ function isLiveRunningTask(task) {
 
 function withTimeout(promise, ms, message) {
     let timer = null;
-    const timeout = new Promise((_, reject) => {
-        timer = setTimeout(() => reject(new Error(message)), Math.max(1, Number(ms) || 1));
-    });
-    return Promise.race([Promise.resolve(promise), timeout]).finally(() => {
-        if (timer) clearTimeout(timer);
-    });
+    return Promise.race([
+        Promise.resolve(promise),
+        new Promise((_, reject) => { timer = setTimeout(() => reject(new Error(message)), Math.max(1, Number(ms) || 1)); })
+    ]).finally(() => { if (timer) clearTimeout(timer); });
 }
 
 export function taskPrompt(goal, task, tasks, userPreferences = '') {
@@ -173,18 +170,12 @@ async function markTaskFailure(db, userId, goalId, runId, task, stepId, attempts
     }
     if (exhausted) {
         await db.prepare(
-            `UPDATE agent_runs SET status = 'failed', error = ?1, current_task_id = NULL,
-                lease_until = NULL, next_run_at = NULL, finished_at = datetime('now', '+8 hours'),
-                updated_at = datetime('now', '+8 hours')
-             WHERE id = ?2 AND user_id = ?3`
+            `UPDATE agent_runs SET status = 'failed', error = ?1, current_task_id = NULL, lease_until = NULL, next_run_at = NULL, finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
         ).bind(error, runId, userId).run();
         await touchGoal(db, userId, goalId, { status: 'failed', error, last_run_id: runId });
     } else {
         await db.prepare(
-            `UPDATE agent_runs SET status = 'queued', error = ?1, current_task_id = NULL,
-                lease_until = NULL,
-                next_run_at = datetime('now', '+8 hours', '+120 seconds'),
-                updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
+            `UPDATE agent_runs SET status = 'queued', error = ?1, current_task_id = NULL, lease_until = NULL, next_run_at = datetime('now', '+8 hours', '+120 seconds'), updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
         ).bind(error, runId, userId).run();
         await touchGoal(db, userId, goalId, { status: 'active', error: '', last_run_id: runId });
     }
@@ -335,11 +326,14 @@ export async function runNextTask(options) {
     const latestStatus = latestGoal ? latestGoal.status : 'deleted';
     const holdStatus = ['paused', 'cancelled', 'completed', 'failed'].includes(latestStatus) ? latestStatus : '';
     let hasExhausted = false;
-    let hasBlocked = false;
+    let anyFailed = false;
+    const completedBatch = [];
 
+    // Phase 1：原子提交所有并发 Worker 产出与执行用量（绝不在此阶段做 replan）
     for (const outcome of outcomes) {
         const { task, step, result, failure, durationMs, workerId } = outcome;
         if (failure) {
+            anyFailed = true;
             const attempts = Number(task.attempts || 0) + 1;
             const exhausted = await markTaskFailure(db, userId, goalId, run.id, task, step.id, attempts, failure.slice(0, 300), durationMs, holdStatus);
             await addBudgetUsage(db, userId, goalId, 0, durationMs);
@@ -361,14 +355,7 @@ export async function runNextTask(options) {
                 stop_reason: result.stopReason || 'final'
             }), durationMs, step.id, userId).run();
             await addBudgetUsage(db, userId, goalId, Array.isArray(result.toolTrace) ? result.toolTrace.length : 0, durationMs);
-
-            const checkpoint = await checkpointAfterTask({ env, db, userId, goalId, task, output, checkpointModel, planModel });
-            if (checkpoint.action === 'blocked') {
-                await db.prepare("UPDATE agent_tasks SET status = 'blocked', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(task.id, userId).run();
-                hasBlocked = true;
-            } else if (checkpoint.action === 'replan') {
-                console.log('[agent] replanned remaining goal=' + goalId + ' tasks=' + checkpoint.tasks);
-            }
+            completedBatch.push({ task, output });
         }
     }
 
@@ -376,10 +363,37 @@ export async function runNextTask(options) {
         await notifyAgentUser(env, db, userId, { title: '目标失败', body: '「' + notificationText(goalRow.title, 60) + '」重试次数已用完，去查看原因。', tag: 'agent-goal-' + goalId }).catch(() => {});
         return snapshotFor(db, userId, goalId);
     }
-    if (hasBlocked) {
-        await pauseGoal(db, userId, goalId);
-        await notifyAgentUser(env, db, userId, { title: '目标已暂停', body: '「' + notificationText(goalRow.title, 60) + '」的任务结果标记为阻塞，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
-        return snapshotFor(db, userId, goalId);
+
+    // Phase 2：Router 级批次收敛决策，消除并发重规划竞争
+    // 1. 阻塞检测：任何成功任务标记了受阻，即刻暂停目标
+    for (const item of completedBatch) {
+        if (/BLOCKED|blocked|受阻|无法继续/.test(item.output)) {
+            await db.prepare("UPDATE agent_tasks SET status = 'blocked', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(item.task.id, userId).run();
+            await pauseGoal(db, userId, goalId);
+            await notifyAgentUser(env, db, userId, { title: '目标已暂停', body: '「' + notificationText(goalRow.title, 60) + '」的任务结果标记为阻塞，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
+            return snapshotFor(db, userId, goalId);
+        }
+    }
+
+    // 2. 检查点与重规划：只有当前批次全部 Worker 成功且无等待重试任务时，才对后续剩余任务做单次统一评估
+    if (!anyFailed && !holdStatus && completedBatch.length > 0) {
+        const remainingTasks = await listTasks(db, userId, goalId);
+        const pendingRemaining = remainingTasks.filter((item) => ['pending', 'ready'].includes(item.status));
+        if (pendingRemaining.length > 0) {
+            const lastCompleted = completedBatch[completedBatch.length - 1];
+            const checkpoint = await checkpointAfterTask({
+                env, db, userId, goalId, task: lastCompleted.task, output: lastCompleted.output, checkpointModel, planModel
+            });
+            if (checkpoint.action === 'blocked') {
+                await db.prepare("UPDATE agent_tasks SET status = 'blocked', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(lastCompleted.task.id, userId).run();
+                await pauseGoal(db, userId, goalId);
+                await notifyAgentUser(env, db, userId, { title: '目标已暂停', body: '「' + notificationText(goalRow.title, 60) + '」的任务结果标记为阻塞，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
+                return snapshotFor(db, userId, goalId);
+            }
+            if (checkpoint.action === 'replan') {
+                console.log('[agent] replanned remaining goal=' + goalId + ' tasks=' + checkpoint.tasks);
+            }
+        }
     }
 
     const runStatus = holdStatus === 'cancelled' ? 'cancelled'
@@ -430,14 +444,9 @@ export async function continueGoal(options) {
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     const tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '请先生成计划', 'GOAL_NO_PLAN');
-    if (tasks.some((item) => item.status === 'blocked')) {
-        throw new AgentError(409, '有阻塞任务，请先重新规划剩余任务', 'GOAL_BLOCKED');
-    }
-    if (goal.status === 'paused') {
-        await touchGoal(db, userId, goalId, { status: 'active', error: '' });
-    } else if (!['active', 'planned'].includes(goal.status)) {
-        throw new AgentError(409, '当前目标不能继续执行', 'GOAL_NOT_CONTINUABLE');
-    }
+    if (tasks.some((item) => item.status === 'blocked')) throw new AgentError(409, '有阻塞任务，请先重新规划剩余任务', 'GOAL_BLOCKED');
+    if (goal.status === 'paused') await touchGoal(db, userId, goalId, { status: 'active', error: '' });
+    else if (!['active', 'planned'].includes(goal.status)) throw new AgentError(409, '当前目标不能继续执行', 'GOAL_NOT_CONTINUABLE');
     return runNextTask({ ...options, trigger: options.trigger || 'resume' });
 }
 
@@ -446,11 +455,7 @@ export async function pauseGoal(db, userId, goalId) {
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
     await touchGoal(db, userId, goalId, { status: 'paused' });
-    await db.prepare(
-        `UPDATE agent_runs SET status = 'paused', lease_until = NULL, next_run_at = NULL,
-            updated_at = datetime('now', '+8 hours')
-         WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running', 'waiting_approval')`
-    ).bind(goalId, userId).run();
+    await db.prepare("UPDATE agent_runs SET status = 'paused', lease_until = NULL, next_run_at = NULL, updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running', 'waiting_approval')").bind(goalId, userId).run();
     return snapshotFor(db, userId, goalId);
 }
 
@@ -461,17 +466,9 @@ export async function completeGoal(db, userId, goalId) {
     const tasks = await listTasks(db, userId, goalId);
     const run = await getActiveRunRow(db, userId, goalId) || await getRunRow(db, userId, goalId);
     const result = finalResult(tasks);
-    await db.prepare(
-        `UPDATE agent_goals SET status = 'completed', result_md = ?1, error = '', completed_at = datetime('now', '+8 hours'),
-            updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
-    ).bind(result, goalId, userId).run();
+    await db.prepare("UPDATE agent_goals SET status = 'completed', result_md = ?1, error = '', completed_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3").bind(result, goalId, userId).run();
     if (run) {
-        await db.prepare(
-            `UPDATE agent_runs SET status = 'completed', result_md = ?1, current_task_id = NULL,
-                lease_until = NULL, next_run_at = NULL,
-                finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours')
-             WHERE id = ?2 AND user_id = ?3`
-        ).bind(result, run.id, userId).run();
+        await db.prepare("UPDATE agent_runs SET status = 'completed', result_md = ?1, current_task_id = NULL, lease_until = NULL, next_run_at = NULL, finished_at = datetime('now', '+8 hours'), updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3").bind(result, run.id, userId).run();
     }
     return snapshotFor(db, userId, goalId);
 }
@@ -479,15 +476,10 @@ export async function completeGoal(db, userId, goalId) {
 export async function retryTask(db, userId, goalId, taskId) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
-    const row = await db.prepare(
-        'SELECT * FROM agent_tasks WHERE id = ?1 AND goal_id = ?2 AND user_id = ?3'
-    ).bind(taskId, goalId, userId).first();
+    const row = await db.prepare('SELECT * FROM agent_tasks WHERE id = ?1 AND goal_id = ?2 AND user_id = ?3').bind(taskId, goalId, userId).first();
     if (!row) throw new AgentError(404, '任务不存在', 'TASK_NOT_FOUND');
     if (!['failed', 'blocked'].includes(row.status)) throw new AgentError(409, '只有失败的任务可以重试', 'TASK_NOT_FAILED');
-    await db.prepare(
-        `UPDATE agent_tasks SET status = 'pending', attempts = 0, error = '', started_at = NULL, finished_at = NULL,
-            updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2`
-    ).bind(taskId, userId).run();
+    await db.prepare("UPDATE agent_tasks SET status = 'pending', attempts = 0, error = '', started_at = NULL, finished_at = NULL, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(taskId, userId).run();
     await touchGoal(db, userId, goalId, { status: 'active', error: '' });
     return snapshotFor(db, userId, goalId);
 }

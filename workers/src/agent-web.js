@@ -126,20 +126,76 @@ export function safePublicUrl(raw) {
     return u.toString();
 }
 
+async function dohResolve(host, fetchImpl = fetch) {
+    const addrs = [];
+    for (const type of ['A', 'AAAA']) {
+        try {
+            const dohUrl = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`;
+            const res = await fetchImpl(dohUrl, {
+                headers: { accept: 'application/dns-json' },
+                signal: AbortSignal.timeout ? AbortSignal.timeout(3500) : undefined
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const answers = Array.isArray(data.Answer) ? data.Answer : [];
+                for (const a of answers) {
+                    if ((type === 'A' && a.type === 1) || (type === 'AAAA' && a.type === 28)) {
+                        if (a.data) addrs.push(a.data);
+                    }
+                }
+            }
+        } catch (_) {}
+    }
+    return addrs;
+}
+
 /**
  * 生产默认 DNS 解析器：在无需外部注入时，由底层运行时执行真实域名解析（A / AAAA）。
+ * 兼容性保证：
+ * - Cloudflare Workers 不支持 dns.lookup()（抛出 Not implemented），但支持 dns.resolve4() 与 dns.resolve6()；
+ * - A 与 AAAA 必须双栈全量检测，任一结果命中保留/私有 IP 即拒绝；
+ * - 若底层不支持 node:dns 或抛出 Not implemented，无缝回落至 Cloudflare DoH (1.1.1.1) 原生 fetch。
  */
-async function defaultLookup(host) {
-    if (dns && typeof dns.lookup === 'function') {
-        const res = await dns.lookup(host, { all: true });
-        return Array.isArray(res) ? res.map((r) => r.address) : [res.address];
+async function defaultLookup(host, deps = {}) {
+    const fetchImpl = (deps && deps.fetchImpl) || fetch;
+    const addrs = [];
+    let resolve4Failed = false;
+    let resolve6Failed = false;
+    let notImplemented = false;
+
+    if (dns && typeof dns.resolve4 === 'function') {
+        try {
+            const v4 = await dns.resolve4(host);
+            if (Array.isArray(v4)) addrs.push(...v4);
+        } catch (err) {
+            resolve4Failed = true;
+            if (String(err && err.message).includes('Not implemented')) notImplemented = true;
+        }
+    } else {
+        resolve4Failed = true;
     }
-    const dohUrl = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=A`;
-    const res = await fetch(dohUrl, { headers: { accept: 'application/dns-json' } });
-    if (!res.ok) throw new Error('DOH_FAILED');
-    const data = await res.json();
-    const answers = Array.isArray(data.Answer) ? data.Answer : [];
-    return answers.filter((a) => a.type === 1 || a.type === 28).map((a) => a.data);
+
+    if (dns && typeof dns.resolve6 === 'function' && !notImplemented) {
+        try {
+            const v6 = await dns.resolve6(host);
+            if (Array.isArray(v6)) addrs.push(...v6);
+        } catch (err) {
+            resolve6Failed = true;
+            if (String(err && err.message).includes('Not implemented')) notImplemented = true;
+        }
+    } else {
+        resolve6Failed = true;
+    }
+
+    if (addrs.length > 0) return addrs;
+
+    // 回落至原生 DoH 兼容解析
+    if (notImplemented || (resolve4Failed && resolve6Failed)) {
+        const dohAddrs = await dohResolve(host, fetchImpl);
+        if (dohAddrs.length > 0) return dohAddrs;
+    }
+
+    throw new Error('DNS_RESOLVE_FAILED: 无法解析域名');
 }
 
 /**
@@ -150,7 +206,9 @@ export async function verifyHostDns(host, deps = {}) {
     const h = String(host || '').toLowerCase().replace(/\.$/, '');
     if (!h) return false;
 
-    const lookupFn = (deps && typeof deps.lookup === 'function') ? deps.lookup : defaultLookup;
+    const lookupFn = (deps && typeof deps.lookup === 'function')
+        ? deps.lookup
+        : ((target) => defaultLookup(target, deps));
     try {
         const addrs = await lookupFn(h);
         const list = Array.isArray(addrs) ? addrs : [addrs];

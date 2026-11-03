@@ -1362,3 +1362,91 @@ sqliteTest('Super Agent - Router 自动识别并发无依赖任务并由独立 W
     assert.equal(finalSnap.goal.status, 'completed');
     assert.equal(finalSnap.tasks[2].status, 'completed');
 });
+
+sqliteTest('Super Agent - DoH 降级在底层抛出 Not implemented 时保证正常解析公网地址', async () => {
+    // 模拟 Cloudflare Workers 环境下 node:dns 抛出 Not implemented 错误并走 DoH
+    const mockDohFetch = async (url) => {
+        if (url.includes('type=A')) {
+            return {
+                ok: true,
+                json: async () => ({
+                    Answer: [{ type: 1, data: '93.184.216.34' }]
+                })
+            };
+        }
+        return {
+            ok: true,
+            json: async () => ({ Answer: [] })
+        };
+    };
+
+    const res = await runWebTool({}, 'fetch_url', { url: 'https://doh-test-public.com/safe' }, {
+        fetchImpl: async (url) => {
+            if (url.includes('dns-query')) return mockDohFetch(url);
+            return new Response('<html><body>Example Content</body></html>', { status: 200, headers: { 'content-type': 'text/html' } });
+        }
+    });
+    assert.equal(res.ok, true);
+    assert.match(res.data.content, /Example Content/);
+
+    const privateDoh = await runWebTool({}, 'fetch_url', { url: 'https://doh-test-private.com/test' }, {
+        fetchImpl: async (url) => {
+            if (url.includes('dns-query')) {
+                return {
+                    ok: true,
+                    json: async () => ({ Answer: [{ type: 1, data: '10.0.0.1' }] })
+                };
+            }
+            return new Response('Secret', { status: 200 });
+        }
+    });
+    assert.equal(privateDoh.ok, false);
+    assert.match(privateDoh.error.message, /域名解析为私有地址/);
+});
+
+sqliteTest('Super Agent - 并发批次内有任务失败时严禁触发 replan 以免抹除待重试任务', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    // 生成包含 2 个平行任务（无依赖）及 1 个后续汇聚任务的 DAG
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '并行任务 1', description: '成功任务', depends_on: [] },
+                { title: '并行任务 2', description: '待失败重试任务', depends_on: [] },
+                { title: '汇聚任务 3', description: '后续任务', depends_on: [0, 1] }
+            ]
+        })
+    });
+
+    let replanCalled = false;
+    const runner = async ({ question }) => {
+        if (question.includes('并行任务 2')) {
+            throw new Error('临时网络抖动');
+        }
+        return {
+            reply: '任务 1 产出成功',
+            sources: [],
+            toolTrace: [],
+            stopReason: 'final'
+        };
+    };
+
+    const snap = await startGoal({
+        env: { LLM_API_KEY: 'test-key' },
+        db,
+        userId: 1,
+        goalId,
+        agentRunner: runner,
+        checkpointModel: async () => {
+            replanCalled = true;
+            return JSON.stringify({ action: 'replan', reason: '需要重规划' });
+        }
+    });
+
+    assert.equal(replanCalled, false, '批次内有失败重试任务时，绝不能触发 checkpoint/replan');
+    assert.equal(snap.tasks[0].status, 'completed');
+    assert.equal(snap.tasks[1].status, 'pending', '失败任务应保留 pending 状态等待重试');
+    assert.equal(snap.tasks[1].attempts, 1);
+    assert.equal(snap.tasks[2].status, 'pending', '后续任务不被误删');
+});
