@@ -156,8 +156,8 @@ test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async
     const gzipSize = async (p) => zlib.gzipSync(await fs.readFile(p)).length;
 
     const BUDGET = {
-        jsTotalGzip: 176 * 1024,   // 当前实测 175.2 KB；新增 Agent 成果全景草稿看板 (Staging Deliverable) 与画像偏好支持
-        cssTotalGzip: 52 * 1024,   // 当前实测 50.0 KB；目标/任务看板新增成果全景草稿与交付动作样式
+        jsTotalGzip: 178 * 1024,   // 当前实测 176.5 KB；新增 Super-Agent 协同路由矩阵与多 Worker 监督看板
+        cssTotalGzip: 52 * 1024,   // 当前实测 50.4 KB；新增 Super-Agent 协同路由矩阵与多 Worker 槽位样式
         singleFileGzip: 20 * 1024  // 当前最大是 public/js/reader.js 13.6 KB
     };
 

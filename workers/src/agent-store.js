@@ -307,12 +307,17 @@ export function dependenciesMet(task, bySeq) {
 }
 
 export function nextReadyTask(tasks) {
+    const ready = allReadyTasks(tasks, 1);
+    return ready[0] || null;
+}
+
+export function allReadyTasks(tasks, maxConcurrent = 3) {
     const bySeq = new Map(tasks.map((task) => [Number(task.seq), task]));
-    const candidates = tasks
+    return tasks
         .filter((task) => ['pending', 'ready'].includes(task.status))
         .filter((task) => dependenciesMet(task, bySeq))
-        .sort((a, b) => a.seq - b.seq);
-    return candidates[0] || null;
+        .sort((a, b) => a.seq - b.seq)
+        .slice(0, maxConcurrent);
 }
 
 export function allTasksCompleted(tasks) {

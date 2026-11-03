@@ -34,7 +34,7 @@ import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
 import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns, distillWebText } from '../workers/src/agent-web.js';
 import { savePreference } from '../workers/src/bot-preferences.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
-import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
+import { nextReadyTask, allReadyTasks, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
 
 const TASK_PLAN = JSON.stringify({
@@ -1266,4 +1266,99 @@ test('Super Agent - 网页抓取支持自动蒸馏收缩保护执行上下文', 
     assert.match(distilled, /自动蒸馏收缩以保护执行上下文/);
     assert.ok(distilled.startsWith('A'.repeat(100)));
     assert.ok(distilled.endsWith('B'.repeat(100)));
+});
+
+test('Super Agent - allReadyTasks 能按并发上限提取无依赖任务', () => {
+    const tasks = [
+        { seq: 0, status: 'pending', depends_on: [] },
+        { seq: 1, status: 'pending', depends_on: [] },
+        { seq: 2, status: 'pending', depends_on: [] },
+        { seq: 3, status: 'pending', depends_on: [0, 1] }
+    ];
+    const ready = allReadyTasks(tasks, 2);
+    assert.equal(ready.length, 2);
+    assert.equal(ready[0].seq, 0);
+    assert.equal(ready[1].seq, 1);
+});
+
+sqliteTest('Agent web - fetchViaReader 严格校验原始目标与代读服务的 DNS 边界', async () => {
+    // 1. 原始目标域名被 DNS 解析为私有网段时在本地被拦截，不外发给第三方读取服务
+    const targetRebind = await runWebTool({
+        LINK_READER_API_KEY: 'test-key',
+        LINK_READER_URL: 'https://r.jina.ai'
+    }, 'fetch_url', { url: 'https://internal-target.com/secret' }, {
+        fetchImpl: async () => { throw new Error('HTTP 403'); },
+        lookup: async (host) => {
+            if (host === 'internal-target.com') return [{ address: '10.0.0.1', family: 4 }];
+            return [{ address: '104.18.0.1', family: 4 }];
+        }
+    });
+    assert.equal(targetRebind.ok, false);
+    assert.match(targetRebind.error.message, /域名解析为私有地址/);
+
+    // 2. 第三方读取服务自身域名被 DNS 解析为私有网段时同样被拦截
+    const readerRebind = await runWebTool({
+        LINK_READER_API_KEY: 'test-key',
+        LINK_READER_URL: 'https://evil-reader.com/read'
+    }, 'fetch_url', { url: 'https://public-site.com/doc' }, {
+        fetchImpl: async () => { throw new Error('HTTP 403'); },
+        lookup: async (host) => {
+            if (host === 'evil-reader.com') return [{ address: '192.168.1.1', family: 4 }];
+            return [{ address: '93.184.216.34', family: 4 }];
+        }
+    });
+    assert.equal(readerRebind.ok, false);
+    assert.match(readerRebind.error.message, /READER_SERVICE_BLOCKED/);
+});
+
+sqliteTest('Super Agent - Router 自动识别并发无依赖任务并由独立 Worker 槽位并行推进', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    // 生成包含 2 个平行任务（无依赖）及 1 个后续汇聚任务的 DAG
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [
+                { title: '调研技术方案 A', description: '分析方案 A 优劣', depends_on: [] },
+                { title: '调研技术方案 B', description: '分析方案 B 优劣', depends_on: [] },
+                { title: '综合对比产出决策', description: '结合 A 与 B 给出推荐', depends_on: [0, 1] }
+            ]
+        })
+    });
+
+    const calls = [];
+    const runner = async ({ question }) => {
+        calls.push(question);
+        return {
+            reply: question.includes('方案 A') ? '方案 A 产出完备' : '方案 B 产出完备',
+            sources: [],
+            toolTrace: [{ tool: 'web_search', ok: true }],
+            stopReason: 'final'
+        };
+    };
+
+    // 一次调度：Router 发现任务 0 与任务 1 均满足依赖，派发两个独立 Worker 并发推进
+    const snapshot = await startGoal({ env: {}, db, userId: 1, goalId, agentRunner: runner });
+    assert.equal(calls.length, 2, 'Router 应一次性并发调度两个无依赖阻碍的就绪任务');
+    assert.equal(snapshot.tasks[0].status, 'completed');
+    assert.equal(snapshot.tasks[1].status, 'completed');
+    assert.equal(snapshot.tasks[2].status, 'pending');
+
+    // 检查步骤日志与 Worker 槽位隔离标识
+    const detail = await getGoalDetail(db, 1, goalId);
+    assert.equal(detail.steps.length, 2);
+    const workerIds = detail.steps.map((s) => (s.input && s.input.worker_id) || (s.output && s.output.worker_id));
+    assert.ok(workerIds.includes('Worker-1'));
+    assert.ok(workerIds.includes('Worker-2'));
+
+    // 推进第三步（汇聚任务）
+    const step3Runner = async () => ({
+        reply: '方案 A 与 B 对比完毕，推荐方案 A。',
+        sources: [],
+        toolTrace: [],
+        stopReason: 'final'
+    });
+    const finalSnap = await continueGoal({ env: {}, db, userId: 1, goalId, agentRunner: step3Runner });
+    assert.equal(finalSnap.goal.status, 'completed');
+    assert.equal(finalSnap.tasks[2].status, 'completed');
 });

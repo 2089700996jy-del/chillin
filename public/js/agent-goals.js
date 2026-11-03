@@ -115,6 +115,76 @@ function renderBudget(budget) {
     '</div>';
 }
 
+function renderSuperDeck(goal, tasks, steps) {
+    if (!tasks || !tasks.length) return '';
+    const total = tasks.length;
+    const completed = tasks.filter((t) => t.status === 'completed').length;
+    const runningTasks = tasks.filter((t) => t.status === 'running');
+    const runningCount = runningTasks.length;
+    const completedSeq = new Set(tasks.filter((t) => t.status === 'completed').map((t) => Number(t.seq)));
+    const readyTasks = tasks.filter((t) => ['pending', 'ready'].includes(t.status) && (t.depends_on || []).every((d) => completedSeq.has(Number(d))));
+    const readyCount = readyTasks.length;
+
+    const slots = [1, 2, 3].map((slotNum) => {
+        const workerTag = 'Worker-' + slotNum;
+        const workerSteps = (steps || []).filter((s) => {
+            const inW = s.input && s.input.worker_id;
+            const outW = s.output && s.output.worker_id;
+            return inW === workerTag || outW === workerTag;
+        });
+        const latestStep = workerSteps.length ? workerSteps[workerSteps.length - 1] : null;
+        let slotStatus = 'idle';
+        let slotDesc = '待命就绪 (Idle)';
+
+        if (latestStep) {
+            const matchingTask = tasks.find((t) => t.id === latestStep.task_id);
+            const title = matchingTask ? matchingTask.title : (latestStep.input && latestStep.input.title) || '';
+            if (latestStep.status === 'running' || (matchingTask && matchingTask.status === 'running')) {
+                slotStatus = 'running';
+                slotDesc = '执行中: ' + (title || '推进中');
+            } else if (latestStep.status === 'failed') {
+                slotStatus = 'failed';
+                slotDesc = '受阻: ' + (title || '待重试');
+            } else {
+                slotStatus = 'completed';
+                slotDesc = '完成: ' + (title || '已交付');
+            }
+        } else if (goal.status === 'active' && slotNum <= runningCount) {
+            slotStatus = 'running';
+            const runTask = runningTasks[slotNum - 1];
+            slotDesc = '执行中: ' + (runTask ? runTask.title : '推进中');
+        } else if (goal.status === 'active' && readyCount > 0 && slotNum <= readyCount) {
+            slotStatus = 'ready';
+            slotDesc = '队列就绪 (Ready)';
+        }
+
+        return { name: workerTag, status: slotStatus, desc: slotDesc };
+    });
+
+    const isRunning = goal.status === 'active' || runningCount > 0;
+    const badgeText = isRunning ? '⚡ Router 并发调度运转中' : (goal.status === 'completed' ? '✨ 协同链路全量达成' : '💤 Router 协同待命');
+
+    return '<section class="agent-super-deck">' +
+        '<div class="super-deck-head">' +
+            '<div class="super-deck-title-wrap">' +
+                '<span class="super-deck-badge">' + escapeHtml(badgeText) + '</span>' +
+                '<span class="super-deck-sub">DeepSeek 架构 · Router + 3 独立 Worker 矩阵</span>' +
+            '</div>' +
+            '<div class="super-deck-metrics">' +
+                '<span>活跃槽位: <strong>' + (isRunning ? Math.max(1, runningCount) : 0) + '/3</strong></span>' +
+                '<span>DAG 就绪: <strong>' + readyCount + '</strong></span>' +
+                '<span>协同进度: <strong>' + completed + '/' + total + '</strong></span>' +
+            '</div>' +
+        '</div>' +
+        '<div class="super-deck-slots">' +
+            slots.map((s) => '<div class="super-slot super-slot-' + s.status + '">' +
+                '<div class="super-slot-tag"><span class="super-slot-dot"></span>' + escapeHtml(s.name) + '</div>' +
+                '<div class="super-slot-desc" title="' + escapeHtml(s.desc) + '">' + escapeHtml(s.desc) + '</div>' +
+            '</div>').join('') +
+        '</div>' +
+    '</section>';
+}
+
 function renderDeliverableCard(goal, tasks) {
     if (!goal || !goal.result_md) return '';
     const completedTasks = (tasks || []).filter((t) => t.status === 'completed').length;
@@ -184,6 +254,8 @@ function renderSteps(steps) {
             const reply = step.output && step.output.reply ? String(step.output.reply) : '';
             const toolTrace = Array.isArray(step.output && step.output.tool_trace) ? step.output.tool_trace : [];
             const duration = step.duration_ms ? (Number(step.duration_ms) / 1000).toFixed(1) + 's' : '';
+            const workerId = (step.input && step.input.worker_id) || (step.output && step.output.worker_id) || '';
+            const workerBadge = workerId ? '<span class="agent-step-worker-badge">🤖 ' + escapeHtml(workerId) + '</span>' : '';
             const toolBadge = step.tool_name ? '<span class="agent-step-tool-badge">🔧 ' + escapeHtml(step.tool_name) + '</span>' : '';
 
             let traceHtml = '';
@@ -212,6 +284,7 @@ function renderSteps(steps) {
                 '<div class="agent-step-body">' +
                     '<div class="agent-step-title">' +
                         '<span>第 ' + step.seq + ' 步 · ' + label(step.status) + '</span>' +
+                        workerBadge +
                         toolBadge +
                         (duration ? '<span class="agent-step-duration">⏱ ' + duration + '</span>' : '') +
                         (step.created_at ? '<span class="agent-step-time">' + escapeHtml(step.created_at.slice(11, 19)) + '</span>' : '') +
@@ -319,6 +392,7 @@ function renderDetail(data) {
         '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span></div>' +
         progressBar(progress) + error + renderBudget(goal.budget) +
         '<div class="agent-goal-actions">' + actions.join('') + '</div>' + editPanel + appendPanel +
+        renderSuperDeck(goal, tasks, data.steps) +
         '<section class="agent-goal-section"><h4>计划</h4>' +
         (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
         '</section>' + result + renderApprovals(data.approvals) + renderSteps(data.steps) +

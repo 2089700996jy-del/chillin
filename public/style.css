@@ -10943,6 +10943,25 @@ select:focus-visible,
 .agent-deliverable-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .agent-deliverable-actions button { min-height: 32px; font-size: 12px; }
 
+/* Super-Agent 协同路由矩阵 (Super-Agent Deck) */
+.agent-super-deck { margin: 12px 0 16px; padding: 12px 14px; border-radius: 14px; background: rgba(var(--label-rgb), 0.03); border: 0.5px solid var(--surface-hairline); }
+.super-deck-head { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px; }
+.super-deck-title-wrap { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; }
+.super-deck-badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: var(--radius-pill); background: rgba(0, 102, 204, 0.12); color: var(--ios-blue); }
+.super-deck-sub { font-size: 10px; color: var(--text-color-light); }
+.super-deck-metrics { display: flex; flex-wrap: wrap; gap: 12px; font-size: 11px; color: var(--text-color-light); }
+.super-deck-metrics strong { color: var(--text-color); }
+.super-deck-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; }
+.super-slot { padding: 8px 10px; border-radius: 10px; background: rgba(var(--label-rgb), 0.04); border: 0.5px solid var(--surface-hairline); }
+.super-slot-tag { display: flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; color: var(--text-color); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.super-slot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-color-light); flex-shrink: 0; }
+.super-slot-running .super-slot-dot { background: var(--ios-blue); }
+.super-slot-completed .super-slot-dot { background: var(--ios-green); }
+.super-slot-failed .super-slot-dot { background: var(--ios-red); }
+.super-slot-ready .super-slot-dot { background: var(--ios-orange); }
+.super-slot-desc { font-size: 10px; color: var(--text-color-light); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.agent-step-worker-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(0, 102, 204, 0.1); color: var(--ios-blue); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
 @media (max-width: 620px) {
   .modal-overlay.agent-goals-overlay { align-items: flex-end; padding: 0; }
   .agent-goals-card { width: 100%; max-width: 100%; height: 88vh; max-height: 88vh; border-radius: 24px 24px 0 0; border-bottom: none; border-left: none; border-right: none; }

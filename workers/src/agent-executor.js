@@ -1,17 +1,17 @@
 /**
- * Agent 目标执行器：一次只推进一个任务，任务结果写入 agent_tasks / agent_steps。
+ * Super-Agent 目标协同执行引擎（Router + 独立并发 Worker 架构）：
  *
- * 设计约束：
- * - 不把整个目标塞进一次 Worker 请求；每次 API 调用或 cron tick 只跑一个任务，页面关闭后由 agent-scheduler 续跑；
- * - 任务依赖只按 seq 检查，先顺序执行，不做并行；
- * - 失败按 max_attempts 重试，耗尽后目标进入 failed，等待用户重试或改计划；
- * - 执行只调用阶段 1 的只读工具循环，不在这里写业务数据。
+ * 架构设计：
+ * - Router 负责任务 DAG 依赖分析与动态调度，挑出所有就绪分支（最多 MAX_CONCURRENT_WORKERS 个并发槽位）；
+ * - Worker 作为独立执行单元并行工作，各自挂载隔离的上下文、工具追踪和步骤日志（记录 worker_id）；
+ * - 每次调度通过 Promise.all 驱动独立 Worker 并行执行，大幅缩短多分支任务在长程目标中的耗时；
+ * - 失败隔离与检查点兜底：单一 Worker 失败按 max_attempts 自动重试；支持受阻暂停与动态 replan。
  */
 import { runAgent } from './ai-runtime.js';
 import { executeAgentTool } from './ai-tools.js';
 import { checkpointAfterTask, blockCompletionIfNeeded, budgetExceeded, addBudgetUsage, failForBudget } from './agent-checkpoint.js';
 import { WEB_AGENT_TOOLS, runWebTool } from './agent-web.js';
-import { runProposalTool, notifyAgentUser, notificationText } from './agent-approvals.js';
+import { runProposalTool, notifyAgentUser, notificationText, PROPOSE_WRITE_TOOL, PROPOSE_WRITE_INSTRUCTIONS } from './agent-approvals.js';
 import { loadPreferencePrompt } from './bot-preferences.js';
 import {
     AgentError,
@@ -21,6 +21,7 @@ import {
     getRunRow,
     getSnapshot,
     nextReadyTask,
+    allReadyTasks,
     allTasksCompleted,
     touchGoal,
     cleanMultiline
@@ -30,27 +31,7 @@ const TASK_TIMEOUT_MS = 50000;
 const LIVE_TASK_GRACE_MS = 120000;
 const TASK_LEASE_SQL = "datetime('now', '+8 hours', '+180 seconds')";
 const TASK_STARTED_AT_SQL = "datetime('now', '+8 hours')";
-
-/** 任务 Agent 额外获得的写入提案工具；它只创建审批，不直接写 notes。 */
-const PROPOSE_WRITE_TOOL = {
-    type: 'function',
-    function: {
-        name: 'propose_write',
-        description: '创建一个待用户审批的写入/发送提案，不会直接写库或发送。仅在任务明确要求保存、追加笔记或发 Bot 时调用。',
-        parameters: {
-            type: 'object',
-            properties: {
-                action: { type: 'string', enum: ['save_note', 'append_note', 'send_bot_message'] },
-                title: { type: 'string', minLength: 1, maxLength: 80, description: '保存为新笔记时的标题；追加时可省略' },
-                note_id: { type: 'integer', minimum: 1, description: '追加时必须提供目标笔记 id' },
-                content: { type: 'string', minLength: 1, maxLength: 30000, description: '要写入的 Markdown 正文' }
-            },
-            required: ['action', 'content'],
-            additionalProperties: false
-        }
-    }
-};
-const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write 与 web_search/fetch_url。需要外部事实时先检索；需要保存、追加或发 Bot 时用 propose_write，它只创建待审批，不会直接写库或发送。调用后如实说“已创建待审批”，不要声称已经写入或发送。';
+const MAX_CONCURRENT_WORKERS = 3;
 
 function timestampMs(value) {
     const text = String(value == null ? '' : value).trim();
@@ -267,8 +248,8 @@ export async function runNextTask(options) {
         return snapshotFor(db, userId, goalId);
     }
 
-    const task = nextReadyTask(tasks);
-    if (!task) {
+    const readyTasks = allReadyTasks(tasks, MAX_CONCURRENT_WORKERS);
+    if (!readyTasks.length) {
         const failed = tasks.find((item) => ['failed', 'blocked'].includes(item.status));
         const message = failed
             ? '有任务失败，依赖无法继续；请重试失败任务或重新规划'
@@ -279,105 +260,128 @@ export async function runNextTask(options) {
         return snapshotFor(db, userId, goalId);
     }
 
-    const started = Date.now();
-
-    // 原子认领：两个并发的 continue 只能有一个把任务从 pending 改成 running。
-    // 后到的请求拿不到任务就直接返回当前快照，避免同一任务被跑两遍、产生重复步骤。
-    const claimed = await db.prepare(
-        `UPDATE agent_tasks SET status = 'running', error = '', started_at = datetime('now', '+8 hours'),
-            updated_at = datetime('now', '+8 hours')
-         WHERE id = ?1 AND user_id = ?2 AND status IN ('pending', 'ready')`
-    ).bind(task.id, userId).run();
-    if (!claimed.meta || Number(claimed.meta.changes) === 0) {
+    // Router 阶段：原子认领并发就绪任务
+    const claimedTasks = [];
+    for (const t of readyTasks) {
+        const claimed = await db.prepare(
+            `UPDATE agent_tasks SET status = 'running', error = '', started_at = datetime('now', '+8 hours'),
+                updated_at = datetime('now', '+8 hours')
+             WHERE id = ?1 AND user_id = ?2 AND status IN ('pending', 'ready')`
+        ).bind(t.id, userId).run();
+        if (claimed.meta && Number(claimed.meta.changes) > 0) claimedTasks.push(t);
+    }
+    if (!claimedTasks.length) {
         return snapshotFor(db, userId, goalId);
     }
 
     const run = await ensureRun(db, userId, goalId, trigger);
-    const stepSeq = await nextStepSeq(db, run.id);
-    const step = await db.prepare(
-        `INSERT INTO agent_steps (run_id, goal_id, task_id, user_id, seq, step_type, status, input_json)
-         VALUES (?1, ?2, ?3, ?4, ?5, 'task', 'running', ?6)
-         RETURNING *`
-    ).bind(run.id, goalId, task.id, userId, stepSeq, JSON.stringify({
-        title: task.title,
-        description: task.description,
-        depends_on: task.depends_on
-    })).first();
+    let nextSeq = await nextStepSeq(db, run.id);
 
     await db.prepare(
         `UPDATE agent_runs SET status = 'running', current_task_id = ?1, error = '',
             lease_until = ${TASK_LEASE_SQL}, next_run_at = NULL,
             updated_at = ${TASK_STARTED_AT_SQL} WHERE id = ?2 AND user_id = ?3`
-    ).bind(task.id, run.id, userId).run();
+    ).bind(claimedTasks[0].id, run.id, userId).run();
     await touchGoal(db, userId, goalId, { status: 'active', error: '', last_run_id: run.id });
 
-    let result;
-    let failure = '';
-    try {
-        const userPreferences = await loadPreferencePrompt(db, userId).catch(() => '');
-        result = await withTimeout(agentRunner({
-            env,
-            db,
-            userId,
-            question: taskPrompt(goalRow, task, tasks, userPreferences),
-            history: [],
-            extraTools: [PROPOSE_WRITE_TOOL, ...WEB_AGENT_TOOLS],
-            extraInstructions: PROPOSE_WRITE_INSTRUCTIONS,
-            executeTool: (toolDb, toolUserId, name, args) => {
-                if (name === 'web_search' || name === 'fetch_url') return runWebTool(env, name, args);
-                return name === 'propose_write'
-                    ? runProposalTool(toolDb, toolUserId, goalId, task.id, args, env)
-                    : executeAgentTool(toolDb, toolUserId, name, args);
-            }
-        }), TASK_TIMEOUT_MS, 'TASK_TIMEOUT');
-        if (!result || typeof result.reply !== 'string' || !result.reply.trim()) {
-            failure = (result && result.stopReason) ? `任务没有产出（${result.stopReason}）` : '任务没有产出';
-        }
-    } catch (err) {
-        failure = err && err.message ? err.message : '任务执行失败';
-    }
+    // Worker 阶段：Router 派发独立 Worker 并发推进
+    const userPreferences = await loadPreferencePrompt(db, userId).catch(() => '');
+    const executeWorker = async (task, idx) => {
+        const workerId = `Worker-${idx + 1}`;
+        const stepSeq = nextSeq + idx;
+        const step = await db.prepare(
+            `INSERT INTO agent_steps (run_id, goal_id, task_id, user_id, seq, step_type, status, input_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, 'task', 'running', ?6)
+             RETURNING *`
+        ).bind(run.id, goalId, task.id, userId, stepSeq, JSON.stringify({
+            worker_id: workerId,
+            title: task.title,
+            description: task.description,
+            depends_on: task.depends_on
+        })).first();
 
-    const durationMs = Date.now() - started;
+        const started = Date.now();
+        let result;
+        let failure = '';
+        try {
+            result = await withTimeout(agentRunner({
+                env,
+                db,
+                userId,
+                question: taskPrompt(goalRow, task, tasks, userPreferences),
+                history: [],
+                extraTools: [PROPOSE_WRITE_TOOL, ...WEB_AGENT_TOOLS],
+                extraInstructions: PROPOSE_WRITE_INSTRUCTIONS,
+                executeTool: (toolDb, toolUserId, name, args) => {
+                    if (name === 'web_search' || name === 'fetch_url') return runWebTool(env, name, args);
+                    return name === 'propose_write'
+                        ? runProposalTool(toolDb, toolUserId, goalId, task.id, args, env)
+                        : executeAgentTool(toolDb, toolUserId, name, args);
+                }
+            }), TASK_TIMEOUT_MS, 'TASK_TIMEOUT');
+            if (!result || typeof result.reply !== 'string' || !result.reply.trim()) {
+                failure = (result && result.stopReason) ? `任务没有产出（${result.stopReason}）` : '任务没有产出';
+            }
+        } catch (err) {
+            failure = err && err.message ? err.message : '任务执行失败';
+        }
+        return { task, step, result, failure, durationMs: Date.now() - started, workerId };
+    };
+
+    const outcomes = await Promise.all(claimedTasks.map((t, i) => executeWorker(t, i)));
+
+    // Router 阶段：状态汇总、检查点触发与流转
     const latestGoal = await getGoalRow(db, userId, goalId);
     const latestStatus = latestGoal ? latestGoal.status : 'deleted';
     const holdStatus = ['paused', 'cancelled', 'completed', 'failed'].includes(latestStatus) ? latestStatus : '';
-    if (failure) {
-        const attempts = Number(task.attempts || 0) + 1;
-        const exhausted = await markTaskFailure(db, userId, goalId, run.id, task, step.id, attempts, failure.slice(0, 300), durationMs, holdStatus);
-        await addBudgetUsage(db, userId, goalId, 0, durationMs);
-        if (exhausted && !holdStatus) {
-            await notifyAgentUser(env, db, userId, { title: '目标失败', body: '「' + notificationText(goalRow.title, 60) + '」重试次数已用完，去查看原因。', tag: 'agent-goal-' + goalId }).catch(() => {});
+    let hasExhausted = false;
+    let hasBlocked = false;
+
+    for (const outcome of outcomes) {
+        const { task, step, result, failure, durationMs, workerId } = outcome;
+        if (failure) {
+            const attempts = Number(task.attempts || 0) + 1;
+            const exhausted = await markTaskFailure(db, userId, goalId, run.id, task, step.id, attempts, failure.slice(0, 300), durationMs, holdStatus);
+            await addBudgetUsage(db, userId, goalId, 0, durationMs);
+            if (exhausted && !holdStatus) hasExhausted = true;
+        } else {
+            const output = cleanMultiline(result.reply, 8000);
+            await db.prepare(
+                `UPDATE agent_tasks SET status = 'completed', output_md = ?1, error = '', finished_at = datetime('now', '+8 hours'),
+                    updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
+            ).bind(output, task.id, userId).run();
+            await db.prepare(
+                `UPDATE agent_steps SET status = 'completed', output_json = ?1, duration_ms = ?2
+                 WHERE id = ?3 AND user_id = ?4`
+            ).bind(JSON.stringify({
+                worker_id: workerId,
+                reply: output,
+                sources: result.sources || [],
+                tool_trace: result.toolTrace || [],
+                stop_reason: result.stopReason || 'final'
+            }), durationMs, step.id, userId).run();
+            await addBudgetUsage(db, userId, goalId, Array.isArray(result.toolTrace) ? result.toolTrace.length : 0, durationMs);
+
+            const checkpoint = await checkpointAfterTask({ env, db, userId, goalId, task, output, checkpointModel, planModel });
+            if (checkpoint.action === 'blocked') {
+                await db.prepare("UPDATE agent_tasks SET status = 'blocked', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(task.id, userId).run();
+                hasBlocked = true;
+            } else if (checkpoint.action === 'replan') {
+                console.log('[agent] replanned remaining goal=' + goalId + ' tasks=' + checkpoint.tasks);
+            }
         }
-        return snapshotFor(db, userId, goalId);
     }
 
-    const output = cleanMultiline(result.reply, 8000);
-    await db.prepare(
-        `UPDATE agent_tasks SET status = 'completed', output_md = ?1, error = '', finished_at = datetime('now', '+8 hours'),
-            updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3`
-    ).bind(output, task.id, userId).run();
-    await db.prepare(
-        `UPDATE agent_steps SET status = 'completed', output_json = ?1, duration_ms = ?2
-         WHERE id = ?3 AND user_id = ?4`
-    ).bind(JSON.stringify({
-        reply: output,
-        sources: result.sources || [],
-        tool_trace: result.toolTrace || [],
-        stop_reason: result.stopReason || 'final'
-    }), durationMs, step.id, userId).run();
-    await addBudgetUsage(db, userId, goalId, Array.isArray(result.toolTrace) ? result.toolTrace.length : 0, durationMs);
-    const checkpoint = await checkpointAfterTask({
-        env, db, userId, goalId, task, output, checkpointModel, planModel
-    });
-    if (checkpoint.action === 'blocked') {
-        await db.prepare("UPDATE agent_tasks SET status = 'blocked', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(task.id, userId).run();
+    if (hasExhausted) {
+        await notifyAgentUser(env, db, userId, { title: '目标失败', body: '「' + notificationText(goalRow.title, 60) + '」重试次数已用完，去查看原因。', tag: 'agent-goal-' + goalId }).catch(() => {});
+        return snapshotFor(db, userId, goalId);
+    }
+    if (hasBlocked) {
         await pauseGoal(db, userId, goalId);
         await notifyAgentUser(env, db, userId, { title: '目标已暂停', body: '「' + notificationText(goalRow.title, 60) + '」的任务结果标记为阻塞，去查看。', tag: 'agent-goal-' + goalId }).catch(() => {});
         return snapshotFor(db, userId, goalId);
     }
-    if (checkpoint.action === 'replan') {
-        console.log('[agent] replanned remaining goal=' + goalId + ' tasks=' + checkpoint.tasks);
-    }
+
     const runStatus = holdStatus === 'cancelled' ? 'cancelled'
         : (holdStatus === 'failed' ? 'failed'
             : (holdStatus === 'completed' ? 'completed' : (holdStatus ? 'paused' : 'queued')));

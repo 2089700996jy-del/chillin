@@ -250,14 +250,33 @@ async function fetchDirect(initialUrl, deps = {}) {
 }
 
 /**
- * 第三方读取服务代理：仅在网络连接异常或被源站封禁时作为尽力而为的退路，严格校验服务端基址。
+ * 第三方读取服务代理：仅在网络连接异常或被源站封禁时作为尽力而为的退路。
+ * 信任边界严格防护：
+ * 1. 原始目标 URL 必须在本地先通过 safePublicUrl 与 verifyHostDns 真实解析校验，严禁将私网/内网目标提交给代读；
+ * 2. 读取服务自身基址必须通过 safePublicUrl 与 verifyHostDns 校验，严禁代读服务被劫持到内网；
+ * 3. 响应同样受 256 KiB 流式截断与超时约束。
  */
 async function fetchViaReader(env, url, deps = {}) {
     const key = String((env && env.LINK_READER_API_KEY) || '').trim();
     if (!key) throw new Error('未配置读取服务');
+
+    // 信任边界 1：本地预检原始目标安全与 DNS 解析
+    const safeTarget = safePublicUrl(url);
+    if (!safeTarget) throw new Error('TARGET_URL_INVALID: 原始目标地址不安全');
+    const targetHost = new URL(safeTarget).hostname;
+    if (!(await verifyHostDns(targetHost, deps))) {
+        throw new Error('DNS_REBINDING_BLOCKED: 原始目标域名解析为私有或保留 IP 地址');
+    }
+
+    // 信任边界 2：读取服务基址安全校验与 DNS 检查
     const baseUrl = String((env && env.LINK_READER_URL) || 'https://r.jina.ai').trim();
     if (!safePublicUrl(baseUrl)) throw new Error('读取服务地址非法或指向私有网段');
-    const endpoint = readerEndpoint(baseUrl, url);
+    const baseHost = new URL(baseUrl).hostname;
+    if (!(await verifyHostDns(baseHost, deps))) {
+        throw new Error('READER_SERVICE_BLOCKED: 读取服务域名解析为私有或保留 IP 地址');
+    }
+
+    const endpoint = readerEndpoint(baseUrl, safeTarget);
     if (!endpoint || !safePublicUrl(endpoint.split('?')[0])) throw new Error('读取服务地址非法');
 
     const fetchImpl = deps.fetchImpl || fetch;

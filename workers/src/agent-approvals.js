@@ -336,3 +336,25 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
         .bind(approvalId, userId).first();
     return { approval: formatApproval(updated) };
 }
+
+/** 任务 Agent 额外获得的写入提案工具；它只创建审批，不直接写 notes。 */
+export const PROPOSE_WRITE_TOOL = {
+    type: 'function',
+    function: {
+        name: 'propose_write',
+        description: '创建一个待用户审批的写入/发送提案，不会直接写库或发送。仅在任务明确要求保存、追加笔记或发 Bot 时调用。',
+        parameters: {
+            type: 'object',
+            properties: {
+                action: { type: 'string', enum: ['save_note', 'append_note', 'send_bot_message'] },
+                title: { type: 'string', minLength: 1, maxLength: 80, description: '保存为新笔记时的标题；追加时可省略' },
+                note_id: { type: 'integer', minimum: 1, description: '追加时必须提供目标笔记 id' },
+                content: { type: 'string', minLength: 1, maxLength: 30000, description: '要写入的 Markdown 正文' }
+            },
+            required: ['action', 'content'],
+            additionalProperties: false
+        }
+    }
+};
+
+export const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write 与 web_search/fetch_url。需要外部事实时先检索；需要保存、追加或发 Bot 时用 propose_write，它只创建待审批，不会直接写库或发送。调用后如实说“已创建待审批”，不要声称已经写入或发送。';
