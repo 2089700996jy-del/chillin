@@ -96,6 +96,15 @@ export function initPwaUpdates() {
 
     if (!('serviceWorker' in navigator)) return;
 
+    const SESSION_RELOAD_KEY = 'chillin_pwa_update_reloaded';
+    let justReloadedForUpdate = false;
+    try {
+        justReloadedForUpdate = sessionStorage.getItem(SESSION_RELOAD_KEY) === '1';
+        if (justReloadedForUpdate) {
+            sessionStorage.removeItem(SESSION_RELOAD_KEY);
+        }
+    } catch (_) {}
+
     let reloading = false;
     let bannerShown = false;
     let pendingReloadReason = '';
@@ -103,6 +112,7 @@ export function initPwaUpdates() {
     const softReload = (reason) => {
         if (reloading || forceRefreshing) return;
         reloading = true;
+        try { sessionStorage.setItem(SESSION_RELOAD_KEY, '1'); } catch (_) {}
         // 更新提示只走底部 banner 这一条通道；不再额外弹 toast，避免一次更新出现两条提醒
         const msg = document.querySelector('#pwa-update-bar #pwa-update-msg');
         if (msg) msg.textContent = reason || '正在刷新到新版本…';
@@ -176,7 +186,9 @@ export function initPwaUpdates() {
         worker.addEventListener('statechange', () => {
             if (worker.state === 'installed' && navigator.serviceWorker.controller) {
                 worker.postMessage({ type: 'SKIP_WAITING' });
-                ensureBanner('手机端已下载新版本');
+                if (!bannerShown && !justReloadedForUpdate) {
+                    ensureBanner('手机端已下载新版本');
+                }
             }
         });
     };
@@ -218,7 +230,10 @@ export function initPwaUpdates() {
 
             if (reg.waiting && navigator.serviceWorker.controller) {
                 reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-                ensureBanner('新版本已就绪');
+                // 刚因更新执行过重载时，新 SW 正在接管，直接静默激活，杜绝二次弹条打扰
+                if (!justReloadedForUpdate) {
+                    ensureBanner('新版本已就绪');
+                }
             }
 
             reg.addEventListener('updatefound', () => {
@@ -226,7 +241,9 @@ export function initPwaUpdates() {
             });
 
             navigator.serviceWorker.addEventListener('controllerchange', () => {
-                ensureBanner('新版本已激活');
+                if (!justReloadedForUpdate) {
+                    ensureBanner('新版本已激活');
+                }
             });
         } catch (swErr) {
             console.warn('[pwa] SW registration failed:', swErr);

@@ -79,7 +79,16 @@ test('PWA - 同一次更新只出现一条提示，自动刷新不再叠 toast',
         addEventListener() {}
     };
 
+    const sessionStore = new Map();
+    const sessionStorageStub = {
+        getItem(key) { return sessionStore.has(key) ? sessionStore.get(key) : null; },
+        setItem(key, val) { sessionStore.set(key, String(val)); },
+        removeItem(key) { sessionStore.delete(key); },
+        clear() { sessionStore.clear(); }
+    };
+
     const windowStub = {
+        sessionStorage: sessionStorageStub,
         location: {
             href: 'http://localhost/',
             reload() { reloads += 1; }
@@ -118,6 +127,7 @@ test('PWA - 同一次更新只出现一条提示，自动刷新不再叠 toast',
     globalThis.setInterval = () => 0;
     globalThis.document = documentStub;
     globalThis.window = windowStub;
+    globalThis.sessionStorage = sessionStorageStub;
     Object.defineProperty(globalThis, 'navigator', { value: navigatorStub, configurable: true, writable: true });
     globalThis.fetch = fetchStub;
 
@@ -149,12 +159,14 @@ test('PWA - 同一次更新只出现一条提示，自动刷新不再叠 toast',
         assert.ok(reloadTimer, '自动刷新应延迟 reload');
         reloadTimer.fn();
         assert.equal(reloads, 1, '自动刷新只 reload 一次');
+        assert.equal(sessionStore.get('chillin_pwa_update_reloaded'), '1', 'reload 前必须记录 reload 状态标志');
     } finally {
         globalThis.setTimeout = realSetTimeout;
         globalThis.setInterval = realSetInterval;
         globalThis.fetch = realFetch;
         delete globalThis.document;
         delete globalThis.window;
+        delete globalThis.sessionStorage;
         try { delete globalThis.navigator; } catch (_) {}
     }
 });
