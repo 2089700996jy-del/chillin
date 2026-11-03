@@ -11,6 +11,7 @@
  */
 import { runWebSearch } from './bot-search.js';
 import { readerEndpoint } from './bot-links.js';
+import dns from 'node:dns/promises';
 
 const FETCH_TIMEOUT_MS = 15000;
 const FETCH_MAX_CHARS = 12000;
@@ -126,25 +127,44 @@ export function safePublicUrl(raw) {
 }
 
 /**
+ * 生产默认 DNS 解析器：在无需外部注入时，由底层运行时执行真实域名解析（A / AAAA）。
+ */
+async function defaultLookup(host) {
+    if (dns && typeof dns.lookup === 'function') {
+        const res = await dns.lookup(host, { all: true });
+        return Array.isArray(res) ? res.map((r) => r.address) : [res.address];
+    }
+    const dohUrl = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=A`;
+    const res = await fetch(dohUrl, { headers: { accept: 'application/dns-json' } });
+    if (!res.ok) throw new Error('DOH_FAILED');
+    const data = await res.json();
+    const answers = Array.isArray(data.Answer) ? data.Answer : [];
+    return answers.filter((a) => a.type === 1 || a.type === 28).map((a) => a.data);
+}
+
+/**
  * DNS Rebinding 深度检查：解析域名对应 IP 并拦截私有/环回地址。
+ * 若无自定义 lookup，坚决调用生产默认 defaultLookup 解析，禁止盲目放行。
  */
 export async function verifyHostDns(host, deps = {}) {
     const h = String(host || '').toLowerCase().replace(/\.$/, '');
     if (!h) return false;
-    // 依赖注入 lookup（便于单元测试与特殊环境定制）
-    if (deps.lookup && typeof deps.lookup === 'function') {
-        try {
-            const addrs = await deps.lookup(h);
-            const list = Array.isArray(addrs) ? addrs : [addrs];
-            for (const entry of list) {
-                const ip = typeof entry === 'string' ? entry : (entry && entry.address);
-                if (isPrivateOrReservedIp(ip)) return false;
+
+    const lookupFn = (deps && typeof deps.lookup === 'function') ? deps.lookup : defaultLookup;
+    try {
+        const addrs = await lookupFn(h);
+        const list = Array.isArray(addrs) ? addrs : [addrs];
+        if (!list.length) return false;
+        for (const entry of list) {
+            const ip = typeof entry === 'string' ? entry : (entry && entry.address);
+            if (!ip || isPrivateOrReservedIp(ip)) {
+                return false;
             }
-        } catch {
-            return false;
         }
+        return true;
+    } catch {
+        return false;
     }
-    return true;
 }
 
 export function distillWebText(text, maxChars = 3600) {

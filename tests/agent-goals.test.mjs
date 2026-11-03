@@ -744,7 +744,7 @@ sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async
     assert.equal(isPrivateOrReservedIp('fe80::1'), true);
     assert.equal(isPrivateOrReservedIp('93.184.216.34'), false);
 
-    // DNS 解析到私网 IP 时拦截
+    // DNS 解析到私网 IP 时拦截（带 mock lookup 校验）
     const rebindBad = await runWebTool({}, 'fetch_url', { url: 'https://attacker-rebind.com/test' }, {
         lookup: async () => [{ address: '127.0.0.1', family: 4 }],
         fetchImpl: async () => ({ ok: true, status: 200, text: async () => 'PWNED' })
@@ -752,6 +752,16 @@ sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async
     assert.equal(rebindBad.ok, false);
     assert.equal(rebindBad.error.code, 'INVALID_URL');
     assert.match(rebindBad.error.message, /域名解析为私有地址/);
+
+    // 生产环境执行路径（不注入 mock lookup，依靠默认 defaultLookup 执行真实 DNS 解析拦截）
+    const prodRebind = await runWebTool({}, 'fetch_url', { url: 'https://localtest.me/admin' });
+    assert.equal(prodRebind.ok, false);
+    assert.equal(prodRebind.error.code, 'INVALID_URL');
+    assert.match(prodRebind.error.message, /域名解析为私有地址/);
+
+    // 生产路径默认 verifyHostDns：公网合法域名放行，未解析/不存在域名拦截
+    assert.equal(await verifyHostDns('cloudflare.com'), true);
+    assert.equal(await verifyHostDns('not-exist-invalid-domain-123456789.com'), false);
 
     // 响应体大小限制：Content-Length 超限前置拦截
     const bodyTooLarge = await runWebTool({}, 'fetch_url', { url: 'https://example.com/large-file' }, {
