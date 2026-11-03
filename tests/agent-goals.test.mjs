@@ -663,6 +663,19 @@ sqliteTest('Agent goals - 勾选自动发送后，完成后自动创建并同意
     assert.equal(JSON.parse(approval.result_json).sent, true);
 });
 
+sqliteTest('Agent goals - 创建目标时 auto_send 缺省默认为开启（1），显式 false 或 0 时为关闭', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const defaultGoal = await createGoal(db, 1, { title: '缺省 auto_send 目标' });
+    assert.equal(defaultGoal.goal.auto_send, true, '缺省 auto_send 应默认为 true');
+
+    const explicitFalseGoal = await createGoal(db, 1, { title: '显式关闭 auto_send 目标', auto_send: false });
+    assert.equal(explicitFalseGoal.goal.auto_send, false, '显式 false 时应为 false');
+
+    const explicitZeroGoal = await createGoal(db, 1, { title: '显式 0 auto_send 目标', auto_send: 0 });
+    assert.equal(explicitZeroGoal.goal.auto_send, false, '显式 0 时应为 false');
+});
+
 sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async () => {
     const search = await runWebTool(
         { LLM_API_KEY: 'test' },
@@ -1560,15 +1573,71 @@ test('Super-Agent 看板 - 目标详情面板如实展示槽位与批次时间�
     assert.match(runningHtml, /执行中: 任务二/);
     assert.match(runningHtml, /待命空闲 \(Idle\)/, '空闲的第三槽位应显示待命空闲');
 
-    // Case 3: 全局跨目标多 Agent 看板
+    // Case 3: 全局跨目标多 Agent 看板（严格区分全局 Worker、调度队列、排队与单目标上限）
     const goalsList = [
         { id: 1, title: '目标 A', status: 'active', progress: { total: 4, completed: 1, running: 2, pending: 1, failed: 0 }, updated_at: '2026-11-03 16:00:00' },
-        { id: 2, title: '目标 B', status: 'completed', progress: { total: 3, completed: 3, running: 0, pending: 0, failed: 0 }, updated_at: '2026-11-03 15:00:00' }
+        { id: 2, title: '目标 B', status: 'planned', progress: { total: 3, completed: 0, running: 0, pending: 3, failed: 0 }, updated_at: '2026-11-03 15:30:00' },
+        { id: 3, title: '目标 C', status: 'completed', progress: { total: 2, completed: 2, running: 0, pending: 0, failed: 0 }, updated_at: '2026-11-03 15:00:00' }
     ];
-    const globalHtml = renderGlobalSuperDeck(goalsList);
-    assert.match(globalHtml, /Super-Agent 运行中 \(2 并发 Worker\)/);
-    assert.match(globalHtml, /1<small>\/2<\/small>/, '活跃目标数 1/2');
-    assert.match(globalHtml, /2<small>\/3<\/small>/, '并发负载 2/3');
-    assert.match(globalHtml, /累计达成/, '指标卡展示累计达成');
+    const inboxData = {
+        pending_count: 1,
+        approvals: [{ id: 99, goal_id: 1, action_type: 'save_note', status: 'pending' }]
+    };
+    const globalHtml = renderGlobalSuperDeck(goalsList, inboxData);
+    assert.match(globalHtml, /多目标集群运行中 \(2 个 Worker 推进中\)/);
+    assert.match(globalHtml, /运行 Worker/, '指标清晰标识当前运行 Worker');
+    assert.match(globalHtml, /调度中目标/, '指标展示后台调度队列目标');
+    assert.match(globalHtml, /排队待启动/, '指标展示待启动排队目标');
+    assert.match(globalHtml, /待审批目标/, '展示等待审批的目标');
+    assert.match(globalHtml, /单目标上限/, '明确注明单目标最大并发 3 槽位，杜绝误解为全局容量');
+    assert.match(globalHtml, /3<small>并发<\/small>/);
     assert.match(globalHtml, /最近活跃 16:00:00/, '展示全局最近活跃时分秒');
+});
+
+test('Agent web - IPv4/IPv6 双栈混合解析全量 Fail-Closed 与重绑定拦截', async () => {
+    // 场景 1: 公网 IPv4 + 私网 IPv6 回环（::1），必须拦截
+    const v6Loopback = await verifyHostDns('mixed.example.com', {
+        lookup: async () => ['93.184.216.34', '::1']
+    });
+    assert.equal(v6Loopback, false, '混合解析包含 ::1 必须拒绝');
+
+    // 场景 2: 公网 IPv4 + 私网 IPv6 ULA 唯一本地地址（fc00::/7），必须拦截
+    const v6Ula = await verifyHostDns('mixed.example.com', {
+        lookup: async () => ['93.184.216.34', 'fc00:1234::1']
+    });
+    assert.equal(v6Ula, false, '混合解析包含 fc00:: 必须拒绝');
+
+    // 场景 3: 公网 IPv4 + 链路本地 IPv6（fe80::/10），必须拦截
+    const v6LinkLocal = await verifyHostDns('mixed.example.com', {
+        lookup: async () => ['93.184.216.34', 'fe80::1']
+    });
+    assert.equal(v6LinkLocal, false, '混合解析包含 fe80:: 必须拒绝');
+
+    // 场景 4: 公网 IPv6 + 私网 IPv4（127.0.0.1、10.0.0.1 等），必须拦截
+    const v4Private = await verifyHostDns('mixed.example.com', {
+        lookup: async () => ['2606:2800:220:1:248:1893:25c8:1946', '127.0.0.1']
+    });
+    assert.equal(v4Private, false, '混合解析包含 127.0.0.1 必须拒绝');
+
+    const v4Private10 = await verifyHostDns('mixed.example.com', {
+        lookup: async () => ['2606:2800:220:1:248:1893:25c8:1946', '10.0.0.2']
+    });
+    assert.equal(v4Private10, false, '混合解析包含 10.0.0.2 必须拒绝');
+
+    // 场景 5: 双栈全公网解析，允许通过
+    const dualPublic = await verifyHostDns('dual.example.com', {
+        lookup: async () => ['93.184.216.34', '2606:2800:220:1:248:1893:25c8:1946']
+    });
+    assert.equal(dualPublic, true, '双栈全公网地址必须放行');
+
+    // 场景 6: DNS 重绑定跳变模拟（前一次公网、随后的解析返回私网）
+    let callCount = 0;
+    const flapper = async () => {
+        callCount += 1;
+        return callCount === 1 ? ['93.184.216.34'] : ['127.0.0.1'];
+    };
+    const firstCheck = await verifyHostDns('flapper.example.com', { lookup: flapper });
+    assert.equal(firstCheck, true);
+    const secondCheck = await verifyHostDns('flapper.example.com', { lookup: flapper });
+    assert.equal(secondCheck, false, '第二次解析跳变为私网必须被立即拦截');
 });

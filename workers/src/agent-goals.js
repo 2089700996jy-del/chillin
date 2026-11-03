@@ -155,7 +155,13 @@ export async function createGoal(db, userId, payload = {}) {
     const title = cleanText(payload.title, 80);
     const description = cleanMultiline(payload.description, 4000);
     if (!title) throw new AgentError(400, '目标标题不能为空', 'GOAL_TITLE_REQUIRED');
-    const autoSend = payload.auto_send === true || Number(payload.auto_send) === 1 ? 1 : 0;
+    const autoSend =
+        payload.auto_send === false ||
+        Number(payload.auto_send) === 0 ||
+        payload.auto_send === 'false' ||
+        payload.auto_send === 0
+            ? 0
+            : 1;
     const row = await db.prepare(
         `INSERT INTO agent_goals (user_id, title, description, status, auto_send, created_at, updated_at)
          VALUES (?1, ?2, ?3, 'draft', ?4, datetime('now', '+8 hours'), datetime('now', '+8 hours'))
@@ -174,12 +180,15 @@ export async function updateGoal(db, userId, goalId, payload = {}) {
     const title = payload.title == null ? goal.title : cleanText(payload.title, 80);
     const description = payload.description == null ? goal.description : cleanMultiline(payload.description, 4000);
     if (!title) throw new AgentError(400, '目标标题不能为空', 'GOAL_TITLE_REQUIRED');
+    const autoSend = payload.auto_send === undefined
+        ? Number(goal.auto_send || 0)
+        : (payload.auto_send === false || Number(payload.auto_send) === 0 || payload.auto_send === 'false' || payload.auto_send === 0 ? 0 : 1);
     await db.prepare('DELETE FROM agent_tasks WHERE goal_id = ?1 AND user_id = ?2').bind(goalId, userId).run();
     await db.prepare(
-        `UPDATE agent_goals SET title = ?1, description = ?2, status = 'draft', plan_version = 0,
+        `UPDATE agent_goals SET title = ?1, description = ?2, auto_send = ?5, status = 'draft', plan_version = 0,
             result_md = '', error = '', completed_at = NULL, updated_at = datetime('now', '+8 hours')
          WHERE id = ?3 AND user_id = ?4`
-    ).bind(title, description, goalId, userId).run();
+    ).bind(title, description, goalId, userId, autoSend).run();
     return getSnapshot(db, userId, goalId);
 }
 

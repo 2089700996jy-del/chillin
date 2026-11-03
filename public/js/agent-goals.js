@@ -37,6 +37,8 @@ let descInput = null;
 let autoSendInput = null;
 let currentGoalId = null;
 let latestGoalResult = '';
+let latestGoalsList = [];
+let latestInboxData = null;
 let autoToken = 0;
 let busy = false;
 let lastClickKey = '';
@@ -115,47 +117,58 @@ function renderBudget(budget) {
     '</div>';
 }
 
-function renderGlobalSuperDeck(goals) {
+function renderGlobalSuperDeck(goals, inboxData = null) {
     if (!goals || !goals.length) return '';
-    const totalGoals = goals.length;
+    const runningWorkers = goals.reduce((s, g) => s + Number(g.progress && g.progress.running || 0), 0);
     const activeGoals = goals.filter((g) => g.status === 'active').length;
-    const runningTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.running || 0), 0);
-    const pendingTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.pending || 0), 0);
-    const completedTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.completed || 0), 0);
-    const failedTasks = goals.reduce((s, g) => s + Number(g.progress && g.progress.failed || 0), 0);
+    const queuedGoals = goals.filter((g) => ['planned', 'draft'].includes(g.status)).length;
+    const inboxApprovals = (inboxData && Array.isArray(inboxData.approvals)) ? inboxData.approvals : [];
+    const approvalGoalIds = new Set(inboxApprovals.map((a) => a.goal_id));
+    const waitingApprovalGoals = Math.max(
+        goals.filter((g) => g.status === 'waiting_approval').length,
+        approvalGoalIds.size
+    );
 
     const latestGoal = [...goals].sort((a, b) => String(b.updated_at || '').localeCompare(String(a.updated_at || '')))[0];
     const latestTime = latestGoal && latestGoal.updated_at ? latestGoal.updated_at.slice(11, 19) : '';
 
-    const isRunning = runningTasks > 0;
+    const isRunning = runningWorkers > 0;
     const badgeText = isRunning
-        ? '🟢 Super-Agent 运行中 (' + runningTasks + ' 并发 Worker)'
-        : (activeGoals > 0 ? '⚡ Super-Agent 调度就绪 (定时巡检已激活)' : '💤 Super-Agent 待命就绪');
+        ? '🟢 多目标集群运行中 (' + runningWorkers + ' 个 Worker 推进中)'
+        : (activeGoals > 0
+            ? '⚡ 调度队列就绪 (' + activeGoals + ' 目标待命巡检)'
+            : (waitingApprovalGoals > 0
+                ? '🔔 存在待审批目标 (' + waitingApprovalGoals + ' 目标等待确认)'
+                : '💤 Super-Agent 待命就绪'));
 
     return '<section class="agent-global-deck">' +
         '<div class="global-deck-head">' +
             '<div class="global-deck-title-wrap">' +
                 '<span class="global-deck-badge">' + escapeHtml(badgeText) + '</span>' +
-                '<span class="global-deck-sub">全局多目标协同矩阵 · 3 并发 Worker 弹性集群</span>' +
+                '<span class="global-deck-sub">全局调度矩阵 · 单目标并发上限 3 Worker</span>' +
             '</div>' +
             (latestTime ? '<span class="global-deck-time">最近活跃 ' + escapeHtml(latestTime) + '</span>' : '') +
         '</div>' +
         '<div class="global-deck-stats">' +
             '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + activeGoals + '<small>/' + totalGoals + '</small></span>' +
-                '<span class="global-stat-label">活跃目标</span>' +
+                '<span class="global-stat-num">' + runningWorkers + '</span>' +
+                '<span class="global-stat-label">运行 Worker</span>' +
             '</div>' +
             '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + runningTasks + '<small>/3</small></span>' +
-                '<span class="global-stat-label">并发负载</span>' +
+                '<span class="global-stat-num">' + activeGoals + '</span>' +
+                '<span class="global-stat-label">调度中目标</span>' +
             '</div>' +
             '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + pendingTasks + '</span>' +
-                '<span class="global-stat-label">等待任务</span>' +
+                '<span class="global-stat-num">' + queuedGoals + '</span>' +
+                '<span class="global-stat-label">排队待启动</span>' +
+            '</div>' +
+            '<div class="global-stat-card' + (waitingApprovalGoals > 0 ? ' text-warn' : '') + '">' +
+                '<span class="global-stat-num">' + waitingApprovalGoals + '</span>' +
+                '<span class="global-stat-label">待审批目标</span>' +
             '</div>' +
             '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + completedTasks + '</span>' +
-                '<span class="global-stat-label">累计达成</span>' +
+                '<span class="global-stat-num">3<small>并发</small></span>' +
+                '<span class="global-stat-label">单目标上限</span>' +
             '</div>' +
         '</div>' +
     '</section>';
@@ -465,12 +478,12 @@ function renderDetail(data) {
     detailPane.hidden = false;
 }
 
-function renderList(goals) {
+function renderList(goals, inboxData = latestInboxData) {
     if (!goals || !goals.length) {
         setHtml(listEl, '<p class="agent-goals-empty">还没有目标。写下你想完成的一件事，AI 会先给出计划。</p>');
         return;
     }
-    const globalDeckHtml = renderGlobalSuperDeck(goals);
+    const globalDeckHtml = renderGlobalSuperDeck(goals, inboxData);
     const itemsHtml = goals.map((goal) => {
         const p = goal.progress || {};
         return '<button type="button" class="agent-goal-item" data-agent-goal="' + goal.id + '">' +
@@ -520,12 +533,17 @@ function renderInbox(data) {
 async function refreshInbox() {
     if (!inboxEl) return;
     const res = await apiRequest('/api/agent/approvals?limit=20', { timeout: 30000 });
+    latestInboxData = res;
     renderInbox(res);
+    if (latestGoalsList.length && listPane && !listPane.hidden) {
+        renderList(latestGoalsList, latestInboxData);
+    }
 }
 
 async function refreshList() {
     const res = await apiRequest('/api/agent/goals', { timeout: 30000 });
-    renderList(res.goals || []);
+    latestGoalsList = res.goals || [];
+    renderList(latestGoalsList, latestInboxData);
 }
 
 async function openGoal(goalId) {
