@@ -74,14 +74,61 @@ function actionButton(action, text, opts = {}) {
     return '<button type="button" class="' + cls + ' agent-goal-action" data-goal-action="' + action + '">' + escapeHtml(text) + '</button>';
 }
 
+function formatDuration(startedAt, finishedAt) {
+    if (!startedAt) return '';
+    const start = new Date(startedAt).getTime();
+    const finish = finishedAt ? new Date(finishedAt).getTime() : Date.now();
+    if (isNaN(start) || isNaN(finish) || finish < start) return '';
+    const sec = (finish - start) / 1000;
+    if (sec < 60) return sec.toFixed(1) + 's';
+    const min = Math.floor(sec / 60);
+    const remainSec = Math.round(sec % 60);
+    return min + 'm ' + remainSec + 's';
+}
+
+function renderBudget(budget) {
+    if (!budget) return '';
+    const usedTools = Number(budget.used_tool_calls || 0);
+    const maxTools = Number(budget.max_tool_calls || 48);
+    const usedSec = Math.round(Number(budget.used_ms || 0) / 1000);
+    const maxMin = Number(budget.max_minutes || 30);
+    const toolPercent = Math.min(100, Math.round((usedTools / maxTools) * 100));
+    const isExhausted = usedTools >= maxTools || (usedSec >= maxMin * 60);
+
+    return '<div class="agent-budget-card' + (isExhausted ? ' budget-exhausted' : '') + '">' +
+        '<div class="agent-budget-head">' +
+            '<span>⚡ 目标运行预算与资源消耗</span>' +
+            (isExhausted ? '<span class="agent-budget-badge exhausted">预算耗尽</span>' : '<span class="agent-budget-badge">配额充足</span>') +
+        '</div>' +
+        '<div class="agent-budget-grid">' +
+            '<div class="agent-budget-item">' +
+                '<span class="budget-item-label">工具调用配额</span>' +
+                '<span class="budget-item-val"><strong>' + usedTools + '</strong> / ' + maxTools + ' 次</span>' +
+                '<div class="budget-bar"><div class="budget-bar-fill" style="width: ' + toolPercent + '%;"></div></div>' +
+            '</div>' +
+            '<div class="agent-budget-item">' +
+                '<span class="budget-item-label">累积执行耗时</span>' +
+                '<span class="budget-item-val"><strong>' + usedSec + 's</strong> / ' + maxMin + ' 分钟</span>' +
+            '</div>' +
+        '</div>' +
+    '</div>';
+}
+
 function renderTask(task) {
     const deps = task.depends_on && task.depends_on.length
         ? '<span class="agent-task-deps">依赖第 ' + task.depends_on.map((n) => Number(n) + 1).join('、') + ' 步</span>'
         : '';
+    const duration = formatDuration(task.started_at, task.finished_at);
+    const durationHtml = duration ? '<span class="agent-task-duration">⏱ 耗时 ' + duration + '</span>' : '';
+    const attemptsHtml = task.attempts
+        ? '<span class="agent-task-attempts' + (task.status === 'failed' || task.status === 'blocked' ? ' text-warn' : '') + '">🔄 已尝试 ' + task.attempts + '/' + task.max_attempts + ' 次</span>'
+        : '';
     const output = task.output_md
         ? '<details class="agent-task-output"><summary>查看产出</summary><div class="agent-markdown">' + markdownToHtml(task.output_md) + '</div></details>'
         : '';
-    const error = task.error ? '<div class="agent-task-error">' + escapeHtml(task.error) + '</div>' : '';
+    const error = task.error
+        ? '<div class="agent-task-error"><span class="agent-error-tag">失败原因</span>' + escapeHtml(task.error) + '</div>'
+        : '';
     const retry = (task.status === 'failed' || task.status === 'blocked')
         ? '<button type="button" class="btn-text agent-task-retry" data-task-retry="' + task.id + '">重试</button>'
         : '';
@@ -90,21 +137,61 @@ function renderTask(task) {
         '<div class="agent-task-main"><strong>' + escapeHtml(task.title) + '</strong>' +
         (task.description ? '<p>' + escapeHtml(task.description) + '</p>' : '') +
         '<div class="agent-task-meta"><span class="agent-status agent-status-' + escapeHtml(task.status) + '">' + label(task.status) + '</span>' +
-        (task.attempts ? '<span>已尝试 ' + task.attempts + '/' + task.max_attempts + '</span>' : '') + deps + '</div></div>' +
+        attemptsHtml + durationHtml + deps + '</div></div>' +
         retry + '</div>' + error + output + '</li>';
 }
 
 function renderSteps(steps) {
     if (!steps || !steps.length) return '';
-    return '<section class="agent-goal-section"><h4>执行记录</h4><ol class="agent-steps">' + steps.slice(-8).map((step) => {
-        const reply = step.output && step.output.reply ? String(step.output.reply) : '';
-        return '<li class="agent-step agent-step-' + escapeHtml(step.status) + '"><span class="agent-step-dot"></span>' +
-            '<div><div class="agent-step-title">第 ' + step.seq + ' 步 · ' + label(step.status) +
-            (step.duration_ms ? ' · ' + Math.round(step.duration_ms / 1000) + 's' : '') + '</div>' +
-            (step.error ? '<div class="agent-step-error">' + escapeHtml(step.error) + '</div>' : '') +
-            (reply ? '<div class="agent-step-preview">' + escapeHtml(reply.slice(0, 160)) + '</div>' : '') +
-            '</div></li>';
-    }).join('') + '</ol></section>';
+    const totalDuration = steps.reduce((sum, s) => sum + (Number(s.duration_ms) || 0), 0);
+    const totalSec = (totalDuration / 1000).toFixed(1);
+
+    return '<section class="agent-goal-section">' +
+        '<h4>执行日志与工具追踪 (' + steps.length + ' 步 · 累积 ' + totalSec + 's)</h4>' +
+        '<ol class="agent-steps">' + steps.map((step) => {
+            const reply = step.output && step.output.reply ? String(step.output.reply) : '';
+            const toolTrace = Array.isArray(step.output && step.output.tool_trace) ? step.output.tool_trace : [];
+            const duration = step.duration_ms ? (Number(step.duration_ms) / 1000).toFixed(1) + 's' : '';
+            const toolBadge = step.tool_name ? '<span class="agent-step-tool-badge">🔧 ' + escapeHtml(step.tool_name) + '</span>' : '';
+
+            let traceHtml = '';
+            if (toolTrace.length) {
+                traceHtml = '<div class="agent-step-tool-trace">' +
+                    '<span class="tool-trace-label">工具调用 (' + toolTrace.length + ' 次):</span> ' +
+                    toolTrace.map((t) => '<code class="agent-trace-pill">' + escapeHtml(t.tool || t.name || 'tool') + '</code>').join(' ') +
+                '</div>';
+            }
+
+            let errorHtml = '';
+            if (step.error) {
+                errorHtml = '<div class="agent-step-error"><span class="agent-error-tag">步骤报错</span>' + escapeHtml(step.error) + '</div>';
+            }
+
+            let inputHtml = '';
+            if (step.input && Object.keys(step.input).length) {
+                const summary = step.input.title || step.input.query || step.input.url || '';
+                if (summary) {
+                    inputHtml = '<div class="agent-step-input-summary">入参: ' + escapeHtml(String(summary).slice(0, 80)) + '</div>';
+                }
+            }
+
+            return '<li class="agent-step agent-step-' + escapeHtml(step.status) + '">' +
+                '<span class="agent-step-dot"></span>' +
+                '<div class="agent-step-body">' +
+                    '<div class="agent-step-title">' +
+                        '<span>第 ' + step.seq + ' 步 · ' + label(step.status) + '</span>' +
+                        toolBadge +
+                        (duration ? '<span class="agent-step-duration">⏱ ' + duration + '</span>' : '') +
+                        (step.created_at ? '<span class="agent-step-time">' + escapeHtml(step.created_at.slice(11, 19)) + '</span>' : '') +
+                    '</div>' +
+                    inputHtml +
+                    errorHtml +
+                    traceHtml +
+                    (reply ? '<div class="agent-step-preview">' + escapeHtml(reply.slice(0, 160)) + '</div>' : '') +
+                '</div>' +
+            '</li>';
+        }).join('') +
+    '</ol></section>';
 }
 
 function approvalCopy(item) {
@@ -181,7 +268,11 @@ function renderDetail(data) {
     const result = goal.result_md
         ? '<section class="agent-goal-section"><h4>目标结果</h4><div class="agent-goal-result agent-markdown">' + markdownToHtml(goal.result_md) + '</div></section>'
         : '';
-    const error = goal.error ? '<div class="agent-goal-error">' + escapeHtml(goal.error) + '</div>' : '';
+    const error = goal.error
+        ? '<div class="agent-goal-error"><strong>⚠️ 中断原因：</strong>' + escapeHtml(goal.error) +
+            (hasBlocked ? '<p class="agent-goal-error-tip">检测到任务执行受阻，可点击下方“重新规划剩余”调整后续策略，保留已完成阶段性结果。</p>' : '') +
+          '</div>'
+        : '';
 
     setHtml(detailPane,
         '<div class="agent-goal-detail-head">' +
@@ -191,7 +282,7 @@ function renderDetail(data) {
         '<div class="agent-goal-title-row"><div><h3>' + escapeHtml(goal.title) + '</h3>' +
         (goal.description ? '<p class="agent-goal-description">' + escapeHtml(goal.description) + '</p>' : '') + '</div>' +
         '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span></div>' +
-        progressBar(progress) + error +
+        progressBar(progress) + error + renderBudget(goal.budget) +
         '<div class="agent-goal-actions">' + actions.join('') + '</div>' + editPanel + appendPanel +
         '<section class="agent-goal-section"><h4>计划</h4>' +
         (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +

@@ -29,7 +29,7 @@ import {
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
 import { requestAgentProposal } from '../workers/src/agent-approvals.js';
 import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
-import { runWebTool, safePublicUrl } from '../workers/src/agent-web.js';
+import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns } from '../workers/src/agent-web.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
@@ -729,6 +729,48 @@ sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async
     });
     assert.equal(page.ok, true);
     assert.match(page.data.content, /Example page body/);
+
+    // DNS Rebinding 深度检查：测试私网 IP 判定与域名解析拦截
+    assert.equal(isPrivateOrReservedIp('127.0.0.1'), true);
+    assert.equal(isPrivateOrReservedIp('10.254.1.1'), true);
+    assert.equal(isPrivateOrReservedIp('169.254.169.254'), true);
+    assert.equal(isPrivateOrReservedIp('192.168.1.1'), true);
+    assert.equal(isPrivateOrReservedIp('172.20.0.1'), true);
+    assert.equal(isPrivateOrReservedIp('100.80.0.1'), true);
+    assert.equal(isPrivateOrReservedIp('::1'), true);
+    assert.equal(isPrivateOrReservedIp('fe80::1'), true);
+    assert.equal(isPrivateOrReservedIp('93.184.216.34'), false);
+
+    // DNS 解析到私网 IP 时拦截
+    const rebindBad = await runWebTool({}, 'fetch_url', { url: 'https://attacker-rebind.com/test' }, {
+        lookup: async () => [{ address: '127.0.0.1', family: 4 }],
+        fetchImpl: async () => ({ ok: true, status: 200, text: async () => 'PWNED' })
+    });
+    assert.equal(rebindBad.ok, false);
+    assert.equal(rebindBad.error.code, 'INVALID_URL');
+    assert.match(rebindBad.error.message, /域名解析为私有地址/);
+
+    // 响应体大小限制：Content-Length 超限前置拦截
+    const bodyTooLarge = await runWebTool({}, 'fetch_url', { url: 'https://example.com/large-file' }, {
+        fetchImpl: async () => ({
+            ok: true,
+            status: 200,
+            headers: new Headers({ 'content-length': String(10 * 1024 * 1024) }),
+            text: async () => 'TOO_LARGE'
+        })
+    });
+    assert.equal(bodyTooLarge.ok, false);
+    assert.equal(bodyTooLarge.error.code, 'BODY_TOO_LARGE');
+
+    // 第三方读取服务安全边界：配置私网 LINK_READER_URL 拒绝请求
+    const readerInject = await runWebTool({
+        LINK_READER_API_KEY: 'test-key',
+        LINK_READER_URL: 'https://127.0.0.1:443/read'
+    }, 'fetch_url', { url: 'https://example.com/blocked' }, {
+        fetchImpl: async () => { throw new Error('HTTP 403'); }
+    });
+    assert.equal(readerInject.ok, false);
+    assert.match(readerInject.error.message, /读取服务/);
 });
 
 sqliteTest('Agent proposals - 发 Bot 消息也走审批，未绑定或发送失败不产生假结果', async () => {

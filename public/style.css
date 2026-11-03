@@ -10908,6 +10908,28 @@ select:focus-visible,
 .agent-step-error { margin-top: 2px; color: var(--ios-red); font-size: 11px; overflow-wrap: anywhere; }
 .agent-step-preview { margin-top: 2px; color: var(--text-color-light); font-size: 11px; line-height: 1.45; overflow-wrap: anywhere; }
 .agent-goal-footnote { margin: 16px 0 0; font-size: 10px; line-height: 1.5; color: var(--text-color-light); }
+.agent-budget-card { margin: 12px 0 16px; padding: 12px 14px; border-radius: 14px; background: rgba(var(--label-rgb), 0.03); border: 0.5px solid var(--surface-hairline); }
+.agent-budget-card.budget-exhausted { background: rgba(255, 59, 48, 0.06); border-color: rgba(255, 59, 48, 0.25); }
+.agent-budget-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; font-size: 12px; font-weight: 600; color: var(--text-color); }
+.agent-budget-badge { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: var(--radius-pill); background: rgba(52, 199, 89, 0.12); color: var(--ios-green); }
+.agent-budget-badge.exhausted { background: rgba(255, 59, 48, 0.14); color: var(--ios-red); }
+.agent-budget-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.agent-budget-item { display: flex; flex-direction: column; gap: 3px; }
+.budget-item-label { font-size: 11px; color: var(--text-color-light); }
+.budget-item-val { font-size: 12px; color: var(--text-color); }
+.budget-bar { width: 100%; height: 4px; background: rgba(var(--label-rgb), 0.08); border-radius: 2px; overflow: hidden; margin-top: 3px; }
+.budget-bar-fill { height: 100%; background: var(--ios-blue); border-radius: 2px; transition: width 0.3s ease; }
+.agent-budget-card.budget-exhausted .budget-bar-fill { background: var(--ios-red); }
+.agent-task-duration, .agent-task-attempts { font-size: 10px; color: var(--text-color-light); }
+.agent-task-attempts.text-warn { color: var(--ios-orange); font-weight: 600; }
+.agent-error-tag { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 10px; font-weight: 600; background: rgba(255, 59, 48, 0.12); color: var(--ios-red); margin-right: 4px; }
+.agent-step-body { flex: 1; min-width: 0; }
+.agent-step-title { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.agent-step-tool-badge { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(var(--label-rgb), 0.06); color: var(--ios-blue); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.agent-step-duration, .agent-step-time { font-size: 10px; color: var(--text-color-light); font-weight: normal; }
+.agent-step-tool-trace { margin-top: 4px; font-size: 11px; color: var(--text-color-light); }
+.agent-trace-pill { display: inline-block; padding: 1px 5px; border-radius: 4px; font-size: 10px; background: rgba(var(--label-rgb), 0.05); color: var(--text-color); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.agent-step-input-summary { margin-top: 3px; font-size: 11px; color: var(--text-color-light); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 @media (max-width: 620px) {
   .modal-overlay.agent-goals-overlay { align-items: flex-end; padding: 0; }
   .agent-goals-card { width: 100%; max-width: 100%; height: 88vh; max-height: 88vh; border-radius: 24px 24px 0 0; border-bottom: none; border-left: none; border-right: none; }
