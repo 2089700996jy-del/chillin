@@ -13,6 +13,7 @@ import { readerEndpoint } from './bot-links.js';
 const FETCH_TIMEOUT_MS = 15000;
 const FETCH_MAX_CHARS = 12000;
 const SEARCH_RESULTS = 6;
+const MAX_REDIRECTS = 3;
 
 export const WEB_AGENT_TOOLS = [
     {
@@ -43,15 +44,45 @@ export const WEB_AGENT_TOOLS = [
     }
 ];
 
-function safePublicUrl(raw) {
+/**
+ * 私网、环回、链路本地、云元数据及特殊保留网段正则。
+ * 覆盖：
+ * - 0.0.0.0/8 (当前网络)
+ * - 10.0.0.0/8 (RFC 1918 私网)
+ * - 127.0.0.0/8 (环回)
+ * - 169.254.0.0/16 (链路本地 / 云元数据 169.254.169.254)
+ * - 172.16.0.0/12 (RFC 1918: 172.16 - 172.31)
+ * - 192.168.0.0/16 (RFC 1918)
+ * - 100.64.0.0/10 (CGNAT: 100.64 - 100.127)
+ * - 192.0.0.0/24, 192.0.2.0/24 (保留 / TEST-NET-1)
+ * - 198.18.0.0/15 (基准测试)
+ * - 198.51.100.0/24 (TEST-NET-2)
+ * - 203.0.113.0/24 (TEST-NET-3)
+ * 支持识别标准点分及子域名伪装（如 127.0.0.1.nip.io、foo.10.0.0.1.xip.io 等）
+ */
+const PRIVATE_HOST_RE = /(^|\.)(0|10|127|169\.254|172\.(1[6-9]|2\d|3[01])|192\.168|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])|192\.0\.[02]|198\.1[89]|198\.51\.100|203\.0\.113)\./;
+
+export function safePublicUrl(raw) {
     let u;
     try { u = new URL(String(raw || '')); } catch (_) { return ''; }
     if (u.protocol !== 'https:' || u.username || u.password) return '';
     if (u.port && u.port !== '443') return '';
-    const host = u.hostname.toLowerCase();
-    if (!host || host === 'localhost' || host.endsWith('.localhost') || host.endsWith('.local') || host.endsWith('.internal')) return '';
+    const host = u.hostname.toLowerCase().replace(/\.$/, '');
+    if (!host) return '';
+    if (
+        host === 'localhost' ||
+        host.endsWith('.localhost') ||
+        host.endsWith('.local') ||
+        host.endsWith('.internal') ||
+        host.endsWith('.lan') ||
+        host.endsWith('.home.arpa') ||
+        host.endsWith('.corp')
+    ) return '';
     if (host.startsWith('[') || host.includes(':')) return '';
-    if (/^d+(.d+){3}$/.test(host)) return '';
+    // IPv4 字面量检测（标准点分十进制与纯整数），拒绝所有裸 IP 访问
+    if (/^\d+(\.\d+){3}$/.test(host) || /^\d+$/.test(host)) return '';
+    // 私有/保留网段深度拦截（包含伪装为子域名的 nip.io / xip.io 等）
+    if (PRIVATE_HOST_RE.test(host)) return '';
     return u.toString();
 }
 
@@ -85,15 +116,40 @@ async function readPageText(res) {
     return String(text || '').replace(/\s+/g, ' ').trim().slice(0, FETCH_MAX_CHARS);
 }
 
-async function fetchDirect(url, fetchImpl = fetch) {
-    const res = await fetchImpl(url, {
-        method: 'GET',
-        redirect: 'follow',
-        headers: { Accept: 'text/html, text/plain;q=0.9', 'User-Agent': 'ChillinAgent/1.0' },
-        signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined
-    });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return readPageText(res);
+/**
+ * 直连拉取：手动跟随重定向，并在每一跳对目标地址重新进行 safePublicUrl 安全准入校验，彻底阻断 SSRF。
+ */
+async function fetchDirect(initialUrl, fetchImpl = fetch) {
+    let currentUrl = initialUrl;
+    for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        const safe = safePublicUrl(currentUrl);
+        if (!safe) throw new Error('REDIRECT_BLOCKED');
+        currentUrl = safe;
+
+        const res = await fetchImpl(currentUrl, {
+            method: 'GET',
+            redirect: 'manual',
+            headers: { Accept: 'text/html, text/plain;q=0.9', 'User-Agent': 'ChillinAgent/1.0' },
+            signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined
+        });
+
+        if (res.status >= 300 && res.status < 400) {
+            const location = (res.headers && typeof res.headers.get === 'function')
+                ? res.headers.get('location')
+                : (res.headers && (res.headers.location || res.headers.Location || ''));
+            if (!location) throw new Error('REDIRECT_MISSING_LOCATION');
+            try {
+                currentUrl = new URL(location, currentUrl).toString();
+            } catch {
+                throw new Error('REDIRECT_INVALID_URL');
+            }
+            continue;
+        }
+
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return readPageText(res);
+    }
+    throw new Error('TOO_MANY_REDIRECTS');
 }
 
 async function fetchViaReader(env, url, fetchImpl = fetch) {
@@ -103,7 +159,7 @@ async function fetchViaReader(env, url, fetchImpl = fetch) {
     if (!endpoint) throw new Error('读取服务地址非法');
     const res = await fetchImpl(endpoint, {
         method: 'GET',
-        redirect: 'follow',
+        redirect: 'manual',
         headers: { Accept: 'text/plain', Authorization: 'Bearer ' + key, 'x-api-key': key, 'User-Agent': 'ChillinAgent/1.0' },
         signal: typeof AbortSignal !== 'undefined' && AbortSignal.timeout ? AbortSignal.timeout(FETCH_TIMEOUT_MS) : undefined
     });
@@ -137,7 +193,19 @@ export async function runWebTool(env, name, args = {}, deps = {}) {
             let text = '';
             try {
                 text = await withTimeout(fetchDirect(url, deps.fetchImpl || fetch), FETCH_TIMEOUT_MS);
-            } catch (_) {
+            } catch (err) {
+                // 如果直连明确触发了重定向安全拦截（SSRF 攻击），坚决不走代读退路，直接拒绝
+                if (err && err.message && (err.message.startsWith('REDIRECT_') || err.message === 'TOO_MANY_REDIRECTS')) {
+                    return {
+                        ok: false,
+                        tool,
+                        error: {
+                            code: err.message === 'REDIRECT_BLOCKED' ? 'INVALID_URL' : 'REDIRECT_FAILED',
+                            message: err.message === 'REDIRECT_BLOCKED' ? '重定向目标地址不安全，已被安全拦截' : '重定向处理失败：' + err.message
+                        },
+                        citations: []
+                    };
+                }
                 text = await withTimeout(fetchViaReader(env, url, deps.fetchImpl || fetch), FETCH_TIMEOUT_MS);
             }
             return {

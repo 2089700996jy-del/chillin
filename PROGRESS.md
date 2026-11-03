@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-03。当前前端/Worker：**v2.5.212**（Worker/Pages 已部署、D1 迁移 0001–0042 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-03。当前前端/Worker：**v2.5.213**（Worker/Pages 已部署、D1 迁移 0001–0042 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
@@ -32,14 +32,14 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/agent-goals.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 40 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 44 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
-- 智能与记忆：`ai.js`、`ai-tools.js`、`agent-tools-expanded.js`、`ai-runtime.js`、`agent-store.js`、`agent-executor.js`、`agent-scheduler.js`、`agent-goals.js`、`rag.js`、`rag-index.js`、`llm.js`
+- 智能与记忆：`ai.js`、`ai-tools.js`、`agent-tools-expanded.js`、`ai-runtime.js`、`agent-store.js`、`agent-executor.js`、`agent-scheduler.js`、`agent-goals.js`、`agent-approvals.js`、`agent-checkpoint.js`、`agent-web.js`、`rag.js`、`rag-index.js`、`llm.js`
 - 长期线索与行动：`insights.js`
 - 审计与定时编排：`audit.js`、`maintenance.js`
-- Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-image-flow.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`
+- Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-image-flow.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`、`bot-text.js`
 
 ## 近期已完成（摘要）
 

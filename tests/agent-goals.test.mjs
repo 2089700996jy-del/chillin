@@ -29,7 +29,7 @@ import {
 import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
 import { requestAgentProposal } from '../workers/src/agent-approvals.js';
 import { checkpointAfterTask } from '../workers/src/agent-checkpoint.js';
-import { runWebTool } from '../workers/src/agent-web.js';
+import { runWebTool, safePublicUrl } from '../workers/src/agent-web.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 import { nextReadyTask, formatGoal } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
@@ -675,9 +675,54 @@ sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async
     assert.equal(search.data.results[0].title, 'AI 新闻');
     assert.equal(search.data.results[0].url, 'https://example.com/ai');
 
-    const bad = await runWebTool({}, 'fetch_url', { url: 'http://127.0.0.1/secret' });
-    assert.equal(bad.ok, false);
-    assert.equal(bad.error.code, 'INVALID_URL');
+    // SSRF 防护测试：拒绝 http、IPv4 裸字面量、私网网段与元数据服务
+    const blockedUrls = [
+        'http://127.0.0.1/secret',
+        'https://127.0.0.1/secret',
+        'https://10.0.0.1/private',
+        'https://192.168.1.1/admin',
+        'https://172.16.0.1/conf',
+        'https://169.254.169.254/latest/meta-data',
+        'https://127.0.0.1.nip.io/foo',
+        'https://metadata.google.internal/computeMetadata'
+    ];
+    for (const badUrl of blockedUrls) {
+        assert.equal(safePublicUrl(badUrl), '', `safePublicUrl 必须拒绝 ${badUrl}`);
+        const bad = await runWebTool({}, 'fetch_url', { url: badUrl });
+        assert.equal(bad.ok, false);
+        assert.equal(bad.error.code, 'INVALID_URL');
+    }
+
+    // SSRF 重定向拦截：跟随 302 重定向到私有网段必须被切断并拒绝
+    const redirectSsrf = await runWebTool({}, 'fetch_url', { url: 'https://example.com/redirect-ssrf' }, {
+        fetchImpl: async (url) => {
+            if (url === 'https://example.com/redirect-ssrf') {
+                return {
+                    status: 302,
+                    headers: new Headers({ location: 'https://169.254.169.254/latest/meta-data' })
+                };
+            }
+            return { ok: true, status: 200, text: async () => 'SHOULD_NOT_LEAK' };
+        }
+    });
+    assert.equal(redirectSsrf.ok, false);
+    assert.equal(redirectSsrf.error.code, 'INVALID_URL');
+    assert.match(redirectSsrf.error.message, /重定向目标地址不安全/);
+
+    // 合法安全重定向：允许相对路径安全重定向并获取正文
+    const safeRedirectPage = await runWebTool({}, 'fetch_url', { url: 'https://example.com/old-page' }, {
+        fetchImpl: async (url) => {
+            if (url === 'https://example.com/old-page') {
+                return {
+                    status: 301,
+                    headers: new Headers({ location: '/new-page' })
+                };
+            }
+            return { ok: true, status: 200, text: async () => 'Redirected new page body' };
+        }
+    });
+    assert.equal(safeRedirectPage.ok, true);
+    assert.match(safeRedirectPage.data.content, /Redirected new page body/);
 
     const page = await runWebTool({}, 'fetch_url', { url: 'https://example.com/page' }, {
         fetchImpl: async () => ({ ok: true, status: 200, text: async () => 'Example page body' })

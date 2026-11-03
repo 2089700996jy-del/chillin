@@ -128,6 +128,15 @@ test('Docs - README 测试布局表覆盖全部测试套件', () => {
 
 test('Docs - 架构规约的模块表覆盖全部 Worker 模块', () => {
     const arch = read('.agents/rules/architecture.md');
+    const archCount = arch.match(/`workers\/src\/` 共 \*\*(\d+) 个模块\*\*/);
+    assert.ok(archCount, 'architecture.md 应写明 workers/src/ 的模块数量');
+    assert.equal(Number(archCount[1]), workerModules.length, 'architecture.md 声明的模块数 (' + archCount[1] + ') 与实际 (' + workerModules.length + ') 不符');
+
+    const progress = read('PROGRESS.md');
+    const progCount = progress.match(/`src\/` (\d+) 个领域模块/);
+    assert.ok(progCount, 'PROGRESS.md 应写明 workers/src/ 的模块数量');
+    assert.equal(Number(progCount[1]), workerModules.length, 'PROGRESS.md 声明的模块数 (' + progCount[1] + ') 与实际 (' + workerModules.length + ') 不符');
+
     for (const file of workerModules) {
         assert.ok(arch.includes('workers/src/' + file), '.agents/rules/architecture.md 的领域模块表缺少 workers/src/' + file + '——请同步文档');
     }
