@@ -61,7 +61,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const uploadBtn = target.closest('.btn-upload-image');
         const promptTab = target.closest('.segment-btn[data-subtab]');
         const bookInput = target.closest('#book-file-input');
-        const goalsBtn = target.closest('#btn-open-agent-goals');
+        const goalsBtn = target.closest('#btn-open-agent-goals, #sidebar-btn-agent-goals');
         const feature = uploadBtn ? 'upload' : (promptTab ? 'prompts' : (bookInput ? 'reader' : (goalsBtn ? 'agent-goals' : null)));
         if (!feature || isFeatureReady(feature)) return;
         e.preventDefault();

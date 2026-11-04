@@ -58,10 +58,17 @@ function label(status) {
 }
 
 function updatePendingBadge(count) {
-    if (!badgeEl) return;
     const n = Math.max(0, Number(count) || 0);
-    badgeEl.textContent = n > 99 ? '99+' : String(n);
-    badgeEl.hidden = n === 0;
+    const text = n > 99 ? '99+' : String(n);
+    if (badgeEl) {
+        badgeEl.textContent = text;
+        badgeEl.hidden = n === 0;
+    }
+    const sidebarBadge = document.getElementById('sidebar-agent-badge');
+    if (sidebarBadge) {
+        sidebarBadge.textContent = text;
+        sidebarBadge.hidden = n === 0;
+    }
 }
 
 function progressBar(progress) {
@@ -500,6 +507,9 @@ function renderDetail(data) {
     );
     listPane.hidden = true;
     detailPane.hidden = false;
+    if (isCockpitActive()) {
+        renderCockpitDetail(data);
+    }
 }
 
 function renderList(goals, inboxData = latestInboxData) {
@@ -519,6 +529,12 @@ function renderList(goals, inboxData = latestInboxData) {
             '</button>';
     }).join('');
     setHtml(listEl, globalDeckHtml + '<div class="agent-goals-stream">' + itemsHtml + '</div>');
+    if (isCockpitActive()) {
+        const queueCountEl = document.getElementById('cockpit-queue-count');
+        if (queueCountEl) queueCountEl.textContent = goals.length + ' 个目标';
+        const superDeckWrap = document.getElementById('cockpit-super-deck-wrap');
+        if (superDeckWrap) setHtml(superDeckWrap, globalDeckHtml);
+    }
 }
 
 function renderInbox(data) {
@@ -827,6 +843,238 @@ async function submitAppendDraft() {
     }
 }
 
+function isCockpitActive() {
+    return Boolean(document.getElementById('view-agent')?.classList.contains('active'));
+}
+
+async function renderCockpit(targetGoalId = null) {
+    const cockpitView = document.getElementById('view-agent');
+    if (!cockpitView) return;
+
+    if (!latestGoalsList || !latestGoalsList.length) {
+        try {
+            await Promise.all([refreshList(), refreshInbox()]);
+        } catch (_) {}
+    }
+
+    const goals = latestGoalsList || [];
+    const queueListEl = document.getElementById('cockpit-goals-list');
+    const queueCountEl = document.getElementById('cockpit-queue-count');
+    const superDeckWrap = document.getElementById('cockpit-super-deck-wrap');
+
+    if (queueCountEl) {
+        queueCountEl.textContent = goals.length + ' 个目标';
+    }
+
+    if (superDeckWrap) {
+        setHtml(superDeckWrap, renderGlobalSuperDeck(goals, latestInboxData));
+    }
+
+    let activeId = targetGoalId || currentGoalId;
+    if (!activeId && goals.length > 0) {
+        const activeGoal = goals.find(g => ['active', 'waiting_approval', 'planned'].includes(g.status)) || goals[0];
+        activeId = activeGoal ? activeGoal.id : null;
+    }
+    if (activeId) currentGoalId = activeId;
+
+    if (queueListEl) {
+        if (!goals.length) {
+            setHtml(queueListEl, '<p class="cockpit-queue-empty">暂无目标。在上方输入框委派新任务开始。</p>');
+        } else {
+            const listHtml = goals.map(g => {
+                const isSelected = String(g.id) === String(activeId);
+                const p = g.progress || {};
+                const total = Math.max(1, Number(p.total || 0));
+                const done = Number(p.completed || 0);
+                const pct = Math.min(100, Math.round((done / total) * 100));
+                return '<div class="cockpit-queue-item' + (isSelected ? ' selected' : '') + '" data-cockpit-goal="' + g.id + '">' +
+                    '<div class="cockpit-queue-item-head">' +
+                    '<span class="cockpit-queue-item-title">' + escapeHtml(g.title) + '</span>' +
+                    '<span class="agent-status agent-status-' + escapeHtml(g.status) + '">' + label(g.status) + '</span>' +
+                    '</div>' +
+                    (g.description ? '<p class="cockpit-queue-item-desc">' + escapeHtml(g.description) + '</p>' : '') +
+                    '<div class="cockpit-queue-item-progress">' +
+                    '<div class="cockpit-progress-track"><span style="width: ' + pct + '%"></span></div>' +
+                    '<span class="cockpit-progress-meta">' + done + '/' + total + ' 步</span>' +
+                    '</div></div>';
+            }).join('');
+            setHtml(queueListEl, listHtml);
+        }
+    }
+
+    if (activeId) {
+        await loadAndRenderCockpitDetail(activeId);
+    } else {
+        renderCockpitEmptyCanvas();
+    }
+}
+
+function renderCockpitEmptyCanvas() {
+    const canvas = document.getElementById('cockpit-canvas-content');
+    if (canvas) {
+        setHtml(canvas, '<div class="cockpit-empty-canvas">' +
+            '<svg class="cockpit-empty-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="6" rx="2"/><circle cx="9" cy="13" r="1.5"/><circle cx="15" cy="13" r="1.5"/><path d="M12 2v4"/><line x1="8" y1="2" x2="16" y2="2"/></svg>' +
+            '<p class="cockpit-empty-lead">从左侧选择目标，或在上方委派新任务</p>' +
+            '<p class="cockpit-empty-sub">Agent 会自动拆解多步 DAG 任务，并在执行过程中实时上报工具调用轨迹。</p>' +
+            '</div>');
+    }
+    const decisionsWrap = document.getElementById('cockpit-decisions-wrap');
+    if (decisionsWrap) {
+        setHtml(decisionsWrap, '<div class="cockpit-card">' +
+            '<div class="cockpit-card-head">' +
+            '<span class="cockpit-head-title"><span>人机协同舱</span></span>' +
+            '<span class="cockpit-quiet-pill">待命中</span>' +
+            '</div>' +
+            '<p class="cockpit-card-tip">选择或创建目标后，若触发人工干预或决策选择题，将在此处展示。</p>' +
+            '</div>');
+    }
+    const handoffWrap = document.getElementById('cockpit-handoff-wrap');
+    if (handoffWrap) setHtml(handoffWrap, '');
+}
+
+async function loadAndRenderCockpitDetail(goalId) {
+    try {
+        const data = await apiRequest('/api/agent/goals/' + goalId, { timeout: 30000 });
+        renderCockpitDetail(data);
+    } catch (err) {
+        showToast(err.message || '加载目标详情失败', 'error');
+    }
+}
+
+function renderCockpitDetail(data) {
+    if (!data || !data.goal) return;
+    const goal = data.goal;
+    latestGoalResult = goal.result_md || '';
+    const progress = goal.progress || { total: 0, completed: 0, failed: 0 };
+    const tasks = data.tasks || [];
+    const total = Math.max(1, Number(progress.total || 0));
+    const done = Number(progress.completed || 0);
+    const pct = Math.min(100, Math.round((done / total) * 100));
+    const hasBlocked = tasks.some((task) => task.status === 'blocked');
+
+    const actions = [];
+    if (['draft', 'planned', 'failed'].includes(goal.status)) actions.push(actionButton('plan', goal.status === 'failed' ? '重新规划' : '生成计划', { primary: goal.status !== 'planned' }));
+    if (goal.status === 'failed' && hasBlocked) actions.push(actionButton('replan', '重新规划剩余', { primary: true }));
+    if (goal.status === 'planned') actions.push(actionButton('start', '开始执行', { primary: true }));
+    if (goal.status === 'active') {
+        actions.push(actionButton('continue', '继续执行', { primary: true }));
+        actions.push(actionButton('pause', '暂停'));
+    }
+    if (goal.status === 'paused') actions.push(hasBlocked ? actionButton('replan', '重新规划剩余', { primary: true }) : actionButton('continue', '恢复并继续', { primary: true }));
+    if (['active', 'paused', 'planned'].includes(goal.status)) actions.push(actionButton('complete', '标记完成'));
+    if (['draft', 'planned', 'failed', 'paused'].includes(goal.status)) actions.push(actionButton('edit', '编辑目标'));
+    if (!['completed', 'cancelled'].includes(goal.status)) actions.push(actionButton('cancel', '取消目标'));
+    actions.push('<button type="button" class="btn-text text-danger agent-goal-delete" data-goal-action="delete">删除</button>');
+
+    const error = goal.error
+        ? '<div class="agent-goal-error"><strong>⚠️ 中断原因：</strong>' + escapeHtml(goal.error) +
+        (hasBlocked ? '<p class="agent-goal-error-tip">检测到任务执行受阻，可点击下方“重新规划剩余”调整后续策略，保留已完成阶段性结果。</p>' : '') +
+        '</div>'
+        : '';
+
+    const canvas = document.getElementById('cockpit-canvas-content');
+    if (canvas) {
+        setHtml(canvas,
+            '<div class="cockpit-canvas-card">' +
+            '<div class="cockpit-canvas-head">' +
+            '<div class="cockpit-canvas-head-top">' +
+            '<div><h3 class="cockpit-canvas-title">' + escapeHtml(goal.title) + '</h3>' +
+            (goal.description ? '<p class="cockpit-canvas-desc">' + escapeHtml(goal.description) + '</p>' : '') +
+            '</div>' +
+            '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span>' +
+            '</div>' +
+            '<div class="cockpit-canvas-metrics">' +
+            '<span>进度: <strong>' + done + '/' + total + ' 步 (' + pct + '%)</strong></span>' +
+            '<span>·</span>' +
+            '<span>用时: <strong>' + (formatDuration(goal.created_at, goal.status === 'completed' ? goal.updated_at : null) || '0s') + '</strong></span>' +
+            '</div>' +
+            '<div class="cockpit-canvas-actions">' + actions.join('') + '</div>' +
+            '</div>' +
+            error +
+            renderBudget(goal.budget) +
+            renderSuperDeck(goal, tasks, data.steps, data.run) +
+            '<section class="agent-goal-section"><h4>任务计划执行图 (DAG Plan)</h4>' +
+            (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
+            '</section>' +
+            renderSteps(data.steps) +
+            '</div>'
+        );
+    }
+
+    const decisionsWrap = document.getElementById('cockpit-decisions-wrap');
+    const handoffWrap = document.getElementById('cockpit-handoff-wrap');
+
+    const approvals = (data.approvals || []).filter(a => a.status === 'pending');
+    if (decisionsWrap) {
+        if (approvals.length > 0) {
+            const approvalsHtml = approvals.map(a => {
+                const isChoice = a.action_type === 'propose_choice' && a.action_payload && Array.isArray(a.action_payload.choices);
+                if (isChoice) {
+                    const choices = a.action_payload.choices;
+                    const question = a.action_payload.question || '请根据以下选项拍板后续推进方向：';
+                    const optionsHtml = choices.map((c, idx) => {
+                        return '<label class="cockpit-choice-label">' +
+                            '<input type="radio" name="cockpit-choice-' + a.id + '" value="' + idx + '"' + (idx === 0 ? ' checked' : '') + '>' +
+                            '<div><strong>' + escapeHtml(typeof c === 'string' ? c : (c.label || c.title || '选项 ' + (idx + 1))) + '</strong>' +
+                            (c.description ? '<div style="font-size: 11px; opacity: 0.75; margin-top: 2px;">' + escapeHtml(c.description) + '</div>' : '') +
+                            '</div></label>';
+                    }).join('');
+                    return '<div class="cockpit-choice-card" data-approval-card="' + a.id + '">' +
+                        '<div class="cockpit-choice-badge"><span>⚡ 人机拍板决策 (Propose Choice)</span></div>' +
+                        '<p class="cockpit-choice-lead">' + escapeHtml(question) + '</p>' +
+                        '<div class="cockpit-choice-options">' + optionsHtml + '</div>' +
+                        '<button type="button" class="cockpit-choice-submit" data-cockpit-decide-choice="' + a.id + '">拍板此方案并驱动继续执行 →</button>' +
+                        '</div>';
+                }
+                return '<div class="cockpit-card">' +
+                    '<div class="cockpit-card-head">' +
+                    '<span class="cockpit-head-title"><span>' + escapeHtml(a.title || '待审批事项') + '</span></span>' +
+                    '<span class="cockpit-quiet-pill" style="color: var(--ios-orange);">待决策</span>' +
+                    '</div>' +
+                    '<p class="cockpit-card-tip">' + escapeHtml(a.description || '执行已暂停，需要您确认后继续。') + '</p>' +
+                    '<div style="display: flex; gap: 8px; margin-top: 10px;">' +
+                    '<button type="button" class="btn-primary" style="flex: 1; font-size: 12px; padding: 6px 10px;" data-approval-id="' + a.id + '" data-decision="approve" data-action-type="' + escapeHtml(a.action_type || '') + '">同意</button>' +
+                    '<button type="button" class="btn-text text-danger" style="font-size: 12px; padding: 6px 10px;" data-approval-id="' + a.id + '" data-decision="reject" data-action-type="' + escapeHtml(a.action_type || '') + '">拒绝</button>' +
+                    '</div></div>';
+            }).join('');
+            setHtml(decisionsWrap, approvalsHtml);
+        } else {
+            setHtml(decisionsWrap, '<div class="cockpit-card">' +
+                '<div class="cockpit-card-head">' +
+                '<span class="cockpit-head-title"><span>人机协同舱</span></span>' +
+                '<span class="cockpit-quiet-pill">自主推进中</span>' +
+                '</div>' +
+                '<p class="cockpit-card-tip">当前无需人工干预。当 Agent 遇到重大分支或生成交付草稿时，此处会弹出选择题与审批单。</p>' +
+                '</div>');
+        }
+    }
+
+    if (handoffWrap) {
+        if (goal.result_md) {
+            setHtml(handoffWrap, '<div class="cockpit-card">' +
+                '<div class="cockpit-card-head">' +
+                '<span class="cockpit-head-title"><span>知识回流 (Garden Handoff)</span></span>' +
+                '<span class="cockpit-quiet-pill">成果已生成</span>' +
+                '</div>' +
+                '<div class="agent-deliverable-body" style="max-height: 200px; font-size: 12px; overflow-y: auto;">' +
+                markdownToHtml(goal.result_md) +
+                '</div>' +
+                '<div style="display: flex; gap: 8px; margin-top: 10px;">' +
+                '<button type="button" class="btn-primary" style="flex: 1; font-size: 12px; padding: 6px 10px;" data-goal-action="save-draft">存入知识笔记</button>' +
+                '<button type="button" class="btn-secondary" style="flex: 1; font-size: 12px; padding: 6px 10px;" data-copy-result>复制成果</button>' +
+                '</div></div>');
+        } else {
+            setHtml(handoffWrap, '<div class="cockpit-card">' +
+                '<div class="cockpit-card-head">' +
+                '<span class="cockpit-head-title"><span>知识回流 (Garden Handoff)</span></span>' +
+                '<span class="cockpit-head-hint">等待成果交付</span>' +
+                '</div>' +
+                '<p class="cockpit-card-tip">当目标全部完成并生成总结成果后，可一键将其归档为结构化知识笔记或追加到既有笔记。</p>' +
+                '</div>');
+        }
+    }
+}
+
 function bindEvents() {
     document.getElementById('btn-open-agent-goals')?.addEventListener('click', () => {
         modal.classList.add('show');
@@ -974,6 +1222,112 @@ function bindEvents() {
             );
         }
     });
+
+    // Cockpit View Event Listeners
+    const cockpitCreateForm = document.getElementById('cockpit-create-form');
+    cockpitCreateForm?.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const input = document.getElementById('cockpit-goal-title');
+        const title = input?.value.trim();
+        if (!title || isRapidClick('cockpit-create')) return;
+        try {
+            const data = await apiRequest('/api/agent/goals', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ title, description: '', auto_send: true }),
+                timeout: 30000
+            });
+            input.value = '';
+            currentGoalId = data.goal.id;
+            await refreshList();
+            await renderCockpit(currentGoalId);
+            try {
+                await postGoal('/api/agent/goals/' + currentGoalId + '/plan', 65000);
+                showToast('计划已生成，开始执行', 'success');
+                await renderCockpit(currentGoalId);
+                await runAction('start');
+            } catch (pErr) {
+                showToast('目标已创建，但自动规划失败：' + (pErr.message || '请手动重试'), 'error');
+            }
+        } catch (err) {
+            showToast(err.message || '创建目标失败', 'error');
+        }
+    });
+
+    const cockpitGoalsList = document.getElementById('cockpit-goals-list');
+    cockpitGoalsList?.addEventListener('click', async (e) => {
+        const item = e.target instanceof Element ? e.target.closest('[data-cockpit-goal]') : null;
+        if (item) {
+            const goalId = item.getAttribute('data-cockpit-goal');
+            currentGoalId = goalId;
+            await renderCockpit(goalId);
+        }
+    });
+
+    const cockpitCanvas = document.getElementById('cockpit-canvas-content');
+    cockpitCanvas?.addEventListener('click', async (e) => {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        const goalAction = target.closest('[data-goal-action]');
+        if (goalAction) {
+            await runAction(goalAction.getAttribute('data-goal-action'));
+            if (isCockpitActive()) await renderCockpit(currentGoalId);
+            return;
+        }
+        const taskRetry = target.closest('[data-task-retry]');
+        if (taskRetry) {
+            await retryTask(taskRetry.getAttribute('data-task-retry'));
+            if (isCockpitActive()) await renderCockpit(currentGoalId);
+            return;
+        }
+    });
+
+    const cockpitColRight = document.getElementById('cockpit-col-cockpit');
+    cockpitColRight?.addEventListener('click', async (e) => {
+        const target = e.target instanceof Element ? e.target : null;
+        if (!target) return;
+        const copyBtn = target.closest('[data-copy-result]');
+        if (copyBtn) {
+            const content = latestGoalResult || '';
+            if (content && navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(content).then(() => {
+                    showToast('成果 Markdown 已复制到剪贴板', 'success');
+                }).catch(() => {
+                    showToast('复制失败，请手动选取', 'error');
+                });
+            } else {
+                showToast(content ? '当前环境不支持快捷复制' : '暂无成果可复制', 'error');
+            }
+            return;
+        }
+        const choiceBtn = target.closest('[data-cockpit-decide-choice]');
+        if (choiceBtn) {
+            const approvalId = choiceBtn.getAttribute('data-cockpit-decide-choice');
+            const card = choiceBtn.closest('[data-approval-card]');
+            const checkedRadio = card?.querySelector('input[type="radio"]:checked');
+            const choiceIdx = checkedRadio ? Number(checkedRadio.value) : 0;
+            await decideApproval(approvalId, 'approve', null, 'propose_choice', { choice_index: choiceIdx });
+            if (isCockpitActive()) await renderCockpit(currentGoalId);
+            return;
+        }
+        const approval = target.closest('[data-approval-id]');
+        if (approval) {
+            await decideApproval(
+                approval.getAttribute('data-approval-id'),
+                approval.getAttribute('data-decision'),
+                null,
+                approval.getAttribute('data-action-type') || 'save_note'
+            );
+            if (isCockpitActive()) await renderCockpit(currentGoalId);
+            return;
+        }
+        const goalAction = target.closest('[data-goal-action]');
+        if (goalAction) {
+            await runAction(goalAction.getAttribute('data-goal-action'));
+            if (isCockpitActive()) await renderCockpit(currentGoalId);
+            return;
+        }
+    });
 }
 
 export function initAgentGoals() {
@@ -991,6 +1345,7 @@ export function initAgentGoals() {
     if (!listPane || !detailPane || !listEl || !form || !titleInput || !descInput) return;
     bindEvents();
     actions.refreshAgentInbox = refreshInbox;
+    actions.renderAgentCockpit = renderCockpit;
     refreshInbox().catch(() => { });
     if (!badgeTimer) {
         badgeTimer = setInterval(() => {

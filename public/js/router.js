@@ -16,7 +16,7 @@ export function initRouter() {
     const fabBtn = document.getElementById('btn-create-new');
     const mobileBottomNav = document.getElementById('mobile-bottom-nav');
 
-    const MAIN_VIEWS = new Set(['home', 'feeds', 'notes', 'bookmarks', 'reader']);
+    const MAIN_VIEWS = new Set(['home', 'feeds', 'notes', 'bookmarks', 'reader', 'agent']);
 
     const buildHashForView = (viewId) => {
     if (viewId === 'article' && ui.currentArticleId != null) return `#/article/${ui.currentArticleId}`;
@@ -32,6 +32,7 @@ export function initRouter() {
     if (viewId === 'prompt-editor') return '#/prompt-editor';
     if (viewId === 'reader-book') return '#/reader-book';
     if (viewId === 'ai') return '#/ai';
+    if (viewId === 'agent') return '#/agent';
     return `#/${viewId || 'home'}`;
 };
 
@@ -111,6 +112,10 @@ const applyRoute = (route) => {
             loadFeature('prompts')
                 .then(() => switchView('bookmarks', { skipHistory: true }))
                 .catch((err) => { warnLazy('prompts')(err); switchView('bookmarks', { skipHistory: true }); });
+        } else if (route.view === 'agent') {
+            loadFeature('agent-goals')
+                .then(() => switchView('agent', { skipHistory: true }))
+                .catch((err) => { warnLazy('agent-goals')(err); switchView('agent', { skipHistory: true }); });
         } else {
             switchView(route.view, { skipHistory: true });
         }
@@ -156,7 +161,17 @@ const switchView = (targetViewId, opts = {}) => {
             actions.renderFeeds();
         } else if (targetViewId === 'home') {
             actions.renderHeatmap();
+        } else if (targetViewId === 'agent') {
+            loadFeature('agent-goals')
+                .then(() => actions.renderAgentCockpit?.())
+                .catch(warnLazy('agent-goals'));
         }
+    }
+
+    const mainApp = document.querySelector('.notion-app');
+    if (mainApp) {
+        if (targetViewId === 'agent') mainApp.classList.add('wide-workspace');
+        else mainApp.classList.remove('wide-workspace');
     }
 
     if (targetViewId === 'editor' || targetViewId === 'note-editor') {
@@ -165,7 +180,7 @@ const switchView = (targetViewId, opts = {}) => {
 
     // Update FAB label
     const fabLabel = document.getElementById('fab-label');
-    const fabLabels = { home: '记录新片段', feeds: '记录随手记', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书' };
+    const fabLabels = { home: '记录新片段', feeds: '记录随手记', notes: '记录新笔记', bookmarks: '收藏新链接', reader: '导入新书', agent: '创建新目标' };
     if (fabLabel && fabLabels[targetViewId]) fabLabel.textContent = fabLabels[targetViewId];
     // 无障碍：可见文本之外的按钮也要能被读屏叫出准确动作
     if (fabBtn && fabLabels[targetViewId]) fabBtn.setAttribute('aria-label', fabLabels[targetViewId]);
@@ -192,8 +207,8 @@ const switchView = (targetViewId, opts = {}) => {
         }
         document.body.classList.remove('hide-bottom-nav');
 
-        // 随手记页面已有页内倾倒框，隐藏右下角悬浮 + 按钮
-        if (targetViewId === 'feeds') {
+        // 随手记与 Agent 操作台页面已有页内输入框，隐藏右下角悬浮 + 按钮
+        if (targetViewId === 'feeds' || targetViewId === 'agent') {
             fabBtn.classList.add('hidden');
             fabBtn.style.display = 'none';
         } else {
