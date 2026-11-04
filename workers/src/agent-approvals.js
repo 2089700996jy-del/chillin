@@ -151,11 +151,16 @@ export async function requestAppendDraft(db, userId, goalId, payload = {}, env =
  */
 export function validateProposalArgs(args) {
     if (!args || typeof args !== 'object' || Array.isArray(args)) return '参数必须是对象';
-    const allowed = new Set(['action', 'title', 'note_id', 'content']);
+    const allowed = new Set(['action', 'title', 'note_id', 'content', 'question', 'options', 'context']);
     for (const key of Object.keys(args)) {
         if (!allowed.has(key)) return '未知参数：' + key;
     }
-    if (!['save_note', 'append_note', 'send_bot_message'].includes(args.action)) return 'action 不支持';
+    if (!['save_note', 'append_note', 'send_bot_message', 'choose_option'].includes(args.action)) return 'action 不支持';
+    if (args.action === 'choose_option') {
+        if (!args.question || typeof args.question !== 'string') return 'choose_option 必须提供 question';
+        if (!Array.isArray(args.options) || args.options.length < 2) return 'choose_option 至少提供 2 个选项';
+        return '';
+    }
     if (typeof args.content !== 'string' || !args.content.trim()) return 'content 不能为空';
     if (args.content.length > MAX_APPROVAL_CONTENT) return 'content 太长';
     if (args.action === 'append_note') {
@@ -166,20 +171,24 @@ export function validateProposalArgs(args) {
 }
 
 export async function runProposalTool(db, userId, goalId, taskId, args, env) {
-    const validationError = validateProposalArgs(args);
+    const isChoice = args && (args.action === 'choose_option' || (args.question && args.options));
+    const normalizedArgs = isChoice ? { action: 'choose_option', ...args } : args;
+    const validationError = validateProposalArgs(normalizedArgs);
     if (validationError) {
-        return { ok: false, tool: 'propose_write', error: { code: 'INVALID_ARGUMENTS', message: validationError }, citations: [] };
+        return { ok: false, tool: isChoice ? 'propose_choice' : 'propose_write', error: { code: 'INVALID_ARGUMENTS', message: validationError }, citations: [] };
     }
     try {
-        const { approval, created } = await requestAgentProposal(db, userId, goalId, taskId, args, env);
+        const { approval, created } = await requestAgentProposal(db, userId, goalId, taskId, normalizedArgs, env);
         return {
             ok: true,
-            tool: 'propose_write',
+            tool: isChoice ? 'propose_choice' : 'propose_write',
             data: {
                 approval_id: approval.id,
                 action: approval.action_type,
                 status: approval.status,
                 created: Boolean(created),
+                question: approval.payload && approval.payload.question || '',
+                options: approval.payload && approval.payload.options || [],
                 title: approval.payload && approval.payload.title || '',
                 note_title: approval.payload && approval.payload.note_title || ''
             },
@@ -188,50 +197,75 @@ export async function runProposalTool(db, userId, goalId, taskId, args, env) {
     } catch (err) {
         return {
             ok: false,
-            tool: 'propose_write',
-            error: { code: err && err.code || 'PROPOSAL_FAILED', message: err && err.message || '创建写入提案失败' },
+            tool: isChoice ? 'propose_choice' : 'propose_write',
+            error: { code: err && err.code || 'PROPOSAL_FAILED', message: err && err.message || '创建提案失败' },
             citations: []
         };
     }
 }
 
 export async function requestAgentProposal(db, userId, goalId, taskId, payload = {}, env = null) {
-    const action = ['save_note', 'append_note', 'send_bot_message'].includes(payload.action) ? payload.action : '';
+    const action = ['save_note', 'append_note', 'send_bot_message', 'choose_option'].includes(payload.action) ? payload.action : '';
     if (!action) throw new AgentError(400, 'action 不支持', 'INVALID_PROPOSAL_ACTION');
-    const content = cleanMultiline(payload.content, MAX_APPROVAL_CONTENT);
-    if (!content) throw new AgentError(400, '提案内容不能为空', 'PROPOSAL_EMPTY');
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
 
-    const body = {
-        title: cleanText(payload.title, 80) || cleanText(goal.title, 80) || '目标结果',
-        content,
-        source: 'agent',
-        task_id: Number(taskId) || 0
-    };
-    if (action === 'send_bot_message') {
-        body.title = 'Bot 消息';
-        body.channel = 'bot';
-    }
-    if (action === 'append_note') {
-        const noteId = Number(payload.note_id);
-        if (!Number.isInteger(noteId) || noteId <= 0) {
-            throw new AgentError(400, '追加提案必须提供有效 note_id', 'INVALID_NOTE_ID');
+    let body;
+    if (action === 'choose_option') {
+        const question = cleanText(payload.question, 200);
+        const options = (Array.isArray(payload.options) ? payload.options : []).map((o) => cleanText(o, 100)).filter(Boolean);
+        if (!question || options.length < 2) throw new AgentError(400, '选择题提案缺少有效问题或选项', 'INVALID_CHOICE_PROPOSAL');
+        body = {
+            title: '请你拍板：' + question.slice(0, 40),
+            question,
+            options,
+            context: cleanMultiline(payload.context, 1000),
+            source: 'agent',
+            task_id: Number(taskId) || 0
+        };
+    } else {
+        const content = cleanMultiline(payload.content, MAX_APPROVAL_CONTENT);
+        if (!content) throw new AgentError(400, '提案内容不能为空', 'PROPOSAL_EMPTY');
+        body = {
+            title: cleanText(payload.title, 80) || cleanText(goal.title, 80) || '目标结果',
+            content,
+            source: 'agent',
+            task_id: Number(taskId) || 0
+        };
+        if (action === 'send_bot_message') {
+            body.title = 'Bot 消息';
+            body.channel = 'bot';
         }
-        const note = await db.prepare(
-            'SELECT id, title FROM notes WHERE id = ?1 AND user_id = ?2 AND IFNULL(is_deleted, 0) = 0'
-        ).bind(noteId, userId).first();
-        if (!note) throw new AgentError(404, '笔记不存在或已删除', 'NOTE_NOT_FOUND');
-        body.note_id = noteId;
-        body.note_title = cleanText(note.title, 80) || '未命名笔记';
+        if (action === 'append_note') {
+            const noteId = Number(payload.note_id);
+            if (!Number.isInteger(noteId) || noteId <= 0) {
+                throw new AgentError(400, '追加提案必须提供有效 note_id', 'INVALID_NOTE_ID');
+            }
+            const note = await db.prepare(
+                'SELECT id, title FROM notes WHERE id = ?1 AND user_id = ?2 AND IFNULL(is_deleted, 0) = 0'
+            ).bind(noteId, userId).first();
+            if (!note) throw new AgentError(404, '笔记不存在或已删除', 'NOTE_NOT_FOUND');
+            body.note_id = noteId;
+            body.note_title = cleanText(note.title, 80) || '未命名笔记';
+        }
     }
 
     const { row, created } = await createApproval(db, userId, goalId, action, body);
     if (created) {
-        const target = action === 'append_note'
-            ? '追加到「' + body.note_title + '」'
-            : (action === 'send_bot_message' ? '通过 Bot 发送一条消息' : '保存为新笔记「' + body.title + '」');
+        const target = action === 'choose_option'
+            ? '请你拍板：' + body.question
+            : (action === 'append_note'
+                ? '追加到「' + body.note_title + '」'
+                : (action === 'send_bot_message' ? '通过 Bot 发送一条消息' : '保存为新笔记「' + body.title + '」'));
         await notifyApproval(env, db, userId, goalId, 'Agent 提案：' + target);
+        if (action === 'choose_option') {
+            await db.prepare(
+                "UPDATE agent_goals SET status = 'waiting_approval', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2"
+            ).bind(goalId, userId).run();
+            await db.prepare(
+                "UPDATE agent_runs SET status = 'waiting_approval', lease_until = NULL, next_run_at = NULL, updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running')"
+            ).bind(goalId, userId).run();
+        }
     }
     return { approval: formatApproval(row), created };
 }
@@ -320,6 +354,27 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
                 throw new AgentError(404, '目标笔记不存在或已删除', 'NOTE_NOT_FOUND');
             }
             result = { note_id: noteId, appended: true };
+        } else if (decision === 'approve' && row.action_type === 'choose_option') {
+            const body = JSON.parse(row.payload_json || '{}');
+            const options = Array.isArray(body.options) ? body.options : [];
+            let chosenIdx = -1;
+            if (payload.choice_index !== undefined && payload.choice_index !== null) {
+                const n = Number(payload.choice_index);
+                if (Number.isInteger(n) && n >= 0 && n < options.length) chosenIdx = n;
+            }
+            if (chosenIdx === -1 && payload.choice) {
+                const targetText = String(payload.choice).trim().toLowerCase();
+                chosenIdx = options.findIndex((opt) => opt.toLowerCase() === targetText || opt.toLowerCase().includes(targetText));
+            }
+            if (chosenIdx === -1) chosenIdx = 0;
+            const chosenOption = options[chosenIdx] || '已确认';
+            result = { question: body.question, chosen_index: chosenIdx, chosen_option: chosenOption };
+            await db.prepare(
+                "UPDATE agent_goals SET status = 'active', error = '', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2"
+            ).bind(row.goal_id, userId).run();
+            await db.prepare(
+                "UPDATE agent_runs SET status = 'queued', next_run_at = datetime('now', '+8 hours', '-1 seconds'), updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(row.goal_id, userId).run();
         }
         await db.prepare(
             `UPDATE agent_approvals SET status = ?1, result_json = ?2, decision_note = ?3,
@@ -357,4 +412,28 @@ export const PROPOSE_WRITE_TOOL = {
     }
 };
 
-export const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write 与 web_search/fetch_url。需要外部事实时先检索；需要保存、追加或发 Bot 时用 propose_write，它只创建待审批，不会直接写库或发送。调用后如实说“已创建待审批”，不要声称已经写入或发送。';
+export const PROPOSE_CHOICE_TOOL = {
+    type: 'function',
+    function: {
+        name: 'propose_choice',
+        description: '当需要人类在多个选项中做二选一/多选一拍板时调用。会向用户展示选项卡片，用户点击选项后才继续执行。',
+        parameters: {
+            type: 'object',
+            properties: {
+                question: { type: 'string', minLength: 1, maxLength: 200, description: '向用户提出的选择问题' },
+                options: {
+                    type: 'array',
+                    items: { type: 'string', minLength: 1, maxLength: 100 },
+                    minItems: 2,
+                    maxItems: 5,
+                    description: '供用户选择的选项列表（2-5个）'
+                },
+                context: { type: 'string', maxLength: 1000, description: '辅助决策的背景说明' }
+            },
+            required: ['question', 'options'],
+            additionalProperties: false
+        }
+    }
+};
+
+export const PROPOSE_WRITE_INSTRUCTIONS = '本次任务额外提供 propose_write、propose_choice 与 web_search/fetch_url。需要外部事实时先检索；遇到方案抉择需人类确认时调用 propose_choice；需要保存、追加或发 Bot 时用 propose_write。它们只创建待审批，不会直接写库或发送。';

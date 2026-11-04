@@ -398,13 +398,19 @@ async function listApprovalsFromBot(db, userId) {
     if (!inbox.pending_count) return '现在没有待审批的目标写入。';
     const lines = inbox.approvals.map((item) => {
         const payload = item.payload || {};
-        const what = item.action_type === 'append_note'
-            ? '追加到「' + (payload.note_title || '未命名笔记') + '」'
-            : (item.action_type === 'send_bot_message' ? '通过 Bot 发送' : '保存为「' + (payload.title || '目标草稿') + '」');
+        let what = '保存为「' + (payload.title || '目标草稿') + '」';
+        if (item.action_type === 'choose_option') {
+            const opts = Array.isArray(payload.options) ? payload.options.map((o, idx) => (idx + 1) + '.' + clip(o, 12)).join(' ') : '';
+            what = '拍板：' + clip(payload.question, 18) + (opts ? ' (' + opts + ')' : '');
+        } else if (item.action_type === 'append_note') {
+            what = '追加到「' + (payload.note_title || '未命名笔记') + '」';
+        } else if (item.action_type === 'send_bot_message') {
+            what = '通过 Bot 发送';
+        }
         return '#' + item.id + ' ' + what + ' · 目标：' + clip(item.goal_title, 24);
     });
     return '待审批 ' + inbox.pending_count + ' 条（最多显示 10 条）：\n' + lines.join('\n')
-        + '\n\n回复「同意 编号」或「拒绝 编号」。';
+        + '\n\n回复「同意 编号 [序号]」（如 同意 1 2）或「拒绝 编号」。';
 }
 
 /**
@@ -445,12 +451,21 @@ export async function maybeRunAgentCommand(env, db, userId, text) {
             return '目标 #' + goalId + ' 已暂停。回复「继续 ' + goalId + '」恢复。';
         }
         if (/^(?:审批|待审批|approvals?)$/i.test(raw)) return await listApprovalsFromBot(db, userId);
-        if ((match = raw.match(/^(同意|拒绝)\s*#?(\d+)$/))) {
-            const decision = match[1] === '同意' ? 'approve' : 'reject';
-            const result = await decideApproval(db, userId, Number(match[2]), { decision });
+        if ((match = raw.match(/^(同意|拒绝|选)\s*#?(\d+)(?:\s+(\d+|[^\s]+))?$/))) {
+            const decision = match[1] === '拒绝' ? 'reject' : 'approve';
+            const approvalId = Number(match[2]);
+            const optionArg = match[3] ? match[3].trim() : null;
+            const payload = { decision };
+            if (optionArg && decision === 'approve') {
+                payload[/^\d+$/.test(optionArg) ? 'choice_index' : 'choice'] = /^\d+$/.test(optionArg) ? Number(optionArg) - 1 : optionArg;
+            }
+            const result = await decideApproval(db, userId, approvalId, payload);
             const approval = result.approval || {};
             if (result.already_decided) return '这条审批已经处理过了。';
             if (decision === 'reject') return '已拒绝这条审批，没有写入任何内容。';
+            if (approval.action_type === 'choose_option') {
+                return '已拍板选定「' + (approval.result && approval.result.chosen_option || '已确认') + '」，Agent 正在继续推进 ✅';
+            }
             if (approval.action_type === 'append_note') {
                 return '已追加到「' + clip(approval.payload && approval.payload.note_title, 40) + '」✅';
             }

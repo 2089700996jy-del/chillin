@@ -130,7 +130,7 @@ async function dohResolve(host, fetchImpl = fetch) {
     const addrs = [];
     for (const type of ['A', 'AAAA']) {
         try {
-            const dohUrl = `https://cloudflare-dns.com/dns-query?name=${encodeURIComponent(host)}&type=${type}`;
+            const dohUrl = `https://1.1.1.1/dns-query?name=${encodeURIComponent(host)}&type=${type}`;
             const res = await fetchImpl(dohUrl, {
                 headers: { accept: 'application/dns-json' },
                 signal: AbortSignal.timeout ? AbortSignal.timeout(3500) : undefined
@@ -154,18 +154,19 @@ async function dohResolve(host, fetchImpl = fetch) {
  * 兼容性保证：
  * - Cloudflare Workers 不支持 dns.lookup()（抛出 Not implemented），但支持 dns.resolve4() 与 dns.resolve6()；
  * - A 与 AAAA 必须双栈全量检测，任一结果命中保留/私有 IP 即拒绝；
- * - 若底层不支持 node:dns 或抛出 Not implemented，无缝回落至 Cloudflare DoH (1.1.1.1) 原生 fetch。
+ * - 若底层不支持 node:dns、抛出 Not implemented 或处于本地代理 Fake-IP (198.18.0.0/15) 环境，无缝回落至 Cloudflare DoH (1.1.1.1) 原生 fetch。
  */
 async function defaultLookup(host, deps = {}) {
     const fetchImpl = (deps && deps.fetchImpl) || fetch;
+    const dnsModule = (deps && deps.dns) !== undefined ? deps.dns : dns;
     const addrs = [];
     let resolve4Failed = false;
     let resolve6Failed = false;
     let notImplemented = false;
 
-    if (dns && typeof dns.resolve4 === 'function') {
+    if (dnsModule && typeof dnsModule.resolve4 === 'function') {
         try {
-            const v4 = await dns.resolve4(host);
+            const v4 = await dnsModule.resolve4(host);
             if (Array.isArray(v4)) addrs.push(...v4);
         } catch (err) {
             resolve4Failed = true;
@@ -175,9 +176,9 @@ async function defaultLookup(host, deps = {}) {
         resolve4Failed = true;
     }
 
-    if (dns && typeof dns.resolve6 === 'function' && !notImplemented) {
+    if (dnsModule && typeof dnsModule.resolve6 === 'function' && !notImplemented) {
         try {
-            const v6 = await dns.resolve6(host);
+            const v6 = await dnsModule.resolve6(host);
             if (Array.isArray(v6)) addrs.push(...v6);
         } catch (err) {
             resolve6Failed = true;
@@ -187,13 +188,21 @@ async function defaultLookup(host, deps = {}) {
         resolve6Failed = true;
     }
 
-    if (addrs.length > 0) return addrs;
+    // 若本地系统解析器返回了 TUN 虚拟 Fake-IP (198.18.0.0/15) 或未命中，回落到 1.1.1.1 原生 DoH 获取真实公网记录
+    const hasFakeIp = addrs.some((ip) => {
+        if (!ip || typeof ip !== 'string') return false;
+        const p = ip.split('.').map(Number);
+        return p[0] === 198 && (p[1] === 18 || p[1] === 19);
+    });
 
-    // 回落至原生 DoH 兼容解析
-    if (notImplemented || (resolve4Failed && resolve6Failed)) {
-        const dohAddrs = await dohResolve(host, fetchImpl);
-        if (dohAddrs.length > 0) return dohAddrs;
+    if (hasFakeIp || notImplemented || (resolve4Failed && resolve6Failed) || addrs.length === 0) {
+        try {
+            const dohAddrs = await dohResolve(host, fetchImpl);
+            if (dohAddrs.length > 0) return dohAddrs;
+        } catch (_) {}
     }
+
+    if (addrs.length > 0 && !hasFakeIp) return addrs;
 
     throw new Error('DNS_RESOLVE_FAILED: 无法解析域名');
 }
@@ -231,6 +240,17 @@ export function distillWebText(text, maxChars = 3600) {
     const headLen = Math.floor(maxChars * 0.65);
     const tailLen = Math.floor(maxChars * 0.30);
     return raw.slice(0, headLen) + '\n\n[...篇幅较长，中间细节自动蒸馏收缩以保护执行上下文，保留核心主干与结论...]\n\n' + raw.slice(-tailLen);
+}
+
+/**
+ * 指令与外部数据安全隔离：将来自外部不可信公网的网页或数据打上隔离标签，
+ * 并转义闭合标签防逃逸，防御 Prompt Injection。
+ */
+export function wrapUntrustedContent(content, source = 'web', origin = '') {
+    const raw = String(content || '');
+    const safe = raw.replace(/<\/untrusted_external_content>/gi, '<\\/untrusted_external_content>');
+    const originAttr = origin ? ` origin="${origin.replace(/["<>]/g, '')}"` : '';
+    return `<untrusted_external_content source="${source}"${originAttr}>\n${safe}\n</untrusted_external_content>`;
 }
 
 async function readPageText(res) {
@@ -424,9 +444,10 @@ export async function runWebTool(env, name, args = {}, deps = {}) {
             }
 
             const distilled = distillWebText(text, 3600);
+            const content = wrapUntrustedContent(distilled, 'fetch_url', url);
             return {
                 ok: true, tool,
-                data: { url, content: distilled, original_length: text.length, length: distilled.length },
+                data: { url, content, original_length: text.length, length: content.length },
                 citations: [{ type: '网页', id: url, title: url, snippet: text.slice(0, 200) }],
                 truncated: text.length > distilled.length
             };

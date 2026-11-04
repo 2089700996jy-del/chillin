@@ -10899,6 +10899,8 @@ select:focus-visible,
 .agent-approval p { margin: 3px 0 0; font-size: 11px; line-height: 1.45; color: var(--text-color-light); }
 .agent-approval-actions { display: flex; flex-shrink: 0; gap: 6px; align-items: center; }
 .agent-approval-actions button { min-height: 30px; font-size: 12px; padding: 4px 9px; }
+.agent-choice-options { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 8px; }
+.agent-choice-btn { min-height: 30px; font-size: 12px; padding: 4px 10px; border-radius: 8px; }
 .agent-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .agent-step { display: flex; align-items: flex-start; gap: 9px; font-size: 12px; }
 .agent-step-dot { flex: 0 0 7px; width: 7px; height: 7px; margin-top: 5px; border-radius: 50%; background: rgba(var(--label-rgb), 0.3); }

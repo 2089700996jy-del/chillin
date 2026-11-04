@@ -100,21 +100,21 @@ function renderBudget(budget) {
 
     return '<div class="agent-budget-card' + (isExhausted ? ' budget-exhausted' : '') + '">' +
         '<div class="agent-budget-head">' +
-            '<span>⚡ 目标运行预算与资源消耗</span>' +
-            (isExhausted ? '<span class="agent-budget-badge exhausted">预算耗尽</span>' : '<span class="agent-budget-badge">配额充足</span>') +
+        '<span>⚡ 目标运行预算与资源消耗</span>' +
+        (isExhausted ? '<span class="agent-budget-badge exhausted">预算耗尽</span>' : '<span class="agent-budget-badge">配额充足</span>') +
         '</div>' +
         '<div class="agent-budget-grid">' +
-            '<div class="agent-budget-item">' +
-                '<span class="budget-item-label">工具调用配额</span>' +
-                '<span class="budget-item-val"><strong>' + usedTools + '</strong> / ' + maxTools + ' 次</span>' +
-                '<div class="budget-bar"><div class="budget-bar-fill" style="width: ' + toolPercent + '%;"></div></div>' +
-            '</div>' +
-            '<div class="agent-budget-item">' +
-                '<span class="budget-item-label">累积执行耗时</span>' +
-                '<span class="budget-item-val"><strong>' + usedSec + 's</strong> / ' + maxMin + ' 分钟</span>' +
-            '</div>' +
+        '<div class="agent-budget-item">' +
+        '<span class="budget-item-label">工具调用配额</span>' +
+        '<span class="budget-item-val"><strong>' + usedTools + '</strong> / ' + maxTools + ' 次</span>' +
+        '<div class="budget-bar"><div class="budget-bar-fill" style="width: ' + toolPercent + '%;"></div></div>' +
         '</div>' +
-    '</div>';
+        '<div class="agent-budget-item">' +
+        '<span class="budget-item-label">累积执行耗时</span>' +
+        '<span class="budget-item-val"><strong>' + usedSec + 's</strong> / ' + maxMin + ' 分钟</span>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
 }
 
 function renderGlobalSuperDeck(goals, inboxData = null) {
@@ -143,35 +143,35 @@ function renderGlobalSuperDeck(goals, inboxData = null) {
 
     return '<section class="agent-global-deck">' +
         '<div class="global-deck-head">' +
-            '<div class="global-deck-title-wrap">' +
-                '<span class="global-deck-badge">' + escapeHtml(badgeText) + '</span>' +
-                '<span class="global-deck-sub">全局调度矩阵 · 单目标并发上限 3 Worker</span>' +
-            '</div>' +
-            (latestTime ? '<span class="global-deck-time">最近活跃 ' + escapeHtml(latestTime) + '</span>' : '') +
+        '<div class="global-deck-title-wrap">' +
+        '<span class="global-deck-badge">' + escapeHtml(badgeText) + '</span>' +
+        '<span class="global-deck-sub">全局调度矩阵 · 单目标并发上限 3 Worker</span>' +
+        '</div>' +
+        (latestTime ? '<span class="global-deck-time">最近活跃 ' + escapeHtml(latestTime) + '</span>' : '') +
         '</div>' +
         '<div class="global-deck-stats">' +
-            '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + runningWorkers + '</span>' +
-                '<span class="global-stat-label">运行 Worker</span>' +
-            '</div>' +
-            '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + activeGoals + '</span>' +
-                '<span class="global-stat-label">调度中目标</span>' +
-            '</div>' +
-            '<div class="global-stat-card">' +
-                '<span class="global-stat-num">' + queuedGoals + '</span>' +
-                '<span class="global-stat-label">排队待启动</span>' +
-            '</div>' +
-            '<div class="global-stat-card' + (waitingApprovalGoals > 0 ? ' text-warn' : '') + '">' +
-                '<span class="global-stat-num">' + waitingApprovalGoals + '</span>' +
-                '<span class="global-stat-label">待审批目标</span>' +
-            '</div>' +
-            '<div class="global-stat-card">' +
-                '<span class="global-stat-num">3<small>并发</small></span>' +
-                '<span class="global-stat-label">单目标上限</span>' +
-            '</div>' +
+        '<div class="global-stat-card">' +
+        '<span class="global-stat-num">' + runningWorkers + '</span>' +
+        '<span class="global-stat-label">运行 Worker</span>' +
         '</div>' +
-    '</section>';
+        '<div class="global-stat-card">' +
+        '<span class="global-stat-num">' + activeGoals + '</span>' +
+        '<span class="global-stat-label">调度中目标</span>' +
+        '</div>' +
+        '<div class="global-stat-card">' +
+        '<span class="global-stat-num">' + queuedGoals + '</span>' +
+        '<span class="global-stat-label">排队待启动</span>' +
+        '</div>' +
+        '<div class="global-stat-card' + (waitingApprovalGoals > 0 ? ' text-warn' : '') + '">' +
+        '<span class="global-stat-num">' + waitingApprovalGoals + '</span>' +
+        '<span class="global-stat-label">待审批目标</span>' +
+        '</div>' +
+        '<div class="global-stat-card">' +
+        '<span class="global-stat-num">3<small>并发</small></span>' +
+        '<span class="global-stat-label">单目标上限</span>' +
+        '</div>' +
+        '</div>' +
+        '</section>';
 }
 
 function renderSuperDeck(goal, tasks, steps, run) {
@@ -241,24 +241,24 @@ function renderSuperDeck(goal, tasks, steps, run) {
 
     return '<section class="agent-super-deck">' +
         '<div class="super-deck-head">' +
-            '<div class="super-deck-title-wrap">' +
-                '<span class="super-deck-badge">' + escapeHtml(badgeText) + '</span>' +
-                '<span class="super-deck-sub">Router 统一协调 · 3 槽位并发 Worker 矩阵</span>' +
-            '</div>' +
-            '<div class="super-deck-metrics">' +
-                '<span>并发槽位: <strong>' + runningCount + '/3</strong></span>' +
-                '<span>待办就绪: <strong>' + readyCount + '</strong>' + (waitingCount > 0 ? ' (前序等待 ' + waitingCount + ')' : '') + '</span>' +
-                '<span>任务状态: <strong>' + completed + '</strong> 达成' + (failedCount + blockedCount > 0 ? ' · <strong>' + (failedCount + blockedCount) + '</strong> 异常' : '') + '</span>' +
-                (runSeq || latestTime ? '<span>批次时间: <strong>' + (runSeq ? runSeq + ' · ' : '') + (latestTime || '-') + '</strong></span>' : '') +
-            '</div>' +
+        '<div class="super-deck-title-wrap">' +
+        '<span class="super-deck-badge">' + escapeHtml(badgeText) + '</span>' +
+        '<span class="super-deck-sub">Router 统一协调 · 3 槽位并发 Worker 矩阵</span>' +
+        '</div>' +
+        '<div class="super-deck-metrics">' +
+        '<span>并发槽位: <strong>' + runningCount + '/3</strong></span>' +
+        '<span>待办就绪: <strong>' + readyCount + '</strong>' + (waitingCount > 0 ? ' (前序等待 ' + waitingCount + ')' : '') + '</span>' +
+        '<span>任务状态: <strong>' + completed + '</strong> 达成' + (failedCount + blockedCount > 0 ? ' · <strong>' + (failedCount + blockedCount) + '</strong> 异常' : '') + '</span>' +
+        (runSeq || latestTime ? '<span>批次时间: <strong>' + (runSeq ? runSeq + ' · ' : '') + (latestTime || '-') + '</strong></span>' : '') +
+        '</div>' +
         '</div>' +
         '<div class="super-deck-slots">' +
-            slots.map((s) => '<div class="super-slot super-slot-' + s.status + '">' +
-                '<div class="super-slot-tag"><span class="super-slot-dot"></span>' + escapeHtml(s.name) + '</div>' +
-                '<div class="super-slot-desc" title="' + escapeHtml(s.desc) + '">' + escapeHtml(s.desc) + '</div>' +
+        slots.map((s) => '<div class="super-slot super-slot-' + s.status + '">' +
+            '<div class="super-slot-tag"><span class="super-slot-dot"></span>' + escapeHtml(s.name) + '</div>' +
+            '<div class="super-slot-desc" title="' + escapeHtml(s.desc) + '">' + escapeHtml(s.desc) + '</div>' +
             '</div>').join('') +
         '</div>' +
-    '</section>';
+        '</section>';
 }
 
 function renderDeliverableCard(goal, tasks) {
@@ -271,25 +271,25 @@ function renderDeliverableCard(goal, tasks) {
 
     return '<section class="agent-deliverable-card">' +
         '<div class="agent-deliverable-head">' +
-            '<div class="agent-deliverable-badge-wrap">' +
-                '<span class="agent-deliverable-badge">🎉 全景成果交付草稿 (Staging Deliverable)</span>' +
-                (goal.completed_at ? '<span class="agent-deliverable-time">完成于 ' + escapeHtml(goal.completed_at.slice(11, 19)) + '</span>' : '') +
-            '</div>' +
-            '<div class="agent-deliverable-stats">' +
-                '<span>✅ 任务达成: <strong>' + completedTasks + '/' + totalTasks + '</strong></span>' +
-                '<span>⚡ 工具调用: <strong>' + usedTools + '</strong> 次</span>' +
-                '<span>⏱ 累计耗时: <strong>' + usedSec + 's</strong></span>' +
-            '</div>' +
+        '<div class="agent-deliverable-badge-wrap">' +
+        '<span class="agent-deliverable-badge">🎉 全景成果交付草稿 (Staging Deliverable)</span>' +
+        (goal.completed_at ? '<span class="agent-deliverable-time">完成于 ' + escapeHtml(goal.completed_at.slice(11, 19)) + '</span>' : '') +
+        '</div>' +
+        '<div class="agent-deliverable-stats">' +
+        '<span>✅ 任务达成: <strong>' + completedTasks + '/' + totalTasks + '</strong></span>' +
+        '<span>⚡ 工具调用: <strong>' + usedTools + '</strong> 次</span>' +
+        '<span>⏱ 累计耗时: <strong>' + usedSec + 's</strong></span>' +
+        '</div>' +
         '</div>' +
         '<div class="agent-deliverable-body agent-markdown">' +
-            markdownToHtml(goal.result_md) +
+        markdownToHtml(goal.result_md) +
         '</div>' +
         '<div class="agent-deliverable-actions">' +
-            '<button type="button" class="btn-primary agent-goal-action" data-goal-action="save-draft">📥 一键批准并保存为新笔记</button>' +
-            '<button type="button" class="btn-secondary agent-goal-action" data-goal-action="append-draft">📎 追加到已有笔记</button>' +
-            '<button type="button" class="btn-text agent-deliverable-copy" data-copy-result>📋 复制成果 Markdown</button>' +
+        '<button type="button" class="btn-primary agent-goal-action" data-goal-action="save-draft">📥 一键批准并保存为新笔记</button>' +
+        '<button type="button" class="btn-secondary agent-goal-action" data-goal-action="append-draft">📎 追加到已有笔记</button>' +
+        '<button type="button" class="btn-text agent-deliverable-copy" data-copy-result>📋 复制成果 Markdown</button>' +
         '</div>' +
-    '</section>';
+        '</section>';
 }
 
 function renderTask(task) {
@@ -339,7 +339,7 @@ function renderSteps(steps) {
                 traceHtml = '<div class="agent-step-tool-trace">' +
                     '<span class="tool-trace-label">工具调用 (' + toolTrace.length + ' 次):</span> ' +
                     toolTrace.map((t) => '<code class="agent-trace-pill">' + escapeHtml(t.tool || t.name || 'tool') + '</code>').join(' ') +
-                '</div>';
+                    '</div>';
             }
 
             let errorHtml = '';
@@ -358,27 +358,36 @@ function renderSteps(steps) {
             return '<li class="agent-step agent-step-' + escapeHtml(step.status) + '">' +
                 '<span class="agent-step-dot"></span>' +
                 '<div class="agent-step-body">' +
-                    '<div class="agent-step-title">' +
-                        '<span>第 ' + step.seq + ' 步 · ' + label(step.status) + '</span>' +
-                        workerBadge +
-                        toolBadge +
-                        (duration ? '<span class="agent-step-duration">⏱ ' + duration + '</span>' : '') +
-                        (step.created_at ? '<span class="agent-step-time">' + escapeHtml(step.created_at.slice(11, 19)) + '</span>' : '') +
-                    '</div>' +
-                    inputHtml +
-                    errorHtml +
-                    traceHtml +
-                    (reply ? '<div class="agent-step-preview">' + escapeHtml(reply.slice(0, 160)) + '</div>' : '') +
+                '<div class="agent-step-title">' +
+                '<span>第 ' + step.seq + ' 步 · ' + label(step.status) + '</span>' +
+                workerBadge +
+                toolBadge +
+                (duration ? '<span class="agent-step-duration">⏱ ' + duration + '</span>' : '') +
+                (step.created_at ? '<span class="agent-step-time">' + escapeHtml(step.created_at.slice(11, 19)) + '</span>' : '') +
                 '</div>' +
-            '</li>';
+                inputHtml +
+                errorHtml +
+                traceHtml +
+                (reply ? '<div class="agent-step-preview">' + escapeHtml(reply.slice(0, 160)) + '</div>' : '') +
+                '</div>' +
+                '</li>';
         }).join('') +
-    '</ol></section>';
+        '</ol></section>';
 }
 
 function approvalCopy(item) {
     const payload = item.payload || {};
     const append = item.action_type === 'append_note';
     const send = item.action_type === 'send_bot_message';
+    const choice = item.action_type === 'choose_option';
+    if (choice) {
+        return {
+            title: '【请你拍板】' + (payload.question || '请选择方案'),
+            description: payload.context || payload.description || 'Agent 在执行中需要你做出决策，请从下方选择最佳方案：',
+            approveText: '确认选择',
+            options: Array.isArray(payload.options) ? payload.options : []
+        };
+    }
     return {
         title: send ? '通过微信 Bot 发送' : (append ? '追加到「' + (payload.note_title || '未命名笔记') + '」' : (payload.title || '保存为笔记草稿')),
         description: send
@@ -386,7 +395,8 @@ function approvalCopy(item) {
             : (append
                 ? '把目标结果追加到这篇笔记末尾，不覆盖原文。同意后只写一次。'
                 : '把目标结果保存为一条笔记草稿。同意后只写一次。'),
-        approveText: send ? '同意并发送' : (append ? '同意并追加' : '同意并保存')
+        approveText: send ? '同意并发送' : (append ? '同意并追加' : '同意并保存'),
+        options: []
     };
 }
 
@@ -395,12 +405,25 @@ function renderApprovals(approvals) {
     if (!pending.length) return '';
     return '<section class="agent-goal-section"><h4>待审批</h4>' + pending.map((item) => {
         const copy = approvalCopy(item);
+        const isChoice = item.action_type === 'choose_option';
+        let actionsHtml = '';
+        if (isChoice && copy.options.length) {
+            actionsHtml = '<div class="agent-choice-options">' +
+                copy.options.map((opt, idx) =>
+                    '<button type="button" class="btn-secondary agent-choice-btn" data-approval-id="' + item.id + '" data-decision="approve" data-choice-index="' + idx + '" data-action-type="choose_option">' +
+                    (idx + 1) + '. ' + escapeHtml(opt) + '</button>'
+                ).join('') +
+                '<button type="button" class="btn-text text-danger" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="choose_option">拒绝所有方案</button>' +
+                '</div>';
+        } else {
+            actionsHtml = '<div class="agent-approval-actions">' +
+                '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">拒绝</button>' +
+                '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">' + escapeHtml(copy.approveText) + '</button>' +
+                '</div>';
+        }
         return '<div class="agent-approval"><div><strong>' + escapeHtml(copy.title) + '</strong>' +
             '<p>' + escapeHtml(copy.description) + '</p></div>' +
-            '<div class="agent-approval-actions">' +
-            '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">拒绝</button>' +
-            '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">' + escapeHtml(copy.approveText) + '</button>' +
-            '</div></div>';
+            actionsHtml + '</div>';
     }).join('') + '</section>';
 }
 
@@ -430,22 +453,22 @@ function renderDetail(data) {
 
     const editPanel = ['draft', 'planned', 'failed', 'paused'].includes(goal.status)
         ? '<div class="agent-edit-panel" id="agent-edit-panel" hidden>' +
-            '<p class="agent-edit-hint">保存后会重置计划为草稿，需要重新生成计划。</p>' +
-            '<input type="text" id="agent-edit-title" class="agent-goal-title-input" maxlength="80" value="' + escapeHtml(goal.title) + '" aria-label="目标标题">' +
-            '<textarea id="agent-edit-desc" class="agent-goal-desc-input" maxlength="4000" rows="2" aria-label="目标说明">' + escapeHtml(goal.description || '') + '</textarea>' +
-            '<div class="agent-edit-actions">' +
-            '<button type="button" class="btn-text" data-edit-cancel>取消</button>' +
-            '<button type="button" class="btn-primary" data-edit-submit>保存并重置计划</button>' +
-            '</div></div>'
+        '<p class="agent-edit-hint">保存后会重置计划为草稿，需要重新生成计划。</p>' +
+        '<input type="text" id="agent-edit-title" class="agent-goal-title-input" maxlength="80" value="' + escapeHtml(goal.title) + '" aria-label="目标标题">' +
+        '<textarea id="agent-edit-desc" class="agent-goal-desc-input" maxlength="4000" rows="2" aria-label="目标说明">' + escapeHtml(goal.description || '') + '</textarea>' +
+        '<div class="agent-edit-actions">' +
+        '<button type="button" class="btn-text" data-edit-cancel>取消</button>' +
+        '<button type="button" class="btn-primary" data-edit-submit>保存并重置计划</button>' +
+        '</div></div>'
         : '';
     const appendPanel = goal.status === 'completed' && goal.result_md
         ? '<div class="agent-append-panel" id="agent-append-panel" hidden>' +
-            '<p class="agent-append-hint">选择一篇笔记，创建审批；同意后只把目标结果追加到末尾，不覆盖原文。</p>' +
-            '<select id="agent-append-note" class="agent-append-select" aria-label="选择要追加的笔记"><option value="">加载中…</option></select>' +
-            '<div class="agent-append-actions">' +
-            '<button type="button" class="btn-text" data-append-cancel>取消</button>' +
-            '<button type="button" class="btn-primary" data-append-submit>创建追加审批</button>' +
-            '</div></div>'
+        '<p class="agent-append-hint">选择一篇笔记，创建审批；同意后只把目标结果追加到末尾，不覆盖原文。</p>' +
+        '<select id="agent-append-note" class="agent-append-select" aria-label="选择要追加的笔记"><option value="">加载中…</option></select>' +
+        '<div class="agent-append-actions">' +
+        '<button type="button" class="btn-text" data-append-cancel>取消</button>' +
+        '<button type="button" class="btn-primary" data-append-submit>创建追加审批</button>' +
+        '</div></div>'
         : '';
     const result = goal.result_md
         ? (goal.status === 'completed'
@@ -454,8 +477,8 @@ function renderDetail(data) {
         : '';
     const error = goal.error
         ? '<div class="agent-goal-error"><strong>⚠️ 中断原因：</strong>' + escapeHtml(goal.error) +
-            (hasBlocked ? '<p class="agent-goal-error-tip">检测到任务执行受阻，可点击下方“重新规划剩余”调整后续策略，保留已完成阶段性结果。</p>' : '') +
-          '</div>'
+        (hasBlocked ? '<p class="agent-goal-error-tip">检测到任务执行受阻，可点击下方“重新规划剩余”调整后续策略，保留已完成阶段性结果。</p>' : '') +
+        '</div>'
         : '';
 
     setHtml(detailPane,
@@ -513,16 +536,29 @@ function renderInbox(data) {
         approvals.map((item) => {
             const payload = item.payload || {};
             const copy = approvalCopy(item);
+            const isChoice = item.action_type === 'choose_option';
+            let actionsHtml = '';
+            if (isChoice && copy.options.length) {
+                actionsHtml = '<div class="agent-choice-options">' +
+                    copy.options.map((opt, idx) =>
+                        '<button type="button" class="btn-secondary agent-choice-btn" data-approval-id="' + item.id + '" data-decision="approve" data-choice-index="' + idx + '" data-action-type="choose_option">' +
+                        (idx + 1) + '. ' + escapeHtml(opt) + '</button>'
+                    ).join('') +
+                    '<button type="button" class="btn-text text-danger" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="choose_option">拒绝所有方案</button>' +
+                    '</div>';
+            } else {
+                actionsHtml = '<div class="agent-inbox-actions">' +
+                    '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">拒绝</button>' +
+                    '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">' + escapeHtml(copy.approveText) + '</button>' +
+                    '</div>';
+            }
             return '<div class="agent-inbox-item">' +
                 '<div class="agent-inbox-meta"><button type="button" class="btn-text agent-inbox-goal" data-inbox-goal="' + item.goal_id + '">' +
                 escapeHtml(item.goal_title || '未命名目标') + '</button>' +
                 '<span>' + escapeHtml(item.requested_at || '') + '</span></div>' +
                 '<strong>' + escapeHtml(copy.title) + '</strong>' +
                 (payload.preview ? '<p class="agent-inbox-preview">' + escapeHtml(payload.preview) + '</p>' : '') +
-                '<div class="agent-inbox-actions">' +
-                '<button type="button" class="btn-text" data-approval-id="' + item.id + '" data-decision="reject" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">拒绝</button>' +
-                '<button type="button" class="btn-primary" data-approval-id="' + item.id + '" data-decision="approve" data-action-type="' + escapeHtml(item.action_type || 'save_note') + '">' + escapeHtml(copy.approveText) + '</button>' +
-                '</div></div>';
+                actionsHtml + '</div>';
         }).join('') +
         (remaining ? '<p class="agent-inbox-more">还有 ' + remaining + ' 条，先处理上面的即可。</p>' : '')
     );
@@ -559,7 +595,7 @@ function showList() {
     detailPane.hidden = true;
     listPane.hidden = false;
     refreshList().catch((err) => showToast(err.message || '目标列表加载失败', 'error'));
-    refreshInbox().catch(() => {});
+    refreshInbox().catch(() => { });
 }
 
 async function postGoal(path, timeout = 65000) {
@@ -625,13 +661,13 @@ async function runAction(action) {
             showToast('已发起保存审批，请在下方确认', 'success');
             data = await apiRequest('/api/agent/goals/' + goalId, { timeout: 30000 });
             renderDetail(data);
-            void refreshInbox().catch(() => {});
+            void refreshInbox().catch(() => { });
             return;
         } else {
             return;
         }
         renderDetail(data);
-        void refreshList().catch(() => {});
+        void refreshList().catch(() => { });
 
         // 后台 cron 可能已经接管下一个任务：此时 run 仍是 running，
         // 页面不要再用 continue 追着打（任务认领会互相让路，连发只会得到空快照）。
@@ -643,12 +679,12 @@ async function runAction(action) {
             if (token !== autoToken) break;
             data = await postGoal('/api/agent/goals/' + goalId + '/continue');
             renderDetail(data);
-            void refreshList().catch(() => {});
+            void refreshList().catch(() => { });
         }
     } catch (err) {
         showToast(err.message || '目标操作失败', 'error');
         if (currentGoalId) {
-            try { await openGoal(currentGoalId); } catch (_) {}
+            try { await openGoal(currentGoalId); } catch (_) { }
         }
     } finally {
         if (token === autoToken) busy = false;
@@ -677,7 +713,7 @@ async function saveGoalEdit() {
             timeout: 30000
         });
         renderDetail(data);
-        void refreshList().catch(() => {});
+        void refreshList().catch(() => { });
         showToast('目标已更新，请重新生成计划', 'success');
     } catch (err) {
         showToast(err.message || '保存目标失败', 'error');
@@ -700,25 +736,31 @@ async function retryTask(taskId) {
     }
 }
 
-async function decideApproval(approvalId, decision, goalId = null, actionType = 'save_note') {
-    if (busy || isRapidClick('approval:' + approvalId + ':' + decision)) return;
+async function decideApproval(approvalId, decision, goalId = null, actionType = 'save_note', extraPayload = {}) {
+    const choiceKey = extraPayload.choice_index !== undefined ? ':' + extraPayload.choice_index : '';
+    if (busy || isRapidClick('approval:' + approvalId + ':' + decision + choiceKey)) return;
     busy = true;
     const targetGoalId = goalId || currentGoalId;
     try {
         await apiRequest('/api/agent/approvals/' + approvalId, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ decision }),
+            body: JSON.stringify({ decision, ...extraPayload }),
             timeout: 30000
         });
-        const approvedText = actionType === 'append_note' ? '已追加到笔记' : '已保存为笔记草稿';
-        showToast(decision === 'approve' ? approvedText : '已拒绝保存', 'success');
+        let approvedText = '已保存为笔记草稿';
+        if (actionType === 'choose_option') {
+            approvedText = decision === 'approve' ? '已确认方案，Agent 正在继续推进' : '已拒绝方案';
+        } else if (actionType === 'append_note') {
+            approvedText = '已追加到笔记';
+        }
+        showToast(decision === 'approve' ? approvedText : (actionType === 'choose_option' ? '已拒绝方案' : '已拒绝保存'), 'success');
         if (targetGoalId && currentGoalId === targetGoalId) {
             await openGoal(targetGoalId);
         } else {
-            await refreshList().catch(() => {});
+            await refreshList().catch(() => { });
         }
-        await refreshInbox().catch(() => {});
+        await refreshInbox().catch(() => { });
     } catch (err) {
         showToast(err.message || '审批失败', 'error');
     } finally {
@@ -775,8 +817,8 @@ async function submitAppendDraft() {
         showToast('已创建追加审批，去收件箱同意后生效', 'success');
         const data = await apiRequest('/api/agent/goals/' + goalId, { timeout: 30000 });
         renderDetail(data);
-        void refreshInbox().catch(() => {});
-        void refreshList().catch(() => {});
+        void refreshInbox().catch(() => { });
+        void refreshList().catch(() => { });
     } catch (err) {
         showToast(err.message || '创建追加审批失败', 'error');
     } finally {
@@ -816,7 +858,7 @@ function bindEvents() {
             descInput.value = '';
             currentGoalId = data.goal.id;
             renderDetail(data);
-            void refreshList().catch(() => {});
+            void refreshList().catch(() => { });
             try {
                 const planned = await postGoal('/api/agent/goals/' + currentGoalId + '/plan', 65000);
                 renderDetail(planned);
@@ -880,11 +922,17 @@ function bindEvents() {
         }
         const approval = target.closest('[data-approval-id]');
         if (approval) {
+            const extra = {};
+            const choiceIdx = approval.getAttribute('data-choice-index');
+            if (choiceIdx !== null && choiceIdx !== undefined && choiceIdx !== '') {
+                extra.choice_index = Number(choiceIdx);
+            }
             await decideApproval(
                 approval.getAttribute('data-approval-id'),
                 approval.getAttribute('data-decision'),
                 null,
-                approval.getAttribute('data-action-type') || 'save_note'
+                approval.getAttribute('data-action-type') || 'save_note',
+                extra
             );
         }
     });
@@ -911,11 +959,17 @@ function bindEvents() {
         }
         const approval = target.closest('[data-approval-id]');
         if (approval) {
+            const extra = {};
+            const choiceIdx = approval.getAttribute('data-choice-index');
+            if (choiceIdx !== null && choiceIdx !== undefined && choiceIdx !== '') {
+                extra.choice_index = Number(choiceIdx);
+            }
             await decideApproval(
                 approval.getAttribute('data-approval-id'),
                 approval.getAttribute('data-decision'),
                 null,
-                approval.getAttribute('data-action-type') || 'save_note'
+                approval.getAttribute('data-action-type') || 'save_note',
+                extra
             );
         }
     });
@@ -935,10 +989,10 @@ export function initAgentGoals() {
     autoSendInput = document.getElementById('agent-goal-auto-send');
     if (!listPane || !detailPane || !listEl || !form || !titleInput || !descInput) return;
     bindEvents();
-    refreshInbox().catch(() => {});
+    refreshInbox().catch(() => { });
     if (!badgeTimer) {
         badgeTimer = setInterval(() => {
-            if (!document.hidden) refreshInbox().catch(() => {});
+            if (!document.hidden) refreshInbox().catch(() => { });
         }, 60000);
     }
 }

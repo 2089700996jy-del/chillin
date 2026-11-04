@@ -170,6 +170,14 @@ export async function createGoal(db, userId, payload = {}) {
     return getSnapshot(db, userId, row.id);
 }
 
+export function coalesceGoalDescriptions(existing, addition) {
+    const prev = String(existing || '').trim();
+    const next = String(addition || '').trim();
+    if (!prev) return next;
+    if (!next || prev === next || prev.includes(next)) return prev;
+    return (prev + '\n\n' + next).slice(0, 4000);
+}
+
 export async function updateGoal(db, userId, goalId, payload = {}) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
@@ -178,7 +186,9 @@ export async function updateGoal(db, userId, goalId, payload = {}) {
     }
     if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '已结束的目标不能修改', 'GOAL_CLOSED');
     const title = payload.title == null ? goal.title : cleanText(payload.title, 80);
-    const description = payload.description == null ? goal.description : cleanMultiline(payload.description, 4000);
+    const description = payload.coalesce
+        ? coalesceGoalDescriptions(goal.description, payload.description)
+        : (payload.description == null ? goal.description : cleanMultiline(payload.description, 4000));
     if (!title) throw new AgentError(400, '目标标题不能为空', 'GOAL_TITLE_REQUIRED');
     const autoSend = payload.auto_send === undefined
         ? Number(goal.auto_send || 0)

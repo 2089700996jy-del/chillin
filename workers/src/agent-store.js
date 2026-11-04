@@ -278,10 +278,12 @@ export async function listApprovalInbox(db, userId, limit = 20) {
             goal_title: cleanText(row.goal_title, 80),
             payload: {
                 title: cleanText(payload.title, 80),
-                preview: cleanText(payload.content, 180),
+                preview: cleanText(payload.content || payload.context, 180),
                 content_length: String(payload.content || '').length,
                 note_id: Number(payload.note_id) || 0,
-                note_title: cleanText(payload.note_title, 80)
+                note_title: cleanText(payload.note_title, 80),
+                question: cleanText(payload.question, 200),
+                options: Array.isArray(payload.options) ? payload.options.map((o) => cleanText(o, 80)) : []
             }
         };
     });
