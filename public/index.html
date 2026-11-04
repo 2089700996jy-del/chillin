@@ -12,6 +12,8 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="Chillin">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="application-name" content="Chillin">
     <title>Chillin</title>
     <!-- iOS 主屏幕 PWA：尽早打标，避免顶栏/底栏安全区闪一下 -->
     <!-- 应用级主题：在任何绘制之前定好亮/暗，深色偏好用户不会看到首帧白屏（读写逻辑见 js/utils.js） -->
@@ -34,9 +36,9 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.223">
+    <link rel="stylesheet" href="style.css?v=2.5.224">
     <!-- 首屏入口预热：只提前拉 app.js（14.7KB）。实测 4/12 个模块的 modulepreload 会抢 249KB CSS 的带宽，反而拖慢 LCP -->
-    <link rel="modulepreload" href="/app.js?v=2.5.223">
+    <link rel="modulepreload" href="/app.js?v=2.5.224">
 </head>
 <body>
 
@@ -305,7 +307,7 @@
             </div>
             <div class="notion-collection-gallery" id="gallery-container"></div>
             <div id="weekly-load-more-container" class="weekly-load-more-slot"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.223</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.224</button>
         </section>
 
         <!-- ========================================== -->
@@ -530,7 +532,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.223</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.224</button>
         </section>
 
         <!-- ========================================== -->
@@ -676,7 +678,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.223</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.224</button>
         </section>
 
         <!-- ========================================== -->
@@ -824,7 +826,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.223</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.224</button>
         </section>
 
         <!-- ========================================== -->
@@ -866,6 +868,7 @@
                 <textarea id="feed-input-text" class="feed-textarea" placeholder="在此倾倒你的零碎想法、网页链接或灵感片段..." rows="3" aria-label="随手记内容"></textarea>
                 <div class="feed-input-toolbar">
                     <div class="feed-tools">
+                        <button type="button" class="btn-chip btn-chip-todo" id="btn-chip-todo" data-action="insert-todo">+ 待办</button>
                         <button class="btn-chip" data-tag="#技术">#技术</button>
                         <button class="btn-chip" data-tag="#生活">#生活</button>
                         <button class="btn-chip" data-tag="#灵感">#灵感</button>
@@ -885,6 +888,24 @@
                         <img id="feed-media-preview-img" alt="预览" style="max-height:140px; border-radius:10px; object-fit:cover;">
                         <button id="btn-feed-remove-media" style="position:absolute; top:-8px; right:-8px; background:var(--danger-color); color:white; border:none; border-radius:50%; width:24px; height:24px; cursor:pointer;">×</button>
                     </div>
+                </div>
+            </div>
+
+            <!-- 今日待办与闭环看板 (Today Todos & Wins) -->
+            <div class="today-todos-card" id="today-todos-widget" style="display:none;">
+                <div class="today-todos-header" id="today-todos-header">
+                    <div class="today-todos-left">
+                        <span class="today-todos-icon" aria-hidden="true">🎯</span>
+                        <span class="today-todos-title">今日待办与闭环</span>
+                        <span class="today-todos-badge" id="today-todos-badge-pending">0 待办</span>
+                        <span class="today-todos-badge today-todos-badge--done" id="today-todos-badge-done">0 完成</span>
+                    </div>
+                    <button type="button" class="today-todos-toggle-btn" id="btn-toggle-today-todos" aria-label="收起或展开待办">
+                        <svg class="today-todos-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                </div>
+                <div class="today-todos-body" id="today-todos-body">
+                    <div class="today-todos-list" id="today-todos-list"></div>
                 </div>
             </div>
 
@@ -940,7 +961,7 @@
                 <span class="timeline-filter__count" data-date-count aria-live="polite"></span>
             </div>
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.223</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.224</button>
         </section>
 
     </main>
@@ -1589,7 +1610,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.223"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.224"></script>
     <!-- 同步冲突保护：本地/云端版本不静默覆盖 -->
     <div id="sync-conflict-banner" class="sync-conflict-banner" hidden>
         <button type="button" id="sync-conflict-open" class="sync-conflict-banner-btn" aria-label="处理同步冲突">
@@ -1614,6 +1635,6 @@
             </details>
         </div>
     </div>
-    <script type="module" src="app.js?v=2.5.223"></script>
+    <script type="module" src="app.js?v=2.5.224"></script>
 </body>
 </html>

@@ -170,3 +170,30 @@ test('Search - 支持初始查询参数并挂载到 actions 注册表供标签�
     assert.match(actionsSrc, /openGlobalSearch: null/, 'actions 注册表应声明 openGlobalSearch 占位');
     assert.match(appSrc, /actions\.openGlobalSearch\(tag\)/, 'app.js 应委托标签点击触发全局搜索');
 });
+
+test('Feeds - 待办 Markdown 一键点选与今日闭环渲染（Interactive Checkbox）', async () => {
+    const { renderFeedContentHtml } = await import('../public/js/feeds.js');
+    assert.equal(typeof renderFeedContentHtml, 'function');
+
+    // 未完成待办
+    const pendingHtml = renderFeedContentHtml('[ ] 去超市买牛奶');
+    assert.match(pendingHtml, /feed-todo-line/);
+    assert.match(pendingHtml, /feed-todo-checkbox/);
+    assert.ok(!pendingHtml.includes('is-checked'));
+    assert.ok(!pendingHtml.includes('is-completed'));
+    assert.match(pendingHtml, /去超市买牛奶/);
+
+    // 已完成待办 [x] 与 ✅
+    const doneHtml1 = renderFeedContentHtml('[x] 买鸡蛋');
+    assert.match(doneHtml1, /feed-todo-checkbox is-checked/);
+    assert.match(doneHtml1, /feed-todo-line is-completed/);
+
+    const doneHtml2 = renderFeedContentHtml('✅ 晨跑 5 公里');
+    assert.match(doneHtml2, /feed-todo-checkbox is-checked/);
+    assert.match(doneHtml2, /feed-todo-line is-completed/);
+
+    // 普通文本不产生待办控件
+    const plainHtml = renderFeedContentHtml('今天天气真好\n分享一个链接 https://example.com');
+    assert.ok(!plainHtml.includes('feed-todo-checkbox'));
+    assert.match(plainHtml, /<a href="https:\/\/example\.com"/);
+});

@@ -21,6 +21,29 @@ export function shouldRenderCompactFeed(feed, linkHtml, contentText) {
     if (feed.media_url || linkHtml) return false;
     return String(contentText || '').trim().length <= COMPACT_FEED_MAX_CHARS;
 }
+
+export function renderFeedContentHtml(contentText) {
+    if (!contentText) return '';
+    const lines = String(contentText).split('\n');
+    return lines.map((line, idx) => {
+        const m = line.match(/^(\s*(?:[-*]\s*)?)(?:\[([ xX])\]|(✅))\s*(.*)$/);
+        if (m) {
+            const prefix = m[1] || '';
+            const isDone = (m[2] && m[2].toLowerCase() === 'x') || Boolean(m[3]);
+            const body = m[4] || '';
+            const rawBody = escapeHtml(body).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+            const linkedBody = actions.parseWikilinksToHtml ? actions.parseWikilinksToHtml(rawBody, true) : rawBody;
+            return `${escapeHtml(prefix)}<div class="feed-todo-line ${isDone ? 'is-completed' : ''}" data-todo-line="${idx}">` +
+                `<button type="button" class="feed-todo-checkbox ${isDone ? 'is-checked' : ''}" data-action="toggle-todo" data-todo-line="${idx}" aria-label="${isDone ? '取消完成' : '标记为已完成'}">` +
+                `<svg class="feed-todo-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>` +
+                `</button>` +
+                `<span class="feed-todo-text">${linkedBody}</span>` +
+                `</div>`;
+        }
+        const raw = escapeHtml(line).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        return actions.parseWikilinksToHtml ? actions.parseWikilinksToHtml(raw, true) : raw;
+    }).join('\n');
+}
 export function initFeeds() {
 // 1. Render Feeds Stream (随手记流)
 function extractUrlFromText(text) {
@@ -233,9 +256,7 @@ function renderFeeds() {
 
         let textHtml = '';
         if (contentText) {
-            const rawFormatted = escapeHtml(contentText).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
-            const formattedContent = actions.parseWikilinksToHtml ? actions.parseWikilinksToHtml(rawFormatted, true) : rawFormatted;
-            textHtml = `<div class="feed-content-text">${formattedContent}</div>`;
+            textHtml = `<div class="feed-content-text">${renderFeedContentHtml(contentText)}</div>`;
         }
 
         const compact = shouldRenderCompactFeed(feed, linkHtml, contentText);
@@ -270,6 +291,62 @@ function renderFeeds() {
         container.appendChild(more);
         observeLoadMore(more);
     }
+
+    renderTodayTodosWidget();
+}
+
+function renderTodayTodosWidget() {
+    const widget = document.getElementById('today-todos-widget');
+    const listEl = document.getElementById('today-todos-list');
+    const badgePending = document.getElementById('today-todos-badge-pending');
+    const badgeDone = document.getElementById('today-todos-badge-done');
+    if (!widget || !listEl) return;
+
+    const todayStr = getEast8Time().slice(0, 10);
+    const pendingItems = [];
+    const doneItems = [];
+
+    const feeds = state.feedsDatabase || [];
+    for (const feed of feeds) {
+        if (!feed || !feed.content) continue;
+        const feedDate = (feed.created_at || feed.updated_at || '').slice(0, 10);
+        const isToday = feedDate === todayStr;
+        const lines = String(feed.content).split('\n');
+        lines.forEach((line, lineIdx) => {
+            const m = line.match(/^(\s*(?:[-*]\s*)?)(?:\[([ xX])\]|(✅))\s*(.*)$/);
+            if (!m) return;
+            const isDone = (m[2] && m[2].toLowerCase() === 'x') || Boolean(m[3]);
+            const body = m[4] || '';
+            if (!isDone) {
+                pendingItems.push({ feedId: feed.id, lineIdx, body, isDone: false });
+            } else if (isToday) {
+                doneItems.push({ feedId: feed.id, lineIdx, body, isDone: true });
+            }
+        });
+    }
+
+    if (pendingItems.length === 0 && doneItems.length === 0) {
+        widget.style.display = 'none';
+        return;
+    }
+
+    widget.style.display = 'block';
+    if (badgePending) badgePending.textContent = `${pendingItems.length} 待办`;
+    if (badgeDone) badgeDone.textContent = `${doneItems.length} 完成`;
+
+    const allItems = [...pendingItems, ...doneItems];
+    setHtml(listEl, allItems.map(item => {
+        const raw = escapeHtml(item.body).replace(/(https?:\/\/[a-zA-Z0-9\-._~:/?#[\]@!$&'()*+,;=%]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer">$1</a>');
+        const text = actions.parseWikilinksToHtml ? actions.parseWikilinksToHtml(raw, true) : raw;
+        return `
+            <div class="today-todo-row ${item.isDone ? 'is-completed' : ''}">
+                <button type="button" class="feed-todo-checkbox ${item.isDone ? 'is-checked' : ''}" data-action="toggle-todo" data-feed-id="${escapeHtml(String(item.feedId))}" data-todo-line="${item.lineIdx}" aria-label="${item.isDone ? '取消完成' : '标记为已完成'}">
+                    <svg class="feed-todo-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                </button>
+                <span class="feed-todo-text">${text}</span>
+            </div>
+        `;
+    }).join(''));
 }
 
 // 2. Add Feed Handler
@@ -326,6 +403,21 @@ document.querySelectorAll('.feed-tools .btn-chip[data-tag]').forEach(chip => {
     });
 });
 
+const chipTodo = document.getElementById('btn-chip-todo');
+if (chipTodo && feedInputText) {
+    chipTodo.addEventListener('click', () => {
+        const val = feedInputText.value;
+        if (!val.trim()) {
+            feedInputText.value = '[ ] ';
+        } else if (!val.endsWith('\n')) {
+            feedInputText.value += '\n[ ] ';
+        } else {
+            feedInputText.value += '[ ] ';
+        }
+        feedInputText.focus();
+    });
+}
+
 async function sendFeed() {
     if (!feedInputText) return;
     const content = feedInputText.value.trim();
@@ -376,6 +468,10 @@ async function sendFeed() {
     btnSendFeed.disabled = false;
     btnSendFeed.innerText = '发送';
 
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        showToast('已暂存本地，恢复网络后将自动同步', 'info');
+    }
+
     // Sync with Cloudflare Worker API
     try {
         const apiRes = await apiRequest('/api/feeds', {
@@ -394,6 +490,7 @@ async function sendFeed() {
         }
     } catch (err) {
         console.warn('Silent feed sync failed:', err);
+        showToast('网络较弱，已暂存本地待同步', 'info');
     }
 }
 
@@ -409,9 +506,44 @@ if (feedInputText) {
     });
 }
 
+function handleTodoToggle(todoBtn) {
+    if (!todoBtn) return;
+    if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try { navigator.vibrate(10); } catch {}
+    }
+    const feedCard = todoBtn.closest('.feed-item-card');
+    const feedId = todoBtn.dataset.feedId || feedCard?.dataset?.feedId;
+    const lineIdx = Number(todoBtn.dataset.todoLine);
+    const feed = state.feedsDatabase.find(f => String(f.id) === String(feedId));
+    if (!feed) return;
+    const lines = (feed.content || '').split('\n');
+    if (lineIdx < 0 || lineIdx >= lines.length) return;
+    const targetLine = lines[lineIdx];
+    const m = targetLine.match(/^(\s*(?:[-*]\s*)?)(?:\[([ xX])\]|(✅))\s*(.*)$/);
+    if (!m) return;
+    const prefix = m[1] || '';
+    const wasDone = (m[2] && m[2].toLowerCase() === 'x') || Boolean(m[3]);
+    const body = m[4] || '';
+    lines[lineIdx] = wasDone ? `${prefix}[ ] ${body}` : `${prefix}[x] ${body}`;
+    feed.content = lines.join('\n');
+    stampLocalUpdate(feed);
+    saveFeedsDatabase();
+    renderFeeds();
+    actions.renderHeatmap?.();
+    apiSyncFeed(feed, 'PUT');
+}
+
 const feedsStreamContainer = document.getElementById('feeds-stream-container');
 if (feedsStreamContainer) {
     feedsStreamContainer.addEventListener('click', (e) => {
+        const todoBtn = e.target.closest('[data-action="toggle-todo"]');
+        if (todoBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleTodoToggle(todoBtn);
+            return;
+        }
+
         const copyBtn = e.target.closest('.feed-copy-btn');
         if (copyBtn && copyBtn.dataset.feedId) {
             e.preventDefault();
@@ -432,6 +564,23 @@ if (feedsStreamContainer) {
             e.preventDefault();
             e.stopPropagation();
             window.deleteFeed(deleteBtn.dataset.feedId);
+        }
+    });
+}
+
+const todayTodosWidget = document.getElementById('today-todos-widget');
+if (todayTodosWidget) {
+    todayTodosWidget.addEventListener('click', (e) => {
+        const todoBtn = e.target.closest('[data-action="toggle-todo"]');
+        if (todoBtn) {
+            e.preventDefault();
+            e.stopPropagation();
+            handleTodoToggle(todoBtn);
+            return;
+        }
+        const toggleHeader = e.target.closest('#btn-toggle-today-todos, #today-todos-header');
+        if (toggleHeader) {
+            todayTodosWidget.classList.toggle('is-collapsed');
         }
     });
 }
@@ -566,6 +715,7 @@ function renderHeatmap() {
 
 
     actions.renderFeeds = renderFeeds;
+    actions.renderTodayTodos = renderTodayTodosWidget;
     actions.renderHeatmap = renderHeatmap;
     actions.ensureItemRendered = ensureFeedRendered;
 

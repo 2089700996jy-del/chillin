@@ -21,6 +21,7 @@ export const actions = {
     openPromptEditor: null,
     sendToAiChat: null,
     renderFeeds: null,
+    renderTodayTodos: null,
     renderHeatmap: null,
     /** 让分页列表把某个条目纳入渲染窗口（搜索跳转用）；返回是否真的重渲染过 */
     ensureItemRendered: null,

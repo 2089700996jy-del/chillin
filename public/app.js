@@ -250,6 +250,16 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    // 📱 移动端轻按空白区快速收起软键盘（对标原生 App 顺滑交互）
+    document.addEventListener('pointerdown', (e) => {
+        const active = document.activeElement;
+        if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+            if (!e.target.closest('input, textarea, button, .feed-input-card, .ai-chat-card, .modal-card, .prompt-modal')) {
+                active.blur();
+            }
+        }
+    }, { passive: true });
+
     const safeInit = (name, fn) => {
         try {
             const result = fn();

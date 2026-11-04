@@ -156,7 +156,7 @@ test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async
     const gzipSize = async (p) => zlib.gzipSync(await fs.readFile(p)).length;
 
     const BUDGET = {
-        jsTotalGzip: 180 * 1024,   // 当前实测 178.0 KB；新增 Autoloop 标签隔离、自主休眠、消抖合并与选择题表单交互
+        jsTotalGzip: 182 * 1024,   // 当前实测 180.6 KB；新增 Web 待办一键打勾、今日闭环看板与离线弱网感知
         cssTotalGzip: 52 * 1024,   // 当前实测 50.4 KB；新增 Super-Agent 协同路由矩阵与多 Worker 槽位样式
         singleFileGzip: 20 * 1024  // 当前最大是 public/js/reader.js 13.6 KB
     };

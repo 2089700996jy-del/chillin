@@ -337,10 +337,10 @@ export async function runCommand(env, db, userId, content) {
         if (fireAtMs) {
             const body = cleanReminderText(todoText);
             const created = await createReminderAt(db, userId, body, fireAtMs, nowMs);
-            return created.duplicated ? created.reply : ('已设待办提醒 ⏰\n> ' + formatReminderTime(fireAtMs, nowMs) + ' — ' + body + '\n\n到点我会在微信里提醒你；做完回复「完成」即可划掉打勾。');
+            return created.duplicated ? created.reply : ('已设待办提醒 ⏰\n> ' + formatReminderTime(fireAtMs, nowMs) + ' — ' + body);
         }
         await saveFeed(db, userId, '[ ] ' + todoText);
-        return '已记入待办 ✅\n> [ ] ' + todoText + '\n\n做完后对我说「完成 ' + (todoText.length > 12 ? todoText.slice(0, 10) + '…' : todoText) + '」，我帮你划掉打勾。发「待办」看列表。';
+        return '已记入待办 ✅\n> [ ] ' + todoText;
     }
 
     // 完成待办/提醒关键词核销
