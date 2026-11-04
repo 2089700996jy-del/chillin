@@ -7,6 +7,7 @@
 import { apiRequest } from './api.js';
 import { escapeHtml, showToast, markdownToHtml, confirmDialog } from './utils.js';
 import { setHtml } from './trusted-types.js';
+import { actions } from './actions.js';
 
 const STATUS_LABELS = {
     draft: '草稿',
@@ -989,6 +990,7 @@ export function initAgentGoals() {
     autoSendInput = document.getElementById('agent-goal-auto-send');
     if (!listPane || !detailPane || !listEl || !form || !titleInput || !descInput) return;
     bindEvents();
+    actions.refreshAgentInbox = refreshInbox;
     refreshInbox().catch(() => { });
     if (!badgeTimer) {
         badgeTimer = setInterval(() => {

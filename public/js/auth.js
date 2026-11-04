@@ -8,6 +8,7 @@ import { state } from './state.js';
 import { setHtml } from './trusted-types.js';
 import { downloadBackupZip, sendBackupByEmail, setBackupGuardSettings, updateBackupGuardUI } from './backup.js';
 import { getStorageEstimate } from './db.js';
+import { actions } from './actions.js';
 
 let hooks = {
     onRefresh: (_kind, _opts) => {},
@@ -138,14 +139,20 @@ function clearSyncCursorsForUser(userId) {
 export function checkAuth() {
     const authOverlay = document.getElementById('auth-overlay');
     const navUsername = document.getElementById('nav-username');
+    const agentBadge = document.getElementById('agent-pending-badge');
     if (!state.authToken && !state.cookieSession) {
         authOverlay?.classList.remove('hidden');
         document.body.classList.add('not-authenticated');
+        if (agentBadge) {
+            agentBadge.hidden = true;
+            agentBadge.textContent = '0';
+        }
         return false;
     }
     authOverlay?.classList.add('hidden');
     document.body.classList.remove('not-authenticated');
     if (state.authUser && navUsername) navUsername.innerText = `Hi, ${state.authUser.username}`;
+    if (actions.refreshAgentInbox) actions.refreshAgentInbox().catch(() => {});
     return true;
 }
 

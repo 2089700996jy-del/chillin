@@ -1,19 +1,8 @@
 /**
- * 微信 ClawBot 接入层（官方 iLink 协议）——让 Chillin Worker 直接当 ClawBot 后端，不需要 OpenClaw/常驻机器。
- * 协议依据：官方仓库 Tencent/openclaw-weixin 的 docs/protocol.md 与原客户端 src 实现（非逆向）。
- *   传输：https://ilinkai.weixin.qq.com，POST + JSON，Authorization: Bearer <bot_token>
- *   登录：POST /ilink/bot/get_bot_qrcode?bot_type=3 -> 二维码；
- *         GET  /ilink/bot/get_qrcode_status?qrcode=… -> wait|scaned|confirmed|expired…
- *   收信：POST /ilink/bot/getupdates（长轮询，实测无消息时服务端约 18s 返回），
- *         响应里的 get_updates_buf 是必须持久化的游标。
- *   回信：POST /ilink/bot/sendmessage。带上来信消息的 context_token 表示「接着这句话回」；
- *         2026-11 实测空 context_token 可能返回 200 + ret=-2 prepare failed，因此主动发送使用最近入站 token，
- *         这是 bot-outreach 主动关怀的传输基础。
- * 分层：传输层是上面几个可注入 fetchImpl 的纯函数；
- * 接入层 /api/bot/claw/* 挂在登录态鉴权之后；每分钟 cron 走 pollClawAccounts 收信，业务指令复用 bot-commands。
- * - 凭证：bot_token 只存 D1、只在服务端使用，任何 API 响应都不返回。
- * 扫码异常：scaned_but_redirect 换到 redirect_host 继续轮询（只接受微信域名）；binded_redirect /
- * need_verifycode / verify_code_blocked / 未知状态都清二维码并给出下一步，不假装成功。
+ * 微信 ClawBot 接入层（官方 iLink 协议）：纯 Worker 长轮询与收发，无需 OpenClaw 常驻机器。
+ * 传输：https://ilinkai.weixin.qq.com，POST + JSON，Authorization: Bearer <bot_token>
+ * 收信：POST /ilink/bot/getupdates 游标控制；回信：POST /ilink/bot/sendmessage。
+ * 扫码状态异常换到 redirect_host 轮询；每分钟 cron 走 pollClawAccounts 维持收信。
  */
 import { jsonResponse } from './security.js';
 import { truncateUtf8, buildBotReply, claimBotMessage } from './bot-commands.js';
@@ -407,26 +396,31 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
             await markAccountSuccess(db, account.id);
             successMarked = true;
         }
-        if (updates.cursor && updates.cursor !== cursor) {
-            cursor = updates.cursor;
-            await saveCursor(db, account.id, cursor);
-        }
+        const nextCursor = (updates.cursor && updates.cursor !== cursor) ? updates.cursor : null;
+        let batchHadError = false;
         const batch = async () => {
             for (const msg of updates.msgs) {
                 try {
                     await handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl);
                 } catch (err) {
-                    // 单条消息失败不能连坐整分钟的收信
+                    batchHadError = true;
                     console.error('[bot-claw] 消息处理失败 id=' + account.id + ': ' + (err && err.message));
                 }
             }
+            if (nextCursor && !batchHadError) {
+                cursor = nextCursor;
+                await saveCursor(db, account.id, cursor);
+            }
         };
         if (typeof defer === 'function' && updates.msgs.length) {
-            // 后台按到达顺序处理；ctx.waitUntil 负责在 scheduled 返回后继续跑完并主动回推
             background = background.then(batch, batch);
             defer(background.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
         } else {
-            await batch();
+            if (updates.msgs.length) await batch();
+            else if (nextCursor) {
+                cursor = nextCursor;
+                await saveCursor(db, account.id, cursor);
+            }
         }
     } while (Date.now() < accountDeadline);
     console.log('[bot-claw] 轮询 ' + polls + ' 轮后让出 id=' + account.id);
@@ -451,25 +445,30 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
     const hasImage = extractClawImageItems(msg).length > 0;
     // 语音等其它类型仍不支持：既不回复也不声称保存，静默丢弃
     if (!text && !hasImage) return;
-    if (!(await claimBotMessage(db, 'claw:' + clawDedupKey(msg)))) {
+    const dedupKey = 'claw:' + clawDedupKey(msg);
+    if (!(await claimBotMessage(db, dedupKey))) {
         console.log('[bot-claw] 重复消息已忽略');
         return;
     }
     if (msg.context_token) await db.prepare("UPDATE bot_claw_accounts SET last_context_token = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(account.id, String(msg.context_token).slice(0, 500)).run();
-    // 有图就走存图通道（秒回、不经模型也不占对话限流桶）；图 + 文字时文字自动变成配文
-    const reply = hasImage
-        ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)
-        : await buildBotReply(env, db, userId, text);
-    if (!reply) return;
-    await sendClawText({
-        token: String(account.bot_token || ''),
-        baseurl: account.baseurl,
-        botId: account.ilink_bot_id,
-        toUserId: from,
-        contextToken: msg.context_token,
-        text: reply,
-        fetchImpl
-    });
+    try {
+        const reply = hasImage
+            ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)
+            : await buildBotReply(env, db, userId, text);
+        if (!reply) return;
+        await sendClawText({
+            token: String(account.bot_token || ''),
+            baseurl: account.baseurl,
+            botId: account.ilink_bot_id,
+            toUserId: from,
+            contextToken: msg.context_token,
+            text: reply,
+            fetchImpl
+        });
+    } catch (err) {
+        try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) {}
+        throw err;
+    }
 }
 
 /**

@@ -40,4 +40,5 @@ export const actions = {
     renderSerendipityCard: null,
     renderTopicShelves: null,
     openTopicDetailSheet: null,
+    refreshAgentInbox: null,
 };

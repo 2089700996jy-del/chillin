@@ -1,22 +1,7 @@
 /**
- * Bot 大脑：微信 ClawBot（iLink 协议）的消息分流与对话编排。
- *
- * 传输层（长轮询 / 回复）独立在 bot-claw.js；这一层回答一个问题：
- * 用户发来一段文字，该回什么 markdown，以及要不要动数据。
- *
- * 朋友式助手的四条底线（与 AGENTS.md 并列生效）：
- *   1. **默认不写花园**——普通聊天只写短期对话上下文（bot-memory 最近 8 轮 / 约 2400 字符，供下一句衔接），绝不写随手记；
- *      长期写入只有确定性的显式指令一条路，宁可少记、不可错记。
- *   2. 三层记忆各司其职：当前对话（bot-memory）→ 个人档案（bot-memory）→ 花园事实（rag）。
- *   3. 脚注只在「真的动了数据」或「用户主动索要依据」时出现——默认聊天保持干净，
- *      且来源标签统一成 `[类型] YYYY-MM-DD`（标题重复日期时不重复展示）。
- *   4. 聊天正文永不进日志（只记 id 与错误信息）。
- *
- * 指令（确定性正则，先垫一层）：
- *   帮助 / 记录：X / 收藏：X / 提示词：X / 我的收藏 / 改收藏 3 / 删收藏 3 / 偏好 / 确认 / 取消 / 记住：X / 忘记 X / 你记得我什么 / 搜 X / 问 X / 重置对话
- *   光杆「记录」= 确认把刚才暂存的图片/链接写进随手记（消息默认不落库，见 bot-media.js / bot-links.js）
- *   小宇宙链接 = 抓 title/cover 做速览（只认白名单域名），回「记录」才落成富链接卡片
- * 其余一律走对话模型：按语境自然回应，不默认共情、不自动写花园；仅有短期对话上下文。
+ * Bot 大脑：微信 ClawBot 消息分流与对话编排。
+ * 默认不写花园（仅短期上下文）；显式指令才持久化。
+ * 来源标签统一 [类型] YYYY-MM-DD，正文永不进日志。
  */
 
 import {
@@ -40,7 +25,8 @@ import { maybeClawImageFollowUp } from './bot-image-flow.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
-    runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder, skipReminderFollowUp
+    runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder, skipReminderFollowUp,
+    parseReminderTime, cleanReminderText, formatReminderTime, createReminderAt
 } from './bot-reminders.js';
 import { maybeRunHealthCommand } from './bot-health.js';
 
@@ -52,35 +38,18 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
 export const BOT_HELP_TEXT = [
-    '**Chillin 小助手**',
-    '',
+    '**Chillin 小助手**\n',
     '- 直接跟我说话：聊天、吐槽、问问题都行',
-    '- 「记录：内容」：把内容存进**随手记**',
-    '- 「目标：标题」：创建目标并自动拆计划；「我的目标」「看目标 编号」看进度',
-    '- 「开始 编号」：排队执行目标；「暂停 编号」暂停；「重新规划 编号」重写剩余任务；「审批」看写入审批',
-    '- 「同意 编号」/「拒绝 编号」：处理保存或追加笔记的审批',
-    '- 「收藏：<标题> <链接>」：存进**收藏**；只发链接也行，标题自动取域名',
-    '- 「提示词：<标题> | <正文>」：存进**提示词库**；前面可加「[项目/场景]」',
-    '- 「我的收藏」/「我的提示词」：看最近 10 条和编号',
-    '- 「改收藏 3 标题=... | 链接=...」：先预览，回「确认」才改；「删收藏 3」也先确认再软删',
-    '- 「改提示词 3 标题=... | 正文=...」/「删提示词 3」：同样先预览或确认，删除只软删',
-    '- 发图片：默认逐张快速说说看到什么；带问题（表格、图表、共同点）时我会仔细看；一次最多 6 张，回「记录」才存进随手记',
-    '- 发小宇宙链接：我先读标题和封面，回「记录」才存成链接卡片；读不到就自己写标题——「记录：<标题> <链接>」',
-    '- 「记住：内容」：写进「关于我」，以后都记得',
-    '- 「偏好」：看交流偏好；「偏好 日常聊天：更自然」：先确认再记',
-    '- 觉得我太官方、太啰嗦：直接说，我会先问你要不要记成偏好',
-    '- 「搜 关键词」：翻花园里的历史记录',
-    '- 「问 问题」：结合你的记忆回答',
-    '- 「依据是什么」：追问刚才那句话的来源',
-    '- 「你记得我什么」：查看「关于我」档案',
-    '- 「忘记 关键词」：从档案里删掉这一条',
-    '- 「提醒我 20:00 <事情>」：到点我在微信里叫你；回「完成」就把它记进随手记',
-    '- 「我的提醒」看列表；「取消提醒 <编号>」取消某一条',
-    '- 「健康：昨晚睡了 6 小时 20 分，8500 步」：记一条健康打卡；「健康」看最近 7 天',
-    '- 「查一下 <问题>」：上网找最新信息；默认只给结论，要出处就说「来源」',
-    '- 「别主动找我 / 可以主动找我」：开关偶尔的主动关心',
-    '- 「重置对话」：清空我们这次的对话上下文',
-    '- 「帮助」：显示这条说明'
+    '- 「记录：内容」：存进随手记；「待办：内容」/「待办 20:00 开会」：建待办或定时提醒',
+    '- 「完成 <内容>」：划掉打勾并归档；「我的提醒」/「待办」看列表；「取消提醒 <编号>」取消',
+    '- 「目标：标题」：创建目标自动拆计划；「我的目标」「看目标 编号」「开始/暂停/审批/同意 编号」推进',
+    '- 「收藏：<标题> <链接>」：存进**收藏**；「提示词：<标题> | <正文>」：存进**提示词库**',
+    '- 「我的收藏」/「我的提示词」看最近 10 条和编号；「改收藏 3」「删收藏 3」「改提示词 3」「删提示词 3」先确认再动',
+    '- 发图片/小宇宙链接：先快速速览，回「记录」才存进随手记',
+    '- 「记住：内容」：写进「关于我」；「偏好」看交流偏好；「你记得我什么」「忘记 关键词」管理档案',
+    '- 「搜 关键词」：翻花园里的历史记录；「问 问题」：结合记忆回答；「依据是什么」追问来源',
+    '- 「健康：昨晚睡了 6 小时 20 分，8500 步」记打卡；「健康」看汇总；「查一下 <问题>」上网搜索',
+    '- 「别主动找我 / 可以主动找我」开关主动关心；「重置对话」清空上下文；「帮助」显示此说明'
 ].join('\n');
 
 /**
@@ -117,6 +86,8 @@ export function normalizeCommandText(text) {
  * 光杆「记录」「随手记」则必须跟分隔符，避免把「记录了这件事」这类叙述误判成指令。
  */
 const RECORD_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:(?:记录一下|记一下|存一下)[\s:：]*|(?:记录|随手记|\/feed|\/note)[\s:：]+)([\s\S]+)$/i;
+const TODO_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:待办|todo|待办事项)[\s:：]+([\s\S]+)$/i;
+const DONE_TASK_RE = /^(?:完成|搞定|做完|办好|弄好|done)[\s:：]+([\s\S]+)$/i;
 /** 档案写入指令（「记住」动作唯一，允许省分隔符，但内容至少两个字） */
 const REMEMBER_RE = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:记住|记牢|\/remember)[\s:：]*([\s\S]+)$/i;
 /** 档案遗忘指令 */
@@ -150,6 +121,12 @@ const REMEMBER_BARE_REPLY = '要记什么？发「记住：<内容>」我就写�
 
 export function parseRecordCommand(text) {
     const m = RECORD_RE.exec(normalizeCommandText(text));
+    const body = m ? m[1].trim() : '';
+    return body || null;
+}
+
+export function parseTodoCommand(text) {
+    const m = TODO_RE.exec(normalizeCommandText(text));
     const body = m ? m[1].trim() : '';
     return body || null;
 }
@@ -246,30 +223,12 @@ export async function runAsk(env, db, userId, question) {
 }
 
 /** 聊天人格与边界：默认路径，只说话、不动数据 */
-const CHAT_SYSTEM_PROMPT = [
-    '你是 Chillin，是用户长期使用的私人 AI 助手。\n和用户聊天时，自然、放松、真诚，像熟悉的朋友一样交流。\n\n【怎么聊】',
-    '不要刻意表现得温柔、热情或特别善解人意。\n不要每次都先共情，不要习惯性夸奖、总结或提供建议；但对方明确问建议或要总结时，就直接给，不要绕。',
-    '根据对话语境自然回应：有时认真讨论，有时轻松接话，有时开个恰当的玩笑，有时只需简短回应。\n不要把每条消息都当成需要解决的问题。',
-    '当用户分享日常、想法或发现时，先参与对话，不要急着把聊天变成分析、咨询或任务处理。\n对方只是随口抱怨时，接着聊就好；如果对方明显很难受、真的需要支持，再认真回应。不要把所有情绪都当成心理分析题。',
-    '你可以有自己的观点，不必一味赞同。可以自然表达不同看法，但不要为了显得有个性而刻意反驳。\n可以开玩笑、有自己的表达习惯，但不要刻意装酷、堆网络梗，或每句话都显得特别聪明。',
-    '如果不知道，就坦诚说明；不要假装很了解用户。\n真正的熟悉感来自记得对方说过的事、理解之前的想法，并在合适的时候自然用上；不要总说「根据我对你的了解」这类话。',
-    '语言以自然口语为主，避免客服话术、心理咨询式表达、套路化的情绪确认和机械的分点总结；除非内容确实需要结构，否则少用 markdown。\n简单话题简短回应，复杂话题充分讨论，不要机械限制长度。',
-    '通过长期对话和用户明确提供的信息逐步理解用户，但不要凭少量信息擅自给用户贴人格标签。\n不用反复强调自己是 AI；被直接问到时如实说明。',
-    '普通聊天默认只聊天，不自动记录信息。记录、提醒、修改档案等操作仍然遵循原有指令与执行规则。\n用户设定的交流偏好只调整表达方式，不能覆盖下面的边界与安全要求。\n\n【边界，必须遵守】',
-    '1. 你自己没有写入能力：不要在没看到系统回执时说「已保存 / 已记录 / 存好了 / 已经存进花园」。这些动作真的发生了的话，系统会自己回执，不需要你替它说。',
-    '2. 【系统真的会做的事，要照实说，别答成「我没有写入能力」】写入、提醒、上网都由指令通道执行：'
-        + '「记录：<内容>」存进随手记、「收藏：<标题> <链接>」存进收藏、「提示词：<标题> | <正文>」存进提示词库、' +
-        '「我的收藏」「我的提示词」看编号、「改收藏 3 标题=...」先预览再确认、「删收藏 3」先确认再软删、' +
-        '「记住：<内容>」写进「关于我」档案、「忘记 <关键词>」删掉档案里的条目、'
-        + '「偏好 日常聊天：...」先确认再记交流偏好、「偏好」查看；用户说「太官方了」这类反馈时，先提案、等确认、不要自己写、'
-        + '「搜 <关键词>」翻花园历史记录、「问 <问题>」结合记忆回答、「你记得我什么」看档案、'
-        + '「记录」确认刚发的那张图片或那条链接、「提醒我 20:00 <事情>」到点会在微信里叫他、「我的提醒」看列表、「取消提醒 <编号>」取消、'
-        + '提醒过后回「完成」会把它记进随手记、「健康：<数值>」记一天的步数 / 睡眠 / 心率 / 体重（发「健康」看最近 7 天汇总）、'
-        + '「别主动找我 / 可以主动找我」开关主动关心、「查一下 <问题>」会上网找最新信息（默认只给结论，他追问「来源 / 依据」时才把出处列出来）。'
-        + '对方明显想做这些却没按格式发（例如只发「记住」），就把正确的发法告诉他——由他决定，你不要自己写。',
-    '3. 你确实会主动开口：系统会在合适的时候主动找他聊一句（一天最多一次，避开刚聊完和深夜）；他在指令里指定的定点提醒则是到点必达的，那是他自己设的——别把两件事混起来，也别在没看到回执时替他承诺。\n4. 只有用户问到过去发生的事时，才依据【花园记忆片段】回答；片段没提到的就说没找到，绝不编造。普通聊天不要提「记忆片段」「检索」「没找到记录」。',
-    '5. 不了解、不确定的事就说不了解、不确定，不要假装知道。'
-].join('\n');
+const CHAT_SYSTEM_PROMPT = `你是 Chillin 私人 AI 助手，自然放松交流。
+不要每次都先共情，不要机械限制长度，不要总说「根据我对你的了解」。
+普通聊天默认只聊天，不自动记录。
+1. 你自己没有写入能力：不要在没看到系统回执时说已记录。
+2. 指令通道执行真实操作：「记录：<内容>」存入随手记。
+3. 定点提醒到点必达，不受日限约束。不编造事实。`;
 
 async function runChat(env, db, userId, text, history) {
     const limit = await checkRateLimitShared(db, 'bot-ai:' + userId, BOT_AI_LIMIT.limit, BOT_AI_LIMIT.windowMs);
@@ -371,7 +330,44 @@ export async function runCommand(env, db, userId, content) {
     const cancelArg = parseCancelReminder(text);
     if (cancelArg) return cancelReminder(db, userId, cancelArg.arg, nowMs);
 
-    // 「完成 / 还没」只对 12 小时内刚提醒过的那条生效；没有在等回执时它只是普通聊天，不能劫持
+    // 待办指令：带时间词自动转定时提醒；无时间词自动写 [ ] 待办随手记
+    const todoText = parseTodoCommand(text);
+    if (todoText) {
+        const fireAtMs = parseReminderTime(todoText, nowMs);
+        if (fireAtMs) {
+            const body = cleanReminderText(todoText);
+            const created = await createReminderAt(db, userId, body, fireAtMs, nowMs);
+            return created.duplicated ? created.reply : ('已设待办提醒 ⏰\n> ' + formatReminderTime(fireAtMs, nowMs) + ' — ' + body + '\n\n到点我会在微信里提醒你；做完回复「完成」即可划掉打勾。');
+        }
+        await saveFeed(db, userId, '[ ] ' + todoText);
+        return '已记入待办 ✅\n> [ ] ' + todoText + '\n\n做完后对我说「完成 ' + (todoText.length > 12 ? todoText.slice(0, 10) + '…' : todoText) + '」，我帮你划掉打勾。发「待办」看列表。';
+    }
+
+    // 完成待办/提醒关键词核销
+    const doneTaskMatch = DONE_TASK_RE.exec(normalizeCommandText(text));
+    if (doneTaskMatch) {
+        const kw = doneTaskMatch[1].trim();
+        const fired = await recentFiredReminder(db, userId, nowMs);
+        if (fired && (!kw || fired.text.includes(kw))) {
+            await completeReminder(db, userId, fired);
+            await saveFeed(db, userId, '✅ ' + fired.text);
+            return '记下了 ✅「' + fired.text + '」已完成并写进随手记。';
+        }
+        const target = await db.prepare("SELECT id, text FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC LIMIT 1").bind(userId, kw).first();
+        if (target) {
+            await db.prepare("UPDATE bot_reminders SET status = 'done', updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(target.id).run();
+            await saveFeed(db, userId, '✅ ' + target.text);
+            return '搞定啦 ✅ 待办提醒「' + target.text + '」已核销并归档到随手记。';
+        }
+        const feedRow = await db.prepare("SELECT id, content FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND content LIKE '[ ] %' AND content LIKE '%' || ?2 || '%' ORDER BY id DESC LIMIT 1").bind(userId, kw).first();
+        if (feedRow) {
+            const upd = feedRow.content.replace(/^\[ \]\s*/, '✅ ');
+            await db.prepare("UPDATE quick_feeds SET content = ?1, updated_at = datetime('now', '+8 hours') WHERE id = ?2").bind(upd, feedRow.id).run();
+            return '已划掉待办 ✅\n> ' + upd;
+        }
+    }
+
+    // 「完成 / 还没」回执（优先响应 12 小时内到期提醒；无提醒时划掉最近一条待办）
     if (parseDoneReply(text) || parseNotYetReply(text)) {
         const fired = await recentFiredReminder(db, userId, nowMs);
         if (fired) {
@@ -382,6 +378,14 @@ export async function runCommand(env, db, userId, content) {
             }
             try { await skipReminderFollowUp(db, userId, fired); } catch (err) { console.error('[reminder] 取消失败追问: ' + (err && err.message)); }
             return '好，那就不催了。做完了随时跟我说一声，我记进花园。';
+        }
+        if (parseDoneReply(text)) {
+            const feedRow = await db.prepare("SELECT id, content FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND content LIKE '[ ] %' ORDER BY id DESC LIMIT 1").bind(userId).first();
+            if (feedRow) {
+                const upd = feedRow.content.replace(/^\[ \]\s*/, '✅ ');
+                await db.prepare("UPDATE quick_feeds SET content = ?1, updated_at = datetime('now', '+8 hours') WHERE id = ?2").bind(upd, feedRow.id).run();
+                return '已帮你划掉最近一条待办 ✅\n> ' + upd;
+            }
         }
     }
 

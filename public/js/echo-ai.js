@@ -230,6 +230,90 @@ function renderToolTraceElement(events) {
     return box;
 }
 
+function formatAiErrorMessage(rawError) {
+    const str = String(rawError || '');
+    if (/401|token|auth/i.test(str)) return '登录已过期，请重新登录后再试';
+    if (/429|limit|频繁/i.test(str)) return '提问过于频繁，请稍等一分钟后再试';
+    if (/timeout|超时/i.test(str)) return '响应超时，已为你切换至本地离线记忆检索';
+    return '云端模型暂时繁忙，已为你无缝切换至本地记忆检索：';
+}
+
+function attachAiActionToolbar(botMsgDiv, text) {
+    if (!botMsgDiv || !text) return;
+    const existing = botMsgDiv.querySelector('.ai-msg-actions');
+    if (existing) existing.remove();
+
+    const bar = document.createElement('div');
+    bar.className = 'ai-msg-actions';
+
+    const makeBtn = (label, title, onClick) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ai-action-btn';
+        btn.title = title;
+        btn.textContent = label;
+        btn.addEventListener('click', async (e) => {
+            e.stopPropagation();
+            btn.disabled = true;
+            try { await onClick(); }
+            finally { btn.disabled = false; }
+        });
+        return btn;
+    };
+
+    bar.appendChild(makeBtn('📥 存随手记', '存入随手记', async () => {
+        const res = await apiRequest('/api/feeds', {
+            method: 'POST',
+            body: JSON.stringify({ content: text, created_at: new Date().toISOString() })
+        });
+        if (res && res.id) {
+            state.feedsDatabase.unshift(res);
+            localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
+            if (actions.renderFeeds) actions.renderFeeds();
+        }
+        showToast('已存入随手记 ✅', 'success');
+    }));
+
+    bar.appendChild(makeBtn('⏰ 设待办', '存为待办事项', async () => {
+        const firstLine = text.trim().split('\n')[0].replace(/^[#*\s-]+/, '').slice(0, 80) || text.slice(0, 80);
+        const res = await apiRequest('/api/feeds', {
+            method: 'POST',
+            body: JSON.stringify({ content: '[ ] ' + firstLine, created_at: new Date().toISOString() })
+        });
+        if (res && res.id) {
+            state.feedsDatabase.unshift(res);
+            localStorage.setItem(getLocalKey('gardenFeeds'), JSON.stringify(state.feedsDatabase));
+            if (actions.renderFeeds) actions.renderFeeds();
+        }
+        showToast('已创建待办 ✅', 'success');
+    }));
+
+    bar.appendChild(makeBtn('📝 存笔记', '存为备忘笔记', async () => {
+        const firstLine = text.trim().split('\n')[0].replace(/^[#*\s-]+/, '').slice(0, 30) || 'AI 记忆切片';
+        const res = await apiRequest('/api/notes', {
+            method: 'POST',
+            body: JSON.stringify({ title: firstLine, content: text, date: new Date().toLocaleDateString('zh-CN') })
+        });
+        if (res && res.id) {
+            state.notesDatabase.unshift(res);
+            localStorage.setItem(getLocalKey('gardenNotes'), JSON.stringify(state.notesDatabase));
+            if (actions.renderNotes) actions.renderNotes();
+        }
+        showToast('已存为新笔记 📝', 'success');
+    }));
+
+    bar.appendChild(makeBtn('📋 复制', '复制回答', async () => {
+        try {
+            await navigator.clipboard.writeText(text);
+            showToast('已复制到剪贴板 📋', 'success');
+        } catch (_) {
+            showToast('复制失败，请手动选中文本', 'warn');
+        }
+    }));
+
+    botMsgDiv.appendChild(bar);
+}
+
 async function sendAiChatMessage() {
     if (!aiChatInput || !aiChatBody) return;
     const question = aiChatInput.value.trim();
@@ -399,7 +483,11 @@ async function sendAiChatMessage() {
                         try {
                             const payload = JSON.parse(trimmed.slice(6));
                             if (payload.error) {
-                                setHtml(bubbleEl, escapeHtml(payload.error));
+                                const friendly = formatAiErrorMessage(payload.error);
+                                const localReply = getLocalAiReply(question);
+                                setHtml(bubbleEl, `<div class="ai-error-banner">${escapeHtml(friendly)}</div>` + markdownToHtml(localReply));
+                                attachAiActionToolbar(botMsgDiv, localReply);
+                                fullText = localReply;
                                 break;
                             }
                             if (payload.type === 'tool') {
@@ -434,6 +522,7 @@ async function sendAiChatMessage() {
                 }
             }
             if (fullText) {
+                attachAiActionToolbar(botMsgDiv, fullText);
                 state.aiChatHistory.push({ role: 'assistant', content: fullText });
                 return;
             }
@@ -448,6 +537,7 @@ async function sendAiChatMessage() {
                     botMsgDiv.insertBefore(box, bubbleEl);
                 }
                 setHtml(bubbleEl, markdownToHtml(res.reply));
+                attachAiActionToolbar(botMsgDiv, res.reply);
                 state.aiChatHistory.push({ role: 'assistant', content: res.reply });
                 aiChatBody.scrollTop = aiChatBody.scrollHeight;
                 return;
@@ -460,6 +550,7 @@ async function sendAiChatMessage() {
     // 本地规则检索兜底（DeepSeek 密钥已收敛到后端 Worker，前端不再直连）
     const localReply = getLocalAiReply(question);
     setHtml(bubbleEl, markdownToHtml(localReply));
+    attachAiActionToolbar(botMsgDiv, localReply);
     state.aiChatHistory.push({ role: 'assistant', content: localReply });
     aiChatBody.scrollTop = aiChatBody.scrollHeight;
 }

@@ -629,6 +629,20 @@ integration('ClawBot - 同一条消息重复投递只处理一次（uint64 丢�
     assert.equal(st.calls.filter(c => c.url.endsWith('/sendmessage')).length, 1);
 });
 
+integration('ClawBot - 消息批次处理失败时游标不提前推移，避免消息静默丢失', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const msg = clawMessage();
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-ADVANCED', msgs: [msg] } }),
+        '/ilink/bot/sendmessage': () => ({ status: 500, json: { ret: -1, errcode: 500 } })
+    });
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
+    const row = await db.prepare('SELECT cursor FROM bot_claw_accounts WHERE id = 1').first();
+    assert.equal(row.cursor, 'CURSOR-0', '回复失败时不应推进游标');
+});
+
 integration('ClawBot - 非绑定身份、绑定前积压与非文本消息都不处理', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
@@ -2283,5 +2297,47 @@ test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭
     assert.match(auth, /need_verifycode/, '前端要展示需要配对码的明确提示');
     assert.match(api, /runScheduled\(env, event, undefined, ctx\)/, 'scheduled 入口必须把 ctx 传下去');
     assert.match(maintenance, /ctx\.waitUntil/, '重活必须转交 waitUntil');
+});
+
+integration('Bot 日常流程打通 - 聊天建待办、定时提醒与完成核销闭环', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const env = { AI: { run: async () => ({ response: '好的。' }) } };
+
+    // 1. 无时间词的待办：存入 quick_feeds 前缀 [ ]
+    const todoReply = await buildBotReply(env, db, 1, '待办：去超市买鸡蛋');
+    assert.match(todoReply, /已记入待办/);
+    assert.match(todoReply, /\[ \] 去超市买鸡蛋/);
+    const feed1 = await db.prepare("SELECT content FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.equal(feed1.content, '[ ] 去超市买鸡蛋');
+
+    // 2. 带时间词的待办：自动转为定时提醒
+    const remindTodoReply = await buildBotReply(env, db, 1, '待办 20:00 给电动牙刷充电');
+    assert.match(remindTodoReply, /已设待办提醒/);
+    assert.match(remindTodoReply, /给电动牙刷充电/);
+    const reminder = await db.prepare("SELECT text, status FROM bot_reminders WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.equal(reminder.text, '给电动牙刷充电');
+    assert.equal(reminder.status, 'pending');
+
+    // 3. 关键词核销待办：完成 去超市买鸡蛋 -> 随手记变为 ✅ 去超市买鸡蛋
+    const doneFeedReply = await buildBotReply(env, db, 1, '完成 去超市买鸡蛋');
+    assert.match(doneFeedReply, /已划掉待办/);
+    assert.match(doneFeedReply, /✅ 去超市买鸡蛋/);
+    const feedUpdated = await db.prepare("SELECT content FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0 ORDER BY id ASC LIMIT 1").first();
+    assert.equal(feedUpdated.content, '✅ 去超市买鸡蛋');
+
+    // 4. 关键词核销定时提醒：完成 给电动牙刷充电 -> 提醒变为 done 并归档到随手记
+    const doneRemindReply = await buildBotReply(env, db, 1, '搞定 给电动牙刷充电');
+    assert.match(doneRemindReply, /搞定啦/);
+    assert.match(doneRemindReply, /已核销并归档到随手记/);
+    const reminderDone = await db.prepare("SELECT status FROM bot_reminders WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.equal(reminderDone.status, 'done');
+
+    // 5. 新建另一条待办，发光杆「完成」自动划掉最近一条待办
+    await buildBotReply(env, db, 1, '待办：读完第三章');
+    const bareDoneReply = await buildBotReply(env, db, 1, '完成');
+    assert.match(bareDoneReply, /已帮你划掉最近一条待办/);
+    assert.match(bareDoneReply, /✅ 读完第三章/);
 });
 

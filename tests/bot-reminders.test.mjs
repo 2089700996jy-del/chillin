@@ -404,3 +404,16 @@ sqliteTest('提醒 - 幂等：同一分钟跑两次只发一条', async () => {
     assert.deepEqual(again, { due: 0, sent: 0, asked: 0, missed: 0, failed: 0 });
     assert.equal(st.calls.length, 1);
 });
+
+sqliteTest('提醒 - 重复创建相同待提醒防重拦截（幂等不生成重复记录）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    const cmd = parseRemindCommand('提醒我 明天早上8点 交电费', NOW);
+    const first = await runRemind(db, 1, cmd, NOW);
+    assert.match(first, /已记下/);
+    const second = await runRemind(db, 1, cmd, NOW);
+    assert.match(second, /已经在排队了/);
+    const count = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.equal(count.n, 1, '防重拦截下只允许入库一条记录');
+});

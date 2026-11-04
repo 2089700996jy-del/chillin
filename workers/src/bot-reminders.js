@@ -7,32 +7,14 @@
  * 所以分表（bot_reminders / bot_outreach）、分开关（outreach_enabled / 无）、分审计。
  * 否则用户一句「别主动找我」会把他的提醒一起关掉——那是他的东西，不是系统的兴致。
  *
- * 状态机（见 migrations/0029_bot_reminders.sql + 0033_bot_reminder_follow_up_state.sql）：
- *   pending --到点--> fired --10 分钟（充电等慢任务 2 小时）--> 追问 --> done（回「完成」）
- *   pending --超过 2 小时没送出去--> missed（不补发：凌晨补一句「该充电了」是伤害不是服务）
- *   pending --「取消提醒 N」--> cancelled + is_deleted = 1
- *   fired --追问发送失败--> pending（退避重试，次数耗尽后 failed）
- *   fired --回「还没」--> skipped（不再追问，仍可回「完成」）
- *
- * 时间解析的立场：规则优先、猜错要看得见。解析出来的绝对时刻一定写回执里（「今天 20:00」），
- * 用户看到不对可以立刻取消——比反问一轮省事，也比默默猜错安全。
- * 只在文本真的出现时刻/日期词时才认指令：「我今天提醒我自己要早睡」不是指令。
- *
- * 幂等：先把行 claim 成 fired 再发（UPDATE … WHERE status='pending' 后查 changes），
- * 发送失败退回 pending、下一分钟重试；重试窗口就是 2 小时的 stale 窗口。
- * 聊天正文永不进日志（AGENTS 规约）：这里只记 id 与错误。
+ * 状态机：pending --到点--> fired --追问--> done；超过 2 小时未送标 missed；「取消提醒 N」标 cancelled。
+ * 规则优先、猜错要看得见。解析绝对时刻写回执，幂等抢占 claim 成 fired 再发。正文不进日志。
  */
 
 import { checkRateLimitShared } from './security.js';
 import { saveChatTurn } from './bot-memory.js';
 
-/**
- * 东八区视角的日期 / 小时 / 当天零点。与 bot-outreach.js:87 那份实现逐字一致，
- * 在本模块自带一份的理由是依赖方向：bot-outreach 静态依赖 bot-claw，bot-claw 静态依赖
- * bot-commands，而本模块必须被 bot-commands 静态引入（解析函数要在同步分支里立刻用）——
- * 若再静态回指 bot-outreach/bot-claw，四者就成了静态环。
- * 发送函数同理，等 cron 真要发的时候再 await import('./bot-claw.js')。
- */
+/** 东八区视角的日期 / 小时 / 当天零点。独立实现以切断与 bot-claw / bot-outreach 的循环依赖。 */
 function east8Parts(nowMs) {
     const shifted = Number(nowMs) + 8 * 3600 * 1000;
     const dayStartShifted = Math.floor(shifted / 86400000) * 86400000;
@@ -272,6 +254,12 @@ export async function createReminderAt(db, userId, text, fireAtMs, nowMs, follow
     const active = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending'").bind(userId).first();
     if (Number((active && active.n) || 0) >= REMINDER_MAX_ACTIVE) {
         return { ok: false, reply: '待提醒的事已经攒到 ' + REMINDER_MAX_ACTIVE + ' 条了，先发「我的提醒」清理几条？' };
+    }
+    const dup = await db.prepare("SELECT id, text, fire_at_ms FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND text = ?2 AND ABS(fire_at_ms - ?3) <= 60000 LIMIT 1")
+        .bind(userId, body, fire).first();
+    if (dup) {
+        return { ok: true, id: dup.id, text: dup.text, fireAtMs: dup.fire_at_ms, duplicated: true,
+            reply: '这条提醒已经在排队了 🙂\n> ' + formatReminderTime(dup.fire_at_ms, now) + ' — ' + dup.text };
     }
     const account = await loadBoundAccount(db, userId);
     if (!account) return { ok: false, reply: '我这边还没有绑定的微信通道，设了也送不到——去花园「设置 → 微信 Bot」扫码绑定后再发一次。' };
