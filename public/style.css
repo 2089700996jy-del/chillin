@@ -3255,6 +3255,14 @@ body.in-reader-book {
   background-color: var(--surface-alt);
 }
 
+/* 阅读器占满整屏：关掉应用级柔光渐变。
+   纸面边缘与导航条交界处原本会透出一圈蓝绿光晕，看着像一块被「切」出来的白纸；
+   选择器加 :root[data-theme] 是为了压过深色主题里 body 上更强的那条渐变声明。 */
+body.in-reader-book,
+:root[data-theme] body.in-reader-book {
+  background-image: none;
+}
+
 body.in-reader-book .super-navbar {
   background: rgba(248, 248, 250, 0.92);
   backdrop-filter: blur(20px) saturate(180%);
