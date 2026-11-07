@@ -5398,6 +5398,14 @@ html.ios-pwa body {
   background-color: var(--bg-color);
 }
 
+/* iOS 主屏 PWA：上面这条 html.ios-pwa body 的特异性高于 body.in-reader-book，
+   深色应用主题下会把阅读器纸面外那圈背景压回深色（纸面像浮在一块黑边上）。
+   这里按阅读主题补回纸面色；夜间/护眼各自的最高优先级规则仍然优先。 */
+html.ios-pwa body.in-reader-book {
+  background-color: var(--surface-alt);
+  background-image: none;
+}
+
 html.ios-pwa .super-navbar,
 html.ios-pwa .super-navbar.scrolled {
   top: 0 !important;
