@@ -126,27 +126,38 @@ export function safePublicUrl(raw) {
     return u.toString();
 }
 
+const DOH_PROVIDERS = [
+    (h, t) => `https://1.1.1.1/dns-query?name=${encodeURIComponent(h)}&type=${t}`,
+    (h, t) => `https://dns.alidns.com/resolve?name=${encodeURIComponent(h)}&type=${t}`,
+    (h, t) => `https://doh.pub/dns-query?name=${encodeURIComponent(h)}&type=${t}`
+];
+
 async function dohResolve(host, fetchImpl = fetch) {
-    const addrs = [];
-    for (const type of ['A', 'AAAA']) {
+    for (const provider of DOH_PROVIDERS) {
         try {
-            const dohUrl = `https://1.1.1.1/dns-query?name=${encodeURIComponent(host)}&type=${type}`;
-            const res = await fetchImpl(dohUrl, {
-                headers: { accept: 'application/dns-json' },
-                signal: AbortSignal.timeout ? AbortSignal.timeout(3500) : undefined
-            });
-            if (res.ok) {
-                const data = await res.json();
-                const answers = Array.isArray(data.Answer) ? data.Answer : [];
+            const results = await Promise.allSettled(['A', 'AAAA'].map(async (type) => {
+                const res = await fetchImpl(provider(host, type), {
+                    headers: { accept: 'application/dns-json' },
+                    signal: AbortSignal.timeout ? AbortSignal.timeout(2500) : undefined
+                });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                return { type, data: await res.json() };
+            }));
+            const okList = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+            if (!okList.length) continue;
+            const addrs = [];
+            for (const { type, data } of okList) {
+                const answers = Array.isArray(data?.Answer) ? data.Answer : [];
                 for (const a of answers) {
-                    if ((type === 'A' && a.type === 1) || (type === 'AAAA' && a.type === 28)) {
-                        if (a.data) addrs.push(a.data);
+                    if (((type === 'A' && a.type === 1) || (type === 'AAAA' && a.type === 28)) && a.data) {
+                        addrs.push(a.data);
                     }
                 }
             }
+            return addrs;
         } catch (_) {}
     }
-    return addrs;
+    return [];
 }
 
 /**

@@ -9798,6 +9798,15 @@ body.dark-reader-body .k-mood-chip.active {
   color: inherit;
   outline: none;
   padding-right: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.k-journal-input:focus,
+.k-journal-input:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
 }
 
 .k-spark-send-btn {
@@ -9835,9 +9844,11 @@ body.dark-reader-body .k-journal-tag {
 body.dark-reader-body .k-journal-shuffle-btn {
   color: rgba(235, 235, 245, 0.45);
 }
+:root[data-theme="dark"] .k-journal-field,
 body.dark-reader-body .k-journal-field {
   background: rgba(255, 255, 255, 0.07);
 }
+:root[data-theme="dark"] .k-journal-field:focus-within,
 body.dark-reader-body .k-journal-field:focus-within {
   background: rgba(255, 255, 255, 0.1);
   box-shadow: 0 0 0 2.5px rgba(10, 132, 255, 0.25);
@@ -10780,8 +10791,8 @@ body.dark-reader-body .k-directory-arrow {
   background: rgba(48, 209, 88, 0.18);
 }
 
-/* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none） */
-input:focus-visible,
+/* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none；组合胶囊容器内输入框由外层:focus-within统一呈现焦点环） */
+input:focus-visible:not(.k-journal-input):not(.k-searchbar-input):not(.cockpit-input),
 textarea:focus-visible,
 select:focus-visible,
 [contenteditable="true"]:focus-visible {

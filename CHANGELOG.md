@@ -1,7 +1,22 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-04T02:55:27.312Z · 提交数：474
+> 生成时间：2026-11-07T04:26:31.655Z · 提交数：479
+
+## 2026-11-06
+
+### 📝 文档
+
+- add phase-by-phase implementation and operation manual in archive
+
+## 2026-11-04
+
+### ✨ 新功能
+
+- **ui**: deliver desktop left sidebar workstation & 3-column agent cockpit (v2.5.225)
+- **daily-routine**: deliver silky smooth daily todo, instant capture, low-noise bot feedback, and today loop (v2.5.224)
+- **agent**: P0 稳定性与日常闭环打通 (待办/提醒防重, 游标防丢, 聊天待办打通, Web操作栏) v2.5.223
+- **agent**: 落地 Autoloop 四大核心机制（指令隔离防注入、自主休眠唤醒、排队事件消抖合并、选择题表单审批）
 
 ## 2026-11-03
 

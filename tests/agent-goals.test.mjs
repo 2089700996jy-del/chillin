@@ -1432,6 +1432,53 @@ sqliteTest('Super Agent - DoH 降级在底层抛出 Not implemented 时保证正
     assert.match(privateDoh.error.message, /域名解析为私有地址/);
 });
 
+sqliteTest('Super Agent - DoH 多节点兜底（1.1.1.1 失败时无缝降级至公共 DoH 节点）', async () => {
+    const mockNotImplementedDns = {
+        resolve4: async () => { throw new Error('Not implemented'); },
+        resolve6: async () => { throw new Error('Not implemented'); }
+    };
+
+    let reached1111 = false;
+    let reachedAliDns = false;
+
+    const mockFetch = async (url) => {
+        if (url.includes('1.1.1.1')) {
+            reached1111 = true;
+            throw new Error('ETIMEDOUT');
+        }
+        if (url.includes('alidns.com')) {
+            reachedAliDns = true;
+            if (url.includes('type=A')) {
+                return {
+                    ok: true,
+                    json: async () => ({
+                        Status: 0,
+                        Answer: [{ type: 1, data: '93.184.216.34' }]
+                    })
+                };
+            }
+            return {
+                ok: true,
+                json: async () => ({ Status: 0, Answer: [] })
+            };
+        }
+        return new Response('<html><body>Domestic Fallback Success</body></html>', {
+            status: 200,
+            headers: { 'content-type': 'text/html' }
+        });
+    };
+
+    const res = await runWebTool({}, 'fetch_url', { url: 'https://doh-fallback.example.com/test' }, {
+        dns: mockNotImplementedDns,
+        fetchImpl: mockFetch
+    });
+
+    assert.equal(res.ok, true);
+    assert.equal(reached1111, true, '优先尝试 1.1.1.1');
+    assert.equal(reachedAliDns, true, '1.1.1.1 超时后成功降级至阿里公共 DoH');
+    assert.match(res.data.content, /Domestic Fallback Success/);
+});
+
 sqliteTest('Super Agent - 并发批次内有任务失败时严禁触发 replan 以免抹除待重试任务', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
