@@ -3,7 +3,7 @@
  * and forceRefreshToLatest (clear SW/Cache; keep login in localStorage).
  */
 import { showToast, confirmDialog } from './utils.js';
-import { APP_VERSION, APP_BUILD_LABEL } from './version.js';
+import { APP_VERSION, APP_BUILD_LABEL, isVersionAhead } from './version.js';
 import { CLOUD_WORKER_BASE } from './config.js';
 import { setHtml, getScriptUrl } from './trusted-types.js';
 import { actions } from './actions.js';
@@ -84,6 +84,39 @@ function bindForceRefreshControls() {
 }
 
 /**
+ * 部署顺序自检：正常是「先 deploy Worker 再推前端」，写反时新前端会打到旧 Worker
+ * （登录 500 / 上传 404 这类冒充代码 bug 的部署事故）。只在前端确实更新时提示。
+ */
+async function probeWorkerVersionSkew() {
+    // 本地预览连的是线上 Worker，开发期比版本只会制造噪音
+    try {
+        const host = window.location.hostname;
+        if (!host || host === 'localhost' || host === '127.0.0.1') return;
+    } catch (_) { return; }
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500);
+        const res = await fetch(`${CLOUD_WORKER_BASE}/api/app-version?t=${Date.now()}`, {
+            cache: 'no-store', credentials: 'omit', signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        if (!res.ok) return;
+        const data = await res.json();
+        const workerVersion = String(data.version || '').trim();
+        if (!isVersionAhead(APP_VERSION, workerVersion)) return;
+
+        // 同一个旧版本每个会话只提醒一次
+        try {
+            if (sessionStorage.getItem('chillin_worker_skew') === workerVersion) return;
+            sessionStorage.setItem('chillin_worker_skew', workerVersion);
+        } catch (_) {}
+
+        console.warn('[deploy] frontend is ahead of the worker:', APP_VERSION, '>', workerVersion);
+        showToast(`后端还停在 v${workerVersion}，请先 npx wrangler deploy`, 'warn');
+    } catch (_) { /* 离线或 Worker 不可达：静默 */ }
+}
+
+/**
  * Faster, smoother PWA updates:
  * 1) register SW with updateViaCache:'none' (ignore HTTP cache for sw.js)
  * 2) probe Worker /api/app-version (bypasses Pages CDN — helps without proxy)
@@ -93,6 +126,7 @@ function bindForceRefreshControls() {
 export function initPwaUpdates() {
     stripFreshParam();
     bindForceRefreshControls();
+    probeWorkerVersionSkew();
 
     if (!('serviceWorker' in navigator)) return;
 

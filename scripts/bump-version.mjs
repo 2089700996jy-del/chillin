@@ -72,13 +72,15 @@ console.log(`bump ${current} -> ${next}`);
 console.log(`CACHE_NAME ${cacheMatch[0].match(/chillin-v\d+/)[0]} -> ${nextCache}`);
 if (dryRun) console.log('(dry-run: no files written)');
 
-// js/version.js
-write(
-    'public/js/version.js',
-    `/** Single source of truth for the visible app version (bump with cache ?v=). */\n` +
-        `export const APP_VERSION = '${next}';\n` +
-        `export const APP_BUILD_LABEL = \`v\${APP_VERSION}\`;\n`
-);
+// js/version.js —— 只替换版本字面量，保留文件里的其它导出。
+// 早期写法整文件重写：v2.5.227 加进 isVersionAhead 后，bump 会把它静默抹掉，
+// 随后 pwa-update.js 的具名导入直接 LinkError（ship 在 bump 后的复测才会炸）。
+{
+    const src = read('public/js/version.js');
+    const updated = src.replace(/APP_VERSION\s*=\s*['"][\d.]+['"]/, `APP_VERSION = '${next}'`);
+    if (updated === src) throw new Error('public/js/version.js APP_VERSION not found');
+    write('public/js/version.js', updated);
+}
 
 // version.json — version + build label + publish timestamp
 write(

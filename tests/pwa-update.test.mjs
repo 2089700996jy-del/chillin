@@ -170,3 +170,19 @@ test('PWA - 同一次更新只出现一条提示，自动刷新不再叠 toast',
         try { delete globalThis.navigator; } catch (_) {}
     }
 });
+
+/**
+ * 部署顺序自检的判定逻辑：
+ * 正常流程是「先 deploy Worker，再推前端」；写反时前端会打到旧 Worker，
+ * 此时必须能识别出「前端更新」并提示，而 Worker 领先时一句话都不许多说。
+ */
+test('PWA - 只有前端领先后端时才判定为部署顺序写反', async () => {
+    const { isVersionAhead } = await import('../public/js/version.js');
+
+    assert.equal(isVersionAhead('2.5.226', '2.5.226'), false, '版本相同不该提示');
+    assert.equal(isVersionAhead('2.5.226', '2.5.227'), false, 'Worker 领先是正常发布顺序，不该提示');
+    assert.equal(isVersionAhead('2.5.227', '2.5.226'), true, '前端领先旧 Worker 必须提示');
+    assert.equal(isVersionAhead('2.5.10', '2.5.9'), true, '必须按数字比较，不能按字符串比较');
+    assert.equal(isVersionAhead('2.5.226', ''), false, 'Worker 没回版本号时保持静默');
+    assert.equal(isVersionAhead('', '2.5.226'), false, '前端版本缺失时同样静默');
+});

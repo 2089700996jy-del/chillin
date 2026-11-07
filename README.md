@@ -120,7 +120,7 @@ node scripts/migrate-files-to-r2.mjs --clear-data # 确认无误后清空 D1 里
 
 > 历史背景：迁移前发布目录为空 → Pages 发布整个仓库根，导致 §/workers/src/security.js§、§/migrations/*.sql§、§/tests/*§、§/AGENTS.md§ 等**可被公开下载**（无密钥泄露，因为 §.dev.vars§ / §backups/§ 从未入库）。现已改为只发布 §public/§。
 
-> ⚠️ **升级顺序**：涉及后端接口或会话机制的改动，务必先 `npx wrangler deploy` 再推送前端，避免前端调用旧版 Worker。
+> ⚠️ **升级顺序**：涉及后端接口或会话机制的改动，务必先 `npx wrangler deploy` 再推送前端，避免前端调用旧版 Worker。顺序写反时前端自己也救不了自己，所以 `public/js/pwa-update.js` 启动时会比对 Worker 的 `/api/app-version`：一旦发现自己比后端新，就弹一次「后端还停在 vX，请先 npx wrangler deploy」的提示（同一个旧版本每会话只提示一次，本地预览不触发）。
 
 ## 数据备份与恢复
 
