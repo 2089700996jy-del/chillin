@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-07T06:26:44.907Z · 提交数：485
+> 生成时间：2026-11-07T06:48:10.831Z · 提交数：486
 
 ## 2026-11-07
 
@@ -11,6 +11,7 @@
 
 ### 🐛 缺陷修复
 
+- **ui**: theme-aware AI trace cards, nav username and wikilink borders
 - **reader**: keep iOS PWA reader background on paper color
 - **reader**: drop app glow in reader mode to remove paper seam
 - **reader**: make reader theme colors self-contained
