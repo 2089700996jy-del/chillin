@@ -1,9 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-07T05:09:41.047Z · 提交数：480
+> 生成时间：2026-11-07T05:16:41.307Z · 提交数：481
 
 ## 2026-11-07
+
+### ✨ 新功能
+
+- **pwa**: guard against deploying frontend ahead of worker
 
 ### 🐛 缺陷修复
 

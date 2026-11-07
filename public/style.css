@@ -4077,7 +4077,8 @@ body.keyboard-open .fab-btn {
   align-items: center;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid var(--gray-100);
+  /* 极细分隔用主题令牌：--gray-100 只覆盖浅色，深色主题下会变成一条近白硬线 */
+  border-top: 1px solid var(--surface-hairline);
   flex-wrap: wrap;
   gap: 10px;
 }
