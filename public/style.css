@@ -3565,6 +3565,19 @@ body.in-reader-book .reader-main {
   white-space: nowrap;
 }
 
+/* ── Reader Day Theme（白纸）──
+   日间纸面固定为亮色，但书名、翻页按钮与章节目录的墨色原本沿用应用主题令牌：
+   当应用级主题是深色（html[data-theme="dark"]）时，这些文字会变成白字白底。
+   这里把阅读器外壳的文字令牌锁成亮面口径；作用域只限导航条与阅读视图，
+   弹层与其它页面仍跟随应用主题，避免阅读主题反过来污染全局。 */
+body.in-reader-book:not(.dark-reader-body):not(.eyecare-reader-body) .super-navbar,
+body.in-reader-book:not(.dark-reader-body):not(.eyecare-reader-body) #view-reader-book {
+  --text-color: var(--ink-900);
+  --text-color-light: var(--gray-500);
+  --accent-text: var(--ios-blue);
+  --link-color: var(--ios-blue);
+}
+
 /* ── Reader Dark Theme (夜间模式 OLED Obsidian) ── */
 body.dark-reader-body,
 html.in-reader-book.dark-reader-body,
