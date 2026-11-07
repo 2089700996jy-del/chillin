@@ -9058,7 +9058,7 @@ body.dark-reader-body #btn-enable-push {
   padding: 8px 12px;
   border-radius: 12px;
   background: var(--card-bg, var(--white));
-  border: 1px solid var(--border-color, var(--ios-separator));
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.04));
 }
 
@@ -9080,7 +9080,7 @@ body.dark-reader-body #btn-enable-push {
 .note-backlinks-section {
   margin-top: 36px;
   padding-top: 20px;
-  border-top: 1px solid var(--border-color, var(--ios-separator));
+  border-top: 1px solid var(--surface-hairline);
 }
 
 .backlinks-header {
@@ -9091,7 +9091,7 @@ body.dark-reader-body #btn-enable-push {
   margin: 14px 0 16px;
   background: rgba(var(--neutral-rgb), 0.03);
   border-radius: 14px;
-  border: 1px solid var(--border-color, var(--ios-separator));
+  border: 1px solid var(--surface-hairline);
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -9118,7 +9118,7 @@ body.dark-reader-body #btn-enable-push {
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--card-bg, var(--white));
-  border: 1px solid var(--border-color, var(--ios-separator));
+  border: 1px solid var(--surface-hairline);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
