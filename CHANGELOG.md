@@ -1,14 +1,19 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-09T06:52:58.944Z · 提交数：489
+> 生成时间：2026-11-09T08:01:07.320Z · 提交数：491
 
 ## 2026-11-09
 
 ### ✨ 新功能
 
+- **ui**: 落地 Linear / Apple Notes 视觉重构 (v2.5.234) - 拔除光晕光斑、收拢10px发丝边框与全站极简排版
 - **ui**: 全站极简纯净化重构，对标 Linear 与 Apple Notes 四简原则
 - **notes**: deliver desktop split-view workstation (v2.5.226)
+
+### 🤖 持续集成
+
+- 接入 Cloudflare Worker 自动化部署流水线 (deploy-worker)
 
 ## 2026-11-07
 
