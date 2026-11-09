@@ -3255,6 +3255,14 @@ body.in-reader-book {
   background-color: var(--surface-alt);
 }
 
+/* 阅读器占满整屏：关掉应用级柔光渐变。
+   纸面边缘与导航条交界处原本会透出一圈蓝绿光晕，看着像一块被「切」出来的白纸；
+   选择器加 :root[data-theme] 是为了压过深色主题里 body 上更强的那条渐变声明。 */
+body.in-reader-book,
+:root[data-theme] body.in-reader-book {
+  background-image: none;
+}
+
 body.in-reader-book .super-navbar {
   background: rgba(248, 248, 250, 0.92);
   backdrop-filter: blur(20px) saturate(180%);
@@ -3563,6 +3571,19 @@ body.in-reader-book .reader-main {
   font-weight: 500;
   color: var(--text-color-light);
   white-space: nowrap;
+}
+
+/* ── Reader Day Theme（白纸）──
+   日间纸面固定为亮色，但书名、翻页按钮与章节目录的墨色原本沿用应用主题令牌：
+   当应用级主题是深色（html[data-theme="dark"]）时，这些文字会变成白字白底。
+   这里把阅读器外壳的文字令牌锁成亮面口径；作用域只限导航条与阅读视图，
+   弹层与其它页面仍跟随应用主题，避免阅读主题反过来污染全局。 */
+body.in-reader-book:not(.dark-reader-body):not(.eyecare-reader-body) .super-navbar,
+body.in-reader-book:not(.dark-reader-body):not(.eyecare-reader-body) #view-reader-book {
+  --text-color: var(--ink-900);
+  --text-color-light: var(--gray-500);
+  --accent-text: var(--ios-blue);
+  --link-color: var(--ios-blue);
 }
 
 /* ── Reader Dark Theme (夜间模式 OLED Obsidian) ── */
@@ -4077,7 +4098,8 @@ body.keyboard-open .fab-btn {
   align-items: center;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid var(--gray-100);
+  /* 极细分隔用主题令牌：--gray-100 只覆盖浅色，深色主题下会变成一条近白硬线 */
+  border-top: 1px solid var(--surface-hairline);
   flex-wrap: wrap;
   gap: 10px;
 }
@@ -5374,6 +5396,14 @@ html.ios-pwa {
 html.ios-pwa body {
   /* Fill the translucent status bar with page bg */
   background-color: var(--bg-color);
+}
+
+/* iOS 主屏 PWA：上面这条 html.ios-pwa body 的特异性高于 body.in-reader-book，
+   深色应用主题下会把阅读器纸面外那圈背景压回深色（纸面像浮在一块黑边上）。
+   这里按阅读主题补回纸面色；夜间/护眼各自的最高优先级规则仍然优先。 */
+html.ios-pwa body.in-reader-book {
+  background-color: var(--surface-alt);
+  background-image: none;
 }
 
 html.ios-pwa .super-navbar,
@@ -9028,7 +9058,7 @@ body.dark-reader-body #btn-enable-push {
   padding: 8px 12px;
   border-radius: 12px;
   background: var(--card-bg, var(--white));
-  border: 1px solid var(--border-color, var(--ios-separator));
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.04));
 }
 
@@ -9050,7 +9080,7 @@ body.dark-reader-body #btn-enable-push {
 .note-backlinks-section {
   margin-top: 36px;
   padding-top: 20px;
-  border-top: 1px solid var(--border-color, var(--ios-separator));
+  border-top: 1px solid var(--surface-hairline);
 }
 
 .backlinks-header {
@@ -9061,7 +9091,7 @@ body.dark-reader-body #btn-enable-push {
   margin: 14px 0 16px;
   background: rgba(var(--neutral-rgb), 0.03);
   border-radius: 14px;
-  border: 1px solid var(--border-color, var(--ios-separator));
+  border: 1px solid var(--surface-hairline);
   overflow: hidden;
   display: flex;
   justify-content: center;
@@ -9088,7 +9118,7 @@ body.dark-reader-body #btn-enable-push {
   padding: 12px 14px;
   border-radius: 12px;
   background: var(--card-bg, var(--white));
-  border: 1px solid var(--border-color, var(--ios-separator));
+  border: 1px solid var(--surface-hairline);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
   cursor: pointer;
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
@@ -9798,6 +9828,15 @@ body.dark-reader-body .k-mood-chip.active {
   color: inherit;
   outline: none;
   padding-right: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.k-journal-input:focus,
+.k-journal-input:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
 }
 
 .k-spark-send-btn {
@@ -9835,9 +9874,11 @@ body.dark-reader-body .k-journal-tag {
 body.dark-reader-body .k-journal-shuffle-btn {
   color: rgba(235, 235, 245, 0.45);
 }
+:root[data-theme="dark"] .k-journal-field,
 body.dark-reader-body .k-journal-field {
   background: rgba(255, 255, 255, 0.07);
 }
+:root[data-theme="dark"] .k-journal-field:focus-within,
 body.dark-reader-body .k-journal-field:focus-within {
   background: rgba(255, 255, 255, 0.1);
   box-shadow: 0 0 0 2.5px rgba(10, 132, 255, 0.25);
@@ -10780,8 +10821,8 @@ body.dark-reader-body .k-directory-arrow {
   background: rgba(48, 209, 88, 0.18);
 }
 
-/* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none） */
-input:focus-visible,
+/* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none；组合胶囊容器内输入框由外层:focus-within统一呈现焦点环） */
+input:focus-visible:not(.k-journal-input):not(.k-searchbar-input):not(.cockpit-input),
 textarea:focus-visible,
 select:focus-visible,
 [contenteditable="true"]:focus-visible {

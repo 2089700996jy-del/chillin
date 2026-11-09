@@ -1,7 +1,25 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-09T02:09:44.998Z · 提交数：479
+> 生成时间：2026-11-09T13:47:00.000Z · 提交数：488
+
+## 2026-11-07
+
+### ✨ 新功能
+
+- **pwa**: guard against deploying frontend ahead of worker
+
+### 🐛 缺陷修复
+
+- **ui**: theme-aware AI trace cards, nav username and wikilink borders
+- **reader**: keep iOS PWA reader background on paper color
+- **reader**: drop app glow in reader mode to remove paper seam
+- **reader**: make reader theme colors self-contained
+- **ui**: 消除随想输入框软键盘聚焦生硬边框，增加国内 DoH 节点兜底
+
+### 🎨 样式
+
+- **feeds**: soften composer divider in dark theme
 
 ## 2026-11-06
 

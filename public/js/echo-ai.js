@@ -202,9 +202,9 @@ window.addEventListener('keydown', (e) => {
 function renderToolTraceElement(events) {
     const box = document.createElement('div');
     box.className = 'ai-tool-trace';
-    box.style.cssText = 'margin:0 0 8px;padding:7px 10px;border-radius:10px;background:rgba(120,120,128,0.08);font-size:11px;color:rgba(60,60,67,0.62);line-height:1.45;';
+    box.style.cssText = 'margin:0 0 8px;padding:7px 10px;border-radius:10px;background:rgba(var(--neutral-rgb),0.08);font-size:11px;color:var(--text-color-light);line-height:1.45;';
     const title = document.createElement('div');
-    title.style.cssText = 'font-weight:600;color:rgba(28,28,30,0.72);margin-bottom:2px;';
+    title.style.cssText = 'font-weight:600;color:var(--text-color);margin-bottom:2px;';
     title.textContent = 'Agent 调用了 ' + events.length + ' 次只读工具';
     box.appendChild(title);
     const labels = {
@@ -219,7 +219,7 @@ function renderToolTraceElement(events) {
         const left = document.createElement('span');
         left.textContent = labels[event.name] || event.name || '工具';
         const right = document.createElement('span');
-        right.style.cssText = 'flex-shrink:0;color:rgba(60,60,67,0.42);';
+        right.style.cssText = 'flex-shrink:0;color:var(--text-color-light);';
         right.textContent = event.ok
             ? (event.count ? String(event.count) + ' 条' : '完成')
             : '失败';
@@ -432,10 +432,10 @@ async function sendAiChatMessage() {
             function renderSourcesBoxElement(sources) {
                 const box = document.createElement('div');
                 box.className = 'ai-rag-sources';
-                box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(120,120,128,0.12);font-size:12px;color:rgba(60,60,67,0.75);line-height:1.45;';
+                box.style.cssText = 'margin:0 0 8px;padding:8px 10px;border-radius:10px;background:rgba(var(--neutral-rgb),0.12);font-size:12px;color:var(--text-color-light);line-height:1.45;';
                 const title = document.createElement('div');
-                title.style.cssText = 'font-weight:600;margin-bottom:4px;color:rgba(28,28,30,0.85);display:flex;align-items:center;justify-content:space-between;';
-                setHtml(title, `<span>已检索 ${sources.length} 条相关记忆</span><span style="font-weight:400;font-size:11px;color:rgba(60,60,67,0.5);">点击条目跳转</span>`);
+                title.style.cssText = 'font-weight:600;margin-bottom:4px;color:var(--text-color);display:flex;align-items:center;justify-content:space-between;';
+                setHtml(title, `<span>已检索 ${sources.length} 条相关记忆</span><span style="font-weight:400;font-size:11px;color:var(--text-color-light);">点击条目跳转</span>`);
                 box.appendChild(title);
                 sources.slice(0, 6).forEach((s) => {
                     const row = document.createElement('div');

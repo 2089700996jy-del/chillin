@@ -409,3 +409,21 @@ test('CSS - 次级元信息颜色走主题令牌（整页审计的 5 处灰字�
         assert.match(block(selector), /color:\s*rgba\(var\(--label-rgb\), 0\.85\)/, selector + ' 在卡片底色上只有 4.45:1，必须加深到 0.85');
     }
 });
+
+test('CSS - 前端脚本生成的文字颜色必须走主题令牌（深色下不能写死深墨色）', () => {
+    // 背景：AI 回响的「工具轨迹 / 来源」卡片曾把 rgba(28,28,30,…) 这类深墨色写进 style.cssText。
+    // 浅色下正常，深色主题里就是深色字压在深色卡片上，等于隐形——CSS 扫描扫不到，只能在源码层守。
+    const offenders = [];
+    const jsDir = path.join(root, 'public', 'js');
+    for (const file of fs.readdirSync(jsDir).filter((f) => f.endsWith('.js'))) {
+        const text = fs.readFileSync(path.join(jsDir, file), 'utf8');
+        for (const m of text.matchAll(/color:\s*rgba?\((?:28,\s*28,\s*30|60,\s*60,\s*67|120,\s*120,\s*128)[^)]*\)/g)) {
+            offenders.push(file + ' → ' + m[0]);
+        }
+    }
+    assert.equal(
+        offenders.length,
+        0,
+        '脚本里写死的深墨/中性色在深色主题下会看不见，请改用 --text-color / --text-color-light / rgba(var(--neutral-rgb), …)：\n' + offenders.join('\n')
+    );
+});

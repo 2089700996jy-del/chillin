@@ -699,7 +699,7 @@ function clearReaderSession() {
         syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '', leaveTs);
     }
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
-    document.documentElement.classList.remove('in-reader-book');
+    document.documentElement.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
     const layout = document.querySelector('.reader-layout');
     if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
     // 回到应用级外观（批次 A）：深色主题下不要把状态栏刷回浅色
@@ -968,8 +968,10 @@ function applyReaderSettings() {
         b.classList.toggle('active', b.getAttribute('data-theme-swatch') === theme);
     });
 
-    // Remove all theme classes from body
+    // 主题标记同时落在 <html> 上：<html> 是页面画布（iOS 安全区、回弹露出的那圈边），
+    // 只改 body 会让阅读器四周在切换主题时仍停在浅色。
     document.body.classList.remove('dark-reader-body', 'eyecare-reader-body');
+    document.documentElement.classList.remove('dark-reader-body', 'eyecare-reader-body');
     const layout = document.querySelector('.reader-layout');
     if (layout) layout.classList.remove('dark-reader', 'eyecare-reader');
     const btn = document.getElementById('btn-theme-toggle');
@@ -983,11 +985,13 @@ function applyReaderSettings() {
 
     if (theme === 'dark') {
         document.body.classList.add('dark-reader-body');
+        document.documentElement.classList.add('dark-reader-body');
         if (layout) layout.classList.add('dark-reader');
         if (btn) setHtml(btn, THEME_ICONS.sun);
         if (themeMeta) themeMeta.setAttribute('content', '#0f1115');
     } else if (theme === 'eyecare') {
         document.body.classList.add('eyecare-reader-body');
+        document.documentElement.classList.add('eyecare-reader-body');
         if (layout) layout.classList.add('eyecare-reader');
         if (btn) setHtml(btn, THEME_ICONS.leaf);
         if (themeMeta) themeMeta.setAttribute('content', '#e8f0e0');

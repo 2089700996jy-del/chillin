@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="referrer" content="no-referrer">
     <meta name="theme-color" content="#F8F9FA">
     <link rel="manifest" href="/manifest.json">
@@ -36,9 +36,9 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.226">
+    <link rel="stylesheet" href="style.css?v=2.5.233">
     <!-- 首屏入口预热：只提前拉 app.js（14.7KB）。实测 4/12 个模块的 modulepreload 会抢 249KB CSS 的带宽，反而拖慢 LCP -->
-    <link rel="modulepreload" href="/app.js?v=2.5.226">
+    <link rel="modulepreload" href="/app.js?v=2.5.233">
 </head>
 <body>
 
@@ -255,7 +255,7 @@
                     </span>
                     <span class="btn-label">备份/安全</span>
                 </button>
-                <span id="nav-username" class="nav-username" role="button" tabindex="0" title="账号与安全" aria-label="账号与安全" style="font-size: 13px; color: #a1a1aa; font-weight: 500; cursor: pointer;"></span>
+                <span id="nav-username" class="nav-username" role="button" tabindex="0" title="账号与安全" aria-label="账号与安全" style="font-size: 13px; color: var(--text-color-light); font-weight: 500; cursor: pointer;"></span>
                 <button id="btn-logout" class="btn-text text-danger btn-icon-text" title="退出登录">
                     <span class="btn-icon">
                         <svg class="nav-svg-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -381,7 +381,7 @@
             </div>
             <div class="notion-collection-gallery" id="gallery-container"></div>
             <div id="weekly-load-more-container" class="weekly-load-more-slot"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.226</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.233</button>
         </section>
 
         <!-- ========================================== -->
@@ -611,7 +611,7 @@
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.226</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.233</button>
         </section>
 
         <!-- ========================================== -->
@@ -755,7 +755,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.226</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.233</button>
         </section>
 
         <!-- ========================================== -->
@@ -903,7 +903,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.226</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.233</button>
         </section>
 
         <!-- ========================================== -->
@@ -1036,7 +1036,7 @@
                 <span class="timeline-filter__count" data-date-count aria-live="polite"></span>
             </div>
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.226</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.233</button>
         </section>
 
         <!-- ========================================== -->
@@ -1755,7 +1755,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.226"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.233"></script>
     <!-- 同步冲突保护：本地/云端版本不静默覆盖 -->
     <div id="sync-conflict-banner" class="sync-conflict-banner" hidden>
         <button type="button" id="sync-conflict-open" class="sync-conflict-banner-btn" aria-label="处理同步冲突">
@@ -1780,6 +1780,6 @@
             </details>
         </div>
     </div>
-    <script type="module" src="app.js?v=2.5.226"></script>
+    <script type="module" src="app.js?v=2.5.233"></script>
 </body>
 </html>

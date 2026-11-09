@@ -162,7 +162,7 @@ const switchView = (targetViewId, opts = {}) => {
         activeNavs.forEach(nav => { nav.classList.add('active'); nav.setAttribute('aria-current', 'page'); });
         // Always leave reader chrome when on a main tab (fixes swipe-back theme leak)
         document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
-        document.documentElement.classList.remove('in-reader-book');
+        document.documentElement.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
         const readerLayout = document.querySelector('.reader-layout');
         if (readerLayout) readerLayout.classList.remove('dark-reader', 'eyecare-reader');
         // 回到应用级外观（批次 A）：不要固定刷成浅色，深色主题下会闪状态栏

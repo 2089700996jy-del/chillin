@@ -42,6 +42,9 @@ if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try { navigator.vibrate = () => false; } catch (_) {}
 }
 
+// 锁定整页缩放：安卓/桌面靠 viewport，iOS Safari 只认私有的 gesture* 事件。
+['gesturestart', 'gesturechange'].forEach((t) => document.addEventListener(t, (e) => e.preventDefault(), { passive: false }));
+
 document.addEventListener('DOMContentLoaded', () => {
 
     // Auth / sync: ./js/api.js + ./js/state.js
