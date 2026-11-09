@@ -7744,7 +7744,7 @@ body.dark-reader-body .sheet-pull-handle {
 
   /* 2. Expanded Container for Widescreen Workspace */
   .notion-app {
-    max-width: 1140px !important;
+    max-width: 1140px;
     padding: 82px 24px 60px !important;
   }
 
@@ -11406,6 +11406,25 @@ select:focus-visible,
     gap: 12px;
   }
 
+  .desktop-theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    background: rgba(var(--label-rgb), 0.04);
+    border: 1px solid var(--surface-hairline);
+    color: var(--text-color-light);
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease;
+  }
+
+  .desktop-theme-toggle:hover {
+    background: rgba(var(--label-rgb), 0.08);
+    color: var(--text-color);
+  }
+
   .desktop-cron-indicator {
     display: inline-flex;
     align-items: center;
@@ -12200,11 +12219,18 @@ select:focus-visible,
     border-bottom: 1px solid var(--surface-hairline);
   }
 
+  body:not(.not-authenticated):not(.in-reader-book) .notion-app:has(.notes-desktop-layout) {
+    max-width: none;
+    margin-right: 24px;
+    padding-right: 0;
+  }
+
   .notes-desktop-layout:has(.view-section.active) {
     display: grid;
     grid-template-columns: 280px minmax(0, 1fr);
     gap: 20px;
-    align-items: start;
+    align-items: stretch;
+    min-height: calc(100vh - 80px);
   }
 
   .notes-desktop-layout:has(.view-section.active) #view-notes,
