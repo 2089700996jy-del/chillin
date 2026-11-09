@@ -9307,20 +9307,7 @@ body.dark-reader-body .outgoing-links-label {
   color: rgba(235, 235, 245, 0.6);
 }
 
-body.dark-reader-body .note-backlinks-section .annotations-title,
-.note-annotations-section .annotations-title {
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--text-color-light);
-  margin-bottom: 12px;
-}
-.empty-backlinks {
-  font-size: 11px;
-  color: var(--text-color-light);
-  opacity: 0.7;
-}
-
-.note-backlinks-section {
+body.dark-reader-body .note-backlinks-section {
   border-top-color: rgba(255, 255, 255, 0.08);
 }
 
@@ -9402,20 +9389,7 @@ body.eyecare-reader-body .outgoing-links-label {
   color: var(--garden-green);
 }
 
-body.eyecare-reader-body .note-backlinks-section .annotations-title,
-.note-annotations-section .annotations-title {
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--text-color-light);
-  margin-bottom: 12px;
-}
-.empty-backlinks {
-  font-size: 11px;
-  color: var(--text-color-light);
-  opacity: 0.7;
-}
-
-.note-backlinks-section {
+body.eyecare-reader-body .note-backlinks-section {
   border-top-color: rgba(76, 175, 80, 0.2);
 }
 
@@ -11425,6 +11399,22 @@ select:focus-visible,
     color: var(--text-color);
   }
 
+  .desktop-theme-toggle .theme-icon-sun {
+    display: none;
+  }
+
+  .desktop-theme-toggle .theme-icon-moon {
+    display: block;
+  }
+
+  [data-theme="dark"] .desktop-theme-toggle .theme-icon-moon {
+    display: none;
+  }
+
+  [data-theme="dark"] .desktop-theme-toggle .theme-icon-sun {
+    display: block;
+  }
+
   .desktop-cron-indicator {
     display: inline-flex;
     align-items: center;
@@ -12219,7 +12209,7 @@ select:focus-visible,
     border-bottom: 1px solid var(--surface-hairline);
   }
 
-  body:not(.not-authenticated):not(.in-reader-book) .notion-app:has(.notes-desktop-layout) {
+  body:not(.not-authenticated):not(.in-reader-book) .notion-app:has(.notes-desktop-layout:has(.view-section.active)) {
     max-width: none;
     margin-right: 24px;
     padding-right: 0;

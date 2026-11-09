@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-09T08:21:29.045Z · 提交数：492
+> 生成时间：2026-11-09T09:03:58.524Z · 提交数：493
 
 ## 2026-11-09
 
 ### ✨ 新功能
 
+- **layout**: 铺满宽屏工作台消除右侧留白，顶栏增加深色/浅色一键切换按钮 (v2.5.236)
 - **ui**: 落地 Linear / Apple Notes 视觉重构 (v2.5.234) - 拔除光晕光斑、收拢10px发丝边框与全站极简排版
 - **ui**: 全站极简纯净化重构，对标 Linear 与 Apple Notes 四简原则
 - **notes**: deliver desktop split-view workstation (v2.5.226)

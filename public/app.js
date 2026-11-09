@@ -37,11 +37,21 @@ import { loadFeature, isFeatureReady } from './js/feature-loader.js';
 // 应用级主题（批次 A）：在 DOMContentLoaded 之前生效，避免首帧闪白
 initAppTheme();
 
-document.getElementById('btn-desktop-theme-toggle')?.addEventListener('click', () => {
-    const cur = document.documentElement.getAttribute('data-theme') || 'light';
-    const next = cur === 'dark' ? 'light' : 'dark';
-    setAppThemeMode(next);
-});
+const btnThemeToggle = document.getElementById('btn-desktop-theme-toggle');
+if (btnThemeToggle) {
+    const updateThemeToggleA11y = (effectiveTheme) => {
+        const isDark = effectiveTheme === 'dark';
+        btnThemeToggle.setAttribute('title', isDark ? '切换为浅色外观' : '切换为深色外观');
+        btnThemeToggle.setAttribute('aria-label', isDark ? '切换为浅色外观' : '切换为深色外观');
+    };
+    updateThemeToggleA11y(document.documentElement.getAttribute('data-theme') || 'light');
+    btnThemeToggle.addEventListener('click', () => {
+        const cur = document.documentElement.getAttribute('data-theme') || 'light';
+        const next = cur === 'dark' ? 'light' : 'dark';
+        setAppThemeMode(next);
+        updateThemeToggleA11y(next);
+    });
+}
 
 // Disable device vibration across the entire app as requested
 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
