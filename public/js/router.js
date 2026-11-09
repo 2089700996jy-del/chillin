@@ -139,6 +139,21 @@ const switchView = (targetViewId, opts = {}) => {
     views.forEach(view => view.classList.remove('active'));
     targetEl.classList.add('active');
     
+    const VIEW_TITLES = {
+        home: '今日看板',
+        feeds: '随手记',
+        notes: '知识笔记',
+        'note-editor': '知识笔记',
+        bookmarks: '灵感收藏',
+        reader: '沉浸阅读',
+        'reader-book': '沉浸阅读',
+        agent: 'Agent 操作台',
+        editor: '周记编辑',
+        article: '周记复盘'
+    };
+    const breadcrumbTitle = document.getElementById('desktop-breadcrumb-title');
+    if (breadcrumbTitle) breadcrumbTitle.textContent = VIEW_TITLES[targetViewId] || '今日看板';
+    
     const activeNavView = targetViewId === 'note-editor' ? 'notes' : targetViewId;
     if (MAIN_VIEWS.has(activeNavView)) {
         ui.currentActiveNavView = activeNavView;

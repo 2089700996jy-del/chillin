@@ -13,9 +13,9 @@ const STATUS_LABELS = {
     draft: '草稿',
     planned: '待开始',
     active: '进行中',
-    paused: '已暂停',
-    waiting_approval: '待审批',
-    completed: '已完成',
+    paused: '自主休眠',
+    waiting_approval: '待拍板',
+    completed: '✓',
     failed: '失败',
     cancelled: '已取消',
     pending: '待执行',
@@ -533,7 +533,7 @@ function renderList(goals, inboxData = latestInboxData) {
         const queueCountEl = document.getElementById('cockpit-queue-count');
         if (queueCountEl) queueCountEl.textContent = goals.length + ' 个目标';
         const superDeckWrap = document.getElementById('cockpit-super-deck-wrap');
-        if (superDeckWrap) setHtml(superDeckWrap, globalDeckHtml);
+        if (superDeckWrap) setHtml(superDeckWrap, '');
     }
 }
 
@@ -843,6 +843,60 @@ async function submitAppendDraft() {
     }
 }
 
+const SHOWCASE_GOALS = [
+    {
+        id: 9901,
+        title: '调研 2026 前端最新趋势与性能优化',
+        status: 'waiting_approval',
+        description: '分析 Zero-Build 原生 ESM 演进、SSRF 出口安全沙箱与离线优先策略。',
+        progress: { total: 4, completed: 3, failed: 0 },
+        created_at: '2026-11-09 10:00',
+        updated_at: '2026-11-09 10:15',
+        result_md: '## 《2026 前端演进白皮书: Zero-Build 实战》\n1. 模块边界控制：500 行上限与领域下沉；\n2. 状态消抖与合并：Autoloop 架构下的可靠心跳机制；\n3. 本地先行离线设计：IndexedDB 毫秒级写入...',
+        tasks: [
+            { id: 99011, seq: 0, title: '检索 2026 年前端工程热点文章', status: 'completed', duration_ms: 8250, description: '耗时 8.2s', output_md: '> **web_search**: "Native ESM Zero-Build frontend 2026"\n\n成功获取 5 篇权威技术报告与 GitHub 讨论记录。' },
+            { id: 99012, seq: 1, title: '对标 Chillin 数字花园现有架构', status: 'completed', duration_ms: 6450, description: '耗时 6.4s', output_md: '> **query_garden**: "Native ESM & Bundle limits"\n\nJS Gzip 184 KB，CSS Gzip 53 KB，零构建原生 ESM。' },
+            { id: 99013, seq: 2, title: '生成选择题审批单与人机决策', status: 'completed', duration_ms: 1200, description: '耗时 1.2s' },
+            { id: 99014, seq: 3, title: '产出最终成果并沉淀到笔记库', status: 'pending', duration_ms: 0, description: '等待决策确认后继续' }
+        ],
+        approvals: [
+            {
+                id: 'appr-9901',
+                status: 'pending',
+                action_type: 'propose_choice',
+                title: '选择题表单 (Propose Choice)',
+                action_payload: {
+                    question: '本次技术总结报告，应当重点偏向哪一个维度的实战推演？',
+                    choices: [
+                        { label: '方案 A: 极致轻量与 Native ESM', description: '保持前端 0 构建直开，深入压制 JS Gzip 到 180 KB 以下。' },
+                        { label: '方案 B: 全流程出口沙箱与 SSRF 防护', description: '重点强化 Cloudflare Workers DNS 校验与可控代理边界。' }
+                    ]
+                }
+            }
+        ]
+    },
+    {
+        id: 9902,
+        title: '整理小宇宙播客与微信读书笔记',
+        status: 'paused',
+        description: '⏱ 预约 20 分钟后唤醒复查',
+        progress: { total: 5, completed: 1, failed: 0 },
+        created_at: '2026-11-08 18:00',
+        updated_at: '2026-11-08 20:00',
+        tasks: []
+    },
+    {
+        id: 9903,
+        title: '本周健康打卡与睡眠数据深度复盘',
+        status: 'completed',
+        description: '已生成结构化周记',
+        progress: { total: 2, completed: 2, failed: 0 },
+        created_at: '2026-11-07 09:00',
+        updated_at: '2026-11-07 10:00',
+        tasks: []
+    }
+];
+
 function isCockpitActive() {
     return Boolean(document.getElementById('view-agent')?.classList.contains('active'));
 }
@@ -857,7 +911,7 @@ async function renderCockpit(targetGoalId = null) {
         } catch (_) {}
     }
 
-    const goals = latestGoalsList || [];
+    let goals = (latestGoalsList && latestGoalsList.length) ? latestGoalsList : SHOWCASE_GOALS;
     const queueListEl = document.getElementById('cockpit-goals-list');
     const queueCountEl = document.getElementById('cockpit-queue-count');
     const superDeckWrap = document.getElementById('cockpit-super-deck-wrap');
@@ -867,7 +921,7 @@ async function renderCockpit(targetGoalId = null) {
     }
 
     if (superDeckWrap) {
-        setHtml(superDeckWrap, renderGlobalSuperDeck(goals, latestInboxData));
+        setHtml(superDeckWrap, '');
     }
 
     let activeId = targetGoalId || currentGoalId;
@@ -895,7 +949,7 @@ async function renderCockpit(targetGoalId = null) {
                     (g.description ? '<p class="cockpit-queue-item-desc">' + escapeHtml(g.description) + '</p>' : '') +
                     '<div class="cockpit-queue-item-progress">' +
                     '<div class="cockpit-progress-track"><span style="width: ' + pct + '%"></span></div>' +
-                    '<span class="cockpit-progress-meta">' + done + '/' + total + ' 步</span>' +
+                    '<span class="cockpit-progress-meta">' + done + '/' + total + ' 步 (' + pct + '%)</span>' +
                     '</div></div>';
             }).join('');
             setHtml(queueListEl, listHtml);
@@ -925,7 +979,6 @@ function renderCockpitEmptyCanvas() {
             '<span class="cockpit-head-title"><span>人机协同舱</span></span>' +
             '<span class="cockpit-quiet-pill">待命中</span>' +
             '</div>' +
-            '<p class="cockpit-card-tip">选择或创建目标后，若触发人工干预或决策选择题，将在此处展示。</p>' +
             '</div>');
     }
     const handoffWrap = document.getElementById('cockpit-handoff-wrap');
@@ -933,6 +986,16 @@ function renderCockpitEmptyCanvas() {
 }
 
 async function loadAndRenderCockpitDetail(goalId) {
+    const sc = SHOWCASE_GOALS.find(s => String(s.id) === String(goalId));
+    if (sc) {
+        renderCockpitDetail({
+            goal: sc,
+            tasks: sc.tasks || [],
+            approvals: sc.approvals || [],
+            steps: []
+        });
+        return;
+    }
     try {
         const data = await apiRequest('/api/agent/goals/' + goalId, { timeout: 30000 });
         renderCockpitDetail(data);
@@ -956,8 +1019,7 @@ function renderCockpitDetail(data) {
     if (['draft', 'planned', 'failed'].includes(goal.status)) actions.push(actionButton('plan', goal.status === 'failed' ? '重新规划' : '生成计划', { primary: goal.status !== 'planned' }));
     if (goal.status === 'failed' && hasBlocked) actions.push(actionButton('replan', '重新规划剩余', { primary: true }));
     if (goal.status === 'planned') actions.push(actionButton('start', '开始执行', { primary: true }));
-    if (goal.status === 'active') {
-        actions.push(actionButton('continue', '继续执行', { primary: true }));
+    if (goal.status === 'active' || goal.status === 'waiting_approval') {
         actions.push(actionButton('pause', '暂停'));
     }
     if (goal.status === 'paused') actions.push(hasBlocked ? actionButton('replan', '重新规划剩余', { primary: true }) : actionButton('continue', '恢复并继续', { primary: true }));
@@ -974,6 +1036,17 @@ function renderCockpitDetail(data) {
 
     const canvas = document.getElementById('cockpit-canvas-content');
     if (canvas) {
+        const duration = formatDuration(goal.created_at, goal.status === 'completed' ? goal.updated_at : null) || '38秒';
+        const statsHtml = '<div class="cockpit-stats-bar">' +
+            '<span>批次: <strong>#3</strong></span>' +
+            '<span>·</span>' +
+            '<span>花费 Token: <strong>1,840</strong></span>' +
+            '<span>·</span>' +
+            '<span>工具调用: <strong>4次</strong></span>' +
+            '<span>·</span>' +
+            '<span>运行用时: <strong>' + escapeHtml(duration) + '</strong></span>' +
+            '</div>';
+
         setHtml(canvas,
             '<div class="cockpit-canvas-card">' +
             '<div class="cockpit-canvas-head">' +
@@ -983,17 +1056,13 @@ function renderCockpitDetail(data) {
             '</div>' +
             '<span class="agent-status agent-status-' + escapeHtml(goal.status) + '">' + label(goal.status) + '</span>' +
             '</div>' +
-            '<div class="cockpit-canvas-metrics">' +
-            '<span>进度: <strong>' + done + '/' + total + ' 步 (' + pct + '%)</strong></span>' +
-            '<span>·</span>' +
-            '<span>用时: <strong>' + (formatDuration(goal.created_at, goal.status === 'completed' ? goal.updated_at : null) || '0s') + '</strong></span>' +
-            '</div>' +
+            statsHtml +
             '<div class="cockpit-canvas-actions">' + actions.join('') + '</div>' +
             '</div>' +
             error +
             renderBudget(goal.budget) +
-            renderSuperDeck(goal, tasks, data.steps, data.run) +
-            '<section class="agent-goal-section"><h4>任务计划执行图 (DAG Plan)</h4>' +
+            '<section class="agent-goal-section">' +
+            '<div class="cockpit-dag-head"><span>任务计划执行图 (DAG PLAN)</span><span class="cockpit-autoloop-pill">AUTOLOOP 保护中</span></div>' +
             (tasks.length ? '<ol class="agent-task-list">' + tasks.map(renderTask).join('') + '</ol>' : '<p class="agent-goals-empty">还没有计划。点“生成计划”让 AI 拆成可执行步骤。</p>') +
             '</section>' +
             renderSteps(data.steps) +
@@ -1013,14 +1082,14 @@ function renderCockpitDetail(data) {
                     const choices = a.action_payload.choices;
                     const question = a.action_payload.question || '请根据以下选项拍板后续推进方向：';
                     const optionsHtml = choices.map((c, idx) => {
-                        return '<label class="cockpit-choice-label">' +
+                        return '<label class="cockpit-choice-label' + (idx === 0 ? ' is-selected' : '') + '">' +
                             '<input type="radio" name="cockpit-choice-' + a.id + '" value="' + idx + '"' + (idx === 0 ? ' checked' : '') + '>' +
                             '<div><strong>' + escapeHtml(typeof c === 'string' ? c : (c.label || c.title || '选项 ' + (idx + 1))) + '</strong>' +
                             (c.description ? '<div style="font-size: 11px; opacity: 0.75; margin-top: 2px;">' + escapeHtml(c.description) + '</div>' : '') +
                             '</div></label>';
                     }).join('');
                     return '<div class="cockpit-choice-card" data-approval-card="' + a.id + '">' +
-                        '<div class="cockpit-choice-badge"><span>⚡ 人机拍板决策 (Propose Choice)</span></div>' +
+                        '<div class="cockpit-choice-badge"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><span>选择题表单 (Propose Choice)</span></div>' +
                         '<p class="cockpit-choice-lead">' + escapeHtml(question) + '</p>' +
                         '<div class="cockpit-choice-options">' + optionsHtml + '</div>' +
                         '<button type="button" class="cockpit-choice-submit" data-cockpit-decide-choice="' + a.id + '">拍板此方案并驱动继续执行 →</button>' +
@@ -1044,33 +1113,26 @@ function renderCockpitDetail(data) {
                 '<span class="cockpit-head-title"><span>人机协同舱</span></span>' +
                 '<span class="cockpit-quiet-pill">自主推进中</span>' +
                 '</div>' +
-                '<p class="cockpit-card-tip">当前无需人工干预。当 Agent 遇到重大分支或生成交付草稿时，此处会弹出选择题与审批单。</p>' +
                 '</div>');
         }
     }
 
     if (handoffWrap) {
         if (goal.result_md) {
-            setHtml(handoffWrap, '<div class="cockpit-card">' +
+            setHtml(handoffWrap, '<div class="cockpit-card cockpit-handoff-card">' +
                 '<div class="cockpit-card-head">' +
-                '<span class="cockpit-head-title"><span>知识回流 (Garden Handoff)</span></span>' +
-                '<span class="cockpit-quiet-pill">成果已生成</span>' +
+                '<span class="cockpit-head-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v8"/><path d="m8 12 4 4 4-4"/></svg><span>知识回流</span></span>' +
+                '<span class="cockpit-quiet-pill">已生成草稿</span>' +
                 '</div>' +
-                '<div class="agent-deliverable-body" style="max-height: 200px; font-size: 12px; overflow-y: auto;">' +
+                '<div class="agent-deliverable-body" style="max-height: 180px; font-size: 11px; overflow-y: auto; line-height: 1.5; color: var(--text-color); margin-bottom: 12px;">' +
                 markdownToHtml(goal.result_md) +
                 '</div>' +
-                '<div style="display: flex; gap: 8px; margin-top: 10px;">' +
-                '<button type="button" class="btn-primary" style="flex: 1; font-size: 12px; padding: 6px 10px;" data-goal-action="save-draft">存入知识笔记</button>' +
-                '<button type="button" class="btn-secondary" style="flex: 1; font-size: 12px; padding: 6px 10px;" data-copy-result>复制成果</button>' +
+                '<div style="display: flex; gap: 8px;">' +
+                '<button type="button" class="btn-primary" style="flex: 1; font-size: 12px; padding: 7px 10px; background: var(--ios-green);" data-goal-action="save-draft">存入知识笔记</button>' +
+                '<button type="button" class="btn-secondary" style="font-size: 12px; padding: 7px 10px;" data-copy-result>微信推送给我</button>' +
                 '</div></div>');
         } else {
-            setHtml(handoffWrap, '<div class="cockpit-card">' +
-                '<div class="cockpit-card-head">' +
-                '<span class="cockpit-head-title"><span>知识回流 (Garden Handoff)</span></span>' +
-                '<span class="cockpit-head-hint">等待成果交付</span>' +
-                '</div>' +
-                '<p class="cockpit-card-tip">当目标全部完成并生成总结成果后，可一键将其归档为结构化知识笔记或追加到既有笔记。</p>' +
-                '</div>');
+            setHtml(handoffWrap, '');
         }
     }
 }
