@@ -11834,3 +11834,92 @@ select:focus-visible,
 .cockpit-choice-submit:hover {
   opacity: 0.9;
 }
+
+/* ========================================== */
+/* NOTES WORKSPACE (Dual-Column Desktop Studio) */
+/* ========================================== */
+.notes-desktop-layout {
+  display: contents;
+}
+
+.btn-create-note-inline {
+  display: none;
+}
+
+.note-item.is-selected {
+  border-color: var(--ios-blue);
+  box-shadow: 0 0 0 1px var(--ios-blue), var(--card-shadow);
+}
+
+@media (min-width: 1024px) {
+  #view-notes .app-version-badge {
+    display: none;
+  }
+
+  .btn-create-note-inline {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 4px 10px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ios-blue);
+    background: rgba(var(--label-rgb), 0.04);
+    border: 1px solid var(--surface-hairline);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  }
+
+  .btn-create-note-inline:hover {
+    background: rgba(var(--label-rgb), 0.08);
+    border-color: rgba(var(--label-rgb), 0.16);
+  }
+
+  .notes-page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+
+  .notes-desktop-layout:has(.view-section.active) {
+    display: grid;
+    grid-template-columns: 320px minmax(0, 1fr);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .notes-desktop-layout:has(.view-section.active) #view-notes,
+  .notes-desktop-layout:has(.view-section.active) #view-note-editor {
+    display: block;
+  }
+
+  .notes-desktop-layout:has(.view-section.active) #view-notes {
+    position: sticky;
+    top: 72px;
+    max-height: calc(100vh - 90px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+
+  .notes-desktop-layout:has(.view-section.active) #view-note-editor {
+    min-width: 0;
+    background: var(--card-bg);
+    border: 1px solid var(--surface-hairline);
+    border-radius: var(--surface-radius);
+    box-shadow: var(--card-shadow);
+    padding: 24px 28px 32px;
+  }
+
+  .notes-desktop-layout:has(.view-section.active) .note-paper {
+    max-width: 100%;
+    min-height: 440px;
+    padding: 0;
+  }
+
+  .notes-desktop-layout:has(.view-section.active) .article-meta {
+    margin-bottom: 14px;
+  }
+}
+

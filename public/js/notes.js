@@ -182,7 +182,8 @@ const renderNotes = () => {
     const sortedNotes = allNotes.slice(0, notesVisibleCount);
     sortedNotes.forEach(note => {
         const el = document.createElement('div');
-        el.className = 'note-item';
+        const isSelected = ui.currentNoteId && String(note.id) === String(ui.currentNoteId);
+        el.className = 'note-item' + (isSelected ? ' is-selected' : '');
         el.setAttribute('data-note-id', String(note.id));
         const cleanContent = (note.content || '').replace(/\\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
         const previewText = cleanContent ? escapeHtml(cleanContent.substring(0, 36)) + (cleanContent.length > 36 ? '...' : '') : '无正文内容';
@@ -204,6 +205,10 @@ const renderNotes = () => {
         more.addEventListener('click', loadMoreNotes);
         notesListContainer.appendChild(more);
         observeNotesLoadMore(more);
+    }
+
+    if (typeof window !== 'undefined' && window.innerWidth >= 1024 && !ui.currentNoteId && allNotes.length > 0) {
+        openNoteEditor(allNotes[0].id, { skipHistory: true });
     }
 };
 
@@ -276,6 +281,16 @@ const checkAndShowNoteDraftTip = (noteId) => {
     }
 };
 
+const updateSelectedHighlight = (id) => {
+    document.querySelectorAll('#notes-list-container .note-item').forEach(el => {
+        if (id && el.getAttribute('data-note-id') === String(id)) {
+            el.classList.add('is-selected');
+        } else {
+            el.classList.remove('is-selected');
+        }
+    });
+};
+
 const openNoteEditor = (noteId = null, opts = {}) => {
     document.getElementById('new-annotation-content').value = '';
     if (noteId) {
@@ -305,6 +320,7 @@ const openNoteEditor = (noteId = null, opts = {}) => {
         const ogStrip = document.getElementById('note-outgoing-links-strip');
         if (ogStrip) ogStrip.style.display = 'none';
     }
+    updateSelectedHighlight(noteId);
     checkAndShowNoteDraftTip(noteId);
     actions.switchView('note-editor', opts);
     autoResizeTextarea(editNoteContent);
@@ -342,12 +358,23 @@ btnDeleteNote.addEventListener('click', async () => {
         const deletedId = ui.currentNoteId; 
         addDeletedId(deletedId);
         state.notesDatabase = state.notesDatabase.filter(n => n.id !== ui.currentNoteId); 
+        ui.currentNoteId = null;
         saveNotesDatabase(); 
         discardNoteDraft();
         apiSyncNote({id: deletedId}, 'DELETE'); 
         renderNotes(); 
-        actions.switchView('notes'); 
+        if (typeof window !== 'undefined' && window.innerWidth >= 1024 && state.notesDatabase.length > 0) {
+            const nextNote = [...state.notesDatabase].sort((a, b) => b.id - a.id)[0];
+            openNoteEditor(nextNote.id, { skipHistory: true });
+        } else {
+            actions.switchView('notes'); 
+        }
     }
+});
+
+document.getElementById('btn-create-note-inline')?.addEventListener('click', () => {
+    openNoteEditor(null);
+    editNoteTitle.focus();
 });
 
 document.getElementById('btn-add-annotation').addEventListener('click', () => {

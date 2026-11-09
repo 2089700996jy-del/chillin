@@ -139,10 +139,11 @@ const switchView = (targetViewId, opts = {}) => {
     views.forEach(view => view.classList.remove('active'));
     targetEl.classList.add('active');
     
-    if (MAIN_VIEWS.has(targetViewId)) {
-        ui.currentActiveNavView = targetViewId;
+    const activeNavView = targetViewId === 'note-editor' ? 'notes' : targetViewId;
+    if (MAIN_VIEWS.has(activeNavView)) {
+        ui.currentActiveNavView = activeNavView;
         navItems.forEach(item => { item.classList.remove('active'); item.removeAttribute('aria-current'); });
-        const activeNavs = document.querySelectorAll(`.nav-item[data-view="${targetViewId}"], .mobile-tab-item[data-view="${targetViewId}"]`);
+        const activeNavs = document.querySelectorAll(`.nav-item[data-view="${activeNavView}"], .mobile-tab-item[data-view="${activeNavView}"]`);
         activeNavs.forEach(nav => { nav.classList.add('active'); nav.setAttribute('aria-current', 'page'); });
         // Always leave reader chrome when on a main tab (fixes swipe-back theme leak)
         document.body.classList.remove('dark-reader-body', 'eyecare-reader-body', 'in-reader-book');
@@ -161,6 +162,8 @@ const switchView = (targetViewId, opts = {}) => {
             actions.renderFeeds();
         } else if (targetViewId === 'home') {
             actions.renderHeatmap();
+        } else if (targetViewId === 'notes') {
+            actions.renderNotes?.();
         } else if (targetViewId === 'agent') {
             loadFeature('agent-goals')
                 .then(() => actions.renderAgentCockpit?.())
@@ -170,7 +173,7 @@ const switchView = (targetViewId, opts = {}) => {
 
     const mainApp = document.querySelector('.notion-app');
     if (mainApp) {
-        if (targetViewId === 'agent') mainApp.classList.add('wide-workspace');
+        if (targetViewId === 'agent' || targetViewId === 'notes' || targetViewId === 'note-editor') mainApp.classList.add('wide-workspace');
         else mainApp.classList.remove('wide-workspace');
     }
 
@@ -185,9 +188,10 @@ const switchView = (targetViewId, opts = {}) => {
     // 无障碍：可见文本之外的按钮也要能被读屏叫出准确动作
     if (fabBtn && fabLabels[targetViewId]) fabBtn.setAttribute('aria-label', fabLabels[targetViewId]);
 
+    const isDesktopSplit = (targetViewId === 'note-editor' || targetViewId === 'notes') && typeof window !== 'undefined' && window.innerWidth >= 1024;
     if (targetViewId === 'article' || targetViewId === 'editor' || targetViewId === 'note-editor' || targetViewId === 'bookmark-editor' || targetViewId === 'prompt-editor' || targetViewId === 'reader-book') {
         navMenu.style.display = 'none';
-        btnBack.style.display = 'inline-flex';
+        btnBack.style.display = isDesktopSplit ? 'none' : 'inline-flex';
         fabBtn.classList.add('hidden');
         fabBtn.style.display = 'none';
         if (mobileBottomNav) {
