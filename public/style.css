@@ -28,15 +28,15 @@
     "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
 
   --card-bg: var(--ios-card-bg);
-  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05);
-  --card-hover-shadow: 0 12px 32px rgba(16, 24, 40, 0.10);
+  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
   --widget-bg: rgba(var(--neutral-rgb), 0.08);
   --callout-bg: rgba(0, 122, 255, 0.06);
   --danger-color: #D70015;
   --danger-fill: var(--danger-color);
-  /* 路线 A：主表面统一大圆角；卡片刻意不画 1px 硬边框，靠柔和阴影分层 */
-  --surface-radius: 26px;
-  --surface-hairline: rgba(var(--label-rgb), 0.06);
+  /* 对标 Linear / Apple Notes 极简工效：10px 精密微圆角 + 1px 发丝边框 */
+  --surface-radius: 10px;
+  --surface-hairline: rgba(var(--label-rgb), 0.08);
   /* 批次 A：应用级深色主题的亮色基线（深色覆盖在文件末尾的 :root[data-theme="dark"] 里） */
   --nav-bg: #F2F2F7;
   /* 导航/底栏取色同源：玻璃层与底栏填充都由页面底色分量派生，
@@ -51,8 +51,8 @@
   --hairline: rgba(0, 0, 0, 0.06);
   --segment-active-bg: #ffffff;
   --tab-inactive: #6E6E73;
-  --glow-blue: rgba(0, 122, 255, 0.13);
-  --glow-green: rgba(52, 199, 89, 0.09);
+  --glow-blue: rgba(0, 0, 0, 0);
+  --glow-green: rgba(0, 0, 0, 0);
   /* 路线 B：层级令牌。新增层一律引用令牌，不再写裸 z-index 魔数；
      从下到上：导航 → 弹层 → Toast → 登录遮罩 → 确认弹窗（永远最上层，避免被弹层内的按钮压住） */
   --z-nav: 1000;
@@ -3916,11 +3916,11 @@ body.eyecare-reader-body .sidebar-header {
 
 /* 1. Heatmap Widget (???????) */
 .heatmap-widget {
-  background: var(--ios-card-bg, var(--white));
+  background: var(--card-bg);
   border-radius: var(--surface-radius);
-  padding: 18px 20px 16px;
-  margin-bottom: 22px;
-  border: 1px solid transparent;
+  padding: 16px 18px 14px;
+  margin-bottom: 20px;
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -3946,29 +3946,27 @@ body.eyecare-reader-body .sidebar-header {
   font-weight: 500;
 }
 
-/* Konsta / Apple Intelligence Capsule Button */
+/* Linear / Apple Notes 精简胶囊按钮 */
 .btn-ai-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  background: rgba(0, 122, 255, 0.08);
-  color: var(--accent-text, var(--accent-color)) !important;
-  border: 1px solid rgba(0, 122, 255, 0.18);
-  border-radius: 9999px;
-  padding: 4px 11px;
-  font-size: 12px;
-  font-weight: 600;
+  background: var(--card-bg);
+  color: var(--text-color) !important;
+  border: 1px solid var(--surface-hairline);
+  border-radius: 6px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  font-weight: 500;
   cursor: pointer;
-  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
   user-select: none;
   white-space: nowrap;
-  letter-spacing: -0.2px;
 }
 
 .btn-ai-pill:hover {
-  background: rgba(0, 122, 255, 0.14);
-  border-color: rgba(0, 122, 255, 0.32);
+  background: var(--hover-bg);
 }
 
 .btn-ai-pill:active {
@@ -6878,14 +6876,15 @@ body.eyecare-reader-body .reader-sync-info {
 /* Weeklies (Home) */
 .notion-collection-card {
   border-radius: var(--surface-radius);
-  border: 1px solid transparent;
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .notion-collection-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px);
   box-shadow: var(--card-hover-shadow);
+  border-color: rgba(var(--label-rgb), 0.16);
 }
 
 .notion-collection-card:active {
@@ -6895,15 +6894,16 @@ body.eyecare-reader-body .reader-sync-info {
 /* Feeds */
 .feed-item-card {
   border-radius: var(--surface-radius);
-  border: 1px solid transparent;
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--card-shadow);
-  padding: 18px 20px;
+  padding: 16px 18px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .feed-item-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: var(--card-hover-shadow);
+  border-color: rgba(var(--label-rgb), 0.16);
 }
 
 .feed-item-card:active {
@@ -6912,20 +6912,20 @@ body.eyecare-reader-body .reader-sync-info {
 
 .feed-input-card {
   border-radius: var(--surface-radius);
-  border: 1px solid transparent;
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .feed-input-card:focus-within {
-  border-color: rgba(0, 0, 0, 0.12);
+  border-color: rgba(var(--label-rgb), 0.25);
   box-shadow: var(--card-hover-shadow);
   outline: none;
 }
 
 .rich-link-card {
-  border-radius: 14px;
-  border: 1px solid transparent;
+  border-radius: var(--surface-radius);
+  border: 1px solid var(--surface-hairline);
   transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
 }
 
@@ -6937,19 +6937,19 @@ body.eyecare-reader-body .reader-sync-info {
 .note-item {
   border-radius: var(--surface-radius);
   background: var(--card-bg);
-  border: 1px solid transparent;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
-  margin-bottom: 14px;
-  padding: 18px 22px;
+  border: 1px solid var(--surface-hairline);
+  box-shadow: var(--card-shadow);
+  margin-bottom: 12px;
+  padding: 16px 18px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .note-item:hover {
   background: var(--card-bg);
-  transform: translateY(-2px);
+  transform: translateY(-1px);
   box-shadow: var(--card-hover-shadow);
-  border-color: rgba(var(--label-rgb), 0.12);
-  padding-left: 20px;
+  border-color: rgba(var(--label-rgb), 0.18);
+  padding-left: 18px;
 }
 
 .note-item:active {
@@ -6959,7 +6959,7 @@ body.eyecare-reader-body .reader-sync-info {
 /* Bookshelf / Reader Cards */
 .book-card {
   border-radius: var(--surface-radius);
-  border: 1px solid transparent;
+  border: 1px solid var(--surface-hairline);
   box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
@@ -7582,14 +7582,15 @@ body.is-offline .sync-status {
   display: inline-flex;
   align-items: center;
   font-size: 11px;
-  font-weight: 600;
-  color: #1F7A34;
-  background: rgba(52, 199, 89, 0.12);
-  padding: 1.5px 7px;
-  border-radius: 9999px;
+  font-weight: 500;
+  color: var(--text-color-light);
+  background: rgba(var(--label-rgb), 0.06);
+  border: 1px solid var(--surface-hairline);
+  padding: 1px 6px;
+  border-radius: 4px;
   margin-left: 6px;
   vertical-align: 1px;
-  letter-spacing: -0.2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 body.dark-reader-body .heatmap-streak-badge {
@@ -9658,23 +9659,22 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip {
-  /* Konsta HIG：胶囊视觉保持 28px，热区由 ::after 撑到 44px */
-  height: 28px;
-  padding: 0 10px;
+  height: 24px;
+  padding: 0 8px;
   position: relative;
-  border-radius: 9999px;
+  border-radius: 4px;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
+  gap: 4px;
+  font-size: 11px;
   font-weight: 500;
-  background: rgba(var(--neutral-rgb), 0.08);
-  border: 1px solid transparent;
-  color: rgba(var(--label-rgb), 0.8);
+  background: rgba(var(--label-rgb), 0.05);
+  border: 1px solid var(--surface-hairline);
+  color: var(--text-color-light);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -9688,7 +9688,8 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip:hover {
-  background: rgba(var(--neutral-rgb), 0.14);
+  background: var(--hover-bg);
+  color: var(--text-color);
 }
 
 .k-mood-chip:active {
@@ -9696,15 +9697,15 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip.active {
-  background: var(--ios-blue, var(--ios-blue));
-  color: var(--white);
+  background: var(--text-color);
+  color: var(--card-bg);
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.28);
+  border-color: var(--text-color);
+  box-shadow: none;
 }
 
 .k-mood-emoji {
-  font-size: 12px;
-  line-height: 1;
+  display: none;
 }
 
 body.dark-reader-body .k-mood-bar {
@@ -9730,10 +9731,10 @@ body.dark-reader-body .k-mood-chip.active {
 
 /* ==================== Konsta iOS: 每日偶想 (Apple Journal Reflection Card) ==================== */
 .k-journal-card {
-  margin: 20px 0 16px;
-  padding: 18px 20px 20px;
-  background: var(--card-bg, var(--white));
-  border: 1px solid transparent;
+  margin: 18px 0 16px;
+  padding: 16px 18px 18px;
+  background: var(--card-bg);
+  border: 1px solid var(--surface-hairline);
   border-radius: var(--surface-radius);
   box-shadow: var(--card-shadow);
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -9806,17 +9807,19 @@ body.dark-reader-body .k-mood-chip.active {
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--card-bg, var(--white));
-  border-radius: var(--radius-pill);
-  padding: 3px 4px 3px 14px;
-  height: 40px;
-  box-shadow: 0 2px 10px rgba(16, 24, 40, 0.07);
-  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  background: var(--input-bg);
+  border: 1px solid var(--surface-hairline);
+  border-radius: 6px;
+  padding: 2px 4px 2px 12px;
+  height: 36px;
+  box-shadow: none;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
 }
 
 .k-journal-field:focus-within {
-  background: var(--card-bg, var(--white));
-  box-shadow: 0 2px 12px rgba(16, 24, 40, 0.09), 0 0 0 2.5px rgba(0, 122, 255, 0.18);
+  background: var(--input-bg-focus);
+  border-color: rgba(var(--label-rgb), 0.28);
+  box-shadow: none;
 }
 
 .k-journal-input {
@@ -9824,7 +9827,7 @@ body.dark-reader-body .k-mood-chip.active {
   min-width: 0;
   border: none;
   background: transparent;
-  font-size: 13.5px;
+  font-size: 13px;
   color: inherit;
   outline: none;
   padding-right: 6px;
@@ -9840,18 +9843,18 @@ body.dark-reader-body .k-mood-chip.active {
 }
 
 .k-spark-send-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
   border: none;
-  background: var(--ios-blue, var(--ios-blue));
-  color: var(--white);
+  background: var(--text-color);
+  color: var(--card-bg);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.15s ease;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -9890,10 +9893,10 @@ body.dark-reader-body .k-spark-send-btn {
 /* ==================== Konsta iOS: 时光留痕 (Apple Inset Grouped Memory Card) ==================== */
 .k-memory-card {
   margin-bottom: 20px;
-  background: var(--card-bg, var(--white));
-  border: 1px solid transparent;
+  background: var(--card-bg);
+  border: 1px solid var(--surface-hairline);
   border-radius: var(--surface-radius);
-  padding: 18px 20px;
+  padding: 16px 18px;
   box-shadow: var(--card-shadow);
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -10734,19 +10737,16 @@ body.dark-reader-body .k-directory-arrow {
   --danger-color: #FF453A;
   --danger-fill: #B3261E;
   --link-color: #0A84FF;
-  --glow-blue: rgba(0, 122, 255, 0.1);
-  --glow-green: rgba(52, 199, 89, 0.07);
+  --glow-blue: rgba(0, 0, 0, 0);
+  --glow-green: rgba(0, 0, 0, 0);
   --heat-1: rgba(52, 199, 89, 0.2);
   --heat-2: rgba(52, 199, 89, 0.4);
   --heat-3: rgba(52, 199, 89, 0.66);
   --heat-4: var(--ios-green);
 }
 
-/* 深色下光晕更收敛：底色本身已是深灰蓝，同样的透明度会显脏 */
 :root[data-theme="dark"] body {
-  background-image:
-    radial-gradient(1200px 520px at 8% -12%, var(--glow-blue), transparent 60%),
-    radial-gradient(900px 460px at 96% 0%, var(--glow-green), transparent 64%);
+  background-image: none;
 }
 
 /* 顶栏/底部编辑坞的分隔线在深底上要反过来用白色叠加 */
@@ -11233,6 +11233,10 @@ select:focus-visible,
   body:not(.not-authenticated):not(.in-reader-book) .super-navbar {
     left: 220px;
     width: calc(100% - 220px);
+    height: 42px;
+    background: var(--card-bg);
+    border-bottom: 1px solid var(--surface-hairline);
+    box-shadow: none;
   }
 
   body:not(.not-authenticated):not(.in-reader-book) .super-navbar__menu,
@@ -11248,8 +11252,8 @@ select:focus-visible,
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 4px 10px;
-    border-radius: var(--radius-pill);
+    padding: 3px 10px;
+    border-radius: 6px;
     background: var(--input-bg);
     border: 1px solid var(--surface-hairline);
     color: var(--text-color-light);
@@ -11301,14 +11305,14 @@ select:focus-visible,
 
   body:not(.not-authenticated):not(.in-reader-book) .notion-app {
     margin-left: 220px;
-    max-width: 1100px;
-    padding: 76px 28px 60px;
+    max-width: 1040px;
+    padding: 58px 32px 60px;
   }
 
   body:not(.not-authenticated):not(.in-reader-book) .notion-app.wide-workspace {
     max-width: calc(100vw - 220px);
     width: calc(100vw - 220px);
-    padding: 68px 24px 40px;
+    padding: 54px 24px 40px;
   }
 
   #view-home .page-header .page-title {
@@ -11364,15 +11368,15 @@ select:focus-visible,
   .desktop-cron-indicator {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 3px 9px;
-    border-radius: var(--radius-pill);
-    background: rgba(52, 199, 89, 0.1);
+    gap: 5px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: rgba(var(--label-rgb), 0.04);
     font-size: 11px;
-    color: var(--ios-green);
+    color: var(--text-color-light);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
     font-weight: 500;
-    border: 1px solid rgba(52, 199, 89, 0.2);
+    border: 1px solid var(--surface-hairline);
   }
 }
 
