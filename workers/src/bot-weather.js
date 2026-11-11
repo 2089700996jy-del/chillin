@@ -54,6 +54,9 @@ export async function getQWeatherToken(env, nowMs = Date.now()) {
             const nowSec = Math.floor(nowMs / 1000);
             const header = { alg: 'EdDSA', kid: keyId, typ: 'JWT' };
             const payload = { sub: projectId, iat: nowSec - 30, exp: nowSec + 3600 };
+            if (env.QWEATHER_DEVELOPER_ID || env.QWEATHER_ISS) {
+                payload.iss = env.QWEATHER_DEVELOPER_ID || env.QWEATHER_ISS;
+            }
             const signingInput = base64UrlEncode(JSON.stringify(header)) + '.' + base64UrlEncode(JSON.stringify(payload));
             const sig = await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, key, new TextEncoder().encode(signingInput));
             const token = signingInput + '.' + base64UrlEncode(sig);
@@ -95,8 +98,12 @@ export async function lookupCity(env, cityName, fetchImpl = fetch, nowMs = Date.
     const raw = String(cityName || '').trim();
     if (!raw) return null;
     const cleanCity = raw.replace(/[省市县区旗州]$/, '');
-    const url = 'https://geoapi.qweather.com/v2/city/lookup?location=' + encodeURIComponent(cleanCity);
-    const data = await fetchQWeather(env, url, fetchImpl, nowMs);
+    let url = 'https://geoapi.qweather.com/v2/city/lookup?location=' + encodeURIComponent(cleanCity);
+    let data = await fetchQWeather(env, url, fetchImpl, nowMs);
+    if ((!data || !Array.isArray(data.location) || !data.location.length) && env.QWEATHER_API_HOST) {
+        url = 'https://' + env.QWEATHER_API_HOST + '/geo/v2/city/lookup?location=' + encodeURIComponent(cleanCity);
+        data = await fetchQWeather(env, url, fetchImpl, nowMs);
+    }
     if (!data || !Array.isArray(data.location) || !data.location.length) return null;
     const loc = data.location[0];
     return { id: loc.id, name: loc.name, adm1: loc.adm1, adm2: loc.adm2 };
@@ -104,20 +111,27 @@ export async function lookupCity(env, cityName, fetchImpl = fetch, nowMs = Date.
 
 /** 完整抓取 24 小时预报、3 天预报、气象预警和生活指数 */
 export async function fetchFullWeatherData(env, locationId, fetchImpl = fetch, nowMs = Date.now()) {
-    const host = env.QWEATHER_API_HOST || 'devapi.qweather.com';
-    const base = 'https://' + host + '/v7';
-    const [h24, d3, warning, indices] = await Promise.all([
-        fetchQWeather(env, base + '/weather/24h?location=' + locationId, fetchImpl, nowMs),
-        fetchQWeather(env, base + '/weather/3d?location=' + locationId, fetchImpl, nowMs),
-        fetchQWeather(env, base + '/weather/warning/now?location=' + locationId, fetchImpl, nowMs),
-        fetchQWeather(env, base + '/indices/1d?type=3,5&location=' + locationId, fetchImpl, nowMs)
-    ]);
-    return {
-        hourly: (h24 && Array.isArray(h24.hourly)) ? h24.hourly : [],
-        daily: (d3 && Array.isArray(d3.daily)) ? d3.daily : [],
-        warning: (warning && Array.isArray(warning.warning)) ? warning.warning : [],
-        indices: (indices && Array.isArray(indices.daily)) ? indices.daily : []
+    const primaryHost = env.QWEATHER_API_HOST || 'devapi.qweather.com';
+    const fetchWithHost = async (host) => {
+        const base = 'https://' + host + '/v7';
+        const [h24, d3, warning, indices] = await Promise.all([
+            fetchQWeather(env, base + '/weather/24h?location=' + locationId, fetchImpl, nowMs),
+            fetchQWeather(env, base + '/weather/3d?location=' + locationId, fetchImpl, nowMs),
+            fetchQWeather(env, base + '/weather/warning/now?location=' + locationId, fetchImpl, nowMs),
+            fetchQWeather(env, base + '/indices/1d?type=3,5&location=' + locationId, fetchImpl, nowMs)
+        ]);
+        return {
+            hourly: (h24 && Array.isArray(h24.hourly)) ? h24.hourly : [],
+            daily: (d3 && Array.isArray(d3.daily)) ? d3.daily : [],
+            warning: (warning && Array.isArray(warning.warning)) ? warning.warning : [],
+            indices: (indices && Array.isArray(indices.daily)) ? indices.daily : []
+        };
     };
+    let res = await fetchWithHost(primaryHost);
+    if (!env.QWEATHER_API_HOST && !res.hourly.length && !res.daily.length) {
+        res = await fetchWithHost('api.qweather.com');
+    }
+    return res;
 }
 
 /** 智能气象与温差数学分析器 */
