@@ -220,6 +220,13 @@ integration('runMorningWeatherCare 在降雨或大温差时向微信发送晨报
 
     const row = await db.prepare("SELECT * FROM bot_weather_daily WHERE user_id = 1 AND date = '2026-11-11'").first();
     assert.equal(row.notified, 1);
+
+    // 幂等性验证：同日再次触发，必须静默跳过，绝不重复推送
+    const res2 = await runMorningWeatherCare(env, db, fetcher.impl, { nowMs: Date.parse('2026-11-11T08:00:30+08:00') });
+    assert.equal(res2.silent, 1, '同日第二次触发应当静默跳过');
+    assert.equal(res2.notified, 0, '同日第二次触发不可重复发信');
+    const turnsAfter = await db.prepare('SELECT role, content FROM bot_chat_turns WHERE user_id = 1').all();
+    assert.equal(turnsAfter.results.length, 1, '聊天记录中依然只有一条推送');
 });
 
 integration('maybeWeatherAnswer 白天随手查天气秒回', async () => {

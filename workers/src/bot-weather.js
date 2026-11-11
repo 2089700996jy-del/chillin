@@ -36,9 +36,9 @@ export function pemToDer(pem) {
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
     if (buf.length === 32) {
-        const pkcs8Prefix = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
         const full = new Uint8Array(48);
-        full.set(pkcs8Prefix, 0); full.set(buf, 16);
+        full.set([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20], 0);
+        full.set(buf, 16);
         return full;
     }
     return buf;
@@ -47,7 +47,7 @@ export function pemToDer(pem) {
 /** 生成和风天气 Ed25519 JWT 凭据（有效时长 1 小时，内存缓存 50 分钟） */
 export async function getQWeatherToken(env, nowMs = Date.now()) {
     if (!env) return null;
-    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID || 'TG5A7BB26P';
+    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID;
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKeyPem = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
 
@@ -85,11 +85,8 @@ export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date
     }
     const url = new URL(urlStr);
     const headers = { 'Accept-Encoding': 'gzip' };
-    if (auth.type === 'bearer') {
-        headers['Authorization'] = 'Bearer ' + auth.token;
-    } else if (auth.type === 'key') {
-        headers['X-QW-Api-Key'] = auth.token;
-    }
+    if (auth.type === 'bearer') headers['Authorization'] = 'Bearer ' + auth.token;
+    else if (auth.type === 'key') headers['X-QW-Api-Key'] = auth.token;
     try {
         const res = await fetchImpl(url.toString(), { headers });
         if (!res.ok) {
@@ -163,12 +160,13 @@ export function analyzeWeatherData(data, yesterday) {
     for (const h of hourly) {
         const t = Number(h.temp);
         const hourStr = String(h.fxTime || '').slice(11, 16);
-        if (t > maxTemp) { maxTemp = t; maxTime = hourStr; }
-        if (t < minTemp) { minTemp = t; minTime = hourStr; }
+        if (Number.isFinite(t)) {
+            if (t > maxTemp) { maxTemp = t; maxTime = hourStr; }
+            if (t < minTemp) { minTemp = t; minTime = hourStr; }
+        }
         const p = Number(h.precip || 0);
-        const isRain = p > 0 || /雨|雪/.test(h.text || '');
-        if (isRain) {
-            rainHours.push({ hour: hourStr, precip: p, text: h.text || '降水' });
+        if ((Number.isFinite(p) && p > 0) || /雨|雪/.test(h.text || '')) {
+            rainHours.push({ hour: hourStr, precip: Number.isFinite(p) ? p : 0, text: h.text || '降水' });
         }
     }
 
@@ -180,6 +178,8 @@ export function analyzeWeatherData(data, yesterday) {
         minTemp = Number(today.tempMin);
         if (!minTime) minTime = '夜间';
     }
+    if (maxTemp === -999) { maxTemp = 20; maxTime = '白天'; }
+    if (minTemp === 999) { minTemp = 15; minTime = '夜间'; }
 
     let rainSummary = '';
     let rainIntensity = '小雨';
@@ -240,32 +240,16 @@ export function formatWeatherMessage(cityName, a, isMorning = false) {
     lines.push(`- 最高温 ${a.maxTemp}℃ 预计出现在 ${a.maxTime}，最低温 ${a.minTemp}℃ 预计出现在 ${a.minTime}；`);
 
     if (a.hasHugeChange) {
-        const trend = a.diffMax >= 5 ? `升温了 ${a.diffMax}℃，注意及时减衣防热` : `暴跌了 ${Math.abs(a.diffMax)}℃，降温剧烈一定要多添一件外套！`;
-        lines.push(`- 较昨日气温${trend}；`);
+        lines.push(`- 较昨日气温${a.diffMax >= 5 ? `升温了 ${a.diffMax}℃，注意及时减衣防热` : `暴跌了 ${Math.abs(a.diffMax)}℃，降温剧烈一定要多添一件外套！`}；`);
     } else if (a.hasBigChange) {
-        const trend = a.diffMax >= 3 ? `升温了 ${a.diffMax}℃` : `降温了 ${Math.abs(a.diffMax)}℃`;
-        lines.push(`- 较昨日${trend}，体感温差明显；`);
+        lines.push(`- 较昨日${a.diffMax >= 3 ? `升温了 ${a.diffMax}℃` : `降温了 ${Math.abs(a.diffMax)}℃`}，体感温差明显；`);
     }
 
-    if (a.hasBigDiurnal) {
-        lines.push(`- 昼夜温差达 ${a.diurnalRange}℃，早晚偏凉中午较热，建议洋葱式穿搭；`);
-    }
-
-    if (a.hasRain) {
-        lines.push(`- 降雨提醒：预计 ${a.rainSummary}，出门记得备好雨具！`);
-    } else {
-        lines.push(`- 今天全天无雨，适合出行；`);
-    }
-
-    if (a.hasWarning) {
-        const warnTitles = a.warnings.map(w => w.title || (w.type + w.level)).join('、');
-        lines.push(`- ⚠️ 气象预警生效中：${warnTitles}，注意出行安全。`);
-    }
-
-    if (a.hasStrongUv) {
-        lines.push(`- 紫外线偏强（${a.uvIndex}级 ${a.uvCategory}），户外活动注意防晒防紫外线。`);
-    }
-
+    if (a.hasBigDiurnal) lines.push(`- 昼夜温差达 ${a.diurnalRange}℃，早晚偏凉中午较热，建议洋葱式穿搭；`);
+    if (a.hasRain) lines.push(`- 降雨提醒：预计 ${a.rainSummary}，出门记得备好雨具！`);
+    else lines.push(`- 今天全天无雨，适合出行；`);
+    if (a.hasWarning) lines.push(`- ⚠️ 气象预警生效中：${a.warnings.map(w => w.title || (w.type + w.level)).join('、')}，注意出行安全。`);
+    if (a.hasStrongUv) lines.push(`- 紫外线偏强（${a.uvIndex}级 ${a.uvCategory}），户外活动注意防晒防紫外线。`);
     return lines.join('\n');
 }
 
@@ -286,7 +270,7 @@ export async function resolveUserCity(db, userId, text = '') {
             const items = await listProfile(db, userId);
             for (const it of items) {
                 const s = (it.label || '') + (it.content || '');
-                const matchCity = s.match(/(?:现居|常住地|家在|位于|城市)[：:\s]*([^\s，,。]{2,8})/);
+                const matchCity = s.match(/(?:现居|居住地|常住地|住址|地址|家在|位于|城市)[：:\s]*([^\s，,。]{2,8})/);
                 if (matchCity) return matchCity[1].replace(/[市区县]$/, '');
             }
         } catch (_) {}
@@ -343,6 +327,18 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         const cityInfo = await lookupCity(env, city, fetchImpl, nowMs);
         if (!cityInfo) continue;
 
+        // 读今日记录：若今日已发送过晨报，避免重复推送（幂等保证）
+        let todayRow = null;
+        try {
+            todayRow = await db.prepare(
+                'SELECT notified FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
+            ).bind(acct.user_id, today).first();
+        } catch (_) {}
+        if (todayRow && todayRow.notified === 1) {
+            summary.silent++;
+            continue;
+        }
+
         // 读昨日记录
         let yRow = null;
         try {
@@ -396,7 +392,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
     return summary;
 }
 
-const WEATHER_QUERY_RE = /(?:天气|气温|温度|下雨|带伞|降温|升温|冷不冷|热不热|多少度|几度|有雨吗|会下雨吗|晴天|阴天|刮风)/;
+const WEATHER_QUERY_RE = /(?:天气|气温|温度|下雨|带伞|降温|升温|冷不冷|热不热|冷吗|热吗|多少度|几度|有雨吗|会下雨吗|晴天|阴天|刮风|防晒|紫外线)/;
 
 export function isWeatherQuery(text) {
     const s = String(text || '').trim();
@@ -433,13 +429,14 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
     const a = analyzeWeatherData(raw, yRow);
     const reply = formatWeatherMessage(city, a, false);
 
+    if (weatherCache.size > 30) weatherCache.clear();
     weatherCache.set(cacheKey, { reply, exp: nowMs + 30 * 60 * 1000 });
     return reply;
 }
 
 /** 天气服务诊断工具：排查变量配置、密钥签名与 API 联通性 */
 export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, nowMs = Date.now()) {
-    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID || 'TG5A7BB26P';
+    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID;
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
     const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
@@ -452,7 +449,7 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     } else {
         lines.push(`• 模式: Ed25519 JWT`);
         lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
-        lines.push(`• 凭据: Project ${String(projectId).slice(-4)}, 开发者 ${String(iss).slice(-4)}, 私钥长 ${String(privKey).length}`);
+        lines.push(`• 凭据: Project ${String(projectId || '').slice(-4)}, 开发者 ${String(iss || '').slice(-4)}, 私钥长 ${String(privKey || '').length}`);
     }
     lines.push(`• API Host: ${host}`);
 

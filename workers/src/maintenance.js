@@ -63,7 +63,9 @@ export async function runScheduled(env, event, pollOptions, ctx) {
         catch (err) { console.error('[scheduled] bot outreach failed:', err); }
 
         // 每天早上 8:00（东八区）执行智能天气关怀（有雨/极端温差才提醒，平稳舒适完全静默）
-        const scheduledMs = Number.isFinite(pollOptions && pollOptions.nowMs) ? Number(pollOptions.nowMs) : Date.now();
+        const scheduledMs = Number.isFinite(pollOptions && pollOptions.nowMs)
+            ? Number(pollOptions.nowMs)
+            : (event && event.scheduledTime ? Number(event.scheduledTime) : Date.now());
         const east8Date = new Date(scheduledMs + 8 * 3600 * 1000);
         if (east8Date.getUTCHours() === 8 && east8Date.getUTCMinutes() === 0) {
             try { await runMorningWeatherCare(env, env.DB, undefined, pollOptions); }
