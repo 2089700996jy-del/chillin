@@ -49,9 +49,9 @@ export function pemToDer(pem) {
 /** 生成和风天气 Ed25519 JWT 凭据（有效时长 1 小时，内存缓存 50 分钟） */
 export async function getQWeatherToken(env, nowMs = Date.now()) {
     if (!env) return null;
-    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env.QWEATHER_KID;
-    const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env.QWEATHER_SUB;
-    const privKeyPem = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
+    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID || 'TG5A7BB26P';
+    const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
+    const privKeyPem = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
 
     if (keyId && projectId && privKeyPem) {
         if (cachedJwt && nowMs < cachedJwtExp) return { type: 'bearer', token: cachedJwt };
@@ -435,9 +435,9 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
 
 /** 天气服务诊断工具：排查变量配置、密钥签名与 API 联通性 */
 export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, nowMs = Date.now()) {
-    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env.QWEATHER_KID;
-    const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env.QWEATHER_SUB;
-    const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
+    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID || 'TG5A7BB26P';
+    const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
+    const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
     const host = env.QWEATHER_API_HOST || env.API_HOST || 'devapi.qweather.com';
 
     const lines = ['【和风天气诊断报告】'];
