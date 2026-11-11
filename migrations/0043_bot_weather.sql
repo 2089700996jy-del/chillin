@@ -18,3 +18,4 @@ CREATE TABLE IF NOT EXISTS bot_weather_daily (
 
 CREATE INDEX IF NOT EXISTS idx_bot_weather_user_date
 ON bot_weather_daily(user_id, date DESC);
+

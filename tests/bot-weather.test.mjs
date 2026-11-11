@@ -238,3 +238,4 @@ integration('maybeWeatherAnswer 白天随手查天气秒回', async () => {
     assert.match(reply, /【福州天气】今天多云/);
     assert.match(reply, /17～23℃/);
 });
+

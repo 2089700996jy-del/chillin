@@ -269,12 +269,36 @@ export async function resolveUserCity(db, userId, text = '') {
     return '福州';
 }
 
+/** 惰性确保 bot_weather_daily 表存在（即使远程尚未执行 migrations 也立即可用） */
+async function ensureWeatherTable(db) {
+    if (!db) return;
+    try {
+        await db.prepare(`CREATE TABLE IF NOT EXISTS bot_weather_daily (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            city TEXT NOT NULL,
+            date TEXT NOT NULL,
+            temp_max INTEGER NOT NULL,
+            temp_min INTEGER NOT NULL,
+            max_time TEXT DEFAULT '',
+            min_time TEXT DEFAULT '',
+            rain_summary TEXT DEFAULT '',
+            uv_index INTEGER DEFAULT 0,
+            warning_text TEXT DEFAULT '',
+            notified INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT (datetime('now', '+8 hours')),
+            UNIQUE(user_id, date)
+        )`).run();
+    } catch (_) {}
+}
+
 /** 每天早上 8:00 执行的智能晨报关怀 */
 export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options = {}) {
     const nowMs = Number.isFinite(options.nowMs) ? Number(options.nowMs) : Date.now();
     if (!db || !env) return { state: 'no-env' };
     const auth = await getQWeatherToken(env, nowMs);
     if (!auth) return { state: 'no-auth' };
+    await ensureWeatherTable(db);
 
     const { today, yesterday } = east8Dates(nowMs);
     let accounts = [];
@@ -295,9 +319,12 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         if (!cityInfo) continue;
 
         // 读昨日记录
-        const yRow = await db.prepare(
-            'SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
-        ).bind(acct.user_id, yesterday).first();
+        let yRow = null;
+        try {
+            yRow = await db.prepare(
+                'SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
+            ).bind(acct.user_id, yesterday).first();
+        } catch (_) {}
 
         // 抓取并分析今日
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
@@ -369,9 +396,12 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
     const { yesterday } = east8Dates(nowMs);
     let yRow = null;
     if (db && userId) {
-        yRow = await db.prepare(
-            'SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
-        ).bind(userId, yesterday).first();
+        await ensureWeatherTable(db);
+        try {
+            yRow = await db.prepare(
+                'SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
+            ).bind(userId, yesterday).first();
+        } catch (_) {}
     }
 
     const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
