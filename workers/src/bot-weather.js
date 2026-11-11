@@ -59,14 +59,13 @@ export async function getQWeatherToken(env, nowMs = Date.now()) {
             const der = pemToDer(privKeyPem);
             const key = await globalThis.crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, false, ['sign']);
             const nowSec = Math.floor(nowMs / 1000);
-            const header = { alg: 'EdDSA', kid: keyId, typ: 'JWT' };
-            const iss = env.QWEATHER_DEVELOPER_ID || env.DEVELOPER_ID || env.QWEATHER_ISS || env['开发者ID'] || 'Q9838E560C';
-            const payload = { sub: projectId, iss, iat: nowSec - 30, exp: nowSec + 3600 };
+            const header = { alg: 'EdDSA', kid: keyId };
+            const payload = { sub: projectId, iat: nowSec - 30, exp: nowSec + 900 };
             const signingInput = base64UrlEncode(JSON.stringify(header)) + '.' + base64UrlEncode(JSON.stringify(payload));
             const sig = await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, key, new TextEncoder().encode(signingInput));
             const token = signingInput + '.' + base64UrlEncode(sig);
             cachedJwt = token;
-            cachedJwtExp = nowMs + 50 * 60 * 1000;
+            cachedJwtExp = nowMs + 12 * 60 * 1000;
             return { type: 'bearer', token };
         } catch (err) {
             console.error('[bot-weather] Ed25519 JWT 签名生成失败: ' + (err && err.message));
@@ -95,8 +94,14 @@ export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date
     try {
         const res = await fetchImpl(url.toString(), { headers });
         if (!res.ok) {
+            if (res.status === 401) { cachedJwt = null; cachedJwtExp = 0; }
             const body = await res.text().catch(() => '');
-            lastApiError = `HTTP ${res.status}: ${body.slice(0, 80)}`;
+            let detail = '';
+            try {
+                const j = JSON.parse(body);
+                detail = j.error ? (j.error.detail || j.error.title || '') : (j.detail || j.message || '');
+            } catch (_) { detail = body; }
+            lastApiError = `HTTP ${res.status}: ${detail || body}`.slice(0, 100);
             return null;
         }
         const data = await res.json();
@@ -442,40 +447,47 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
     const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
-    const iss = env.QWEATHER_DEVELOPER_ID || env.DEVELOPER_ID || env.QWEATHER_ISS || env['开发者ID'] || 'Q9838E560C';
+    const apiKey = env.QWEATHER_KEY;
 
     const lines = ['【和风天气诊断报告】'];
-    lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
-    lines.push(`• Project ID: ${projectId ? `已配置 (尾号 ${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
-    lines.push(`• Developer ID: ${iss ? `已配置 (尾号 ${String(iss).slice(-4)})` : '❌ 未检测到'}`);
-    lines.push(`• Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
+    if (apiKey) {
+        lines.push(`• 模式: 普通 API Key (尾号 ${String(apiKey).slice(-4)})`);
+    } else {
+        lines.push(`• 模式: Ed25519 JWT`);
+        lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
+        lines.push(`• Project ID: ${projectId ? `已配置 (尾号 ${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
+        lines.push(`• Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
+    }
     lines.push(`• API Host: ${host}`);
 
-    if (!keyId || !projectId || !privKey) {
-        lines.push('\n⚠️ 环境变量不完整，请确认在 Cloudflare Workers (chillin-api) 环境变量中添加了 QWEATHER_KEY_ID、QWEATHER_PROJECT_ID 和 QWEATHER_PRIVATE_KEY。');
+    if (!apiKey && (!keyId || !projectId || !privKey)) {
+        lines.push('\n⚠️ 凭据不完整。请在 Cloudflare 环境变量中添加：\n1. 普通 API Key: QWEATHER_KEY\n2. 或 JWT: QWEATHER_KEY_ID、QWEATHER_PROJECT_ID 与 QWEATHER_PRIVATE_KEY');
         return lines.join('\n');
     }
 
     try {
         const tokenResult = await getQWeatherToken(env, nowMs);
         if (!tokenResult || !tokenResult.token) {
-            lines.push('• Ed25519 签名: ❌ 签发失败（私钥格式可能无效）');
+            lines.push('• 凭据签发: ❌ 签发失败（私钥格式可能无效）');
             return lines.join('\n');
         }
-        lines.push('• Ed25519 签名: ✅ 签发成功');
+        lines.push(tokenResult.type === 'bearer' ? '• Ed25519 签名: ✅ 签发成功' : '• API Key: ✅ 准备就绪');
 
         const city = await resolveUserCity(db, userId);
         lines.push(`• 目标城市: ${city}`);
         const cityInfo = await lookupCity(env, city, fetchImpl, nowMs);
         if (!cityInfo) {
-            lines.push(`• 城市解析: ❌ 无法查到 ${city}（请检查控制台公钥或 API Host）`);
+            lines.push(`• 城市解析: ❌ 无法查到 ${city} (${lastApiError || '请求失败'})`);
             return lines.join('\n');
         }
         lines.push(`• 城市解析: ✅ 成功 (Location ID: ${cityInfo.id})`);
 
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
         if (!raw.hourly.length && !raw.daily.length) {
-            lines.push(`• 天气数据: ❌ 未拉取到预报（${lastApiError || '返回为空'}）`);
+            lines.push(`• 天气数据: ❌ 未拉取到预报 (${lastApiError || '返回为空'})`);
+            if (tokenResult.type === 'bearer') {
+                lines.push(`\n【调试 Token (可在 jwt.qweather.com 验证)】\n${tokenResult.token}`);
+            }
         } else {
             lines.push(`• 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);
         }
