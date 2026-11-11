@@ -100,20 +100,30 @@ export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date
     }
 }
 
-/** 城市地理信息查询（Geo API） */
+const COMMON_CITIES = { '福州': '101230101', '厦门': '101230201', '泉州': '101230501', '漳州': '101230601', '北京': '101010100', '上海': '101020100', '广州': '101280101', '深圳': '101280601', '杭州': '101210101' };
+
+/** 城市地理信息查询（Geo API + 常用城市直出） */
 export async function lookupCity(env, cityName, fetchImpl = fetch, nowMs = Date.now()) {
     const raw = String(cityName || '').trim();
     if (!raw) return null;
-    const cleanCity = raw.replace(/[省市县区旗州]$/, '');
-    let url = 'https://geoapi.qweather.com/v2/city/lookup?location=' + encodeURIComponent(cleanCity);
-    let data = await fetchQWeather(env, url, fetchImpl, nowMs);
-    if ((!data || !Array.isArray(data.location) || !data.location.length) && env.QWEATHER_API_HOST) {
-        url = 'https://' + env.QWEATHER_API_HOST + '/geo/v2/city/lookup?location=' + encodeURIComponent(cleanCity);
-        data = await fetchQWeather(env, url, fetchImpl, nowMs);
+    const cleanCity = raw.replace(/[省市县区旗]$/, '');
+    if (COMMON_CITIES[cleanCity]) {
+        return { id: COMMON_CITIES[cleanCity], name: cleanCity, adm1: '', adm2: cleanCity };
     }
-    if (!data || !Array.isArray(data.location) || !data.location.length) return null;
-    const loc = data.location[0];
-    return { id: loc.id, name: loc.name, adm1: loc.adm1, adm2: loc.adm2 };
+    const host = env.QWEATHER_API_HOST || 'devapi.qweather.com';
+    const endpoints = [
+        'https://' + host + '/geo/v2/city/lookup?location=' + encodeURIComponent(cleanCity) + '&range=cn',
+        'https://geoapi.qweather.com/v2/city/lookup?location=' + encodeURIComponent(cleanCity) + '&range=cn',
+        'https://api.qweather.com/geo/v2/city/lookup?location=' + encodeURIComponent(cleanCity) + '&range=cn'
+    ];
+    for (const url of endpoints) {
+        const data = await fetchQWeather(env, url, fetchImpl, nowMs);
+        if (data && Array.isArray(data.location) && data.location.length) {
+            const loc = data.location[0];
+            return { id: loc.id, name: loc.name, adm1: loc.adm1, adm2: loc.adm2 };
+        }
+    }
+    return null;
 }
 
 /** 完整抓取 24 小时预报、3 天预报、气象预警和生活指数 */
@@ -441,10 +451,10 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     const host = env.QWEATHER_API_HOST || env.API_HOST || 'devapi.qweather.com';
 
     const lines = ['【和风天气诊断报告】'];
-    lines.push(`- Key ID: ${keyId ? `已配置 (***${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
-    lines.push(`- Project ID: ${projectId ? `已配置 (***${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
-    lines.push(`- Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
-    lines.push(`- API Host: ${host}`);
+    lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
+    lines.push(`• Project ID: ${projectId ? `已配置 (尾号 ${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
+    lines.push(`• Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
+    lines.push(`• API Host: ${host}`);
 
     if (!keyId || !projectId || !privKey) {
         lines.push('\n⚠️ 环境变量不完整，请确认在 Cloudflare Workers (chillin-api) 环境变量中添加了 QWEATHER_KEY_ID、QWEATHER_PROJECT_ID 和 QWEATHER_PRIVATE_KEY。');
@@ -454,28 +464,28 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     try {
         const tokenResult = await getQWeatherToken(env, nowMs);
         if (!tokenResult || !tokenResult.token) {
-            lines.push('- Ed25519 签名: ❌ 签发失败（私钥格式可能无效）');
+            lines.push('• Ed25519 签名: ❌ 签发失败（私钥格式可能无效）');
             return lines.join('\n');
         }
-        lines.push('- Ed25519 签名: ✅ 签发成功');
+        lines.push('• Ed25519 签名: ✅ 签发成功');
 
         const city = await resolveUserCity(db, userId);
-        lines.push(`- 目标城市: ${city}`);
+        lines.push(`• 目标城市: ${city}`);
         const cityInfo = await lookupCity(env, city, fetchImpl, nowMs);
         if (!cityInfo) {
-            lines.push(`- 城市解析: ❌ 无法查到 ${city}（请检查控制台公钥或 API Host）`);
+            lines.push(`• 城市解析: ❌ 无法查到 ${city}（请检查控制台公钥或 API Host）`);
             return lines.join('\n');
         }
-        lines.push(`- 城市解析: ✅ 成功 (Location ID: ${cityInfo.id})`);
+        lines.push(`• 城市解析: ✅ 成功 (Location ID: ${cityInfo.id})`);
 
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
         if (!raw.hourly.length && !raw.daily.length) {
-            lines.push('- 天气数据: ❌ 未拉取到预报（可能需在 Cloudflare 配置专属 QWEATHER_API_HOST）');
+            lines.push('• 天气数据: ❌ 未拉取到预报（可能需在 Cloudflare 配置专属 QWEATHER_API_HOST）');
         } else {
-            lines.push(`- 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);
+            lines.push(`• 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);
         }
     } catch (err) {
-        lines.push(`- 异常信息: ${err && err.message}`);
+        lines.push(`• 异常信息: ${err && err.message}`);
     }
     return lines.join('\n');
 }
