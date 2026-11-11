@@ -10,8 +10,7 @@
  */
 
 import { sendClawText } from './bot-claw.js';
-import { listProfile } from './bot-memory.js';
-import { saveChatTurn } from './bot-memory.js';
+import { listProfile, saveChatTurn } from './bot-memory.js';
 
 let cachedJwt = null;
 let cachedJwtExp = 0;
@@ -39,8 +38,7 @@ export function pemToDer(pem) {
     if (buf.length === 32) {
         const pkcs8Prefix = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
         const full = new Uint8Array(48);
-        full.set(pkcs8Prefix, 0);
-        full.set(buf, 16);
+        full.set(pkcs8Prefix, 0); full.set(buf, 16);
         return full;
     }
     return buf;
@@ -60,12 +58,13 @@ export async function getQWeatherToken(env, nowMs = Date.now()) {
             const key = await globalThis.crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, false, ['sign']);
             const nowSec = Math.floor(nowMs / 1000);
             const header = { alg: 'EdDSA', kid: keyId };
-            const payload = { sub: projectId, iat: nowSec - 30, exp: nowSec + 900 };
+            const iss = env.QWEATHER_DEVELOPER_ID || env.DEVELOPER_ID || env.QWEATHER_ISS || env['开发者ID'] || 'Q9838E560C';
+            const payload = { sub: projectId, iat: nowSec - 30, exp: nowSec + 3600, iss };
             const signingInput = base64UrlEncode(JSON.stringify(header)) + '.' + base64UrlEncode(JSON.stringify(payload));
             const sig = await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, key, new TextEncoder().encode(signingInput));
             const token = signingInput + '.' + base64UrlEncode(sig);
             cachedJwt = token;
-            cachedJwtExp = nowMs + 12 * 60 * 1000;
+            cachedJwtExp = nowMs + 50 * 60 * 1000;
             return { type: 'bearer', token };
         } catch (err) {
             console.error('[bot-weather] Ed25519 JWT 签名生成失败: ' + (err && err.message));
@@ -89,6 +88,7 @@ export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date
     if (auth.type === 'bearer') {
         headers['Authorization'] = 'Bearer ' + auth.token;
     } else if (auth.type === 'key') {
+        headers['X-QW-Api-Key'] = auth.token;
         url.searchParams.set('key', auth.token);
     }
     try {
@@ -237,10 +237,7 @@ export function analyzeWeatherData(data, yesterday) {
 
 /** 格式化老友口吻的天气关怀晨报 */
 export function formatWeatherMessage(cityName, a, isMorning = false) {
-    const lines = [];
-    if (isMorning) lines.push(`早！${cityName}今天${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：`);
-    else lines.push(`【${cityName}天气】今天${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：`);
-
+    const lines = [isMorning ? `早！${cityName}今天${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：` : `【${cityName}天气】今天${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：`];
     lines.push(`- 最高温 ${a.maxTemp}℃ 预计出现在 ${a.maxTime}，最低温 ${a.minTemp}℃ 预计出现在 ${a.minTime}；`);
 
     if (a.hasHugeChange) {
@@ -447,6 +444,7 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
     const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
+    const iss = env.QWEATHER_DEVELOPER_ID || env.DEVELOPER_ID || env.QWEATHER_ISS || env['开发者ID'] || 'Q9838E560C';
     const apiKey = env.QWEATHER_KEY;
 
     const lines = ['【和风天气诊断报告】'];
@@ -455,8 +453,7 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     } else {
         lines.push(`• 模式: Ed25519 JWT`);
         lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
-        lines.push(`• Project ID: ${projectId ? `已配置 (尾号 ${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
-        lines.push(`• Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
+        lines.push(`• 凭据: Project ${String(projectId).slice(-4)}, 开发者 ${String(iss).slice(-4)}, 私钥长 ${String(privKey).length}`);
     }
     lines.push(`• API Host: ${host}`);
 
