@@ -36,9 +36,9 @@
       })();
     </script>
     <!-- 系统字体：SF / PingFang，不再加载 Inter -->
-    <link rel="stylesheet" href="style.css?v=2.5.237">
+    <link rel="stylesheet" href="style.css?v=2.5.238">
     <!-- 首屏入口预热：只提前拉 app.js（14.7KB）。实测 4/12 个模块的 modulepreload 会抢 249KB CSS 的带宽，反而拖慢 LCP -->
-    <link rel="modulepreload" href="/app.js?v=2.5.237">
+    <link rel="modulepreload" href="/app.js?v=2.5.238">
 </head>
 <body>
 
@@ -117,6 +117,7 @@
             <div class="sidebar-brand">
                 <svg class="sidebar-brand-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2a9 9 0 0 1 9 9c0 4.97-4.03 9-9 9A9 9 0 0 1 3 11a9 9 0 0 1 9-9Z"/><path d="M12 2v20"/><path d="M12 12c-3.5 0-6.5-1.5-8-4"/></svg>
                 <span class="sidebar-brand-text">Chillin</span>
+                <span class="sidebar-version-badge">v2.5.238</span>
             </div>
 
             <div class="sidebar-nav-group">
@@ -128,12 +129,10 @@
                 <a href="#" class="sidebar-nav-item nav-item" data-view="feeds">
                     <svg class="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                     <span class="sidebar-item-label">随手记</span>
-                    <span class="sidebar-item-count" id="sidebar-count-feeds"></span>
                 </a>
                 <a href="#" class="sidebar-nav-item nav-item" data-view="notes">
                     <svg class="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                     <span class="sidebar-item-label">知识笔记</span>
-                    <span class="sidebar-item-count" id="sidebar-count-notes"></span>
                 </a>
                 <a href="#" class="sidebar-nav-item nav-item" data-view="bookmarks">
                     <svg class="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
@@ -146,11 +145,11 @@
             </div>
 
             <div class="sidebar-nav-group sidebar-nav-group--agent">
-                <div class="sidebar-nav-title">协同智能</div>
+                <div class="sidebar-nav-title">自主智能体</div>
                 <a href="#/agent" class="sidebar-nav-item nav-item sidebar-agent-item" id="sidebar-btn-agent-goals" data-view="agent" aria-label="Agent 操作台">
                     <svg class="sidebar-item-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="6" rx="2"/><circle cx="9" cy="13" r="1.5"/><circle cx="15" cy="13" r="1.5"/><path d="M12 2v4"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
                     <span class="sidebar-item-label">Agent 操作台</span>
-                    <span class="sidebar-pill-badge badge-orange" id="sidebar-agent-badge" hidden>0</span>
+                    <span class="sidebar-agent-badge" id="sidebar-agent-badge" hidden>0</span>
                 </a>
             </div>
         </div>
@@ -158,10 +157,10 @@
         <div class="sidebar-bottom">
             <div class="sidebar-status-row">
                 <span class="sidebar-status-left">
-                    <span class="cockpit-pulse-dot" aria-hidden="true"></span>
-                    <span>已同步</span>
+                    <svg class="sidebar-status-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+                    <span>D1 增量同步</span>
                 </span>
-                <span class="sidebar-storage-meta">D1</span>
+                <span class="sidebar-status-pill">OK</span>
             </div>
         </div>
     </aside>
@@ -177,25 +176,6 @@
                 <a href="#" class="nav-item" data-view="notes">笔记</a>
                 <a href="#" class="nav-item" data-view="bookmarks">收藏</a>
                 <a href="#" class="nav-item" data-view="reader">阅读</a>
-            </div>
-
-            <!-- 桌面端系统视窗面包屑与状态指示 (>= 1024px) -->
-            <div class="desktop-top-header" id="desktop-top-header">
-                <div class="desktop-breadcrumb-trail">
-                    <span class="breadcrumb-item-brand">Chillin</span>
-                    <span class="breadcrumb-sep">/</span>
-                    <span class="breadcrumb-item-title" id="desktop-breadcrumb-title">今日看板</span>
-                </div>
-                <div class="desktop-header-controls">
-                    <button type="button" class="desktop-theme-toggle" id="btn-desktop-theme-toggle" title="切换深色/浅色外观" aria-label="切换深色/浅色外观">
-                        <svg class="theme-icon-moon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path></svg>
-                        <svg class="theme-icon-sun" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
-                    </button>
-                    <div class="desktop-cron-indicator" title="后台守护心跳">
-                        <span class="cockpit-pulse-dot" aria-hidden="true"></span>
-                        <span class="desktop-cron-text">48s</span>
-                    </div>
-                </div>
             </div>
             <!-- 阅读模式/编辑模式下的返回按钮 (默认隐藏) -->
             <button id="btn-back" class="nav-btn-back" style="display: none;" aria-label="返回">
@@ -239,10 +219,6 @@
                     </span>
                     <span class="btn-label">搜索 <kbd class="search-kbd">⌘K</kbd></span>
                 </button>
-                <div class="desktop-user-avatar" id="desktop-user-avatar" title="当前在线用户" aria-label="用户状态">
-                    <span class="user-avatar-initial">J</span>
-                    <span class="avatar-status-dot"></span>
-                </div>
                 <button id="btn-open-ai-chat" class="btn-text text-primary btn-icon-text" title="AI 记忆回响">
                     <span class="btn-icon">
                         <svg class="nav-svg-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -338,7 +314,7 @@
                     <div class="k-mood-bar" id="mood-checkin-bar">
                         <div class="k-mood-header">
                             <span class="k-mood-title">心绪状态</span>
-                            <span class="k-mood-status" id="mood-checkin-status"></span>
+                            <span class="k-mood-status" id="mood-checkin-status">轻按标记状态</span>
                         </div>
                         <div class="k-mood-scroll-row" id="mood-pills-row" role="radiogroup" aria-label="今日心绪打卡"></div>
                     </div>
@@ -363,7 +339,7 @@
                     </div>
                     <div class="k-journal-composer" id="daily-spark-composer">
                         <div class="k-journal-field">
-                            <input type="text" id="daily-spark-input" class="k-journal-input" placeholder="记录随想..." enterkeyhint="send" autocomplete="off" aria-label="记录此刻的随想">
+                            <input type="text" id="daily-spark-input" class="k-journal-input" placeholder="轻按记录此刻的一两句随想…" enterkeyhint="send" autocomplete="off" aria-label="记录此刻的随想">
                             <button type="button" class="k-spark-send-btn" id="btn-save-spark" aria-label="存入随手记" title="存入随手记">
                                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                     <line x1="12" y1="19" x2="12" y2="5"></line>
@@ -385,7 +361,7 @@
             </div>
             <div class="notion-collection-gallery" id="gallery-container"></div>
             <div id="weekly-load-more-container" class="weekly-load-more-slot"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.237</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.238</button>
         </section>
 
         <!-- ========================================== -->
@@ -602,20 +578,15 @@
         </section>
 
         <!-- ========================================== -->
-        <!-- VIEW 4 & 5: NOTES WORKSPACE -->
+        <!-- VIEW 4: NOTES LIST -->
         <!-- ========================================== -->
-        <div id="notes-desktop-layout" class="notes-desktop-layout">
         <section id="view-notes" class="view-section">
-            <header class="page-header notes-page-header">
+            <header class="page-header">
                 <h1 class="page-title">笔记</h1>
-                <button type="button" class="btn-create-note-inline" id="btn-create-note-inline" aria-label="新建笔记" title="新建笔记">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-                    <span>新建</span>
-                </button>
             </header>
             
             <div class="notes-list" id="notes-list-container"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.237</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.238</button>
         </section>
 
         <!-- ========================================== -->
@@ -623,10 +594,9 @@
         <!-- ========================================== -->
         <section id="view-note-editor" class="view-section">
             <div class="article-meta">
-                <span id="note-editor-date" class="article-date"></span>
-                <div class="article-actions" style="margin-left: auto; display: flex; align-items: center; gap: 8px;">
-                    <button type="button" id="btn-delete-note" class="btn-text text-danger">删除笔记</button>
-                    <button type="button" class="btn-primary btn-sm" id="btn-save-note">保存笔记</button>
+                <span id="note-editor-date" class="article-date" style="margin-bottom: 20px; display: block;"></span>
+                <div class="article-actions" style="margin-left: auto;">
+                    <button id="btn-delete-note" class="btn-text text-danger" style="margin-top: -30px;">删除笔记</button>
                 </div>
             </div>
 
@@ -659,20 +629,20 @@
 
             <!-- 正向双链引用胶囊条 (Outgoing Links) -->
             <div class="note-outgoing-links-strip" id="note-outgoing-links-strip" style="display: none;">
-                <span class="outgoing-links-label">引用知识:</span>
+                <span class="outgoing-links-label">🔗 引用知识:</span>
                 <div class="outgoing-links-container"></div>
             </div>
 
-            <!-- 反向引用 (Backlinks) -->
+            <!-- 🔗 反向引用 (Backlinks) -->
             <div class="note-backlinks-section" id="note-backlinks-section" style="display: none;">
-                <h3 class="annotations-title">反向引用 (<span id="note-backlinks-count">0</span>)</h3>
+                <h3 class="annotations-title">🔗 反向引用 (<span id="note-backlinks-count">0</span>)</h3>
                 <div class="wikilinks-graph-box"><canvas class="wikilinks-local-graph" id="note-local-graph" aria-label="双链局部关系拓扑图" role="img"></canvas></div>
                 <div class="backlinks-list"></div>
             </div>
 
             <!-- 批注与补充说明 -->
             <div class="note-annotations-section" id="note-annotations-section">
-                <h3 class="annotations-title">批注与时间线</h3>
+                <h3 class="annotations-title">📌 批注与时间线</h3>
                 <div class="annotations-timeline" id="annotations-timeline">
                     <!-- 批注条目动态渲染 -->
                 </div>
@@ -681,8 +651,11 @@
                     <button type="button" class="btn-secondary btn-sm" id="btn-add-annotation">添加批注</button>
                 </div>
             </div>
+            
+            <div class="editor-actions">
+                <button type="button" class="btn-primary" id="btn-save-note">保存笔记</button>
+            </div>
         </section>
-        </div>
 
         <!-- ========================================== -->
         <!-- VIEW 6: BOOKMARKS LIST -->
@@ -759,7 +732,7 @@
                 <div class="prompts-grid" id="prompts-list-container"></div>
             </div>
 
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.237</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.238</button>
         </section>
 
         <!-- ========================================== -->
@@ -907,7 +880,7 @@
                 <div class="empty-title">书架空空如也</div>
                 <div class="empty-sub">点击上方区域导入你的第一本书吧</div>
             </div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.237</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.238</button>
         </section>
 
         <!-- ========================================== -->
@@ -976,8 +949,9 @@
             <div class="today-todos-card" id="today-todos-widget" style="display:none;">
                 <div class="today-todos-header" id="today-todos-header">
                     <div class="today-todos-left">
-                        <span class="today-todos-title">今日待办</span>
-                        <span class="today-todos-badge" id="today-todos-badge-pending">0</span>
+                        <span class="today-todos-icon" aria-hidden="true">🎯</span>
+                        <span class="today-todos-title">今日待办与闭环</span>
+                        <span class="today-todos-badge" id="today-todos-badge-pending">0 待办</span>
                         <span class="today-todos-badge today-todos-badge--done" id="today-todos-badge-done">0 完成</span>
                     </div>
                     <button type="button" class="today-todos-toggle-btn" id="btn-toggle-today-todos" aria-label="收起或展开待办">
@@ -1012,6 +986,7 @@
                         <h2 class="insight-threads-title" id="insight-threads-title">正在生长的线索</h2>
                         <span class="insight-threads-count" id="insight-threads-count"></span>
                     </div>
+                    <span class="insight-threads-hint">跨月份反复出现</span>
                 </div>
                 <div class="insight-threads-list" id="insight-threads-list" role="list"></div>
             </section>
@@ -1040,7 +1015,7 @@
                 <span class="timeline-filter__count" data-date-count aria-live="polite"></span>
             </div>
             <div id="feeds-stream-container" class="feeds-stream"></div>
-            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.237</button>
+            <button type="button" class="app-version-badge" data-app-version title="点击强制刷新到最新版">v2.5.238</button>
         </section>
 
         <!-- ========================================== -->
@@ -1050,27 +1025,36 @@
             <header class="cockpit-header">
                 <div class="cockpit-header-left">
                     <div class="cockpit-title-row">
-                        <svg class="cockpit-title-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="6" rx="2"/><circle cx="9" cy="13" r="1.5"/><circle cx="15" cy="13" r="1.5"/><path d="M12 2v4"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
-                        <h2 class="cockpit-title">Agent 操作台</h2>
+                        <svg class="cockpit-title-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="6" rx="2"/><circle cx="9" cy="13" r="1.5"/><circle cx="15" cy="13" r="1.5"/><path d="M12 2v4"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
+                        <h2 class="cockpit-title">Agent 协同操作台</h2>
+                        <span class="cockpit-badge">Autonomous Studio</span>
                     </div>
+                    <p class="cockpit-subtitle">监督多 Worker 协同执行，审阅决策并直接回流数字花园知识库</p>
                 </div>
                 <div class="cockpit-header-right">
-                    <div class="cockpit-live-indicator" title="Autoloop 守护进程运行中">
+                    <div class="cockpit-live-indicator">
                         <span class="cockpit-pulse-dot" aria-hidden="true"></span>
-                        <span class="cockpit-indicator-text">Cron 运行中</span>
+                        <span class="cockpit-indicator-text">Cron 守护进程运行中</span>
                     </div>
                 </div>
             </header>
 
             <div class="cockpit-studio-grid">
-                <!-- 栏目 1: 目标管线 (Pipeline) -->
+                <!-- 栏目 1: 目标管线与调度队列 (Pipeline & Super-Agent Supervision) -->
                 <div class="cockpit-col cockpit-col--queue" id="cockpit-col-queue">
                     <div class="cockpit-card cockpit-form-card">
+                        <div class="cockpit-card-head">
+                            <span class="cockpit-head-title">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                                <span>目标管线</span>
+                            </span>
+                            <span class="cockpit-head-hint">回车快速委派</span>
+                        </div>
                         <form id="cockpit-create-form" class="cockpit-create-form">
                             <div class="cockpit-input-wrap">
-                                <input type="text" id="cockpit-goal-title" class="cockpit-input" maxlength="80" placeholder="委派 AI 目标..." autocomplete="off" required aria-label="目标标题">
+                                <input type="text" id="cockpit-goal-title" class="cockpit-input" maxlength="80" placeholder="委派 AI 新目标，回车自动拆解…" autocomplete="off" required aria-label="目标标题">
                                 <button type="submit" class="cockpit-submit-btn" aria-label="委派并规划" title="委派并规划">
-                                    <span class="cockpit-enter-icon">↵</span>
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 10 4 15 9 20"/><path d="M20 4v7a4 4 0 0 1-4 4H4"/></svg>
                                 </button>
                             </div>
                         </form>
@@ -1079,7 +1063,7 @@
                     <div id="cockpit-super-deck-wrap" class="cockpit-super-deck-wrap"></div>
 
                     <div class="cockpit-queue-head">
-                        <span class="cockpit-queue-title">目标管线</span>
+                        <span class="cockpit-queue-title">目标队列</span>
                         <span id="cockpit-queue-count" class="cockpit-queue-count">0 个目标</span>
                     </div>
                     <div id="cockpit-goals-list" class="cockpit-goals-list" aria-live="polite"></div>
@@ -1089,9 +1073,9 @@
                 <div class="cockpit-col cockpit-col--canvas" id="cockpit-col-canvas">
                     <div id="cockpit-canvas-content" class="cockpit-canvas-content">
                         <div class="cockpit-empty-canvas">
-                            <svg class="cockpit-empty-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="6" rx="2"/><circle cx="9" cy="13" r="1.5"/><circle cx="15" cy="13" r="1.5"/><path d="M12 2v4"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
-                            <p class="cockpit-empty-lead">从左侧选择目标查看执行图</p>
-                            <p class="cockpit-empty-sub">自动拆解多步 DAG 任务并追踪工具调用轨迹</p>
+                            <svg class="cockpit-empty-icon" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="14" x="3" y="6" rx="2"/><circle cx="9" cy="13" r="1.5"/><circle cx="15" cy="13" r="1.5"/><path d="M12 2v4"/><line x1="8" y1="2" x2="16" y2="2"/></svg>
+                            <p class="cockpit-empty-lead">从左侧选择目标，或在上方委派新任务</p>
+                            <p class="cockpit-empty-sub">Agent 会自动拆解多步 DAG 任务，并在执行过程中实时上报工具调用轨迹。</p>
                         </div>
                     </div>
                 </div>
@@ -1105,8 +1089,9 @@
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
                                     <span>人机协同舱</span>
                                 </span>
-                                <span class="cockpit-quiet-pill">待命中</span>
+                                <span class="cockpit-quiet-pill">自主推进中</span>
                             </div>
+                            <p class="cockpit-card-tip">当前无需人工干预。当 Agent 遇到重大分支或生成交付草稿时，此处会弹出选择题与审批单。</p>
                         </div>
                     </div>
                     <div id="cockpit-handoff-wrap" class="cockpit-handoff-wrap"></div>
@@ -1162,6 +1147,7 @@
             <div class="agent-goals-header">
                 <div>
                     <h3 id="agent-goals-title" class="agent-goals-title">目标与任务</h3>
+                    <p class="agent-goals-subtitle">把复杂目标拆成可执行计划；关闭页面后后台仍会继续，待审批事项集中在这里处理。</p>
                 </div>
                 <button type="button" class="btn-icon ios-modal-close-btn" id="btn-close-agent-goals" aria-label="关闭" title="关闭">
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true">
@@ -1759,7 +1745,7 @@
     <!-- DOMPurify：正文 HTML 白名单清洗，防存储型 XSS。
          已自托管（vendor/dompurify.min.js，3.1.7，SHA-384 与官方发布一致），
          既去掉唯一的外部运行时依赖、让 CSP 可彻底移除 CDN，也保证离线首访不再退化为纯文本。 -->
-    <script src="/vendor/dompurify.min.js?v=2.5.237"></script>
+    <script src="/vendor/dompurify.min.js?v=2.5.238"></script>
     <!-- 同步冲突保护：本地/云端版本不静默覆盖 -->
     <div id="sync-conflict-banner" class="sync-conflict-banner" hidden>
         <button type="button" id="sync-conflict-open" class="sync-conflict-banner-btn" aria-label="处理同步冲突">
@@ -1784,6 +1770,6 @@
             </details>
         </div>
     </div>
-    <script type="module" src="app.js?v=2.5.237"></script>
+    <script type="module" src="app.js?v=2.5.238"></script>
 </body>
 </html>

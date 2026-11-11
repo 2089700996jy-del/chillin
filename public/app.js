@@ -29,29 +29,13 @@ import { initWikilinks } from './js/wikilinks.js';
 import { initDailySpark } from './js/daily-spark.js';
 import { initEvergreenTopics } from './js/evergreen-topics.js';
 import { initInsights, refreshInsights } from './js/insights.js';
-import { initAppTheme, setAppThemeMode } from './js/utils.js';
+import { initAppTheme } from './js/utils.js';
 import { initPwaUpdates } from './js/pwa-update.js';
 import { checkAndSendBackupGuardNotification } from './js/backup.js';
 import { loadFeature, isFeatureReady } from './js/feature-loader.js';
 
 // 应用级主题（批次 A）：在 DOMContentLoaded 之前生效，避免首帧闪白
 initAppTheme();
-
-const btnThemeToggle = document.getElementById('btn-desktop-theme-toggle');
-if (btnThemeToggle) {
-    const updateThemeToggleA11y = (effectiveTheme) => {
-        const isDark = effectiveTheme === 'dark';
-        btnThemeToggle.setAttribute('title', isDark ? '切换为浅色外观' : '切换为深色外观');
-        btnThemeToggle.setAttribute('aria-label', isDark ? '切换为浅色外观' : '切换为深色外观');
-    };
-    updateThemeToggleA11y(document.documentElement.getAttribute('data-theme') || 'light');
-    btnThemeToggle.addEventListener('click', () => {
-        const cur = document.documentElement.getAttribute('data-theme') || 'light';
-        const next = cur === 'dark' ? 'light' : 'dark';
-        setAppThemeMode(next);
-        updateThemeToggleA11y(next);
-    });
-}
 
 // Disable device vibration across the entire app as requested
 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {

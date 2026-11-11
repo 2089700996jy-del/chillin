@@ -241,7 +241,7 @@ export function initPwaUpdates() {
                 if (!res.ok) continue;
                 const data = await res.json();
                 const remote = String(data.version || '').trim();
-                if (remote && isVersionAhead(remote, APP_VERSION)) {
+                if (remote && remote !== APP_VERSION) {
                     try { await reg?.update(); } catch (_) {}
                     ensureBanner(`云端已是 v${remote}，当前 v${APP_VERSION}`);
                     return true;
@@ -284,29 +284,17 @@ export function initPwaUpdates() {
         }
 
         // 即使 ServiceWorker 注册异常，HTTP 远端版本探针也必须独立正常执行！
-        // 防抖与在途互斥：切回前台时 visibilitychange 与 focus 常并发触发，
-        // 设 15 秒最小间隔与 in-flight 锁，杜绝双发探针请求与重复触发更新提示。
-        let lastCheckAt = 0;
-        let checkInFlight = false;
-        const checkForUpdate = (force = false) => {
-            const now = Date.now();
-            if (checkInFlight || (!force && now - lastCheckAt < 15000)) return;
-            checkInFlight = true;
-            lastCheckAt = now;
+        const checkForUpdate = () => {
             reg?.update().catch(() => {});
-            probeRemoteVersion(reg).finally(() => {
-                checkInFlight = false;
-            });
+            probeRemoteVersion(reg);
         };
 
         checkForUpdate();
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible') checkForUpdate();
         });
-        window.addEventListener('focus', () => {
-            if (document.visibilityState === 'visible') checkForUpdate();
-        });
-        window.addEventListener('online', () => checkForUpdate(true));
+        window.addEventListener('focus', checkForUpdate);
+        window.addEventListener('online', checkForUpdate);
         // 省电：前台常开时约每 5 分钟探一次（原 20 秒）
         setInterval(() => {
             if (document.visibilityState === 'visible') checkForUpdate();

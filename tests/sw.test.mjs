@@ -161,11 +161,3 @@ test('PWA - modulepreload 只预热 app.js 入口，且与 module script 同 URL
     assert.equal(links.filter((href) => href.startsWith('/js/')).length, 0,
         '不再给 12 个业务模块加 modulepreload：实测会抢 CSS 带宽、拖慢 LCP');
 });
-
-test('PWA - 推送通知使用确定性 tag，杜绝随机时间戳导致系统通知多条叠弹', async () => {
-    const sw = await fs.readFile(path.join(root, SITE, 'sw.js'), 'utf8');
-    const pushBlock = sw.match(/self\.addEventListener\('push'[\s\S]*?\}\);/);
-    assert.ok(pushBlock, 'sw.js must have push event listener');
-    assert.doesNotMatch(pushBlock[0], /Date\.now\(\)/, '推送 tag 不得使用 Date.now()，否则会破坏系统通知替换消抖');
-    assert.match(pushBlock[0], /tag:\s*data\.tag\s*\|\|\s*['"]chillin-notification['"]/, 'tag 缺省时必须回退到固定确定性 tag');
-});

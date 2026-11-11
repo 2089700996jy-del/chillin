@@ -116,7 +116,7 @@ export function renderMoodPills() {
             statusEl.textContent = m ? `已记：${m.emoji} ${m.label}` : '';
             statusEl.classList.add('is-checked');
         } else {
-            statusEl.textContent = '';
+            statusEl.textContent = '轻按标记状态';
             statusEl.classList.remove('is-checked');
         }
     }
@@ -315,11 +315,16 @@ export function renderSerendipityCard() {
 
     const memories = getEligibleMemories();
     if (memories.length === 0) {
-        cardEl.style.display = 'none';
-        setHtml(cardEl, '');
+        setHtml(cardEl, `
+            <div class="serendipity-empty-state">
+                <span class="serendipity-empty-icon">🌱</span>
+                <div class="serendipity-empty-text">
+                    <strong>记忆幼苗生长中</strong> · 坚持记录几天后，Chillin 会在此处为你唤醒「那年今日」与时光偶遇。
+                </div>
+            </div>
+        `);
         return;
     }
-    cardEl.style.display = '';
 
     const today = getSparkEffectiveDate();
     const todayMonth = today.getMonth();

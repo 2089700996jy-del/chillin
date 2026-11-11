@@ -28,15 +28,15 @@
     "PingFang SC", "Hiragino Sans GB", "Helvetica Neue", "Microsoft YaHei", sans-serif;
 
   --card-bg: var(--ios-card-bg);
-  --card-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
-  --card-hover-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  --card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05);
+  --card-hover-shadow: 0 12px 32px rgba(16, 24, 40, 0.10);
   --widget-bg: rgba(var(--neutral-rgb), 0.08);
   --callout-bg: rgba(0, 122, 255, 0.06);
   --danger-color: #D70015;
   --danger-fill: var(--danger-color);
-  /* 对标 Linear / Apple Notes 极简工效：10px 精密微圆角 + 1px 发丝边框 */
-  --surface-radius: 10px;
-  --surface-hairline: rgba(var(--label-rgb), 0.08);
+  /* 路线 A：主表面统一大圆角；卡片刻意不画 1px 硬边框，靠柔和阴影分层 */
+  --surface-radius: 26px;
+  --surface-hairline: rgba(var(--label-rgb), 0.06);
   /* 批次 A：应用级深色主题的亮色基线（深色覆盖在文件末尾的 :root[data-theme="dark"] 里） */
   --nav-bg: #F2F2F7;
   /* 导航/底栏取色同源：玻璃层与底栏填充都由页面底色分量派生，
@@ -51,8 +51,8 @@
   --hairline: rgba(0, 0, 0, 0.06);
   --segment-active-bg: #ffffff;
   --tab-inactive: #6E6E73;
-  --glow-blue: rgba(0, 0, 0, 0);
-  --glow-green: rgba(0, 0, 0, 0);
+  --glow-blue: rgba(0, 122, 255, 0.13);
+  --glow-green: rgba(52, 199, 89, 0.09);
   /* 路线 B：层级令牌。新增层一律引用令牌，不再写裸 z-index 魔数；
      从下到上：导航 → 弹层 → Toast → 登录遮罩 → 确认弹窗（永远最上层，避免被弹层内的按钮压住） */
   --z-nav: 1000;
@@ -2107,40 +2107,38 @@ body.dark-reader-body .timeline-filter__select {
 /* NOTE EDITOR (Ruled Paper) */
 /* ========================================== */
 .note-paper {
-  max-width: 720px; 
+  max-width: 680px; 
   margin: 0 auto; 
-  min-height: 480px;
-  background-image: none;
-  background-size: auto; 
-  background-position: 0 0; 
-  padding: 0;
+  min-height: 60vh;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(0, 0, 0, 0.03) 31px, rgba(0, 0, 0, 0.03) 32px);
+  background-size: 100% 32px; 
+  background-position: 0 4px; 
+  padding: 0 8px;
 }
 .note-paper-title {
   width: 100%; 
   border: none; 
   background: transparent; 
-  font-size: 22px; 
-  font-weight: 600; 
+  font-size: 28px; 
+  font-weight: 700; 
   color: var(--text-color);
   font-family: var(--font-family); 
   outline: none; 
-  margin-bottom: 14px; 
-  padding: 0;
-  letter-spacing: -0.3px;
+  margin-bottom: 20px; 
+  padding: 10px 0;
 }
 .note-paper-content {
   width: 100%; 
   border: none; 
   background: transparent; 
-  font-size: 14px; 
+  font-size: 16px; 
   color: var(--text-color); 
-  line-height: 1.75;
+  line-height: 32px;
   font-family: var(--font-family); 
   outline: none; 
   resize: none; 
   min-height: calc(60vh - 80px); 
   overflow: hidden;
-  padding: 0;
 }
 .note-paper-content::placeholder, .note-paper-title::placeholder { 
   color: var(--placeholder-color);
@@ -3918,11 +3916,11 @@ body.eyecare-reader-body .sidebar-header {
 
 /* 1. Heatmap Widget (???????) */
 .heatmap-widget {
-  background: var(--card-bg);
+  background: var(--ios-card-bg, var(--white));
   border-radius: var(--surface-radius);
-  padding: 16px 18px 14px;
-  margin-bottom: 20px;
-  border: 1px solid var(--surface-hairline);
+  padding: 18px 20px 16px;
+  margin-bottom: 22px;
+  border: 1px solid transparent;
   box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
@@ -3948,27 +3946,29 @@ body.eyecare-reader-body .sidebar-header {
   font-weight: 500;
 }
 
-/* Linear / Apple Notes 精简胶囊按钮 */
+/* Konsta / Apple Intelligence Capsule Button */
 .btn-ai-pill {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  background: var(--card-bg);
-  color: var(--text-color) !important;
-  border: 1px solid var(--surface-hairline);
-  border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 11.5px;
-  font-weight: 500;
+  background: rgba(0, 122, 255, 0.08);
+  color: var(--accent-text, var(--accent-color)) !important;
+  border: 1px solid rgba(0, 122, 255, 0.18);
+  border-radius: 9999px;
+  padding: 4px 11px;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
   white-space: nowrap;
+  letter-spacing: -0.2px;
 }
 
 .btn-ai-pill:hover {
-  background: var(--hover-bg);
+  background: rgba(0, 122, 255, 0.14);
+  border-color: rgba(0, 122, 255, 0.32);
 }
 
 .btn-ai-pill:active {
@@ -6878,15 +6878,14 @@ body.eyecare-reader-body .reader-sync-info {
 /* Weeklies (Home) */
 .notion-collection-card {
   border-radius: var(--surface-radius);
-  border: 1px solid var(--surface-hairline);
+  border: 1px solid transparent;
   box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .notion-collection-card:hover {
-  transform: translateY(-2px);
+  transform: translateY(-4px);
   box-shadow: var(--card-hover-shadow);
-  border-color: rgba(var(--label-rgb), 0.16);
 }
 
 .notion-collection-card:active {
@@ -6896,16 +6895,15 @@ body.eyecare-reader-body .reader-sync-info {
 /* Feeds */
 .feed-item-card {
   border-radius: var(--surface-radius);
-  border: 1px solid var(--surface-hairline);
+  border: 1px solid transparent;
   box-shadow: var(--card-shadow);
-  padding: 16px 18px;
+  padding: 18px 20px;
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
 
 .feed-item-card:hover {
-  transform: translateY(-1px);
+  transform: translateY(-2px);
   box-shadow: var(--card-hover-shadow);
-  border-color: rgba(var(--label-rgb), 0.16);
 }
 
 .feed-item-card:active {
@@ -6914,20 +6912,20 @@ body.eyecare-reader-body .reader-sync-info {
 
 .feed-input-card {
   border-radius: var(--surface-radius);
-  border: 1px solid var(--surface-hairline);
+  border: 1px solid transparent;
   box-shadow: var(--card-shadow);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .feed-input-card:focus-within {
-  border-color: rgba(var(--label-rgb), 0.25);
+  border-color: rgba(0, 0, 0, 0.12);
   box-shadow: var(--card-hover-shadow);
   outline: none;
 }
 
 .rich-link-card {
-  border-radius: var(--surface-radius);
-  border: 1px solid var(--surface-hairline);
+  border-radius: 14px;
+  border: 1px solid transparent;
   transition: transform 0.15s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.15s ease;
 }
 
@@ -6935,33 +6933,33 @@ body.eyecare-reader-body .reader-sync-info {
   transform: scale(0.985);
 }
 
-/* Notes (Apple Notes Minimalist Cell List) */
+/* Notes (Upgraded to Inset Grouped Cell Cards) */
 .note-item {
-  border-radius: 8px;
-  background: transparent;
+  border-radius: var(--surface-radius);
+  background: var(--card-bg);
   border: 1px solid transparent;
-  box-shadow: none;
-  margin-bottom: 4px;
-  padding: 10px 14px;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.02);
+  margin-bottom: 14px;
+  padding: 18px 22px;
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .note-item:hover {
-  background: rgba(var(--label-rgb), 0.04);
-  transform: none;
-  box-shadow: none;
-  border-color: transparent;
-  padding-left: 14px;
+  background: var(--card-bg);
+  transform: translateY(-2px);
+  box-shadow: var(--card-hover-shadow);
+  border-color: rgba(var(--label-rgb), 0.12);
+  padding-left: 20px;
 }
 
 .note-item:active {
-  transform: none;
+  transform: scale(0.985);
 }
 
 /* Bookshelf / Reader Cards */
 .book-card {
   border-radius: var(--surface-radius);
-  border: 1px solid var(--surface-hairline);
+  border: 1px solid transparent;
   box-shadow: var(--card-shadow);
   transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
 }
@@ -7308,7 +7306,7 @@ body.dark-reader-body .ios-btn-cancel:hover {
 }
 
 body.dark-reader-body .note-paper {
-  background-image: none;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, rgba(255, 255, 255, 0.03) 31px, rgba(255, 255, 255, 0.03) 32px);
 }
 body.dark-reader-body .note-paper-content::placeholder,
 body.dark-reader-body .note-paper-title::placeholder {
@@ -7584,15 +7582,14 @@ body.is-offline .sync-status {
   display: inline-flex;
   align-items: center;
   font-size: 11px;
-  font-weight: 500;
-  color: var(--text-color-light);
-  background: rgba(var(--label-rgb), 0.06);
-  border: 1px solid var(--surface-hairline);
-  padding: 1px 6px;
-  border-radius: 4px;
+  font-weight: 600;
+  color: #1F7A34;
+  background: rgba(52, 199, 89, 0.12);
+  padding: 1.5px 7px;
+  border-radius: 9999px;
   margin-left: 6px;
   vertical-align: 1px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: -0.2px;
 }
 
 body.dark-reader-body .heatmap-streak-badge {
@@ -7744,7 +7741,7 @@ body.dark-reader-body .sheet-pull-handle {
 
   /* 2. Expanded Container for Widescreen Workspace */
   .notion-app {
-    max-width: 1140px;
+    max-width: 1140px !important;
     padding: 82px 24px 60px !important;
   }
 
@@ -9080,19 +9077,6 @@ body.dark-reader-body #btn-enable-push {
 }
 
 /* 反向引用区块 (Backlinks Section) */
-.note-backlinks-section .annotations-title,
-.note-annotations-section .annotations-title {
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--text-color-light);
-  margin-bottom: 12px;
-}
-.empty-backlinks {
-  font-size: 11px;
-  color: var(--text-color-light);
-  opacity: 0.7;
-}
-
 .note-backlinks-section {
   margin-top: 36px;
   padding-top: 20px;
@@ -9674,22 +9658,23 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip {
-  height: 24px;
-  padding: 0 8px;
+  /* Konsta HIG：胶囊视觉保持 28px，热区由 ::after 撑到 44px */
+  height: 28px;
+  padding: 0 10px;
   position: relative;
-  border-radius: 4px;
+  border-radius: 9999px;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 11px;
+  gap: 5px;
+  font-size: 12px;
   font-weight: 500;
-  background: rgba(var(--label-rgb), 0.05);
-  border: 1px solid var(--surface-hairline);
-  color: var(--text-color-light);
+  background: rgba(var(--neutral-rgb), 0.08);
+  border: 1px solid transparent;
+  color: rgba(var(--label-rgb), 0.8);
   cursor: pointer;
   white-space: nowrap;
   flex-shrink: 0;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -9703,8 +9688,7 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip:hover {
-  background: var(--hover-bg);
-  color: var(--text-color);
+  background: rgba(var(--neutral-rgb), 0.14);
 }
 
 .k-mood-chip:active {
@@ -9712,15 +9696,15 @@ body.dark-reader-body .storage-diag-footer {
 }
 
 .k-mood-chip.active {
-  background: var(--text-color);
-  color: var(--card-bg);
+  background: var(--ios-blue, var(--ios-blue));
+  color: var(--white);
   font-weight: 600;
-  border-color: var(--text-color);
-  box-shadow: none;
+  box-shadow: 0 2px 8px rgba(0, 122, 255, 0.28);
 }
 
 .k-mood-emoji {
-  display: none;
+  font-size: 12px;
+  line-height: 1;
 }
 
 body.dark-reader-body .k-mood-bar {
@@ -9746,10 +9730,10 @@ body.dark-reader-body .k-mood-chip.active {
 
 /* ==================== Konsta iOS: 每日偶想 (Apple Journal Reflection Card) ==================== */
 .k-journal-card {
-  margin: 18px 0 16px;
-  padding: 16px 18px 18px;
-  background: var(--card-bg);
-  border: 1px solid var(--surface-hairline);
+  margin: 20px 0 16px;
+  padding: 18px 20px 20px;
+  background: var(--card-bg, var(--white));
+  border: 1px solid transparent;
   border-radius: var(--surface-radius);
   box-shadow: var(--card-shadow);
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
@@ -9822,19 +9806,17 @@ body.dark-reader-body .k-mood-chip.active {
   position: relative;
   display: flex;
   align-items: center;
-  background: var(--input-bg);
-  border: 1px solid var(--surface-hairline);
-  border-radius: 6px;
-  padding: 2px 4px 2px 12px;
-  height: 36px;
-  box-shadow: none;
-  transition: border-color 0.15s ease, background-color 0.15s ease;
+  background: var(--card-bg, var(--white));
+  border-radius: var(--radius-pill);
+  padding: 3px 4px 3px 14px;
+  height: 40px;
+  box-shadow: 0 2px 10px rgba(16, 24, 40, 0.07);
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .k-journal-field:focus-within {
-  background: var(--input-bg-focus);
-  border-color: rgba(var(--label-rgb), 0.28);
-  box-shadow: none;
+  background: var(--card-bg, var(--white));
+  box-shadow: 0 2px 12px rgba(16, 24, 40, 0.09), 0 0 0 2.5px rgba(0, 122, 255, 0.18);
 }
 
 .k-journal-input {
@@ -9842,7 +9824,7 @@ body.dark-reader-body .k-mood-chip.active {
   min-width: 0;
   border: none;
   background: transparent;
-  font-size: 13px;
+  font-size: 13.5px;
   color: inherit;
   outline: none;
   padding-right: 6px;
@@ -9858,18 +9840,18 @@ body.dark-reader-body .k-mood-chip.active {
 }
 
 .k-spark-send-btn {
-  width: 26px;
-  height: 26px;
-  border-radius: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   border: none;
-  background: var(--text-color);
-  color: var(--card-bg);
+  background: var(--ios-blue, var(--ios-blue));
+  color: var(--white);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   flex-shrink: 0;
-  transition: opacity 0.15s ease;
+  transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -9908,10 +9890,10 @@ body.dark-reader-body .k-spark-send-btn {
 /* ==================== Konsta iOS: 时光留痕 (Apple Inset Grouped Memory Card) ==================== */
 .k-memory-card {
   margin-bottom: 20px;
-  background: var(--card-bg);
-  border: 1px solid var(--surface-hairline);
+  background: var(--card-bg, var(--white));
+  border: 1px solid transparent;
   border-radius: var(--surface-radius);
-  padding: 16px 18px;
+  padding: 18px 20px;
   box-shadow: var(--card-shadow);
   transition: transform, opacity, background-color, color, border-color, box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
@@ -10752,16 +10734,19 @@ body.dark-reader-body .k-directory-arrow {
   --danger-color: #FF453A;
   --danger-fill: #B3261E;
   --link-color: #0A84FF;
-  --glow-blue: rgba(0, 0, 0, 0);
-  --glow-green: rgba(0, 0, 0, 0);
+  --glow-blue: rgba(0, 122, 255, 0.1);
+  --glow-green: rgba(52, 199, 89, 0.07);
   --heat-1: rgba(52, 199, 89, 0.2);
   --heat-2: rgba(52, 199, 89, 0.4);
   --heat-3: rgba(52, 199, 89, 0.66);
   --heat-4: var(--ios-green);
 }
 
+/* 深色下光晕更收敛：底色本身已是深灰蓝，同样的透明度会显脏 */
 :root[data-theme="dark"] body {
-  background-image: none;
+  background-image:
+    radial-gradient(1200px 520px at 8% -12%, var(--glow-blue), transparent 60%),
+    radial-gradient(900px 460px at 96% 0%, var(--glow-green), transparent 64%);
 }
 
 /* 顶栏/底部编辑坞的分隔线在深底上要反过来用白色叠加 */
@@ -11003,6 +10988,7 @@ select:focus-visible,
   padding: 20px 20px 12px;
 }
 .agent-goals-title { margin: 0; font-size: 20px; line-height: 1.25; font-weight: 700; letter-spacing: -0.02em; color: var(--text-color); }
+.agent-goals-subtitle { margin: 5px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-color-light); }
 .agent-goals-body { flex: 1; min-height: 0; overflow-y: auto; padding: 0 20px 20px; -webkit-overflow-scrolling: touch; }
 .agent-goal-form {
   display: flex;
@@ -11222,8 +11208,7 @@ select:focus-visible,
 /* ========================================== */
 /* DESKTOP SIDEBAR & WORKSTATION LAYOUT (>=1024px) */
 /* ========================================== */
-.app-desktop-sidebar,
-.desktop-user-avatar {
+.app-desktop-sidebar {
   display: none;
 }
 
@@ -11248,185 +11233,23 @@ select:focus-visible,
   body:not(.not-authenticated):not(.in-reader-book) .super-navbar {
     left: 220px;
     width: calc(100% - 220px);
-    height: 42px;
-    background: var(--card-bg);
-    border-bottom: 1px solid var(--surface-hairline);
-    box-shadow: none;
   }
 
   body:not(.not-authenticated):not(.in-reader-book) .super-navbar__menu,
-  body:not(.not-authenticated):not(.in-reader-book) .nav-brand-desktop,
-  body:not(.not-authenticated):not(.in-reader-book) .super-navbar .nav-right #btn-open-ai-chat,
-  body:not(.not-authenticated):not(.in-reader-book) .super-navbar .nav-right #btn-open-security,
-  body:not(.not-authenticated):not(.in-reader-book) .super-navbar .nav-right #btn-logout,
-  body:not(.not-authenticated):not(.in-reader-book) .super-navbar .nav-right #btn-logout-all {
+  body:not(.not-authenticated):not(.in-reader-book) .nav-brand-desktop {
     display: none;
-  }
-
-  body:not(.not-authenticated):not(.in-reader-book) #btn-open-global-search {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 3px 10px;
-    border-radius: 6px;
-    background: var(--input-bg);
-    border: 1px solid var(--surface-hairline);
-    color: var(--text-color-light);
-    font-size: 12px;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-
-  body:not(.not-authenticated):not(.in-reader-book) #btn-open-global-search:hover {
-    background: var(--hover-bg);
-    color: var(--text-color);
-  }
-
-  body:not(.not-authenticated):not(.in-reader-book) #btn-open-global-search .search-kbd {
-    background: rgba(var(--label-rgb), 0.1);
-    color: var(--text-color);
-    border-radius: 4px;
-    padding: 1px 4px;
-    font-size: 10px;
-  }
-
-  .desktop-user-avatar {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    border-radius: 50%;
-    background: rgba(var(--label-rgb), 0.1);
-    border: 1px solid var(--surface-hairline);
-    color: var(--text-color);
-    font-size: 11px;
-    font-weight: 700;
-    position: relative;
-    cursor: pointer;
-    flex-shrink: 0;
-  }
-
-  .desktop-user-avatar .avatar-status-dot {
-    position: absolute;
-    bottom: -1px;
-    right: -1px;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--ios-green);
-    box-shadow: 0 0 0 1.5px var(--card-bg);
   }
 
   body:not(.not-authenticated):not(.in-reader-book) .notion-app {
     margin-left: 220px;
-    max-width: 1040px;
-    padding: 58px 32px 60px;
+    max-width: 1100px;
+    padding: 76px 28px 60px;
   }
 
   body:not(.not-authenticated):not(.in-reader-book) .notion-app.wide-workspace {
     max-width: calc(100vw - 220px);
     width: calc(100vw - 220px);
-    padding: 54px 24px 40px;
-  }
-
-  #view-home .page-header .page-title {
-    display: none;
-  }
-}
-
-
-.desktop-top-header {
-  display: none;
-}
-
-@media (min-width: 1024px) {
-  .desktop-top-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    height: 100%;
-    gap: 16px;
-  }
-
-  .desktop-breadcrumb-trail {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    font-weight: 600;
-    color: var(--text-color);
-  }
-
-  .breadcrumb-item-brand {
-    color: var(--text-color);
-    letter-spacing: -0.2px;
-  }
-
-  .breadcrumb-sep {
-    color: var(--text-color-light);
-    opacity: 0.5;
-  }
-
-  .breadcrumb-item-title {
-    color: var(--text-color);
-  }
-
-
-  .desktop-header-controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .desktop-theme-toggle {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 24px;
-    border-radius: 4px;
-    background: rgba(var(--label-rgb), 0.04);
-    border: 1px solid var(--surface-hairline);
-    color: var(--text-color-light);
-    cursor: pointer;
-    transition: background-color 0.15s ease, color 0.15s ease;
-  }
-
-  .desktop-theme-toggle:hover {
-    background: rgba(var(--label-rgb), 0.08);
-    color: var(--text-color);
-  }
-
-  .desktop-theme-toggle .theme-icon-sun {
-    display: none;
-  }
-
-  .desktop-theme-toggle .theme-icon-moon {
-    display: block;
-  }
-
-  [data-theme="dark"] .desktop-theme-toggle .theme-icon-moon {
-    display: none;
-  }
-
-  [data-theme="dark"] .desktop-theme-toggle .theme-icon-sun {
-    display: block;
-  }
-
-  .desktop-cron-indicator {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    padding: 2px 7px;
-    border-radius: 4px;
-    background: rgba(var(--label-rgb), 0.04);
-    font-size: 11px;
-    color: var(--text-color-light);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-weight: 500;
-    border: 1px solid var(--surface-hairline);
+    padding: 68px 24px 40px;
   }
 }
 
@@ -11454,6 +11277,15 @@ select:focus-visible,
   letter-spacing: -0.3px;
 }
 
+.sidebar-version-badge {
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: rgba(var(--neutral-rgb), 0.1);
+  color: var(--text-color-light);
+  margin-left: 4px;
+}
 
 .sidebar-nav-group {
   margin-top: 10px;
@@ -11466,39 +11298,6 @@ select:focus-visible,
   margin-top: 14px;
   padding-top: 12px;
   border-top: 1px solid var(--surface-hairline);
-}
-
-.sidebar-pill-badge {
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  flex-shrink: 0;
-}
-
-.sidebar-pill-badge.badge-green {
-  background: rgba(52, 199, 89, 0.15);
-  color: var(--ios-green);
-}
-
-.sidebar-pill-badge.badge-orange {
-  background: rgba(255, 149, 0, 0.2);
-  color: var(--ios-orange);
-  box-shadow: 0 0 8px rgba(255, 149, 0, 0.2);
-}
-
-.sidebar-item-count {
-  font-size: 11px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--text-color-light);
-  opacity: 0.75;
-}
-
-
-.sidebar-storage-meta {
-  font-size: 10px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  color: var(--text-color-light);
 }
 
 .sidebar-nav-title {
@@ -11635,6 +11434,20 @@ select:focus-visible,
   letter-spacing: -0.4px;
 }
 
+.cockpit-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: rgba(52, 199, 89, 0.12);
+  color: var(--ios-green);
+}
+
+.cockpit-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--text-color-light);
+}
 
 .cockpit-live-indicator {
   display: flex;
@@ -11713,6 +11526,17 @@ select:focus-visible,
   color: var(--text-color);
 }
 
+.cockpit-head-hint {
+  font-size: 11px;
+  color: var(--text-color-light);
+}
+
+.cockpit-card-tip {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-color-light);
+  line-height: 1.5;
+}
 
 .cockpit-quiet-pill {
   font-size: 11px;
@@ -11766,12 +11590,6 @@ select:focus-visible,
 
 .cockpit-submit-btn:hover {
   opacity: 0.9;
-}
-
-.cockpit-enter-icon {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 13px;
-  line-height: 1;
 }
 
 .cockpit-queue-head {
@@ -11982,51 +11800,13 @@ select:focus-visible,
   padding: 4px 12px;
 }
 
-.cockpit-stats-bar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 12px;
-  border-radius: 8px;
-  background: rgba(var(--label-rgb), 0.04);
-  font-size: 11px;
-  color: var(--text-color-light);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  margin-bottom: 12px;
-}
-
-.cockpit-stats-bar strong {
-  color: var(--text-color);
-}
-
-.cockpit-dag-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 14px 0 10px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-color);
-}
-
-.cockpit-autoloop-pill {
-  font-size: 10px;
-  padding: 2px 7px;
-  border-radius: var(--radius-pill);
-  background: rgba(52, 199, 89, 0.15);
-  color: var(--ios-green);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-weight: 700;
-  letter-spacing: 0.3px;
-}
-
 /* Choice Decision Form in Cockpit */
 .cockpit-choice-card {
-  padding: 16px;
+  padding: 14px;
   border-radius: 14px;
   background: var(--card-bg);
-  border: 1px solid var(--ios-orange);
-  box-shadow: 0 0 18px rgba(255, 149, 0, 0.16);
+  border: 1.5px solid var(--ios-orange);
+  box-shadow: var(--card-shadow);
 }
 
 .cockpit-choice-badge {
@@ -12051,14 +11831,14 @@ select:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 12px;
 }
 
 .cockpit-choice-label {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: 10px;
   border: 1px solid var(--surface-hairline);
   background: rgba(var(--label-rgb), 0.02);
@@ -12067,10 +11847,8 @@ select:focus-visible,
   transition: background-color 0.15s ease, border-color 0.15s ease;
 }
 
-.cockpit-choice-label:hover,
-.cockpit-choice-label:has(input:checked) {
-  border-color: rgba(255, 149, 0, 0.5);
-  background: rgba(255, 149, 0, 0.05);
+.cockpit-choice-label:hover {
+  background: var(--hover-bg);
 }
 
 .cockpit-choice-label input[type="radio"] {
@@ -12079,182 +11857,21 @@ select:focus-visible,
 
 .cockpit-choice-submit {
   width: 100%;
-  padding: 10px 14px;
+  padding: 8px 12px;
   border-radius: 8px;
   background: var(--ios-orange);
   color: var(--white);
   border: none;
-  font-size: 13px;
-  font-weight: 700;
+  font-size: 12px;
+  font-weight: 600;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  transition: opacity 0.15s ease, transform 0.15s ease;
-}
-
-.cockpit-choice-submit:hover {
-  opacity: 0.92;
-}
-
-.cockpit-handoff-card {
-  margin-top: 14px;
-  padding: 14px;
-  border-radius: 14px;
-  background: var(--card-bg);
-  border: 1px solid var(--surface-hairline);
-  box-shadow: var(--card-shadow);
-}
-
-/* ========================================== */
-/* NOTES WORKSPACE (Dual-Column Desktop Studio) */
-/* ========================================== */
-.notes-desktop-layout {
-  display: contents;
-}
-
-.btn-create-note-inline {
-  display: none;
-}
-
-.note-item.is-selected {
-  background: rgba(var(--label-rgb), 0.08);
-  border-color: var(--surface-hairline);
-  box-shadow: none;
-}
-
-.note-item .note-item-arrow {
-  display: none;
-}
-
-#view-note-editor #btn-save-note {
-  background: var(--text-color);
-  color: var(--card-bg);
-  border: 1px solid var(--text-color);
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 5px 12px;
-  box-shadow: none;
   transition: opacity 0.15s ease;
 }
 
-#view-note-editor #btn-save-note:hover {
-  opacity: 0.88;
-  transform: none;
-  box-shadow: none;
+.cockpit-choice-submit:hover {
+  opacity: 0.9;
 }
-
-#view-note-editor #btn-delete-note {
-  color: var(--text-color-light);
-  font-size: 12px;
-  background: transparent;
-  border: none;
-  padding: 5px 8px;
-  cursor: pointer;
-  transition: color 0.15s ease;
-}
-
-#view-note-editor #btn-delete-note:hover {
-  color: var(--danger-color);
-}
-
-#view-note-editor .btn-upload-image {
-  color: var(--text-color-light);
-  background: rgba(var(--label-rgb), 0.04);
-  border: 1px solid var(--surface-hairline);
-  border-radius: 6px;
-  font-size: 12px;
-  padding: 4px 8px;
-  transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
-}
-
-#view-note-editor .btn-upload-image:hover {
-  color: var(--text-color);
-  background: rgba(var(--label-rgb), 0.08);
-}
-
-@media (min-width: 1024px) {
-  #view-notes .app-version-badge {
-    display: none;
-  }
-
-  .btn-create-note-inline {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 10px;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-color);
-    background: rgba(var(--label-rgb), 0.04);
-    border: 1px solid var(--surface-hairline);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: background-color 0.15s ease, border-color 0.15s ease;
-  }
-
-  .btn-create-note-inline:hover {
-    background: rgba(var(--label-rgb), 0.08);
-    border-color: rgba(var(--label-rgb), 0.16);
-  }
-
-  .notes-page-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 12px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--surface-hairline);
-  }
-
-  body:not(.not-authenticated):not(.in-reader-book) .notion-app:has(.notes-desktop-layout:has(.view-section.active)) {
-    max-width: none;
-    margin-right: 24px;
-    padding-right: 0;
-  }
-
-  .notes-desktop-layout:has(.view-section.active) {
-    display: grid;
-    grid-template-columns: 280px minmax(0, 1fr);
-    gap: 20px;
-    align-items: stretch;
-    min-height: calc(100vh - 80px);
-  }
-
-  .notes-desktop-layout:has(.view-section.active) #view-notes,
-  .notes-desktop-layout:has(.view-section.active) #view-note-editor {
-    display: block;
-  }
-
-  .notes-desktop-layout:has(.view-section.active) #view-notes {
-    position: sticky;
-    top: 56px;
-    max-height: calc(100vh - 76px);
-    overflow-y: auto;
-    padding-right: 4px;
-  }
-
-  .notes-desktop-layout:has(.view-section.active) #view-note-editor {
-    min-width: 0;
-    background: var(--card-bg);
-    border: 1px solid var(--surface-hairline);
-    border-radius: 10px;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
-    padding: 24px 32px 36px;
-  }
-
-  .notes-desktop-layout:has(.view-section.active) .note-paper {
-    max-width: 100%;
-    min-height: 440px;
-    padding: 0;
-  }
-
-  .notes-desktop-layout:has(.view-section.active) .article-meta {
-    margin-bottom: 14px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid var(--surface-hairline);
-  }
-}
-

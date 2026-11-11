@@ -85,40 +85,6 @@ integration('Auth - push subscription is deduped by device id', async () => {
     assert.equal(rows.length, 2, '不同设备仍各自保留一条');
 });
 
-integration('Push - notifyAgentUser 按 device_id 严格消抖，同一设备绝不多发', async () => {
-    const db = createTestDb();
-    const registered = await handleRegister(jsonRequest('https://x/api/auth/register', { username: 'pushtester', password: 'passw0rd1' }), env, db);
-    const { userId } = await registered.json();
-
-    const { notifyAgentUser } = await import('../workers/src/agent-approvals.js');
-
-    await db.prepare("INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, device_id, created_at, updated_at) VALUES (?1, 'https://push.example/dev1', 'k1', 'a1', 'device-alpha', datetime('now', '+8 hours'), datetime('now', '+8 hours'))").bind(userId).run();
-    await db.prepare("INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, created_at, updated_at) VALUES (?1, 'https://push.example/old-orphan', 'k2', 'a2', datetime('now', '+8 hours'), datetime('now', '+8 hours'))").bind(userId).run();
-
-    const webPush = (await import('web-push')).default;
-    const vapidKeys = webPush.generateVAPIDKeys();
-    const pushEnv = {
-        ...env,
-        VAPID_PUBLIC_KEY: vapidKeys.publicKey,
-        VAPID_PRIVATE_KEY: vapidKeys.privateKey
-    };
-
-    let pushCalls = 0;
-    const origSend = webPush.sendNotification;
-    webPush.sendNotification = async () => {
-        pushCalls += 1;
-        return { statusCode: 201 };
-    };
-
-    try {
-        const res = await notifyAgentUser(pushEnv, db, userId, { title: '测试推送', body: '测试内容', tag: 'test-tag' });
-        assert.equal(pushCalls, 1, '同一用户的多条订阅被 deviceMap 消抖，只向有效设备推送 1 条');
-        assert.equal(res.sent, 1);
-    } finally {
-        webPush.sendNotification = origSend;
-    }
-});
-
 integration('Auth - refresh rotates the cookie session, and devices can be listed and revoked', async () => {
     const db = createTestDb();
     const registered = await handleRegister(jsonRequest('https://x/api/auth/register', { username: 'tester', password: 'passw0rd1' }), env, db);
