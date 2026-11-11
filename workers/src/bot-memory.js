@@ -203,6 +203,64 @@ export async function clearPendingMedia(db, userId) {
 }
 
 
+/** 解析模型输出中的主动记忆提议标签 <propose_memory label="..." content="..."/> */
+export function parseProposeMemory(text) {
+    const raw = String(text == null ? '' : text);
+    const tagMatch = /<propose_memory\b([^>]*)>(?:<\/propose_memory>)?/i.exec(raw);
+    if (!tagMatch) return { cleanText: raw, proposal: null };
+
+    const attrs = tagMatch[1];
+    const labelMatch = /\blabel=["']([^"']*)["']/i.exec(attrs);
+    const contentMatch = /\bcontent=["']([^"']+)["']/i.exec(attrs);
+    const content = contentMatch ? contentMatch[1].trim() : '';
+    const cleanText = raw.replace(tagMatch[0], '').trim();
+    if (!content) return { cleanText, proposal: null };
+
+    const label = labelMatch ? labelMatch[1].trim() : '';
+    return {
+        cleanText,
+        proposal: {
+            label: clip(label, 40),
+            content: clip(content, PROFILE_ITEM_MAX_CHARS)
+        }
+    };
+}
+
+const SINGLE_VALUED_LABELS = new Set([
+    '常住地', '住址', '城市', '所在地', '职业', '工作', '岗位', '公司', '作息', '称呼', '昵称', '年龄', '生日', '性别', '时区'
+]);
+
+/** 检测新条目与已有档案是否存在单值覆盖或否定反转冲突 */
+export function findConflictingProfileItem(existing, newContent, newLabel = '') {
+    if (!Array.isArray(existing) || !existing.length || !newContent) return null;
+    const tag = String(newLabel || '').trim();
+    const body = String(newContent || '').trim();
+
+    if (tag && SINGLE_VALUED_LABELS.has(tag)) {
+        const found = existing.find(it => String(it.label || '').trim() === tag && String(it.content || '').trim() !== body);
+        if (found) return found;
+    }
+
+    const negRe = /^(?:不|戒|别|不再|从不|没有)/;
+    const tailRe = /(?:了|啦|的|哦|呢|啊|吧)+$/;
+    const cleanStem = (s) => s.replace(negRe, '').replace(tailRe, '').replace(/^(?:喜欢|习惯|经常|爱|平时|总)/, '').replace(/^(?:喝|吃|做|用|看)/, '').trim();
+    const bodyIsNeg = negRe.test(body);
+    const bodyStem = cleanStem(body);
+    if (bodyStem.length >= 2) {
+        for (const it of existing) {
+            const exBody = String(it.content || '').trim();
+            const exIsNeg = negRe.test(exBody);
+            const exStem = cleanStem(exBody);
+            if (bodyIsNeg !== exIsNeg) {
+                if (exStem === bodyStem || exStem.includes(bodyStem) || bodyStem.includes(exStem)) {
+                    return it;
+                }
+            }
+        }
+    }
+    return null;
+}
+
 /** 读「关于我」档案（未软删、按写入顺序） */
 export async function listProfile(db, userId) {
     if (!db || !userId) return [];
@@ -212,19 +270,27 @@ export async function listProfile(db, userId) {
     return (rows && rows.results) || [];
 }
 
-/** 写一条档案：内容完全相同视为重复，不重复入库 */
+/** 写一条档案：内容完全相同视为重复；单值属性/冲突项覆盖更新；无冲突且超限则阻断 */
 export async function addProfileItem(db, userId, content, label = '') {
     if (!db || !userId || !content) return { ok: false, duplicate: false };
     const body = clip(content, PROFILE_ITEM_MAX_CHARS);
+    const tag = clip(label, 40);
     const existing = await listProfile(db, userId);
-    if (existing.some((it) => String(it.content) === body)) return { ok: true, duplicate: true };
-    // 条数硬上限：缺这道闸，第 25 条会写进库里却永远读不出来（listProfile 自带 LIMIT）
-    if (existing.length >= PROFILE_MAX_ITEMS) return { ok: false, duplicate: false, full: true };
+    if (existing.some((it) => String(it.content) === body && (!tag || String(it.label || '') === tag))) {
+        return { ok: true, duplicate: true };
+    }
+    // 冲突与覆盖消解：先软删冲突旧条目，为新条目腾出空间
+    const conflict = findConflictingProfileItem(existing, body, tag);
+    if (conflict) {
+        await forgetProfileById(db, userId, conflict.id);
+    } else if (existing.length >= PROFILE_MAX_ITEMS) {
+        return { ok: false, duplicate: false, full: true };
+    }
     try {
         await db.prepare(
             'INSERT INTO bot_profile (user_id, label, content, source, is_deleted) VALUES (?1, ?2, ?3, ?4, 0)'
-        ).bind(Number(userId), clip(label, 40), body, 'user').run();
-        return { ok: true, duplicate: false };
+        ).bind(Number(userId), tag, body, 'user').run();
+        return { ok: true, duplicate: false, replaced: conflict ? conflict.content : null };
     } catch (err) {
         console.error('[bot-memory] 写入个人档案失败: ' + (err && err.message));
         return { ok: false, duplicate: false };
@@ -263,6 +329,28 @@ export async function forgetProfileById(db, userId, id) {
     return { removed: (res && res.meta && res.meta.changes) || 0 };
 }
 
+/** 执行待确认的个人档案写入（用户回复「确认」后触发） */
+export async function confirmProfilePending(db, userId, pending) {
+    const payload = (pending && pending.payload) || {};
+    const content = String(payload.content || '').trim();
+    const label = String(payload.label || '').trim();
+    if (!content) {
+        await clearPendingAction(db, userId);
+        return '待确认的档案内容为空，未执行写入。';
+    }
+    const res = await addProfileItem(db, userId, content, label);
+    await clearPendingAction(db, userId);
+    if (!res.ok) {
+        if (res.full) return '档案最多保留 ' + PROFILE_MAX_ITEMS + ' 条，先发「忘记 <关键词>」腾出一条再记新的。';
+        return '档案写入失败（存储临时不可用），请稍后再试。';
+    }
+    if (res.duplicate) return '这条档案之前已经记过了 🙂';
+    const tagPrefix = label ? label + '：' : '';
+    const note = res.replaced ? '\n\n*(已自动替换旧记录「' + res.replaced + '」)*' : '';
+    return '好，已记入「关于我」档案 ✨\n\n> ' + tagPrefix + content.replace(/\n/g, '\n> ')
+        + note + '\n\n想查看发「你记得我什么」，想删除发「忘记 ' + (label || content.slice(0, 8)) + '」。';
+}
+
 /** 应用内改一条档案：只更新本人未软删的条目（改内容与标签，不改归属） */
 export async function updateProfileItem(db, userId, id, content, label = '') {
     const rid = Number(id);
@@ -275,13 +363,14 @@ export async function updateProfileItem(db, userId, id, content, label = '') {
     return { ok: changes > 0, reason: changes > 0 ? '' : 'not_found' };
 }
 
-/** 拼成注入提示词的档案块（受字符预算约束，空档案返回空串） */
+/** 拼成注入提示词的档案块（受字符预算约束，带确认日期时间知觉，空档案返回空串） */
 export async function loadProfilePrompt(db, userId) {
     const items = await listProfile(db, userId);
     const lines = [];
     let used = 0;
     for (const it of items) {
-        const line = '- ' + (it.label ? it.label + '：' : '') + it.content;
+        const dateTag = it.created_at ? '（' + String(it.created_at).slice(0, 10) + ' 确认）' : '';
+        const line = '- ' + (it.label ? it.label + '：' : '') + it.content + dateTag;
         if (used + line.length > PROFILE_MAX_CHARS) break;
         used += line.length;
         lines.push(line);

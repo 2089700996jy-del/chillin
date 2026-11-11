@@ -9,19 +9,19 @@
 1. **容器卡片 (Inset Grouped)**：
    * 所有卡片（周记、随手记、笔记、书签、提示词、阅读书架）统一遵循 iOS Inset Grouped 设计标准；
    * 圆角规范：主表面统一使用 `var(--surface-radius)`（26px），微件与子元素使用 `10px ~ 12px`，胶囊一律 `var(--radius-pill)`；
-   * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 只为保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时用 `--surface-hairline`；
-   * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并微升 `transform: translateY(-2px)`；
-   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#0066CC`，由 iOS 系统蓝 `#007AFF` 加深而来：白字按钮对比度从 4.01:1 提到 5.57:1，2026-10-27 对比度审计后定稿），不得再引入第二个蓝；深色底上的**文字/图标**改用 `--accent-text`（`#4A9EFF`），不得拿 `--ios-blue` 当深色文字色；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
-   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次靠间距与阴影，不靠分隔线**（底栏为悬浮胶囊 dock，边界由圆角 + 极细 hairline + 柔和阴影给出，见 §3.5）；
-   * 首屏柔光：亮色主题 `body` 顶部铺两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作 hero 光晕，卡片保持纯白浮在其上；深色与护眼主题必须显式 `background-image: none`（深底上会发脏蓝，由 `tests/css.test.mjs` 看住）。
+   * 边框与层次：主表面**不画可见硬边框**（`border: 1px solid transparent` 仅保留布局位与深色覆写位），改用 `var(--card-shadow)` 两层柔和弥散阴影分层；确需极细分隔时使用 `--surface-hairline`；
+   * 投影系统：`--card-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 28px rgba(16, 24, 40, 0.05)`，悬停升为 `--card-hover-shadow` 并配合 `transform: translateY(-2px)`；
+   * 强调色纪律：全站**唯一强调色**是 `--ios-blue`（`#0066CC`，白字按钮对比度 5.57:1），严禁引入第二个蓝；深色底上的文字与图标改用 `--accent-text`（`#4A9EFF`），严禁拿 `--ios-blue` 作深色文字色；状态绿与热力图色阶一律走令牌（`--heat-empty` / `--heat-1` ~ `--heat-4`）；
+   * 留白与字号节奏：移动端主容器内边距 `72px 18px 104px`、卡片垂直间距 ≥ 20px、`.page-title` 40px 且 `letter-spacing: -0.9px`；**层次依靠间距与阴影，不靠生硬分隔线**；
+   * 首屏柔光：亮色主题 `body` 顶部铺设两枚低透明度 `radial-gradient`（`--ios-blue` 与 systemGreen）作为 hero 光晕，卡片纯白浮于其上；深色与护眼主题必须显式设置 `background-image: none`。
 
-3. **模糊层 (backdrop-filter) 与层级纪律**：
-   * `backdrop-filter` 只允许「浮在内容之上」的表面使用：顶部导航 `.super-navbar`、底部 Tab 栏 `.mobile-bottom-nav`、阅读器底栏 `.reader-nav-bottom`、弹层遮罩 `.modal-overlay` / `.confirm-dialog-overlay` / `.wikilink-autocomplete-popup`、压在图片上的悬浮图标按钮；总数由 `tests/css.test.mjs` 的棘轮看住（基线 41 条声明，含 `-webkit-` 配对）；
-   * 判断标准是**背后有没有可模糊的内容**：父级不透明（如 `#FFFFFF` 卡片里的 `.search-input`）或背板只是纯色加平缓渐变（如 `.note-annotations-section` 之后的 `body`）时，模糊是零收益的合成层，应删除；固定栏上的模糊是**肉眼可见**的（0.88 alpha 下高对比条纹仍会透出，可用 `backups/_blur_on.html` 这类条纹页截图复验），必须保留；
-   * 顶层层级一律走 `:root` 的 `--z-nav` / `--z-modal` / `--z-toast` / `--z-auth` / `--z-alert` 令牌，禁止裸 `z-index`（否则「关闭按钮盖住确认弹窗」这类顺序错误会重现）；
-   * 过渡只允许显式属性列表，禁止 `transition: all`（会连带 `width`/`height` 触发布局重排）。
+2. **模糊层与层级纪律**：
+   * `backdrop-filter` 只允许「浮在内容之上」的表面使用：顶部导航 `.super-navbar`、底部 Tab 栏 `.mobile-bottom-nav`、阅读器底栏 `.reader-nav-bottom`、弹层遮罩 `.modal-overlay` / `.confirm-dialog-overlay` / `.wikilink-autocomplete-popup`、压在图片上的悬浮图标按钮；
+   * 判断标准为**背后是否有可透视的流动内容**：父级不透明（如纯白卡片内的 `.search-input`）或背板仅为纯色时，严禁滥用无收益的模糊层；
+   * 顶层层级一律走 `:root` 的 `--z-nav` / `--z-modal` / `--z-toast` / `--z-auth` / `--z-alert` 令牌，严禁裸写 `z-index`；
+   * 过渡效果只允许显式声明属性列表，**严禁使用 `transition: all`**（防止连锁触发布局重排）。
 
-4. **Apple Spring 触感反馈微动效**：
+3. **Apple Spring 触感反馈微动效**：
    * 所有交互按钮（`.btn-primary`, `.btn-secondary`, `.fab-btn`, `.btn-chip`, `.prompt-chip` 等）必须提供真实的触感回弹；
    * 采用 Apple Spring 弹性阻尼：
      ```css
@@ -38,13 +38,13 @@
 ## 2. 现代全局「Cmd+K 命令面板」规范
 
 1. **快捷操作优先 (Quick Actions First)**：
-   * 当用户按下 `Cmd+K` / `Ctrl+K` 且搜索框为空时，必须优先呈现高频动作指令（呼叫 AI、写随手记、记笔记、写周记、新建提示词、云同步）；
+   * 当用户按下 `Cmd+K` / `Ctrl+K` 且搜索框为空时，优先呈现高频动作指令（呼叫 AI、写随手记、记笔记、写周记、新建提示词、云同步）；
    * 支持前缀输入 `>` 过滤纯指令动作。
 2. **关键词命中高亮 (`<mark>`)**：
    * 搜索命中的标题与正文摘要必须经过 `highlightMatches` 进行关键词高亮包裹：`<mark class="search-highlight">关键词</mark>`；
    * 必须严格经过 `escapeHtml` 字符转义，防御恶意 XSS 注入。
 3. **全键盘无障碍导航 (Keyboard Accessibility)**：
-   * 必须监听 `ArrowDown` 与 `ArrowUp` 键，实现选中焦点的平滑循环位移；
+   * 监听 `ArrowDown` 与 `ArrowUp` 键，实现选中焦点的平滑循环位移；
    * 选中项赋予 `.active-selection`（带 iOS 蓝条指示与位移动效），自动跟随视口滚动；
    * 监听 `Enter` 键直接执行选中指令或跳转直达目标卡片。
 
@@ -57,20 +57,19 @@
    * 键盘弹起时，底部导航栏（`.mobile-bottom-nav`）与右下角悬浮按钮（`.fab-btn`）必须平滑淡出隐藏，避免遮挡正文输入视线。
 2. **外链图片防崩兜底与懒加载**：
    * 全局所有动态渲染的图片（周记封面、烟火日常拍立得、随手记媒体预览）必须标注 `loading="lazy"` 与 `decoding="async"`；
-   * 图片失败兜底由 `app.js` 的**捕获阶段代理**统一处理（`error` 事件不冒泡）：自动追加 `img-load-failed` / `is-fallback`，并按 `data-img-hide-on-error="hide|remove"` 决定隐藏或移除；**严禁再写内联 `onerror`**（CSP 已禁用内联处理器）。
+   * 图片失败兜底由 `public/app.js` 的**捕获阶段代理**统一处理：自动追加 `img-load-failed` / `is-fallback`，并按 `data-img-hide-on-error="hide|remove"` 决定隐藏或移除；**严禁写内联 `onerror`**（CSP 已禁用内联处理器）。
 3. **无障碍 (Accessibility) 底线**：
-   * 弹层必须通过 `.modal-overlay.show` 触发，`app.js` 会自动补 `role="dialog"` / `aria-modal`、圈定 Tab 焦点、Esc 关闭并归还焦点；
-   * 禁止使用原生 `confirm()` / `alert()`，一律改用 `utils.confirmDialog()` 与 `showToast()`；
-   * 键盘焦点必须有可见样式（`:focus-visible` 已在样式末尾统一兜底，不要再新增 `outline: none`）；
-   * **禁止直接写 `el.innerHTML`**：一律使用 [`public/js/trusted-types.js`](../../public/js/trusted-types.js) 的 `setHtml(el, html)`，测试会拦截任何绕过（Trusted Types 策略为 `chillin#html`）。
+   * 弹层必须通过 `.modal-overlay.show` 触发，自动补 `role="dialog"` / `aria-modal`、圈定 Tab 焦点、Esc 关闭并归还焦点；
+   * 严禁使用原生 `confirm()` / `alert()`，一律改用 `utils.confirmDialog()` 与 `showToast()`；
+   * 键盘焦点必须有可见样式（`:focus-visible` 统一兜底，不得再新增 `outline: none`）；
+   * **严禁直接写 `el.innerHTML`**：一律使用 [`public/js/trusted-types.js`](../../public/js/trusted-types.js) 的 `setHtml(el, html)`，防御代码注入。
 4. **触控热区 (Touch Target) 44pt 底线**：
-   * 任何可点击元素的**实际可点区域**不得小于 44×44pt（Apple HIG 与 Konsta `h-11` 标准）；
-   * **热区 ≠ 视觉尺寸**：紧凑胶囊（`.btn-chip` / `.k-mood-chip` / `.prompt-chip` 等）视觉保持 `28px` 本身就是 Konsta 规范，热区必须另用 `::after` 撑到 44px：
-
+   * 任何可点击元素的**实际可点区域**不得小于 44×44pt（Apple HIG 与 Konsta 标准）；
+   * **热区 ≠ 视觉尺寸**：紧凑胶囊（`.btn-chip` / `.k-mood-chip` / `.prompt-chip` 等）视觉保持 28px，热区通过 `::after` 伪元素扩展：
      ```css
      .btn-chip,
      .k-mood-chip {
-       height: 28px;          /* 视觉：Konsta 标准，不要为了热区把它改成 44px */
+       height: 28px;          /* 视觉尺寸 */
        position: relative;    /* 热区锚点 */
      }
 
@@ -79,95 +78,83 @@
        content: '';
        position: absolute;
        left: 0;
-       right: 0;              /* 严禁横向外扩 */
+       right: 0;              /* 严禁横向外扩，防止抢占相邻点击 */
        top: -8px;
        bottom: -8px;          /* 28 + 8 + 8 = 44px */
      }
      ```
+   * **热区严禁横向外扩**：同行胶囊间距通常仅 6~8px，横向外扩会抢占邻近项触控；
+   * 横向滚动容器必须设置 `padding: 8px 0` 防止裁剪纵向热区；换行容器 `flex-wrap: wrap` 必须设置 `row-gap: 16px` 防止上下热区重叠；
+   * 横向滚动的胶囊行必须提供右缘渐隐 `mask-image`，提示内容可滚动。
 
-   * **热区严禁横向外扩**（必须 `left: 0; right: 0`）：同行 `gap` 通常只有 6~8px，横向一撑就会抢走邻居的点击；
-   * 纵向热区必须有容器空间，**两个真实踩过的坑**：`overflow-x: auto` 会连带裁剪纵向溢出，横向滚动行必须补 `padding: 8px 0`；`flex-wrap: wrap` 的容器必须把 `row-gap` 提到 `16px`，否则换行后上下两行热区重叠（320px 窄屏实测会换行）；
-   * 横向滚动的胶囊行必须补右缘渐隐 `mask-image`，否则被裁切的末位胶囊会让用户完全不知道它存在。
+### 3.5 固定栏取色同源：顶栏透明、底栏悬浮胶囊
 
-### 3.5 固定栏取色同源：顶栏透明、底栏悬浮胶囊（v2.5.151 / v2.5.174 起）
+顶栏与底部导航均取页面同源底色，底栏采用悬浮胶囊形态以保持通透：
 
-iOS 上顶栏与底部导航都取页面底色，但**底栏不再横贯屏幕**：v2.5.151 把它从「另一块不透明板」拉回同源毛玻璃，v2.5.152 又删掉顶边线；到 v2.5.174 用户仍反馈「通栏还是碍眼」，于是改成**左右留 12px、22px 圆角的悬浮胶囊 dock**。历史教训：① 顶栏静止态铺不透明 `--bg-color` 会挡住 hero 光晕，留下 ΔR≈20 的台阶；② 底栏铺另一套 `--nav-bg`（`#F2F2F7`）会比页面低 6/7/3；③ 不透明板 + `0 -1px 0` 顶边线会被读成「一条线把界面切断」。
+* **分量同源**：页面底色必须同时提供 `--ios-bg`（hex）与 `--bg-rgb`（`R, G, B` 分量）；导航玻璃层（`--nav-glass-scrolled` / `--nav-scrolled-bg`）与底栏一律由 `rgba(var(--bg-rgb), α)` 或 `var(--bg-color)` 派生，严禁定义第二套独立导航取色。
+* **顶栏静止态透明**：`background: transparent`，使页面 hero 光晕一直铺到状态栏；仅在 `.scrolled` 时升起毛玻璃底（`--nav-scrolled-bg`）。
+* **底栏 = 悬浮胶囊 dock**：`left/right: 12px`、`bottom: calc(8px + env(safe-area-inset-bottom, 0px))`、`height: 62px`、`border-radius: 22px`、`padding: 4px 6px`；材质采用 `background: var(--nav-scrolled-bg)` + `backdrop-filter: blur(20px) saturate(180%)`（含 `-webkit-` 配对）；边界由 `border: 1px solid var(--surface-hairline)` + `box-shadow: var(--card-shadow)` 给出，**严禁画 `0 -1px 0` 顶边线**。
+* **滚动智能收起**：页面顶部 48px 内始终显示胶囊；向下滚动超过 96px 后增加 `.scroll-hidden`（`translateY(calc(100% + 20px))` + `opacity: 0` + `pointer-events: none`）平滑下移，向上滚 6px 即恢复（带 6px 死区防抖）。收起时同步为 `nav` 附加 `inert` 属性，防止不可见时被键盘 Tab 聚焦。
+* **保证底层通透**：页面底部保持 `104px` 内边距，允许卡片在滚动中从悬浮胶囊下方经过并被磨砂柔化。
+* **禁止用 `!important` 压死阅读器覆盖**：夜间/护眼模式对底栏有更高特异性的主题覆写，底栏基础样式严禁加 `!important`。
+* **深色投影仅滚动出现**：深色层下分界与投影仅写在 `.super-navbar.scrolled` 上，静止态保持零线零影。
 
-* **分量同源**：页面底色必须同时提供 `--ios-bg`（hex）与 `--bg-rgb`（`R, G, B` 分量），两套主题各自定义；导航玻璃层（`--nav-glass-scrolled` / `--nav-scrolled-bg`）与底栏一律由 `rgba(var(--bg-rgb), α)` 或 `var(--bg-color)` 派生，**不允许再定义第二套导航取色**（`--nav-glass` 已因此删除）。`tests/css.test.mjs` 用 hex→rgb 反解机器校验两者同值，并断言静止态顶栏透明、底栏复用滚动顶栏的材质令牌。
-* **顶栏静止态透明**：`background: transparent`，让页面 hero 光晕一直铺到状态栏；只有 `.scrolled` 才升玻璃底（`--nav-scrolled-bg`）。iOS PWA（`html.ios-pwa`）下同样不得常驻玻璃底，否则状态栏区域会变成一条白带。
-* **底栏 = 悬浮胶囊 dock**：`left/right: 12px`、`bottom: calc(8px + env(safe-area-inset-bottom, 0px))`、`height: 62px`、`border-radius: 22px`、`padding: 4px 6px`；材质仍是 `background: var(--nav-scrolled-bg)` + `backdrop-filter: blur(20px) saturate(180%)`（含 `-webkit-` 配对），与 `.super-navbar.scrolled` 同源；边界由 `border: 1px solid var(--surface-hairline)` + `box-shadow: var(--card-shadow)` 给出，**不再通栏、不再画 `0 -1px 0` 顶边线**。选中项是一枚 `rgba(var(--label-rgb), 0.06)` 的浅色胶囊，不是整条底栏的高亮。`tests/css.test.mjs` 机器校验：12px 边距、safe-area 底距、62px 高度、22px 圆角、hairline、卡片阴影、不回到 `height: auto`、不画顶边线、模糊参数与选中胶囊。
-* **滚动智能收起（v2.5.175）**：页面顶部 48px 内始终显示胶囊；向下滚过 96px 后加 `.scroll-hidden`（`translateY(calc(100% + 20px))` + `opacity: 0` + `pointer-events: none`）平滑下移，向上滚 6px 即恢复；方向判断带 6px 死区，避免惯性抖动。收起时同步给 `nav` 加 `inert`，不能出现「看不见但 Tab 还能聚焦」。编辑器 / 键盘 / 弹层继续走原有 `display:none` 的 `hide-bottom-nav` / `keyboard-open` 逻辑，滚动 class 不得覆盖它。
-* **毛玻璃要真的有东西可透**：底栏必须允许内容滚到胶囊后面（页面底部留 `104px` 内边距；滚动中卡片从左右留白与胶囊下方经过，隔着 88% 同源底色被柔化成底纹）；若某页内容永远到不了胶囊后面，该页的「通透」是看不出来的。
-* **禁止用 `!important` 压死阅读器覆盖**：`body.dark-reader-body / body.eyecare-reader-body .mobile-bottom-nav` 是更具体、故意写在文件后部的覆盖；底栏基础规则一旦加 `!important`，夜间/护眼阅读器的底栏底色就永远不生效。
-* **深色投影只在滚动后出现**：深色层（`:root[data-theme="dark"]`）的栏底分界与投影必须写在 `.super-navbar.scrolled` 上；静止态保持「零线零影」，否则透明顶栏底下会留下一道深色接缝。
+### 3.6 长列表的密度、渲染与回顶
 
-### 3.6 长列表的密度、渲染与回顶（v2.5.153 起）
+* **紧凑行（短碎片）**：纯文字且 ≤60 字的随手记采用紧凑密度（判定在 [`public/js/feeds.js`](../../public/js/feeds.js) 的 `shouldRenderCompactFeed`）；样式使用双类选择器 `.feed-item-card.feed-item-card--compact` 提高优先级；带图或外链卡片保持原密度展示。
+* **屏外卡片跳过布局**：长列表卡片使用 `content-visibility: auto` + `contain-intrinsic-size: auto <真实高度>`（常规卡 `auto 150px`、紧凑卡 `auto 76px`）；周记多列画廊（`.notion-collection-card`）不加尺寸 containment。
+* **自动续载保留手动兜底**：分页列表使用 `IntersectionObserver` 提前 600px 预取；当不支持该 API 时必须优雅退化为手动「加载更多」按钮。
+* **回到顶部**：滚动超过 1.5 屏浮出 44pt 圆钮（`.back-to-top`），默认设置 `opacity: 0` 且 `visibility: hidden` 双重关闭；FAB 在场时追加 `.above-fab` 上移；圆心与 FAB 严格对齐竖轴（`right: 22px`）。
+* **分页列表内跳转**：Cmd+K 跨页检索跳转时，先调用 [`public/js/feeds.js`](../../public/js/feeds.js) 的 `ensureItemRendered` 扩充窗口，再定位元素。
 
-列表变长时的问题不在「条数多」，而在**碎片内容用了画廊卡的视觉重量**，以及**每一张屏外卡片都在参与布局**。实测 51 条真实随手记（390×844）：列表 10.3 屏，而正文长度中位数只有 48 字。
+### 3.7 底栏选中态 = Apple「实心字形」(filled variant)
 
-* **紧凑行（短碎片）**：纯文字且 ≤60 字的条目走紧凑密度（内边距 `18/20 → 10/14`、标签与日期各降一档、正文 `15px/1.6 → 14px/1.5`、圆角 `14 → 12`）。判定在 JS（`public/js/feeds.js` 的 `shouldRenderCompactFeed`），样式必须是**双类选择器** `.feed-item-card.feed-item-card--compact`（0,2,0）——文件后部另有一条同优先级的 `.feed-item-card { padding: 18px 20px }`，只写单类会被它按「后来者胜」改回原密度。**带图 / 带链接速览的条目保持原密度**（它们本来就有更多要展示的东西）。`tests/css.test.mjs` 有门禁。
-* **屏外卡片不参与布局**：列表卡用 `content-visibility: auto` + `contain-intrinsic-size: auto <真实卡高>`（随手记 `auto 150px`、紧凑行 `auto 76px`）。`auto` 关键字会记住元素首次渲染的真实高度；**占位估错会让滚动条虚胖**（实测 160px 占位把列表从 10.3 屏撑到 12.9 屏），所以占位值必须按真实卡高给。**周记画廊（`.notion-collection-card`）刻意不加**：桌面 ≥768px 是 `column-count: 2` 的多列容器，尺寸 containment 有分列布局风险。
-* **自动续载必须保留手动兜底**：分页列表用 `IntersectionObserver`（`rootMargin: '600px 0px'`，提前 600px 预取）观察「加载更多」按钮；`typeof IntersectionObserver !== 'function'` 时必须原样保留可点按钮（`.list-load-more--auto` 只把它退化成一条低调提示条），否则旧浏览器会抛错、整个列表渲染不出来。
-* **回到顶部**：滚动超过 1.5 屏浮出 44pt 圆钮（`.back-to-top`，触控热区底线见 §3.4）。默认必须 `opacity: 0` **且** `visibility: hidden` 双关闭——只写 `opacity` 的话，隐形按钮仍留在 Tab 序列与读屏里。它与 FAB 同在右下角，FAB 在场时必须加 `.above-fab` 上移一格（`bottom: calc(134px + env(safe-area-inset-bottom))`），两个圆钮不得叠角（实测间距 12px）。**横向要对齐同一根竖轴**：FAB 是 48px 宽、`right: 20px`（圆心 x=346），本钮 44px 宽，所以 `right` 取 22px 才是同一个圆心；照抄 FAB 的 `right: 20px` 会偏 2px（CDP 实测过）。
-* **分页列表里的跳转**：任何「按选择器跳到某条目」的功能（Cmd+K 搜索跳转）都必须先确认目标在渲染窗口内。`public/js/feeds.js` 通过 `actions.ensureItemRendered` 暴露「把目标所在整页纳入窗口」，`public/js/search.js` 查不到元素时先用它扩窗口再重查；否则超过一页后搜索跳转会**静默什么都不发生**。
-
-### 3.7 底栏选中态 = Apple「实心字形」(filled variant)，不靠缩放（v2.5.154 起）
-
-iOS 的 Tab 选中态是**字形由描边变实心 + 主题色 + 标签加粗**，不是把图标放大再顶上去。缩放式选中在本项目真实踩过三个坑：按下与选中叠成双重动画、选中图标比未选中大 12%（实测 26.88px vs 24px）、选中色被 `!important` 锁死导致夜间/护眼主题失效。
-
-* **成对提供两组字形**：每个 Tab 必须在 `public/index.html` 里同时给出描边字形 `svg.tab-svg.tab-svg-outline`（`fill="none"` + `stroke="currentColor"`）与实心字形 `svg.tab-svg.tab-svg-fill`（`fill="currentColor"` + `stroke="none"` + `aria-hidden="true"`），由 `.mobile-tab-item.active .tab-svg-fill { display: block }` / `.mobile-tab-item.active .tab-svg-outline { display: none }` 切换；两者同为 22×22 / `viewBox="0 0 24 24"`（`tests/a11y.test.mjs` 校验 5 组成对存在）。
-* **禁止给选中图标加 `transform`**：按下反馈由 `public/style.css` 的 `.mobile-tab-item:active { transform: scale(0.95) !important }`（全局按下规则）统一提供，图标上再叠 `scale(0.85)`/`translateY(-2px) scale(1.12)` 会变成「按住发软、松手浮起」的双重动画，并让选中图标比未选中大一圈。选中与未选中的图标盒必须同尺寸、同基线。
-* **选中色严禁加 `!important`**：`body.dark-reader-body / body.eyecare-reader-body .mobile-tab-item.active` 是更具体、故意写在文件后部的主题覆盖；一旦给基础 `.active` 加 `!important`，夜间阅读器的 `--ios-blue-dark` 与护眼模式的 `--garden-green` 就永远不生效（与 §3.5 同一条纪律）。同理禁止再建「重复覆写组」——同一选择器在文件后部又写一遍并加 `!important`。
-* **深色主题选中色必须是 `var(--ios-blue-dark)`**（#0A84FF）：深色底上对比度 5.18，优于 `--ios-blue`（#007AFF）的 4.70；深色层不覆盖 `--accent-color`，必须显式写 `:root[data-theme="dark"] .mobile-tab-item.active { color: var(--ios-blue-dark) }`。
-* **无障碍同步**：底栏 `nav` 必须有 `aria-label`（本项目为「主导航」），选中项必须暴露 `aria-current="page"`——由 `public/js/router.js` 在切换视图时同步 `removeAttribute` / `setAttribute`，只改 `.active` 类读屏完全感知不到；FAB 的 `aria-label` 也要随视图更新（视觉文本在移动端被隐藏）。
+* **成对提供两组字形**：每个 Tab 均在 [`public/index.html`](../../public/index.html) 中提供描边字形 `svg.tab-svg-outline` 与实心字形 `svg.tab-svg-fill`（22×22 规格），由 `.active` 状态切换显隐，严禁使用整体图标缩放作为选中反馈。
+* **禁止图标缩放动画**：按下反馈由 `.mobile-tab-item:active { transform: scale(0.95) !important }` 统一处理，严禁在图标上叠加 scale，避免双重动效。
+* **选中色严禁加 `!important`**：保证夜间阅读器与护眼模式的主题覆盖正常生效。
+* **深色主题选中色**：深色层显式指定 `:root[data-theme="dark"] .mobile-tab-item.active { color: var(--ios-blue-dark) }`（#0A84FF，对比度 5.18:1）。
+* **无障碍状态同步**：底栏 `nav` 保持 `aria-label="主导航"`，选中项由 [`public/js/router.js`](../../public/js/router.js) 切换时同步更新 `aria-current="page"`。
 
 ### 3.8 无需登录的公开静态页（隐私政策 / 用户协议）
 
-`public/privacy.html` 与 `public/terms.html` 是本站**唯一不经过鉴权**的页面（第三方开放平台申请要求提供 https 链接，应用内入口在设置弹层的「关于」，样式类为 `.legal-links`）：
+[`public/privacy.html`](../../public/privacy.html) 与 [`public/terms.html`](../../public/terms.html) 为免鉴权公开页：
+* **完全自包含**：不引入外部样式与脚本，仅靠 `prefers-color-scheme` 适配深浅模式；
+* **安全一致性**：无内联事件、无 `javascript:` 链接、外链一律标注 `target="_blank" rel="noopener"`；
+* **双向连通**：两页互链且均具备返回首页导航；
+* **内容详实**：如实交代数据存储机制、密钥加密标准与第三方集成清单。
 
-* **必须自包含**：不引 `public/style.css`、不引任何第三方资源（含字体与图标 CDN）、**不含任何脚本**，只靠 `prefers-color-scheme` 跟随系统深浅色；
-* **与主应用同一条纪律**：无内联事件处理器、无 `javascript:` URL、外链一律 `target="_blank" rel="noopener"`，由 `tests/security.test.mjs` 静态守住；
-* **必须互链并回得去**：两页互相引用，且都能回到 `/`；
-* **政策不能是空壳**：隐私政策必须如实交代数据存放位置（Cloudflare Pages / Workers / D1 / R2、PBKDF2 口令哈希、删除方式）与第三方服务清单（AI、搜索、微信、小米运动健康）。
+### 3.9 对比度与键盘焦点 (WCAG 2.1 AA 门禁)
+
+* **对比度标准**：正文文字对比度 ≥ 4.5:1，非文本 UI ≥ 3:1；二级文字使用 `rgba(var(--label-rgb), 0.75)`；底栏未选中 `--tab-inactive: #6E6E73`；主强调色 `--ios-blue: #0066CC`；危险色 `--danger-color: #D70015`。
+* **深色层按需覆盖**：`--accent-text`、`--danger-fill`、`--focus-ring-color`、`--label-rgb` 必须在 `:root[data-theme="dark"]` 中显式重载。
+* **键盘专属可见焦点**：全局重置 `:focus:not(:focus-visible)`，键盘焦点统一 `outline: 2px solid var(--focus-ring-color); outline-offset: 2px`，严禁裸写 `:focus { outline: none }` 剥夺键盘可访问性。
 
 ---
 
 ## 4. 设计令牌 (Design Tokens)
 
-`public/style.css` 的 `:root` 是唯一令牌来源，**新代码必须使用变量**，旧的散落字面量按模块逐步迁移：
+[`public/style.css`](../../public/style.css) 的 `:root` 是唯一令牌来源，新编写的样式必须优先引用设计变量：
 
-| 类别 | 令牌 |
+| 类别 | 核心令牌 |
 | :--- | :--- |
-| 间距 | `--space-1` 4px / `--space-2` 8px / `--space-3` 12px / `--space-4` 16px / `--space-5` 24px / `--space-6` 32px |
-| 圆角 | `--radius-sm` 10px / `--radius-md` 14px / `--radius-lg` 18px / `--radius-pill` 999px / `--surface-radius` 26px（主表面） |
-| 动效 | `--dur-fast` 0.18s / `--dur-base` 0.28s / `--ease-spring` `cubic-bezier(0.16, 1, 0.3, 1)` |
-| 颜色 | `--ios-blue`（唯一强调色 #007AFF） / `--link-color`（正文链接，深色切 `#0A84FF`） / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
-| 材质 | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
+| **间距** | `--space-1` (4px) / `--space-2` (8px) / `--space-3` (12px) / `--space-4` (16px) / `--space-5` (24px) / `--space-6` (32px) |
+| **圆角** | `--radius-sm` (10px) / `--radius-md` (14px) / `--radius-lg` (18px) / `--radius-pill` (999px) / `--surface-radius` (26px 主表面) |
+| **动效** | `--dur-fast` (0.18s) / `--dur-base` (0.28s) / `--ease-spring` (`cubic-bezier(0.16, 1, 0.3, 1)`) |
+| **颜色** | `--ios-blue` (#0066CC) / `--link-color` / `--ios-green` / `--ios-red` / `--ios-bg` / `--widget-bg` / `--callout-bg` / `--danger-color` / `--focus-ring-color` |
+| **材质** | `--card-shadow` / `--card-hover-shadow` / `--surface-hairline` / `--heat-empty` / `--heat-1` ~ `--heat-4` |
 
-> 现状债务：`public/style.css` 10013 行、226 处 `!important`（v2.5.144 用真浏览器 computed style 审计器逐条验证后删掉 66 处，方法见下）、41 条 `backdrop-filter` 声明、126 个裸 hex 与 846 处 `rgb()/rgba()` 声明（其中 137 处已走 `--*-rgb` 分量令牌）（v2.5.144 令牌化批次把裸 hex 从 501 降到 126；v2.5.119 已把 131 处灰度收敛为分量令牌，v2.5.120 又清掉 9 处写死的 Tailwind slate 灰）待迁移到令牌。**禁止一次性大改**，请在本模块改动时顺手替换为令牌。（v2.5.151 的导航取色同源批次删掉 2 处 `!important` 并移除第二套导航取色 `--nav-glass`；v2.5.152 把底栏从不透明板改成与滚动顶栏同源的毛玻璃并去掉 `0 -1px 0` 分割线/上投影，`!important` 计数不变，就地复用 `--nav-scrolled-bg`。见 §3.5。v2.5.153 的长列表批次只加密度与滚动策略（`content-visibility` / 紧凑行 / 回到顶部），未增减 `!important` 与裸 hex，见 §3.6。v2.5.154 删掉底栏那组重复覆写（含 3 处 `!important`：`.active` 的选中色与两条 `.tab-icon` 缩放），229 → 226，裸 hex 不变，见 §3.7；v2.5.155 的 Bot 健康打卡与法务页面批次只新增 3 条 `.legal-links` 规则（+14 行，`.legal-links` / `.legal-links .btn-text` / `:hover`，全部走 `var(--accent-color, var(--ios-blue))`），`!important` 与裸 hex 两条棘轮均不变，见 §3.8。）
+### `!important` 与覆写层的削减纪律
 
-### `!important` 与覆写层的削减纪律（v2.5.144 起）
+* 削减 `!important` 必须使用 [`scripts/css-computed-audit.mjs`](../../scripts/css-computed-audit.mjs) 基于真浏览器 CDP 进行逐元素 computed style 比对；
+* 批量调整后必须运行全矩阵上下文验证（不同视口、不同状态与亮暗主题），防止样式被底层规则隐蔽破坏；
+* 动态渲染组件未在初始 DOM 中匹配时应保守保留，严禁盲目依据静态规则删除。
 
-`!important` 只能靠「真浏览器逐元素 computed style 对比」证明安全后才允许删。工具是 [`scripts/css-computed-audit.mjs`](../../scripts/css-computed-audit.mjs)（CDP 驱动：以线上 `style.css` 为基线，把候选 CSS 注入同一级联位置后比对 `body *` 的 615 项 computed style、全部令牌与元素矩形）。
+## 主题令牌纪律
 
-- **单条安全 ≠ 批量安全**：两条 `!important` 写同一个元素的同一个属性时会互相遮罩——单独删任何一条都测不出差异，一起删就会让下层旧值浮上来。所以逐条扫描只用来筛候选，**批量删除后必须把整份文件再跑一遍全矩阵（182 上下文：7 视口/媒体 × 13 状态 × 亮暗）验收**；v2.5.144 正是靠这一步才发现 90 个上下文回归（`.super-navbar` 底边、`.confirm-dialog-overlay`/`-card`/`-cancel`），据此回补了 12 条。
-- **回补判据**：某元素出现差异，就恢复「所有匹配该元素且已删的 `!important`」——只要不再有已删声明命中该元素，它的层叠结果就与基线恒等。
-- **已知覆盖上限**：审计只覆盖静态 DOM。JS 动态渲染的内容（笔记列表、阅读器正文、AI 会话气泡）不在初始 DOM 里，选择器从未匹配的候选一律**保留**，不得凭静态分析删除。
+`html[data-theme="light"|"dark"]` 是应用唯一的顶层主题开关（由 [`public/js/utils.js`](../../public/js/utils.js) 维护，在首帧前同步注入避免白屏闪烁）：
 
-## 主题令牌纪律（v2.5.119 起）
-
-`html[data-theme="light"|"dark"]` 是**唯一**的应用级主题开关（`public/js/utils.js` 的 `applyAppTheme()` 写属性、`initAppTheme()` 跟随系统；`public/index.html` head 里的内联脚本在首帧之前落属性，避免深色用户先看到一帧白屏）。`prefers-color-scheme` 只允许出现在 `auto` 模式的判定分支里，**不得**再写 `@media (prefers-color-scheme: dark)` 覆盖规则。
-
-- **灰度一律走 RGB 分量令牌**：文字与细边框用 `rgba(var(--label-rgb), α)`，中性表面用 `rgba(var(--neutral-rgb), α)`。亮色基线 `--label-rgb: 60, 60, 67`、`--neutral-rgb: 120, 120, 128`；深色层只反转分量（`235, 235, 245` / `255, 255, 255`），alpha 语义不变。这样 131 处灰度自动跟随主题，不必逐条写深色覆盖。**禁止**再写回 `rgba(60, 60, 67, α)` / `rgba(120, 120, 128, α)`（`tests/css.test.mjs` 有门禁）。
-- **五类主表面在深色层必须有令牌**：导航与底栏（`--nav-bg` / `--bg-rgb` / `--nav-glass-scrolled` / `--nav-scrolled-bg`）、卡片（`--card-bg` / `--ios-card-bg`）、文字（`--text-color` / `--ios-label` / `--ios-secondary-label`）、输入框（`--input-bg` / `--input-bg-focus` / `--hairline`）、悬浮与选中（`--hover-bg` / `--segment-active-bg`）。
-- **分段控件的选中胶囊必须比轨道更亮**：深色下 `--segment-active-bg: rgba(255, 255, 255, 0.16)`，轨道是半透明白。曾出现「选中的比未选中的更暗」的实现缺陷。
-- **深色红色用 `--danger-color`**（深色层切到 `#FF453A`），不要再写 `#ff3b30` 字面量。
-- **禁止写死 Tailwind 色阶**：`#0f172a` / `#1e293b` / `#334155` / `#475569` / `#64748b` / `#94a3b8` 都是浅色专用灰，不跟随 `data-theme` 反转（v2.5.120 修掉的 `.rich-link-title` 就曾在深色卡片上隐形）。正文链接统一走 `--link-color`（亮 `var(--ios-blue)` / 深 `#0A84FF`）；**不要在 JS 模板里拼内联 `style="color:#007AFF"`**——内联样式优先于样式表，深色层覆盖不掉（`tests/css.test.mjs` 对以上两者都有门禁）。
-- **验证方法**：改动后必须用真浏览器读 `getComputedStyle` 逐元素核对（不要只看截图——归一化后的截图会让白字看起来发暗），并对浅色主题做逐像素 diff（`maxDiff` 必须为 0）证明零回归；`backups/` 里有采集页与 `_pngdiff.mjs` 可直接复用。
-
-### 3.6 对比度与键盘焦点（v2.5.160 起，WCAG 2.1 AA 门禁）
-
-* **文字对比度 ≥ 4.5:1，非文本 UI ≥ 3:1**：二级文字 `--ios-secondary-label` / `--placeholder-color` 为 `rgba(var(--label-rgb), 0.75)`（页面 5.01、卡片 5.20、导航底 4.82）；底栏未选中 `--tab-inactive: #6E6E73`（4.81）；链接与主按钮底色 `--ios-blue: #0066CC`（页面 5.28 / 白字 5.57）；危险色 `--danger-color: #D70015`、深色填充 `--danger-fill: #B3261E`（白字 5.38 / 6.54）。**改任何一个都必须同步跑 `tests/css.test.mjs` 的对比度门禁**，它会按亮/暗两套令牌实算 compositing 后的比值。
-* **深色层只覆盖变化项**：`--accent-text`、`--danger-fill`、`--focus-ring-color`、`--label-rgb` 等必须在 `:root[data-theme="dark"]` 里显式给出，否则会回落到浅色值（登录页曾因此出现整片黑字压在 `#14161b` 上，axe 实测 1.16:1）。
-* **焦点只对键盘可见**：全局 reset 写成 `:focus:not(:focus-visible)`，键盘焦点统一 `outline: 2px solid var(--focus-ring-color); outline-offset: 2px`；输入框因为各模块自带 `:focus{outline:none}`，另有一条 `input:focus-visible { outline: 2px solid … !important }` 兜底。**禁止再写裸 `:focus { outline: none }`**，否则 Tab 用户会完全失去位置感。
-* **真浏览器复验**：Chrome + axe-core 的 `color-contrast` 在登录页（亮/暗）与设计系统 harness 上均为 0 violation；截图与审计脚本放在仓库外的 `D:\7\audit-tools`，不随仓库分发。
+* **灰度一律使用 RGB 分量令牌**：文字与边框使用 `rgba(var(--label-rgb), α)`，中性背景使用 `rgba(var(--neutral-rgb), α)`；深色模式直接反转分量，alpha 语义保持不变；**严禁硬编码 `rgba(60, 60, 67, α)` 或 `rgba(120, 120, 128, α)`**。
+* **五类主表面深色令牌覆盖**：导航底栏（`--nav-bg` / `--bg-rgb` / `--nav-scrolled-bg`）、卡片（`--card-bg` / `--ios-card-bg`）、文本（`--text-color` / `--ios-label` / `--ios-secondary-label`）、输入框（`--input-bg` / `--hairline`）、悬浮与分段（`--hover-bg` / `--segment-active-bg`）。
+* **分段控件对比**：深色模式下选中胶囊 `--segment-active-bg` 必须亮于背景轨道。
+* **深色错误提示**：深色层错误色使用 `--danger-color`（`#FF453A`）。
+* **禁止硬编码 Tailwind 色阶**：严禁在样式表或模板中硬编码 `#0f172a`、`#1e293b` 等浅色固定灰阶；正文超链接统一使用 `--link-color`；严禁在 JS 模板中拼接内联颜色样式。

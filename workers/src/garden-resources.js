@@ -375,3 +375,63 @@ export async function handlePostReaderProgress(request, db, userId) {
         client_ts: clientTs
     }, 200);
 }
+
+/**
+ * 集中路由调度：承接周记、笔记、收藏、提示词、随手记与阅读进度的 18 条 CRUD 路由。
+ * 下沉到本模块后，workers/api.js 网关无需散落匹配，可直接腾出约 50 行空间。
+ */
+export async function handleGardenResourceApi(path, method, request, url, db, userId) {
+    if (path === '/api/weeklies') {
+        if (method === 'GET') return handleGetWeeklies(url, db, userId);
+        if (method === 'POST') return handlePostWeekly(request, db, userId);
+    }
+    const weeklyMatch = path.match(/^\/api\/weeklies\/(\d+)$/);
+    if (weeklyMatch) {
+        const id = parseInt(weeklyMatch[1], 10);
+        if (method === 'PUT') return handlePutWeekly(id, request, db, userId);
+        if (method === 'DELETE') return handleDeleteWeekly(id, db, userId);
+    }
+
+    if (path === '/api/notes') {
+        if (method === 'GET') return handleGetNotes(url, db, userId);
+        if (method === 'POST') return handlePostNote(request, db, userId);
+    }
+    const noteMatch = path.match(/^\/api\/notes\/(\d+)$/);
+    if (noteMatch) {
+        const id = parseInt(noteMatch[1], 10);
+        if (method === 'PUT') return handlePutNote(id, request, db, userId);
+        if (method === 'DELETE') return handleDeleteNote(id, db, userId);
+    }
+
+    if (path === '/api/bookmarks') {
+        if (method === 'GET') return handleGetBookmarks(url, db, userId);
+        if (method === 'POST') return handlePostBookmark(request, db, userId);
+    }
+    const bmMatch = path.match(/^\/api\/bookmarks\/(\d+)$/);
+    if (bmMatch && method === 'DELETE') return handleDeleteBookmark(parseInt(bmMatch[1], 10), db, userId);
+
+    if (path === '/api/prompts') {
+        if (method === 'GET') return handleGetPrompts(url, db, userId);
+        if (method === 'POST') return handlePostPrompt(request, db, userId);
+    }
+    const promptMatch = path.match(/^\/api\/prompts\/(\d+)$/);
+    if (promptMatch && method === 'DELETE') return handleDeletePrompt(parseInt(promptMatch[1], 10), db, userId);
+
+    if (path === '/api/feeds') {
+        if (method === 'GET') return handleGetFeeds(url, db, userId);
+        if (method === 'POST') return handlePostFeed(request, db, userId);
+    }
+    const feedMatch = path.match(/^\/api\/feeds\/(\d+)$/);
+    if (feedMatch) {
+        const id = parseInt(feedMatch[1], 10);
+        if (method === 'PUT') return handlePutFeed(id, request, db, userId);
+        if (method === 'DELETE') return handleDeleteFeed(id, db, userId);
+    }
+
+    if (path === '/api/reader/progress') {
+        if (method === 'GET') return handleGetReaderProgress(db, userId);
+        if (method === 'POST') return handlePostReaderProgress(request, db, userId);
+    }
+
+    return null;
+}

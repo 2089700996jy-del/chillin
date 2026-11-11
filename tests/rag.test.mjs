@@ -5,7 +5,8 @@ import {
     parseTimeRangeFromQuestion,
     parseDateToYmd,
     extractItemDate,
-    scoreMemoryChunk
+    scoreMemoryChunk,
+    extractDynamicSnippet
 } from '../workers/src/rag.js';
 import { formatPrompt } from '../workers/src/garden-shared.js';
 import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
@@ -238,4 +239,20 @@ test('LLM 合规 - 政治敏感词表由 env 注入，未配置时不误伤', ()
 test('LLM - 没有任何凭证时安静返回空串（上层据此降级为本地摘要）', async () => {
     assert.equal(await callCustomLlm({}, 'system', 'user'), '', '无凭证必须返回空串而不是抛错');
     assert.equal(await callCustomLlmWithMessages({}, []), '');
+});
+
+test('RAG - extractDynamicSnippet 动态滑动窗口切块定位关键词', () => {
+    const shortText = '这是一段短笔记';
+    assert.equal(extractDynamicSnippet(shortText, ['笔记']), shortText);
+
+    const headText = '重点在开头：架构设计的原则是简单性。' + '后续长内容'.repeat(50);
+    const headSnippet = extractDynamicSnippet(headText, ['架构设计'], 60);
+    assert.ok(headSnippet.startsWith('重点在开头：架构设计的原则是简单性。'));
+    assert.ok(headSnippet.endsWith('…'));
+
+    const deepBody = '背景前言'.repeat(80) + '【核心方案：采用两段式确认记忆机制】' + '结尾附录'.repeat(50);
+    const deepSnippet = extractDynamicSnippet(deepBody, ['两段式确认'], 80);
+    assert.ok(deepSnippet.startsWith('…'), '前置超长内容必须带有省略号');
+    assert.ok(deepSnippet.includes('【核心方案：采用两段式确认记忆机制】'), '切块必须完整包含深层命中词');
+    assert.ok(deepSnippet.endsWith('…'), '后置截断必须带有省略号');
 });

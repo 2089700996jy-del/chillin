@@ -30,9 +30,14 @@ export async function notifyAgentUser(env, db, userId, payload = {}) {
         'SELECT id, device_id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1 ORDER BY id ASC'
     ).bind(userId).all();
     const all = subs && Array.isArray(subs.results) ? subs.results : [];
-    const deviceRows = all.filter((row) => row.device_id);
-    // 有设备标识时按设备各推一条；历史无标识的重复订阅只保留最新一条，避免一次事件推多条。
-    const rows = deviceRows.length ? deviceRows : (all.length ? [all[all.length - 1]] : []);
+    const deviceMap = new Map();
+    for (const row of all) {
+        if (row.device_id) deviceMap.set(row.device_id, row);
+    }
+    // 有设备标识时按设备去重后各推一条；历史无标识的重复订阅只保留最新一条，避免一次事件推多条。
+    const rows = deviceMap.size > 0
+        ? Array.from(deviceMap.values())
+        : (all.length ? [all[all.length - 1]] : []);
     if (!rows.length) return { sent: 0 };
     webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
     const body = JSON.stringify({

@@ -2,11 +2,10 @@
  * 定时任务编排：网关只保留一行 async scheduled，具体任务在这里分组。
  *
  * 两条 cron（见 wrangler.toml）：
- * - '* * * * *'  微信 ClawBot：先处理用户自己设的定点提醒（到点必达，单轮最多 5 条），
+ * - '* * * * *'  微信 ClawBot 与 Agent 调度：先处理用户自己设的定点提醒（到点必达，单轮最多 5 条），
  *               再看要不要主动关怀（每天至多一次，绝大多数分钟只做几次廉价判断），
- *               然后长轮询一次调用内在 55s 预算里持续拉取新消息并按指令回复
- *               （服务端约 18s 无消息即返回，只拉一轮会让每分钟空转 42s）；
- *               最后推进最多一个到期的 Agent 目标任务（关闭页面后的后台续跑）。
+ *               然后长轮询（55s 预算内持续拉取）与 Agent 后台续跑并行并发执行
+ *               （避免长轮询串行耗尽 55s 导致 Agent 调度饥饿与超时被强杀）。
  * - '13 * * * *' 每小时维护：UGC 扫描、Session 清理、限流窗口清理、R2 备份保留、审计日志保留
  *
  * 两次触发共用一个 scheduled 入口，靠 event.cron 分流——否则每分钟一次的触发
@@ -63,13 +62,21 @@ export async function runScheduled(env, event, pollOptions, ctx) {
         catch (err) { console.error('[scheduled] bot outreach failed:', err); }
         const opts = Object.assign({}, pollOptions);
         if (!opts.defer && ctx && typeof ctx.waitUntil === 'function') opts.defer = (task) => ctx.waitUntil(task);
-        try { await pollClawAccounts(env, env.DB, undefined, opts); }
-        catch (err) { console.error('[scheduled] bot poll failed:', err); }
-        // Bot 消息优先；之后最多推进一个 Agent 任务，让关闭页面的目标仍能按分钟续跑。
-        try {
-            const r = await runAutoResume(env);
-            if (r.processed) console.log('[scheduled] agent auto resume: processed=' + r.processed + ' failed=' + r.failed);
-        } catch (err) { console.error('[scheduled] agent auto resume failed:', err); }
+
+        // 并发执行：ClawBot 长轮询（最大 55s）与 Agent 后台续跑（最大 45s）必须并行，
+        // 避免长轮询串行阻塞整整 55 秒导致 Agent 任务在第 55 秒才启动、耗尽 cron 窗口而陷入永久调度饥饿。
+        await Promise.allSettled([
+            (async () => {
+                try { await pollClawAccounts(env, env.DB, undefined, opts); }
+                catch (err) { console.error('[scheduled] bot poll failed:', err); }
+            })(),
+            (async () => {
+                try {
+                    const r = await runAutoResume(env, pollOptions);
+                    if (r && r.processed) console.log('[scheduled] agent auto resume: processed=' + r.processed + ' failed=' + r.failed);
+                } catch (err) { console.error('[scheduled] agent auto resume failed:', err); }
+            })()
+        ]);
         return;
     }
     await runHourlyMaintenance(env);

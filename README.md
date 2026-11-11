@@ -43,10 +43,10 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        44 个领域模块（security / security-network / security-crypto / auth /
-                    garden-shared / garden-resources / garden-sync / garden-media / garden-books /
-                    garden-export / garden-echo / insights / rag / rag-index / llm / ai / ai-tools / agent-tools-expanded / ai-runtime / agent-store / agent-executor / agent-scheduler / agent-goals / agent-approvals / agent-checkpoint / agent-web / audit / bot-commands / bot-text / bot-garden / bot-butler / bot-preferences /
-                    bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
+workers/src/        49 个领域模块（security / security-network / security-crypto / auth /
+                    garden-shared / garden-resources / garden-sync / garden-backup-mail / garden-media / garden-books /
+                    garden-export / garden-echo / insights / rag / rag-index / llm / ai / ai-tools / agent-tools-expanded / ai-runtime / agent-store / agent-executor / agent-lifecycle / agent-scheduler / agent-goals / agent-approvals / agent-checkpoint / agent-web / audit / bot-commands / bot-prompts / bot-text / bot-garden / bot-butler / bot-preferences /
+                    bot-claw / bot-claw-auth / bot-memory / bot-health / bot-outreach / bot-outreach-source / bot-reminders /
                     bot-web / bot-search / bot-media / bot-image-flow / bot-vision / bot-links /
                     maintenance）
 migrations/         D1 迁移 0001–0042（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily、Bot 提醒追问状态机与退避重试、长期记忆 FTS5 索引与关联召回、Bot 管家待确认动作、Bot 交流偏好、多图待存批次、Agent 目标/任务/运行/步骤/审批、Agent 单目标预算、Push 设备去重、Bot 最近入站 context_token、目标级 Bot 自动发送授权）

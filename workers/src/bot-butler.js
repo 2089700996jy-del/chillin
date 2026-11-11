@@ -8,7 +8,7 @@ import {
     handlePostBookmark, handlePostPrompt, handleDeleteBookmark, handleDeletePrompt
 } from './garden-resources.js';
 import { normalizeBookmarkType } from './bot-garden.js';
-import { readPendingAction, savePendingAction, clearPendingAction } from './bot-memory.js';
+import { readPendingAction, savePendingAction, clearPendingAction, confirmProfilePending } from './bot-memory.js';
 
 const LIST_LIMIT = 10;
 const MAX_TITLE = 120;
@@ -370,7 +370,12 @@ async function confirmPending(db, userId, pending, text) {
     if (!pending) return '现在没有等你确认的操作。';
     if (pending.expired) {
         await clearPendingAction(db, userId);
+        if (pending.action === 'set_profile') return '上次的档案确认已经过期了，有需要随时跟我说。';
         return '上次的确认已经过期了，重新发一次「删收藏 <编号>」或「改收藏 <编号> ...」。';
+    }
+    if (pending.action === 'set_profile') {
+        if (/^确认删除/i.test(text)) return '这次待确认的是保存档案，不是删除。回「确认」保存，或回「取消」放弃。';
+        return confirmProfilePending(db, userId, pending);
     }
     if (/^确认修改/i.test(text) && !String(pending.action).startsWith('update_')) {
         return '这次待确认的是删除，不是修改。回「确认」删除，或回「取消」放弃。';

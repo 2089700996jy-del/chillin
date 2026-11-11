@@ -40,26 +40,7 @@ import {
 } from './src/garden-books.js';
 
 import {
-    handleGetWeeklies,
-    handlePostWeekly,
-    handlePutWeekly,
-    handleDeleteWeekly,
-    handleGetNotes,
-    handlePostNote,
-    handlePutNote,
-    handleDeleteNote,
-    handleGetBookmarks,
-    handlePostBookmark,
-    handleDeleteBookmark,
-    handleGetPrompts,
-    handlePostPrompt,
-    handleDeletePrompt,
-    handleGetFeeds,
-    handlePostFeed,
-    handlePutFeed,
-    handleDeleteFeed,
-    handleGetReaderProgress,
-    handlePostReaderProgress
+    handleGardenResourceApi
 } from './src/garden-resources.js';
 
 import {
@@ -86,7 +67,7 @@ import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.238';
+const APP_VERSION = '2.5.239';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -168,42 +149,9 @@ async function router(path, method, request, env, ctx) {
     if (sessionMatch && method === 'DELETE') return handleRevokeSession(request, db, userId, sessionMatch[1]);
     if (path === '/api/auth/me' && method === 'GET') return handleMe(db, userId);
 
-    // ── 周记 (Weeklies) ──
-    if (path === '/api/weeklies' && method === 'GET') return handleGetWeeklies(url, db, userId);
-    if (path === '/api/weeklies' && method === 'POST') return handlePostWeekly(request, db, userId);
-    const weeklyMatch = path.match(/^\/api\/weeklies\/(\d+)$/);
-    if (weeklyMatch && method === 'PUT') return handlePutWeekly(parseInt(weeklyMatch[1]), request, db, userId);
-    if (weeklyMatch && method === 'DELETE') return handleDeleteWeekly(parseInt(weeklyMatch[1]), db, userId);
-
-    // ── 备忘录 (Notes) ──
-    if (path === '/api/notes' && method === 'GET') return handleGetNotes(url, db, userId);
-    if (path === '/api/notes' && method === 'POST') return handlePostNote(request, db, userId);
-    const noteMatch = path.match(/^\/api\/notes\/(\d+)$/);
-    if (noteMatch && method === 'PUT') return handlePutNote(parseInt(noteMatch[1]), request, db, userId);
-    if (noteMatch && method === 'DELETE') return handleDeleteNote(parseInt(noteMatch[1]), db, userId);
-
-    // ── 收藏 (Bookmarks) ──
-    if (path === '/api/bookmarks' && method === 'GET') return handleGetBookmarks(url, db, userId);
-    if (path === '/api/bookmarks' && method === 'POST') return handlePostBookmark(request, db, userId);
-    const bmMatch = path.match(/^\/api\/bookmarks\/(\d+)$/);
-    if (bmMatch && method === 'DELETE') return handleDeleteBookmark(parseInt(bmMatch[1]), db, userId);
-
-    // ── 提示词库 (Prompts) ──
-    if (path === '/api/prompts' && method === 'GET') return handleGetPrompts(url, db, userId);
-    if (path === '/api/prompts' && method === 'POST') return handlePostPrompt(request, db, userId);
-    const promptMatch = path.match(/^\/api\/prompts\/(\d+)$/);
-    if (promptMatch && method === 'DELETE') return handleDeletePrompt(parseInt(promptMatch[1]), db, userId);
-
-    // ── 随手记 (Feeds) ──
-    if (path === '/api/feeds' && method === 'GET') return handleGetFeeds(url, db, userId);
-    if (path === '/api/feeds' && method === 'POST') return handlePostFeed(request, db, userId);
-    const feedMatch = path.match(/^\/api\/feeds\/(\d+)$/);
-    if (feedMatch && method === 'PUT') return handlePutFeed(parseInt(feedMatch[1]), request, db, userId);
-    if (feedMatch && method === 'DELETE') return handleDeleteFeed(parseInt(feedMatch[1]), db, userId);
-
-    // ── 阅读器进度 (Reader Progress) ──
-    if (path === '/api/reader/progress' && method === 'GET') return handleGetReaderProgress(db, userId);
-    if (path === '/api/reader/progress' && method === 'POST') return handlePostReaderProgress(request, db, userId);
+    // ── 花园资产 CRUD 统一路由（周记、笔记、收藏、提示词、随手记、阅读进度下沉至模块处理） ──
+    const gardenRes = await handleGardenResourceApi(path, method, request, url, db, userId);
+    if (gardenRes) return gardenRes;
 
     // ── 阅读器书库云同步 (Reader Books) ── 正文存 R2，D1 只存书目
     if (path === '/api/reader/books' && method === 'GET') return handleListReaderBooks(db, userId);

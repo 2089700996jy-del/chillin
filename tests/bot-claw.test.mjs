@@ -59,7 +59,9 @@ import {
     forgetProfileById,
     handleBotProfileApi,
     PROFILE_MAX_ITEMS,
-    savePendingMedia
+    savePendingMedia,
+    parseProposeMemory,
+    findConflictingProfileItem
 } from '../workers/src/bot-memory.js';
 import {
     listPreferences,
@@ -101,7 +103,7 @@ function stubFetch(routes) {
         calls.push({ url: u, body, init });
         for (const key of Object.keys(routes)) {
             if (u.includes(key)) {
-                const r = routes[key](u, body) || {};
+                const r = (await routes[key](u, body)) || {};
                 if (r.response) return r.response;
                 if (r.bytes) return new Response(r.bytes, { status: r.status || 200 });
                 return new Response(JSON.stringify(r.json || {}), { status: r.status || 200 });
@@ -740,6 +742,63 @@ integration('ClawBot - scheduled 按 cron 分流：每分钟只轮询，小时�
         await runScheduled({ DB: db }, { cron: '13 * * * *' });
     } finally { globalThis.fetch = original; }
     assert.equal(hourly.calls.filter(c => c.url.includes('ilink')).length, 0);
+});
+
+integration('ClawBot 与 Agent 调度并发解耦 - 长轮询不阻塞 Agent 后台续跑（彻底消除调度饥饿）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    const goal = await db.prepare(
+        "INSERT INTO agent_goals (user_id, title, status, created_at, updated_at) VALUES (1, '测试后台目标', 'active', datetime('now', '+8 hours'), datetime('now', '+8 hours')) RETURNING id"
+    ).first();
+    const task = await db.prepare(
+        "INSERT INTO agent_tasks (goal_id, user_id, seq, title, status, created_at, updated_at) VALUES (?1, 1, 0, '任务1', 'pending', datetime('now', '+8 hours'), datetime('now', '+8 hours')) RETURNING id"
+    ).bind(goal.id).first();
+    await db.prepare(
+        "INSERT INTO agent_runs (goal_id, user_id, trigger, status, next_run_at, created_at, updated_at) VALUES (?1, 1, 'manual', 'queued', datetime('now', '+8 hours', '-1 seconds'), datetime('now', '+8 hours'), datetime('now', '+8 hours'))"
+    ).bind(goal.id).run();
+
+    let agentFinishedAt = 0;
+    let pollFinishedAt = 0;
+    const startTime = Date.now();
+
+    const original = globalThis.fetch;
+    const poll = stubFetch({
+        '/ilink/bot/getupdates': async () => {
+            await new Promise((r) => setTimeout(r, 80));
+            pollFinishedAt = Date.now();
+            return { json: { ret: 0, get_updates_buf: 'CURSOR-1', msgs: [] } };
+        }
+    });
+
+    try {
+        globalThis.fetch = poll.impl;
+        await runScheduled(
+            { DB: db },
+            { cron: CLAW_CRON },
+            {
+                budgetMs: 150,
+                agentRunner: async () => {
+                    await new Promise((r) => setTimeout(r, 20));
+                    agentFinishedAt = Date.now();
+                    return { reply: '任务完成', stopReason: 'final' };
+                }
+            }
+        );
+    } finally {
+        globalThis.fetch = original;
+    }
+
+    assert.ok(agentFinishedAt > 0, 'Agent 续跑必须在 cron 中被调用执行');
+    assert.ok(pollFinishedAt > 0, '长轮询必须被调用执行');
+    assert.ok(
+        agentFinishedAt < pollFinishedAt,
+        `Agent 续跑应与长轮询并发：agentFinishedAt (${agentFinishedAt - startTime}ms) 必须小于 pollFinishedAt (${pollFinishedAt - startTime}ms)`
+    );
+
+    const updatedTask = await db.prepare('SELECT * FROM agent_tasks WHERE id = ?1').bind(task.id).first();
+    assert.equal(updatedTask.status, 'completed', 'Agent 任务应成功完成');
 });
 
 integration('ClawBot - 一次 cron 调用内持续拉取，中途到达的消息当轮就处理', async () => {
@@ -2339,5 +2398,92 @@ integration('Bot 日常流程打通 - 聊天建待办、定时提醒与完成核
     const bareDoneReply = await buildBotReply(env, db, 1, '完成');
     assert.match(bareDoneReply, /已帮你划掉最近一条待办/);
     assert.match(bareDoneReply, /✅ 读完第三章/);
+});
+
+test('Bot 记忆核心 - parseProposeMemory 正确抽取提议标签与剥除正文', () => {
+    const text1 = '杭州风景优美！<propose_memory label="常住地" content="现居杭州"/>';
+    const res1 = parseProposeMemory(text1);
+    assert.equal(res1.cleanText, '杭州风景优美！');
+    assert.deepEqual(res1.proposal, { label: '常住地', content: '现居杭州' });
+
+    const text2 = '记一下偏好。<propose_memory content=\'不吃香菜\' label=\'饮食习惯\'></propose_memory>';
+    const res2 = parseProposeMemory(text2);
+    assert.equal(res2.cleanText, '记一下偏好。');
+    assert.deepEqual(res2.proposal, { label: '饮食习惯', content: '不吃香菜' });
+
+    const text3 = '今天工作还顺利吗？';
+    const res3 = parseProposeMemory(text3);
+    assert.equal(res3.cleanText, '今天工作还顺利吗？');
+    assert.equal(res3.proposal, null);
+});
+
+integration('Bot 记忆核心 - 个人档案单值属性语义覆盖与否定冲突消解', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await addProfileItem(db, 1, '现居北京', '常住地');
+    assert.equal((await listProfile(db, 1)).length, 1);
+    assert.equal((await listProfile(db, 1))[0].content, '现居北京');
+
+    const updateRes = await addProfileItem(db, 1, '现居杭州', '常住地');
+    assert.equal(updateRes.ok, true);
+    assert.equal(updateRes.replaced, '现居北京');
+    const profileAfter = await listProfile(db, 1);
+    assert.equal(profileAfter.length, 1, '单值属性应覆盖而非堆叠');
+    assert.equal(profileAfter[0].content, '现居杭州');
+
+    await addProfileItem(db, 1, '喜欢喝美式咖啡');
+    assert.equal((await listProfile(db, 1)).length, 2);
+
+    const negRes = await addProfileItem(db, 1, '不喝咖啡了');
+    assert.equal(negRes.ok, true);
+    assert.equal(negRes.replaced, '喜欢喝美式咖啡');
+    const profileNeg = await listProfile(db, 1);
+    assert.equal(profileNeg.length, 2);
+    assert.ok(profileNeg.some(it => it.content === '不喝咖啡了'));
+    assert.ok(!profileNeg.some(it => it.content === '喜欢喝美式咖啡'));
+});
+
+integration('Bot 记忆核心 - 自然对话两段式感知提议与用户回复【确认】/【取消】闭环', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const fakeLlmEnv = {
+        AI: {
+            run: async () => ({
+                response: '杭州是一座充满活力的城市，西湖的四季都很有味道。<propose_memory label="常住地" content="现居杭州"/>'
+            })
+        }
+    };
+
+    const botReply = await buildBotReply(fakeLlmEnv, db, 1, '我最近搬到杭州工作了');
+    assert.ok(!botReply.includes('<propose_memory'));
+    assert.match(botReply, /杭州是一座充满活力的城市/);
+    assert.match(botReply, /💡 记下你的新档案「常住地：现居杭州」？回复【确认】保存，回复【取消】忽略。/);
+
+    assert.equal((await listProfile(db, 1)).length, 0);
+
+    const confirmReply = await buildBotReply({}, db, 1, '确认');
+    assert.match(confirmReply, /已记入「关于我」档案/);
+    assert.match(confirmReply, /常住地：现居杭州/);
+
+    const items = await listProfile(db, 1);
+    assert.equal(items.length, 1);
+    assert.equal(items[0].label, '常住地');
+    assert.equal(items[0].content, '现居杭州');
+
+    const fakeLlmEnv2 = {
+        AI: {
+            run: async () => ({
+                response: '了解你的喜好啦。<propose_memory label="作息" content="经常凌晨两点睡"/>'
+            })
+        }
+    };
+    await buildBotReply(fakeLlmEnv2, db, 1, '我最近总是凌晨两点才睡');
+    assert.equal((await listProfile(db, 1)).length, 1, '未确认前档案仍为 1 条');
+
+    const cancelReply = await buildBotReply({}, db, 1, '取消');
+    assert.match(cancelReply, /取消了，什么都没动/);
+    assert.equal((await listProfile(db, 1)).length, 1, '取消后档案仍保持原样');
 });
 

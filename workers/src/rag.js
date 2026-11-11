@@ -394,6 +394,33 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     });
 }
 
+/**
+ * 动态段落切块：长文本围绕命中的检索词抽取滑动窗口（前后各留上下文），避免固定首段截断丢掉深层结论
+ */
+export function extractDynamicSnippet(body, tokens = [], maxLen = 220) {
+    const raw = String(body || '').replace(/\s+/g, ' ').trim();
+    if (raw.length <= maxLen) return raw;
+    if (!Array.isArray(tokens) || !tokens.length) return raw.slice(0, maxLen) + '…';
+
+    const lower = raw.toLowerCase();
+    let bestIdx = -1;
+    for (const t of tokens) {
+        const word = String(t || '').trim().toLowerCase();
+        if (word.length < 2) continue;
+        const idx = lower.indexOf(word);
+        if (idx >= 0 && (bestIdx === -1 || idx < bestIdx)) {
+            bestIdx = idx;
+        }
+    }
+    if (bestIdx <= 40) return raw.slice(0, maxLen) + '…';
+
+    const start = Math.max(0, bestIdx - 30);
+    const end = Math.min(raw.length, start + maxLen);
+    const prefix = start > 0 ? '…' : '';
+    const suffix = end < raw.length ? '…' : '';
+    return prefix + raw.slice(start, end) + suffix;
+}
+
 function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {}) {
     if (!selected.length) {
         return {
@@ -413,7 +440,7 @@ function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {})
         const dateLabel = extractItemDate(item) || '未知日期';
         const titlePart = item.title ? ' · ' + item.title : '';
         const relationPart = item.relation ? ' · 关联：' + item.relation : '';
-        const snippet = String(item.body || '').replace(/\s+/g, ' ').trim().slice(0, 220);
+        const snippet = extractDynamicSnippet(item.body, tokens, 220);
         const header = '[' + (idx + 1) + '] ' + item.type + titlePart + ' · ' + dateLabel + relationPart;
         const block = header + '\n' + snippet;
         if (used + block.length > maxChars && blocks.length > 0) return;

@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-11。当前前端/Worker：**v2.5.238**（Worker/Pages 已部署、D1 迁移 0001–0042 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-11。当前前端/Worker：**v2.5.239**（Worker/Pages 已部署、D1 迁移 0001–0042 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
@@ -32,7 +32,7 @@
 - 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/agent-goals.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
 - 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 44 个领域模块）：
+**后端分层**（`workers/`：网关 `api.js` + `src/` 49 个领域模块）：
 - 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
 - 鉴权：`auth.js`
 - 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`

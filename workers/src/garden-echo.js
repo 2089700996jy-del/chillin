@@ -88,15 +88,21 @@ export async function handleEchoGenerate(request, env, ctx, db, userId) {
         try {
             const subs = await db.prepare('SELECT id, device_id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ?1 ORDER BY id ASC').bind(userId).all();
             const all = (subs && subs.results) || [];
-            const deviceRows = all.filter((row) => row.device_id);
-            const rows = deviceRows.length ? deviceRows : (all.length ? [all[all.length - 1]] : []);
+            const deviceMap = new Map();
+            for (const row of all) {
+                if (row.device_id) deviceMap.set(row.device_id, row);
+            }
+            const rows = deviceMap.size > 0
+                ? Array.from(deviceMap.values())
+                : (all.length ? [all[all.length - 1]] : []);
             if (rows.length > 0) {
                 webPush.setVapidDetails('mailto:admin@chillin.local', env.VAPID_PUBLIC_KEY, env.VAPID_PRIVATE_KEY);
                 const payload = JSON.stringify({
                     title: 'Chillin',
                     body: `记忆回响 · 关于 ${moderatedTopic.text} 的新灵感`,
                     icon: '/icons/transparent.png',
-                    url: '/'
+                    url: '/',
+                    tag: 'garden-echo'
                 });
                 const pushPromises = rows.map(async sub => {
                     try {
