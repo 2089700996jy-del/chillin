@@ -224,8 +224,8 @@ export function extractItemDate(item) {
     return '';
 }
 
-/** 类型先验：笔记/周记是更完整的记忆，收藏和提示词只做辅助。 */
-const TYPE_WEIGHT = { '笔记': 1.08, '周记': 1.05, '随手记': 1, '提示词': 0.9, '收藏': 0.75 };
+/** 类型先验：笔记/周记/书籍是更完整的记忆，收藏和提示词只做辅助。 */
+const TYPE_WEIGHT = { '笔记': 1.08, '周记': 1.05, '书籍': 1.02, '随手记': 1, '提示词': 0.9, '收藏': 0.75 };
 
 export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
     const dateStr = extractItemDate(item);
@@ -353,9 +353,10 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     for (const item of linked) {
         if (corpus.has(item.key) && ranked.some(direct => direct.key === item.key)) continue;
         const seed = seeds.find(s => extractWikiLinks(s.title + ' ' + s.body)
-            .some(link => item.title.toLowerCase().includes(link)));
-        if (!seed) continue;
-        if (selectedKeys.has(item.key)) continue;
+            .some(link => item.title.toLowerCase().includes(link)))
+            || seeds.find(s => (s.tags || []).some(t => String(item.relation || '').includes(t)))
+            || seeds[0];
+        if (!seed || selectedKeys.has(item.key)) continue;
         const relation = item.relation || '链接';
         item.score = Math.max(2, seed.score * 0.55);
         item.relatedFrom = seed.key;

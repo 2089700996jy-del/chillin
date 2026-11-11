@@ -256,3 +256,44 @@ test('RAG - extractDynamicSnippet 动态滑动窗口切块定位关键词', () =
     assert.ok(deepSnippet.includes('【核心方案：采用两段式确认记忆机制】'), '切块必须完整包含深层命中词');
     assert.ok(deepSnippet.endsWith('…'), '后置截断必须带有省略号');
 });
+
+integration('RAG - 书库与阅读进度统一召回：识别书名并关联阅读进度', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await db.prepare(`INSERT INTO reader_books (id, user_id, book_key, title, author, total_chapters, r2_key, is_deleted)
+        VALUES (301, 1, 'bk_santi', '三体：死神永生', '刘慈欣', 42, 'r2/santi.txt', 0)`).run();
+    await db.prepare(`INSERT INTO reader_progress (id, user_id, book_key, book_title, chapter_index, chapter_title, scroll_percentage)
+        VALUES (1, 1, 'bk_santi', '三体：死神永生', 18, '第18章 云天明的故事', 60)`).run();
+
+    const result = await retrieveGardenMemories(db, 1, '我在读什么书');
+    const bookHit = result.sources.find(s => s.type === '书籍' && s.id === 301);
+    assert.ok(bookHit, '书架上的书必须能被 RAG 统一召回');
+    assert.equal(bookHit.title, '三体：死神永生');
+    assert.match(result.contextText, /作者: 刘慈欣/);
+    assert.match(result.contextText, /第18章 云天明的故事/);
+    assert.match(result.contextText, /已读 60%/);
+});
+
+integration('RAG - 常青主题跨模块关联召回：相同 #tag 跨随手记与笔记串联', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 1. 随手记包含内联 hashtag #投资哲学
+    await db.prepare(`INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted)
+        VALUES (501, 1, '芒格说要在有鱼的地方钓鱼，耐心是核心资产 #投资哲学', '2026-11-01', '2026-11-01', 0)`).run();
+
+    // 2. 笔记也带有 #投资哲学（但正文没有“钓鱼”）
+    await db.prepare(`INSERT INTO notes (id, user_id, title, content, date, created_at, updated_at, is_deleted)
+        VALUES (502, 1, '安全边际实践', '估值与心理纪律是抵御波动的护城河 #投资哲学', '2026-11-02', '2026-11-02', '2026-11-02', 0)`).run();
+
+    const result = await retrieveGardenMemories(db, 1, '钓鱼与耐心');
+    const directHit = result.sources.find(s => s.id === 501);
+    assert.ok(directHit, '直接命中随手记');
+
+    const relatedHit = result.sources.find(s => s.id === 502);
+    assert.ok(relatedHit, '相同主题的笔记应被关联召回');
+    assert.equal(relatedHit.related, true);
+    assert.match(relatedHit.relation, /同主题 #投资哲学/);
+    assert.match(result.contextText, /同主题 #投资哲学/);
+});
