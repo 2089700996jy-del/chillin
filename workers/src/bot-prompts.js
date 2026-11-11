@@ -28,6 +28,9 @@ export const REMEMBER_BARE_REPLY = '要记什么？发「记住：<内容>」我
 export const CHAT_SYSTEM_PROMPT = `你是 Chillin 私人 AI 伙伴与管家，自然、真诚、放松地交流。
 像一位值得信赖的老朋友，交流简炼有温度，切忌机械客套、空洞共情或助手腔调（不要每次都先共情，不要机械限制长度，不要总说「根据我对你的了解」）。
 普通聊天默认只聊天，不自动记录。
+【时间知觉与记忆沉淀准则】：
+1. 记忆片段与个人档案均标注了沉淀时间与相对时距（如「昨天确认」、「3个月前记录」、「1年前」）。
+2. 在交谈时请结合时间知觉作答：优先采信更新的事实；对久远的记忆使用「你之前/当时提到过」等自然口吻，不要把两年前的旧事当成昨天发生的事情。
 【长期记忆提议与边界准则】：
 1. 你自己没有写入能力：普通对话中绝不要直接声称「已为你记下」或「已保存」，因为系统会弹出确认由用户决定。
 2. 指令通道执行真实操作：「记录：<内容>」存入随手记。定点提醒到点必达，不受日限约束。不编造事实。
@@ -94,31 +97,111 @@ export function wantsEvidence(text) {
     return EVIDENCE_RE.test(String(text || ''));
 }
 
-/** 话题切换意图：显式提出换话题时切断历史上下文干扰 */
-export const TOPIC_SHIFT_RE = /^(?:换个话题|不说这个了|聊点别的|打住|先不说这个|换个聊法)[，,、；;\s]*(.*)$/i;
+/** 话题切换意图：显式提出换话题（彻底翻篇并清空前序上下文） */
+export const TOPIC_SHIFT_RE = /^(?:换个话题|不说这个了|聊点别的|打住(?:打住)?|先不说这个|换个聊法|不扯这个了|翻篇(?:了)?|清空话题)[，,、；;\s]*(.*)$/i;
+export const HARD_TOPIC_SHIFT_RE = TOPIC_SHIFT_RE;
+
+/** 软话题转移：带有明显转折词，需平滑淡出旧上下文干扰 */
+export const SOFT_TOPIC_SHIFT_RE = /^(?:对了|说起来|顺便问(?:一下|下)?|另外问(?:一下|下)?|问你个(?:别的事|不相干的)|插一句|说正经的|言归正传)[，,、；;\s]+([\s\S]+)$/i;
+
+export function parseTopicShift(text) {
+    const raw = String(text || '').trim();
+    const hard = HARD_TOPIC_SHIFT_RE.exec(raw);
+    if (hard) return { type: 'hard', nextTopic: hard[1].trim(), raw };
+    const soft = SOFT_TOPIC_SHIFT_RE.exec(raw);
+    if (soft) return { type: 'soft', nextTopic: soft[1].trim(), raw };
+    return null;
+}
+
+/** 意图常量定义 */
+export const INTENT_ACTION_TASK = 'action_task';
+export const INTENT_PROFILE_QA = 'profile_qa';
+export const INTENT_KNOWLEDGE_RAG = 'knowledge_rag';
+export const INTENT_CHITCHAT = 'chitchat';
+
+/** 自我档案与画像问答线索（优先使用 Profile Prompt，跳过全文检索） */
+export const PROFILE_QA_RE = /(?:你记得我|你记住了我|你了解我|你眼中的我|我是一个怎样的人|我是个什么样的人|我是一个什么样的人|我的画像|我的档案|我的个人信息|我叫什么|我常住|我住在|我的家在哪|我的职业|我做什么工作|我的工作|我的岗位|我喜欢吃|我喜欢喝|我平时喜欢|我的爱好|我的作息|我几点睡|我一般几点|我对什么过敏|我有什么忌口|我喝咖啡)/;
 
 /** 纯闲聊/寒暄/即时感叹模式（跳过重型花园检索） */
 export const PURE_CHITCHAT_RE = /^(?:你好|您好|哈喽|hello|hi|hey|早|早安|早上好|午安|中午好|晚上好|晚安|在吗|在不在|有人吗|呼叫|滴滴|好的|收到|行|可以|好吧|原来如此|这样啊|明白|知道了|多谢|谢谢|感谢|哈哈+|呵呵+|嘻嘻+|喵|嗯嗯?|哦哦?|对|确实|是的|今天好累|好累啊|有点困|困死了|肚子好饿|下班了|下雨了|无聊|太难了|好开心|你是谁|你叫什么|你能做什么|你多大了|你会什么|讲个笑话|陪我聊聊天)[\s!！?？~～.。]*$/i;
 
 /** 显式或强烈的个人知识/历史回忆线索 */
-export const GARDEN_TRIGGER_RE = /(?:笔记|周记|随手记|收藏|提示词|记录|花园|写过|记过|提过|提到|以前|过去|当时|那天|那次|什么时候|历史|回忆|回顾|查一下|翻一下|找一下|帮我找|帮我搜|看下我|有没有记|有没有写|我什么时候|我曾经|我之前|我上次|还有吗|详细说说|展开说说)/;
+export const GARDEN_TRIGGER_RE = /(?:我(?:还在|最近|上次|以前|过去|当时|曾经|到底|有没有|何时|什么时候|之前|写过|读过|看过|记过|提过|去过|买过|学过|在读|在看|在学)|记过|提过|提到|笔记|周记|随手记|收藏|提示词|记录|花园|历史|回忆|回顾|查一下|翻一下|找一下|帮我找|帮我搜|看下我|有没有记|有没有写|还有吗|详细说说|展开说说)/;
+
+/**
+ * 意图动态分流器：识别用户输入的核心意图
+ */
+export function classifyUserIntent(text, history = []) {
+    const raw = String(text || '').trim();
+    if (!raw) return { intent: INTENT_CHITCHAT, confidence: 1 };
+    if (PROFILE_QA_RE.test(raw)) return { intent: INTENT_PROFILE_QA, confidence: 0.95 };
+    if (shouldRetrieveGarden(raw, history)) return { intent: INTENT_KNOWLEDGE_RAG, confidence: 0.9 };
+    if (PURE_CHITCHAT_RE.test(raw)) return { intent: INTENT_CHITCHAT, confidence: 0.95 };
+    return { intent: INTENT_CHITCHAT, confidence: 0.8 };
+}
 
 /**
  * 判断用户输入是否需要触发花园 RAG 检索：
- * 纯闲聊/问候/情绪感叹跳过；具有显式花园意图或实质性问题才检索
+ * 纯闲聊/问候/自我档案问答跳过；具有显式花园意图或实质性历史问题才检索
  */
 export function shouldRetrieveGarden(text, history = []) {
     const raw = String(text || '').trim();
     if (!raw) return false;
-    if (GARDEN_TRIGGER_RE.test(raw)) return true;
+    if (PROFILE_QA_RE.test(raw)) return false;
     if (PURE_CHITCHAT_RE.test(raw)) return false;
-    if (raw.length < 4) return false;
+    if (wantsEvidence(raw)) return true;
+    if (GARDEN_TRIGGER_RE.test(raw)) return true;
     if (Array.isArray(history) && history.length > 0) {
         const last = history[history.length - 1];
         if (last && last.role === 'assistant' && (String(last.content).includes('依据：') || String(last.content).includes('记录'))) {
-            if (/^(?:还有|然后|那|具体|继续|再说)/.test(raw)) return true;
+            if (/^(?:还有|然后|那|具体|继续|再说|后来|详细)/.test(raw)) return true;
         }
     }
-    return true;
+    return false;
+}
+
+/**
+ * 相对时间与沉淀时距格式化器（东八区基准，赋予 AI 敏锐的时间知觉）
+ */
+export function formatRelativeTimeTag(dateInput, nowMs = Date.now()) {
+    if (!dateInput) return '';
+    const dateStr = String(dateInput).slice(0, 10);
+    const targetMs = Date.parse(dateStr + 'T00:00:00+08:00');
+    if (isNaN(targetMs)) return dateStr;
+    const nowEast8 = new Date(nowMs + 8 * 3600 * 1000);
+    const todayStr = nowEast8.toISOString().slice(0, 10);
+    const todayMs = Date.parse(todayStr + 'T00:00:00+08:00');
+    const diffDays = Math.round((todayMs - targetMs) / 86400000);
+    if (diffDays <= 0) return '今天（' + dateStr + '）';
+    if (diffDays === 1) return '昨天（' + dateStr + '）';
+    if (diffDays === 2) return '前天（' + dateStr + '）';
+    if (diffDays < 7) return diffDays + '天前（' + dateStr + '）';
+    if (diffDays < 14) return '上周（' + dateStr + '）';
+    if (diffDays < 30) return Math.floor(diffDays / 7) + '周前（' + dateStr + '）';
+    if (diffDays < 365) return Math.floor(diffDays / 30) + '个月前（' + dateStr + '）';
+    return Math.floor(diffDays / 365) + '年前（' + dateStr + '）';
+}
+
+/**
+ * 个人档案时间标签（记录沉淀时距与置信度指示）
+ */
+export function formatProfileTimeTag(dateInput, nowMs = Date.now()) {
+    if (!dateInput) return '';
+    const dateStr = String(dateInput).slice(0, 10);
+    const targetMs = Date.parse(dateStr + 'T00:00:00+08:00');
+    if (isNaN(targetMs)) return '（' + dateStr + ' 确认）';
+    const nowEast8 = new Date(nowMs + 8 * 3600 * 1000);
+    const todayStr = nowEast8.toISOString().slice(0, 10);
+    const todayMs = Date.parse(todayStr + 'T00:00:00+08:00');
+    const diffDays = Math.round((todayMs - targetMs) / 86400000);
+    let rel = '今天';
+    if (diffDays === 1) rel = '昨天';
+    else if (diffDays === 2) rel = '前天';
+    else if (diffDays >= 3 && diffDays < 7) rel = diffDays + '天前';
+    else if (diffDays >= 7 && diffDays < 14) rel = '上周';
+    else if (diffDays >= 14 && diffDays < 30) rel = Math.floor(diffDays / 7) + '周前';
+    else if (diffDays >= 30 && diffDays < 365) rel = Math.floor(diffDays / 30) + '个月前';
+    else if (diffDays >= 365) rel = Math.floor(diffDays / 365) + '年前';
+    return '（' + rel + '确认 · ' + dateStr + '）';
 }
 

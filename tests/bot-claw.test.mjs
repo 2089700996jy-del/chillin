@@ -54,6 +54,7 @@ import {
 import {
     loadChatContext,
     listProfile,
+    loadProfilePrompt,
     addProfileItem,
     updateProfileItem,
     forgetProfileById,
@@ -63,6 +64,16 @@ import {
     parseProposeMemory,
     findConflictingProfileItem
 } from '../workers/src/bot-memory.js';
+import {
+    classifyUserIntent,
+    shouldRetrieveGarden,
+    parseTopicShift,
+    formatRelativeTimeTag,
+    formatProfileTimeTag,
+    INTENT_PROFILE_QA,
+    INTENT_KNOWLEDGE_RAG,
+    INTENT_CHITCHAT
+} from '../workers/src/bot-prompts.js';
 import {
     listPreferences,
     loadPreferencePrompt,
@@ -2485,5 +2496,126 @@ integration('Bot 记忆核心 - 自然对话两段式感知提议与用户回复
     const cancelReply = await buildBotReply({}, db, 1, '取消');
     assert.match(cancelReply, /取消了，什么都没动/);
     assert.equal((await listProfile(db, 1)).length, 1, '取消后档案仍保持原样');
+});
+
+test('Bot 对话智能 - 意图动态分流：区分闲聊、长文知识检索与自我档案问答', () => {
+    // 1. 纯闲聊/日常感叹：绝不触发重型花园 RAG
+    assert.equal(classifyUserIntent('今天好累啊').intent, INTENT_CHITCHAT);
+    assert.equal(classifyUserIntent('早安').intent, INTENT_CHITCHAT);
+    assert.equal(classifyUserIntent('哈哈原来是这样').intent, INTENT_CHITCHAT);
+    assert.equal(classifyUserIntent('今天天气真好').intent, INTENT_CHITCHAT);
+    assert.equal(shouldRetrieveGarden('今天好累啊'), false);
+    assert.equal(shouldRetrieveGarden('今天下雨了有点冷'), false);
+
+    // 2. 自我档案问答：指向个人偏好、住址、职业、作息等，跳过全站笔记扫描，走档案提示词
+    assert.equal(classifyUserIntent('你记得我喜欢喝什么吗').intent, INTENT_PROFILE_QA);
+    assert.equal(classifyUserIntent('我住在哪个城市').intent, INTENT_PROFILE_QA);
+    assert.equal(classifyUserIntent('你觉得我是一个怎样的人').intent, INTENT_PROFILE_QA);
+    assert.equal(classifyUserIntent('我做什么工作的').intent, INTENT_PROFILE_QA);
+    assert.equal(shouldRetrieveGarden('你记得我喜欢喝什么吗'), false);
+    assert.equal(shouldRetrieveGarden('我常住在哪里来着'), false);
+
+    // 3. 长文知识检索：显式或强烈的数字花园、历史笔记、周记、过往回顾
+    assert.equal(classifyUserIntent('我之前记过哪家牛肉面好吃').intent, INTENT_KNOWLEDGE_RAG);
+    assert.equal(classifyUserIntent('翻一下我上周的随手记').intent, INTENT_KNOWLEDGE_RAG);
+    assert.equal(classifyUserIntent('我写过的周记里有提到微服务吗').intent, INTENT_KNOWLEDGE_RAG);
+    assert.equal(classifyUserIntent('我还在读《人类简史》吗').intent, INTENT_KNOWLEDGE_RAG);
+    assert.equal(shouldRetrieveGarden('我之前记过哪家牛肉面好吃'), true);
+    assert.equal(shouldRetrieveGarden('我写过的周记里有提到微服务吗'), true);
+
+    // 4. 多轮连续追问记忆出处
+    const mockHistory = [{ role: 'assistant', content: '你之前在随手记里记录过这件事。\n\n---\n依据：[随手记] 2026-11-01' }];
+    assert.equal(shouldRetrieveGarden('还有吗？详细说说', mockHistory), true);
+});
+
+integration('Bot 对话智能 - 上下文话题漂移控制：硬切换彻底翻篇与软切换平滑淡出', async () => {
+    const db = createTestDb();
+    await seedUser(db, 99);
+
+    // 1. 硬切换：换个话题
+    const hard1 = parseTopicShift('换个话题，今晚吃什么好');
+    assert.equal(hard1.type, 'hard');
+    assert.equal(hard1.nextTopic, '今晚吃什么好');
+
+    const hard2 = parseTopicShift('不说这个了');
+    assert.equal(hard2.type, 'hard');
+    assert.equal(hard2.nextTopic, '');
+
+    const hardReply = await buildBotReply({}, db, 99, '换个话题');
+    assert.match(hardReply, /好呀，那我们聊点别的/);
+
+    // 2. 软切换：带有转移转折词
+    const soft1 = parseTopicShift('对了，明天北京天气怎么样？');
+    assert.equal(soft1.type, 'soft');
+    assert.equal(soft1.nextTopic, '明天北京天气怎么样？');
+
+    const soft2 = parseTopicShift('说起来，下周开会买哪班高铁票？');
+    assert.equal(soft2.type, 'soft');
+    assert.equal(soft2.nextTopic, '下周开会买哪班高铁票？');
+
+    // 模拟多轮历史对话后，用户发起软切换
+    let promptMessages = null;
+    const fakeLlm = {
+        AI: {
+            run: async (model, opts) => {
+                promptMessages = opts.messages;
+                return { response: '推荐先读《苏菲的世界》，通俗有趣。' };
+            }
+        }
+    };
+
+    // 塞入 5 轮关于 K8s 的旧对话
+    for (let i = 0; i < 5; i++) {
+        await buildBotReply(fakeLlm, db, 99, '探讨 Kubernetes 容器集群架构细节 ' + i);
+    }
+    const historyBefore = await loadChatContext(db, 99);
+    assert.ok(historyBefore.length >= 6);
+
+    // 发起软转折
+    const turnReply = await buildBotReply(fakeLlm, db, 99, '对了，你觉得哪本哲学书适合入门？');
+    assert.match(turnReply, /推荐先读《苏菲的世界》/);
+    assert.ok(promptMessages, '模型被调用');
+
+    // 校验系统提示词注入了平滑切换指引
+    const sysPrompt = promptMessages[0].content;
+    assert.match(sysPrompt, /【话题平滑切换】/);
+    assert.match(sysPrompt, /切勿牵强附会或纠缠前序话题/);
+
+    // 校验历史轮次被有效淡化（只保留弱背景，不再全量灌满旧话题）
+    const effectiveTurns = promptMessages.filter(m => m.role === 'user' || m.role === 'assistant');
+    assert.ok(effectiveTurns.length <= 4, '前序旧上下文应被优雅淡化裁剪');
+});
+
+test('Bot 对话智能 - 记忆置信度与时间衰减标记：档案沉淀时距与 RAG 检索时间知觉', async () => {
+    const fixedNow = Date.parse('2026-11-11T12:00:00+08:00');
+
+    // 1. 相对时间计算
+    assert.equal(formatRelativeTimeTag('2026-11-11', fixedNow), '今天（2026-11-11）');
+    assert.equal(formatRelativeTimeTag('2026-11-10', fixedNow), '昨天（2026-11-10）');
+    assert.equal(formatRelativeTimeTag('2026-11-09', fixedNow), '前天（2026-11-09）');
+    assert.equal(formatRelativeTimeTag('2026-11-07', fixedNow), '4天前（2026-11-07）');
+    assert.equal(formatRelativeTimeTag('2026-11-02', fixedNow), '上周（2026-11-02）');
+    assert.equal(formatRelativeTimeTag('2026-10-21', fixedNow), '3周前（2026-10-21）');
+    assert.equal(formatRelativeTimeTag('2026-08-11', fixedNow), '3个月前（2026-08-11）');
+    assert.equal(formatRelativeTimeTag('2025-11-11', fixedNow), '1年前（2025-11-11）');
+
+    // 2. 档案沉淀时距标记
+    assert.equal(formatProfileTimeTag('2026-11-10', fixedNow), '（昨天确认 · 2026-11-10）');
+    assert.equal(formatProfileTimeTag('2026-08-11', fixedNow), '（3个月前确认 · 2026-08-11）');
+    assert.equal(formatProfileTimeTag('2025-11-11', fixedNow), '（1年前确认 · 2025-11-11）');
+
+    // 3. 注入 Profile Prompt 验证
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO bot_profile (user_id, label, content, source, is_deleted, created_at) VALUES (1, '常住地', '现居杭州', 'user', 0, '2026-11-10 10:00:00')"
+    ).run();
+    await db.prepare(
+        "INSERT INTO bot_profile (user_id, label, content, source, is_deleted, created_at) VALUES (1, '饮食禁忌', '不喝咖啡', 'user', 0, '2026-08-11 10:00:00')"
+    ).run();
+
+    const promptText = await loadProfilePrompt(db, 1, fixedNow);
+    assert.match(promptText, /- 常住地：现居杭州（昨天确认 · 2026-11-10）/);
+    assert.match(promptText, /- 饮食禁忌：不喝咖啡（3个月前确认 · 2026-08-11）/);
 });
 

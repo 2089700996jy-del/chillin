@@ -421,6 +421,21 @@ export function extractDynamicSnippet(body, tokens = [], maxLen = 220) {
     return prefix + raw.slice(start, end) + suffix;
 }
 
+function formatRelDate(dateStr) {
+    if (!dateStr || dateStr.length < 10) return dateStr || '未知日期';
+    const targetMs = Date.parse(dateStr.slice(0, 10) + 'T00:00:00+08:00');
+    if (isNaN(targetMs)) return dateStr;
+    const diff = Math.round((Date.now() + 28800000 - targetMs) / 86400000);
+    if (diff <= 0) return '今天（' + dateStr + '）';
+    if (diff === 1) return '昨天（' + dateStr + '）';
+    if (diff === 2) return '前天（' + dateStr + '）';
+    if (diff < 7) return diff + '天前（' + dateStr + '）';
+    if (diff < 14) return '上周（' + dateStr + '）';
+    if (diff < 30) return Math.floor(diff / 7) + '周前（' + dateStr + '）';
+    if (diff < 365) return Math.floor(diff / 30) + '个月前（' + dateStr + '）';
+    return Math.floor(diff / 365) + '年前（' + dateStr + '）';
+}
+
 function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {}) {
     if (!selected.length) {
         return {
@@ -441,7 +456,7 @@ function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {})
         const titlePart = item.title ? ' · ' + item.title : '';
         const relationPart = item.relation ? ' · 关联：' + item.relation : '';
         const snippet = extractDynamicSnippet(item.body, tokens, 220);
-        const header = '[' + (idx + 1) + '] ' + item.type + titlePart + ' · ' + dateLabel + relationPart;
+        const header = '[' + (idx + 1) + '] ' + item.type + titlePart + ' · ' + formatRelDate(dateLabel) + relationPart;
         const block = header + '\n' + snippet;
         if (used + block.length > maxChars && blocks.length > 0) return;
         blocks.push(block);

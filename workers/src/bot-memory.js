@@ -12,6 +12,7 @@
  */
 
 import { jsonResponse, readJsonCapped, isValidRecordId } from './security.js';
+import { formatProfileTimeTag } from './bot-prompts.js';
 
 /** 注入提示词的最近对话条数上限 */
 export const CHAT_CONTEXT_TURNS = 8;
@@ -364,13 +365,13 @@ export async function updateProfileItem(db, userId, id, content, label = '') {
 }
 
 /** 拼成注入提示词的档案块（受字符预算约束，带确认日期时间知觉，空档案返回空串） */
-export async function loadProfilePrompt(db, userId) {
+export async function loadProfilePrompt(db, userId, nowMs = Date.now()) {
     const items = await listProfile(db, userId);
     const lines = [];
     let used = 0;
     for (const it of items) {
-        const dateTag = it.created_at ? '（' + String(it.created_at).slice(0, 10) + ' 确认）' : '';
-        const line = '- ' + (it.label ? it.label + '：' : '') + it.content + dateTag;
+        const timeTag = it.created_at ? formatProfileTimeTag(it.created_at, nowMs) : '';
+        const line = '- ' + (it.label ? it.label + '：' : '') + it.content + (timeTag ? timeTag : '');
         if (used + line.length > PROFILE_MAX_CHARS) break;
         used += line.length;
         lines.push(line);

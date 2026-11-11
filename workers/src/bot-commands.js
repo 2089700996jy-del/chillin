@@ -41,7 +41,8 @@ import {
     CMD_WRAP_PAIRS,
     CMD_TAIL_PUNCT_RE,
     shouldRetrieveGarden,
-    TOPIC_SHIFT_RE
+    TOPIC_SHIFT_RE,
+    parseTopicShift
 } from './bot-prompts.js';
 
 export {
@@ -51,7 +52,8 @@ export {
     normalizeCommandText,
     sourceLabel,
     truncateUtf8,
-    wantsEvidence
+    wantsEvidence,
+    parseTopicShift
 };
 
 /** 同一条消息 10 分钟内只处理一次：上游可能重复投递 */
@@ -170,26 +172,35 @@ export async function runAsk(env, db, userId, question) {
 }
 
 
-async function runChat(env, db, userId, text, history) {
+async function runChat(env, db, userId, text, history, options = {}) {
     const limit = await checkRateLimitShared(db, 'bot-ai:' + userId, BOT_AI_LIMIT.limit, BOT_AI_LIMIT.windowMs);
     if (!limit.ok) return '聊得有点快，缓 ' + (limit.retryAfter || 60) + ' 秒我们再接着聊。';
-    const needsGarden = shouldRetrieveGarden(text, history);
+    const isSoftShift = Boolean(options.isSoftShift);
+    const queryText = options.activeQuery || text;
+    let effectiveHistory = history || [];
+    if (isSoftShift && effectiveHistory.length > 2) {
+        effectiveHistory = effectiveHistory.slice(-2);
+    }
+    const needsGarden = shouldRetrieveGarden(queryText, effectiveHistory);
     const memory = needsGarden
-        ? await retrieveGardenMemories(db, userId, text, { topK: 4, maxChars: 1200, history })
+        ? await retrieveGardenMemories(db, userId, queryText, { topK: 4, maxChars: 1200, history: effectiveHistory })
         : { tokens: [], sources: [], contextText: '' };
     const sources = memory.sources || [];
     // 没有主题词时不拿「最近几条」硬凑记忆：那会让「在吗」突然翻旧账；有主题词但没命中也不注入检索失败指令。
     const hasTopic = Array.isArray(memory.tokens) && memory.tokens.length > 0;
     const hasMemory = hasTopic && sources.length > 0;
     const blocks = [CHAT_SYSTEM_PROMPT, '现在是 ' + nowInEast8() + '（东八区）。'];
+    if (isSoftShift) {
+        blocks.push('【话题平滑切换】：用户已发起新话题转折，前序旧对话仅作背景参考，请直接回答当前新问题，切勿牵强附会或纠缠前序话题。');
+    }
     const profile = await loadProfilePrompt(db, userId);
-    if (profile) blocks.push('【关于我（用户自述，只作参考，不得据此编造人格标签）】\n' + profile);
+    if (profile) blocks.push('【关于我（用户自述档案，带有记录沉淀时距，请结合时间知觉作答）】\n' + profile);
     const preferences = await loadPreferencePrompt(db, userId);
     if (preferences) blocks.push('【用户设定的交流偏好（只调整表达方式，不得突破边界）】\n' + preferences);
-    if (hasMemory && memory.contextText) blocks.push('【花园记忆片段（历史事实，只作证据，不要复述无关内容）】\n' + memory.contextText);
+    if (hasMemory && memory.contextText) blocks.push('【花园记忆片段（历史事实，带有记录时距与置信度，只作证据）】\n' + memory.contextText);
 
     const messages = [{ role: 'system', content: blocks.join('\n\n') }];
-    for (const turn of history) messages.push({ role: turn.role, content: turn.content });
+    for (const turn of effectiveHistory) messages.push({ role: turn.role, content: turn.content });
     messages.push({ role: 'user', content: text });
 
     let answer = '';
@@ -200,7 +211,7 @@ async function runChat(env, db, userId, text, history) {
     }
     if (!answer) {
         answer = hasMemory
-            ? generateFallbackReply(text, memory.contextText)
+            ? generateFallbackReply(queryText, memory.contextText)
             : '我刚刚没接上这句，你再发一下？';
     }
     const moderated = moderateText(answer, env);
@@ -217,7 +228,7 @@ async function runChat(env, db, userId, text, history) {
             output += '\n\n💡 记下你的新档案「' + (tag ? tag + '：' : '') + proposal.content + '」？回复【确认】保存，回复【取消】忽略。';
         }
     }
-    if (!sources.length || !wantsEvidence(text)) return output;
+    if (!sources.length || !wantsEvidence(queryText)) return output;
     return output + '\n\n---\n依据：'
         + sources.slice(0, 3).map(sourceLabel).join('、');
 }
@@ -406,11 +417,11 @@ export async function buildBotReply(env, db, userId, content) {
         return '好，我们这次的对话上下文已经清空 ✨ 个人档案和花园记录都不受影响。';
     }
 
-    // 话题切换：清空旧轮次干扰，轻装开启新话题
-    const shiftMatch = TOPIC_SHIFT_RE.exec(cmdText);
-    if (shiftMatch) {
+    // 话题切换：硬切换（彻底翻篇并清空前序上下文）或软切换（优雅平滑淡出）
+    const shift = parseTopicShift(cmdText);
+    if (shift && shift.type === 'hard') {
         await clearChatContext(db, userId);
-        const nextTopic = shiftMatch[1].trim();
+        const nextTopic = shift.nextTopic;
         if (!nextTopic) return '好呀，那我们聊点别的 ✨ 你想聊什么？';
         return buildBotReply(env, db, userId, nextTopic);
     }
@@ -451,7 +462,9 @@ export async function buildBotReply(env, db, userId, content) {
     }
 
     const history = await loadChatContext(db, userId);
-    const reply = await runChat(env, db, userId, text, history);
+    const isSoftShift = shift && shift.type === 'soft';
+    const activeQuery = isSoftShift && shift.nextTopic ? shift.nextTopic : text;
+    const reply = await runChat(env, db, userId, text, history, { isSoftShift, activeQuery });
     await saveChatTurn(db, userId, 'user', text);
     await saveChatTurn(db, userId, 'assistant', reply);
     return reply;
