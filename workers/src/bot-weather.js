@@ -89,7 +89,6 @@ export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date
         headers['Authorization'] = 'Bearer ' + auth.token;
     } else if (auth.type === 'key') {
         headers['X-QW-Api-Key'] = auth.token;
-        url.searchParams.set('key', auth.token);
     }
     try {
         const res = await fetchImpl(url.toString(), { headers });
