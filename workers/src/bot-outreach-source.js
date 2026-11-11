@@ -10,7 +10,7 @@ export const OUTREACH_MIN_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 /** 太老的东西也不翻（180 天前） */
 export const OUTREACH_MAX_AGE_MS = 180 * 24 * 60 * 60 * 1000;
 /** 每张表抓多少个候选旧记录（再在内存里按年龄过滤） */
-export const OUTREACH_CANDIDATE_FETCH = 40;
+export const OUTREACH_CANDIDATE_FETCH = 60;
 
 /** 容忍两种历史写法：东八区文本（YYYY-MM-DD HH:MM:SS）与 epoch 毫秒 */
 export function parseRecordTimeMs(value) {

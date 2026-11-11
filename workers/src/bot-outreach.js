@@ -173,11 +173,17 @@ export async function loadOutreachState(db, userId) {
     const cnt = await db.prepare(
         "SELECT COUNT(*) AS n FROM bot_outreach WHERE user_id = ?1 AND is_deleted = 0 AND status = 'sent'"
     ).bind(userId).first();
+    const lastAttempt = await db.prepare(
+        "SELECT status, reason, created_at FROM bot_outreach WHERE user_id = ?1 AND is_deleted = 0 ORDER BY id DESC LIMIT 1"
+    ).bind(userId).first();
     return {
         bound,
         enabled,
         sent: Number((cnt && cnt.n) || 0),
-        lastSentAt: (last && last.created_at) || ''
+        lastSentAt: (last && last.created_at) || '',
+        lastAttemptAt: (lastAttempt && lastAttempt.created_at) || '',
+        lastAttemptStatus: (lastAttempt && lastAttempt.status) || '',
+        lastAttemptReason: (lastAttempt && lastAttempt.reason) || ''
     };
 }
 
@@ -197,8 +203,12 @@ async function attemptedToday(db, userId, nowMs) {
     return Number((row && row.n) || 0) > 0;
 }
 
-async function loadUsedRefs(db, userId) {
-    const res = await db.prepare('SELECT ref_type, ref_id FROM bot_outreach WHERE user_id = ?1').bind(userId).all();
+/** 读取近期（90天内）真正发送成功的旧素材引用；未送达（skipped / failed）绝不污染素材库 */
+export async function loadUsedRefs(db, userId, nowMs = Date.now()) {
+    const parts = east8Parts(nowMs - 90 * 24 * 3600 * 1000);
+    const res = await db.prepare(
+        "SELECT ref_type, ref_id FROM bot_outreach WHERE user_id = ?1 AND is_deleted = 0 AND status = 'sent' AND created_at >= ?2"
+    ).bind(userId, parts.ymd + ' 00:00:00').all();
     const used = new Set();
     for (const row of (res && res.results) || []) {
         if (row.ref_type && row.ref_id) used.add(row.ref_type + ':' + row.ref_id);
@@ -337,7 +347,7 @@ async function runOneAccount(env, db, account, fetchImpl, nowMs, random) {
     if (nowMs < dueMs) return 'wait';
 
     const candidates = await collectCandidates(db, account.user_id, nowMs);
-    const candidate = pickCandidate(candidates, await loadUsedRefs(db, account.user_id), random);
+    const candidate = pickCandidate(candidates, await loadUsedRefs(db, account.user_id, nowMs), random);
     if (!candidate) return 'empty';
 
     const state = await loadOutreachState(db, account.user_id);

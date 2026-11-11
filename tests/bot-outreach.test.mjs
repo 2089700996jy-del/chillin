@@ -5,7 +5,8 @@ import {
     east8Parts, isOutreachWindow, pickOutreachInstantMs, parseRecordTimeMs,
     pickCandidate, loadOutreachState, setOutreachEnabled, runOutreachChecks,
     handleBotOutreachApi, pickFollowUpDelayMs, OUTREACH_TEXT_MAX_BYTES,
-    OUTREACH_FOLLOWUP_MIN_MS, OUTREACH_FOLLOWUP_MAX_MS, outreachTurnContent
+    OUTREACH_FOLLOWUP_MIN_MS, OUTREACH_FOLLOWUP_MAX_MS, outreachTurnContent,
+    loadUsedRefs
 } from '../workers/src/bot-outreach.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
 
@@ -457,4 +458,50 @@ integration('没说出口（跳过或发送失败）就不该留下对话记忆'
     );
     assert.equal(failed.sent, 0);
     assert.equal((await db.prepare('SELECT COUNT(*) AS n FROM bot_chat_turns').first()).n, 0);
+});
+
+integration('loadUsedRefs 只排重 sent 状态且近 90 天内的记录，skipped / failed 不污染素材库', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    const now = Date.now();
+    // 写入三条审计记录：一条 sent（5天前），一条 skipped（昨天），一条 failed（前天）
+    await db.prepare(
+        "INSERT INTO bot_outreach (user_id, account_id, status, ref_type, ref_id, text, reason, is_deleted, created_at) VALUES (1, 1, 'sent', 'notes', '101', '正文', '', 0, ?1)"
+    ).bind(cstText(now - 5 * 86400000)).run();
+    await db.prepare(
+        "INSERT INTO bot_outreach (user_id, account_id, status, ref_type, ref_id, text, reason, is_deleted, created_at) VALUES (1, 1, 'skipped', 'notes', '102', '', 'model-skip', 0, ?1)"
+    ).bind(cstText(now - 86400000)).run();
+    await db.prepare(
+        "INSERT INTO bot_outreach (user_id, account_id, status, ref_type, ref_id, text, reason, is_deleted, created_at) VALUES (1, 1, 'failed', 'quick_feeds', '201', '正文', 'network', 0, ?1)"
+    ).bind(cstText(now - 2 * 86400000)).run();
+    // 写入一条 100 天前的 sent（超出 90 天冷却期）
+    await db.prepare(
+        "INSERT INTO bot_outreach (user_id, account_id, status, ref_type, ref_id, text, reason, is_deleted, created_at) VALUES (1, 1, 'sent', 'bookmarks', '301', '正文', '', 0, ?1)"
+    ).bind(cstText(now - 100 * 86400000)).run();
+
+    const used = await loadUsedRefs(db, 1, now);
+    assert.ok(used.has('notes:101'), '近 90 天内 sent 的记录必须被排重');
+    assert.ok(!used.has('notes:102'), 'skipped 的素材绝不能被排重');
+    assert.ok(!used.has('quick_feeds:201'), 'failed 的素材绝不能被排重');
+    assert.ok(!used.has('bookmarks:301'), '超过 90 天的旧记录允许重新回池');
+});
+
+integration('前序被跳过（skipped）的素材后续日子仍可被挑中并成功主动发出', async () => {
+    const db = await createTestDb();
+    await seedClawAccount(db);
+    // 只有一条旧素材
+    await seedFeed(db, 8888, '想学着冲一杯像样的埃塞俄比亚手冲', 10);
+    const day1Ms = cstMs(todayYmd(Date.now() - 86400000), 12, 0);
+    // 第一天：模型跳过
+    await db.prepare(
+        "INSERT INTO bot_outreach (user_id, account_id, status, ref_type, ref_id, text, reason, is_deleted, created_at) VALUES (1, 1, 'skipped', 'quick_feeds', '8888', '', 'model-skip', 0, ?1)"
+    ).bind(cstText(day1Ms)).run();
+
+    // 第二天：同一个素材再次进入候选，模型有话可说，成功发出
+    const day2Ms = cstMs(todayYmd(Date.now()), 12, 0);
+    const instant = pickOutreachInstantMs(1, day2Ms);
+    const stub = stubFetch([{ match: '/ilink/bot/sendmessage', json: { ret: 0 } }]);
+    const res = await runOutreachChecks(aiEnv('埃塞俄比亚手冲喝上了吗？').env, db, stub.impl, { nowMs: instant + 1000, random: () => 0.1 });
+    assert.equal(res.sent, 1, '昨天跳过的素材今天必须能正常被 pick 并发出');
+    assert.equal(stub.calls.length, 1);
 });
