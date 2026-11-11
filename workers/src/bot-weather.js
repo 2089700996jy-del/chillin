@@ -60,10 +60,8 @@ export async function getQWeatherToken(env, nowMs = Date.now()) {
             const key = await globalThis.crypto.subtle.importKey('pkcs8', der, { name: 'Ed25519' }, false, ['sign']);
             const nowSec = Math.floor(nowMs / 1000);
             const header = { alg: 'EdDSA', kid: keyId, typ: 'JWT' };
-            const payload = { sub: projectId, iat: nowSec - 30, exp: nowSec + 3600 };
-            if (env.QWEATHER_DEVELOPER_ID || env.QWEATHER_ISS) {
-                payload.iss = env.QWEATHER_DEVELOPER_ID || env.QWEATHER_ISS;
-            }
+            const iss = env.QWEATHER_DEVELOPER_ID || env.DEVELOPER_ID || env.QWEATHER_ISS || env['开发者ID'] || 'Q9838E560C';
+            const payload = { sub: projectId, iss, iat: nowSec - 30, exp: nowSec + 3600 };
             const signingInput = base64UrlEncode(JSON.stringify(header)) + '.' + base64UrlEncode(JSON.stringify(payload));
             const sig = await globalThis.crypto.subtle.sign({ name: 'Ed25519' }, key, new TextEncoder().encode(signingInput));
             const token = signingInput + '.' + base64UrlEncode(sig);
@@ -444,10 +442,12 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
     const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
+    const iss = env.QWEATHER_DEVELOPER_ID || env.DEVELOPER_ID || env.QWEATHER_ISS || env['开发者ID'] || 'Q9838E560C';
 
     const lines = ['【和风天气诊断报告】'];
     lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
     lines.push(`• Project ID: ${projectId ? `已配置 (尾号 ${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
+    lines.push(`• Developer ID: ${iss ? `已配置 (尾号 ${String(iss).slice(-4)})` : '❌ 未检测到'}`);
     lines.push(`• Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
     lines.push(`• API Host: ${host}`);
 
