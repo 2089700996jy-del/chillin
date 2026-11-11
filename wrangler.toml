@@ -27,6 +27,12 @@ LLM_API_BASE = "https://api.deepseek.com/v1"
 LLM_MODEL = "deepseek-flash"
 VISION_MODEL = "deepseek-flash"
 
+# 🌤️ 和风天气（QWeather）公共参数（固化在此处，防止每次 wrangler 部署覆盖远端变量）
+# 私钥与 Key ID 建议在 Cloudflare Dashboard「机密 (Secret)」中维护，或运行 wrangler secret put
+QWEATHER_PROJECT_ID = "45E5WDY7H8"
+QWEATHER_DEVELOPER_ID = "Q9838E560C"
+QWEATHER_API_HOST = "kn359j8pjc.re.qweatherapi.com"
+
 # 定时任务：两条 —— 每分钟那条只跑微信 ClawBot 长轮询（消息实时性），
 # 每小时第 13 分钟那条才跑 UGC 扫描与各类清理（见 workers/src/maintenance.js）。
 [triggers]

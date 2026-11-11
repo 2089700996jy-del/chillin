@@ -433,8 +433,8 @@ export async function buildBotReply(env, db, userId, content) {
 
     const commandReply = await runCommand(env, db, userId, text);
     if (commandReply !== null) {
-        // 帮助只是使用说明，不必占用对话上下文
-        if (!HELP_RE.test(cmdText)) {
+        // 帮助与诊断只是系统查询与使用说明，不必占用对话上下文与历史存储
+        if (!HELP_RE.test(cmdText) && !/^(?:天气诊断|天气状态|检查天气|和风状态)$/.test(cmdText)) {
             await saveChatTurn(db, userId, 'user', text);
             await saveChatTurn(db, userId, 'assistant', commandReply);
         }

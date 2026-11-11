@@ -479,7 +479,7 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
         if (!raw.hourly.length && !raw.daily.length) {
             lines.push(`• 天气数据: ❌ 未拉取到预报 (${lastApiError || '返回为空'})`);
             if (tokenResult.type === 'bearer') {
-                lines.push(`\n【调试 Token (可在 jwt.qweather.com 验证)】\n${tokenResult.token}`);
+                lines.push('• 凭据校验: Ed25519 Token 签发正常（已脱敏隐藏）');
             }
         } else {
             lines.push(`• 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);
