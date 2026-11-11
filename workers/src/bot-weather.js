@@ -30,21 +30,28 @@ export function base64UrlEncode(bytesOrStr) {
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/** PEM 格式私钥转 Uint8Array DER */
+/** PEM 格式私钥转 Uint8Array DER（兼容标准 PKCS#8 与 32 字节 Raw 裸私钥） */
 export function pemToDer(pem) {
     const b64 = String(pem || '').replace(/-----[^\n]+-----|\s+/g, '');
     const bin = atob(b64);
     const buf = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    if (buf.length === 32) {
+        const pkcs8Prefix = new Uint8Array([0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20]);
+        const full = new Uint8Array(48);
+        full.set(pkcs8Prefix, 0);
+        full.set(buf, 16);
+        return full;
+    }
     return buf;
 }
 
 /** 生成和风天气 Ed25519 JWT 凭据（有效时长 1 小时，内存缓存 50 分钟） */
 export async function getQWeatherToken(env, nowMs = Date.now()) {
     if (!env) return null;
-    const keyId = env.QWEATHER_KEY_ID;
-    const projectId = env.QWEATHER_PROJECT_ID;
-    const privKeyPem = env.QWEATHER_PRIVATE_KEY;
+    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env.QWEATHER_KID;
+    const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env.QWEATHER_SUB;
+    const privKeyPem = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
 
     if (keyId && projectId && privKeyPem) {
         if (cachedJwt && nowMs < cachedJwtExp) return { type: 'bearer', token: cachedJwt };
@@ -424,4 +431,51 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
 
     weatherCache.set(cacheKey, { reply, exp: nowMs + 30 * 60 * 1000 });
     return reply;
+}
+
+/** 天气服务诊断工具：排查变量配置、密钥签名与 API 联通性 */
+export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, nowMs = Date.now()) {
+    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env.QWEATHER_KID;
+    const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env.QWEATHER_SUB;
+    const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
+    const host = env.QWEATHER_API_HOST || env.API_HOST || 'devapi.qweather.com';
+
+    const lines = ['【和风天气诊断报告】'];
+    lines.push(`- Key ID: ${keyId ? `已配置 (***${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
+    lines.push(`- Project ID: ${projectId ? `已配置 (***${String(projectId).slice(-4)})` : '❌ 未检测到'}`);
+    lines.push(`- Private Key: ${privKey ? `已配置 (长度 ${String(privKey).length})` : '❌ 未检测到'}`);
+    lines.push(`- API Host: ${host}`);
+
+    if (!keyId || !projectId || !privKey) {
+        lines.push('\n⚠️ 环境变量不完整，请确认在 Cloudflare Workers (chillin-api) 环境变量中添加了 QWEATHER_KEY_ID、QWEATHER_PROJECT_ID 和 QWEATHER_PRIVATE_KEY。');
+        return lines.join('\n');
+    }
+
+    try {
+        const tokenResult = await getQWeatherToken(env, nowMs);
+        if (!tokenResult || !tokenResult.token) {
+            lines.push('- Ed25519 签名: ❌ 签发失败（私钥格式可能无效）');
+            return lines.join('\n');
+        }
+        lines.push('- Ed25519 签名: ✅ 签发成功');
+
+        const city = await resolveUserCity(db, userId);
+        lines.push(`- 目标城市: ${city}`);
+        const cityInfo = await lookupCity(env, city, fetchImpl, nowMs);
+        if (!cityInfo) {
+            lines.push(`- 城市解析: ❌ 无法查到 ${city}（请检查控制台公钥或 API Host）`);
+            return lines.join('\n');
+        }
+        lines.push(`- 城市解析: ✅ 成功 (Location ID: ${cityInfo.id})`);
+
+        const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
+        if (!raw.hourly.length && !raw.daily.length) {
+            lines.push('- 天气数据: ❌ 未拉取到预报（可能需在 Cloudflare 配置专属 QWEATHER_API_HOST）');
+        } else {
+            lines.push(`- 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);
+        }
+    } catch (err) {
+        lines.push(`- 异常信息: ${err && err.message}`);
+    }
+    return lines.join('\n');
 }

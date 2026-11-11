@@ -23,7 +23,7 @@ import {
 import { handleClawLinkMessage } from './bot-links.js';
 import { maybeClawImageFollowUp } from './bot-image-flow.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
-import { maybeWeatherAnswer } from './bot-weather.js';
+import { maybeWeatherAnswer, diagnoseWeatherConfig } from './bot-weather.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
     runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder, skipReminderFollowUp,
@@ -274,6 +274,10 @@ export async function runCommand(env, db, userId, content) {
         const mod = await import('./bot-outreach.js');
         await mod.setOutreachEnabled(db, userId, true);
         return '好，那我偶尔想起什么就跟你说一句——一天最多一次，你随时可以让我安静。';
+    }
+
+    if (/^(?:天气诊断|天气状态|检查天气|和风状态)$/.test(text)) {
+        return diagnoseWeatherConfig(env, db, userId);
     }
 
     // 交流偏好优先于「忘记」：否则「忘记偏好 …」会被档案的忘记指令抢走。

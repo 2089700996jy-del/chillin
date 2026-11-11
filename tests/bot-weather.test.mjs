@@ -5,7 +5,7 @@ import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
     base64UrlEncode, pemToDer, getQWeatherToken, lookupCity,
     analyzeWeatherData, formatWeatherMessage, runMorningWeatherCare,
-    maybeWeatherAnswer, isWeatherQuery
+    maybeWeatherAnswer, isWeatherQuery, diagnoseWeatherConfig
 } from '../workers/src/bot-weather.js';
 
 const integration = sqliteTest;
@@ -237,5 +237,33 @@ integration('maybeWeatherAnswer 白天随手查天气秒回', async () => {
     const reply = await maybeWeatherAnswer(env, db, 1, '今天福州天气怎么样', fetcher.impl);
     assert.match(reply, /【福州天气】今天多云/);
     assert.match(reply, /17～23℃/);
+});
+
+test('pemToDer 兼容 32 字节 Raw 裸私钥并成功签发 JWT', async () => {
+    const pkcs8Der = testKeyPair.privateKey.export({ type: 'pkcs8', format: 'der' });
+    const raw32 = pkcs8Der.subarray(16);
+    const raw32B64 = Buffer.from(raw32).toString('base64');
+    const env = mockWeatherEnv({ QWEATHER_PRIVATE_KEY: raw32B64 });
+    const token = await getQWeatherToken(env, Date.now() + 100000);
+    assert.equal(token.type, 'bearer');
+    assert.ok(token.token.startsWith('eyJ'));
+});
+
+integration('diagnoseWeatherConfig 诊断报告正常评估变量与连通性', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    const fetcher = mockFetch({
+        '/v2/city/lookup': { code: '200', location: [{ id: '101230101', name: '福州', adm1: '福建省' }] },
+        '/weather/24h': { code: '200', hourly: [{ fxTime: '2026-11-11T14:00+08:00', temp: '23', precip: '0.0', text: '多云' }] },
+        '/weather/3d': { code: '200', daily: [{ fxDate: '2026-11-11', tempMax: '23', tempMin: '17', textDay: '多云', uvIndex: '2' }] },
+        '/weather/warning/now': { code: '200', warning: [] },
+        '/indices/1d': { code: '200', daily: [] }
+    });
+    const env = mockWeatherEnv();
+    const report = await diagnoseWeatherConfig(env, db, 1, fetcher.impl);
+    assert.match(report, /【和风天气诊断报告】/);
+    assert.match(report, /Key ID: 已配置/);
+    assert.match(report, /Ed25519 签名: ✅ 签发成功/);
+    assert.match(report, /城市解析: ✅ 成功/);
 });
 
