@@ -78,10 +78,15 @@ export async function getQWeatherToken(env, nowMs = Date.now()) {
     return null;
 }
 
+let lastApiError = '';
+
 /** 发起和风天气 API 请求 */
 export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date.now()) {
     const auth = await getQWeatherToken(env, nowMs);
-    if (!auth) return null;
+    if (!auth) {
+        lastApiError = '无有效认证凭据';
+        return null;
+    }
     const url = new URL(urlStr);
     const headers = { 'Accept-Encoding': 'gzip' };
     if (auth.type === 'bearer') {
@@ -91,10 +96,17 @@ export async function fetchQWeather(env, urlStr, fetchImpl = fetch, nowMs = Date
     }
     try {
         const res = await fetchImpl(url.toString(), { headers });
-        if (!res.ok) return null;
+        if (!res.ok) {
+            const body = await res.text().catch(() => '');
+            lastApiError = `HTTP ${res.status}: ${body.slice(0, 80)}`;
+            return null;
+        }
         const data = await res.json();
-        return (data && (data.code === '200' || data.code === 200)) ? data : null;
+        if (data && (data.code === '200' || data.code === 200)) return data;
+        lastApiError = `Code ${data ? data.code : 'unknown'}`;
+        return null;
     } catch (err) {
+        lastApiError = '异常: ' + (err && err.message);
         console.error('[bot-weather] API 请求异常: ' + (err && err.message));
         return null;
     }
@@ -108,47 +120,30 @@ export async function lookupCity(env, cityName, fetchImpl = fetch, nowMs = Date.
     const raw = String(cityName || '').trim();
     if (!raw) return null;
     const cleanCity = raw.replace(/[省市县区旗]$/, '');
-    if (COMMON_CITIES[cleanCity]) {
-        return { id: COMMON_CITIES[cleanCity], name: cleanCity, adm1: '', adm2: cleanCity };
-    }
+    if (COMMON_CITIES[cleanCity]) return { id: COMMON_CITIES[cleanCity], name: cleanCity, adm1: '', adm2: cleanCity };
     const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
-    const endpoints = [
-        'https://' + host + '/geo/v2/city/lookup?location=' + encodeURIComponent(cleanCity) + '&range=cn',
-        'https://' + host + '/v2/city/lookup?location=' + encodeURIComponent(cleanCity) + '&range=cn'
-    ];
-    for (const url of endpoints) {
-        const data = await fetchQWeather(env, url, fetchImpl, nowMs);
-        if (data && Array.isArray(data.location) && data.location.length) {
-            const loc = data.location[0];
-            return { id: loc.id, name: loc.name, adm1: loc.adm1, adm2: loc.adm2 };
-        }
-    }
-    return null;
+    const data = await fetchQWeather(env, `https://${host}/geo/v2/city/lookup?location=${encodeURIComponent(cleanCity)}&range=cn`, fetchImpl, nowMs);
+    if (!data || !Array.isArray(data.location) || !data.location.length) return null;
+    const loc = data.location[0];
+    return { id: loc.id, name: loc.name, adm1: loc.adm1, adm2: loc.adm2 };
 }
 
 /** 完整抓取 24 小时预报、3 天预报、气象预警和生活指数 */
 export async function fetchFullWeatherData(env, locationId, fetchImpl = fetch, nowMs = Date.now()) {
-    const primaryHost = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
-    const fetchWithHost = async (host) => {
-        const base = 'https://' + host + '/v7';
-        const [h24, d3, warning, indices] = await Promise.all([
-            fetchQWeather(env, base + '/weather/24h?location=' + locationId, fetchImpl, nowMs),
-            fetchQWeather(env, base + '/weather/3d?location=' + locationId, fetchImpl, nowMs),
-            fetchQWeather(env, base + '/weather/warning/now?location=' + locationId, fetchImpl, nowMs),
-            fetchQWeather(env, base + '/indices/1d?type=3,5&location=' + locationId, fetchImpl, nowMs)
-        ]);
-        return {
-            hourly: (h24 && Array.isArray(h24.hourly)) ? h24.hourly : [],
-            daily: (d3 && Array.isArray(d3.daily)) ? d3.daily : [],
-            warning: (warning && Array.isArray(warning.warning)) ? warning.warning : [],
-            indices: (indices && Array.isArray(indices.daily)) ? indices.daily : []
-        };
+    const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
+    const base = 'https://' + host + '/v7';
+    const [h24, d3, warning, indices] = await Promise.all([
+        fetchQWeather(env, base + '/weather/24h?location=' + locationId, fetchImpl, nowMs),
+        fetchQWeather(env, base + '/weather/3d?location=' + locationId, fetchImpl, nowMs),
+        fetchQWeather(env, base + '/weather/warning/now?location=' + locationId, fetchImpl, nowMs),
+        fetchQWeather(env, base + '/indices/1d?type=3,5&location=' + locationId, fetchImpl, nowMs)
+    ]);
+    return {
+        hourly: (h24 && Array.isArray(h24.hourly)) ? h24.hourly : [],
+        daily: (d3 && Array.isArray(d3.daily)) ? d3.daily : [],
+        warning: (warning && Array.isArray(warning.warning)) ? warning.warning : [],
+        indices: (indices && Array.isArray(indices.daily)) ? indices.daily : []
     };
-    let res = await fetchWithHost(primaryHost);
-    if (!env.QWEATHER_API_HOST && !res.hourly.length && !res.daily.length && primaryHost !== 'devapi.qweather.com') {
-        res = await fetchWithHost('devapi.qweather.com');
-    }
-    return res;
 }
 
 /** 智能气象与温差数学分析器 */
@@ -480,7 +475,7 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
 
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
         if (!raw.hourly.length && !raw.daily.length) {
-            lines.push('• 天气数据: ❌ 未拉取到预报（可能需在 Cloudflare 配置专属 QWEATHER_API_HOST）');
+            lines.push(`• 天气数据: ❌ 未拉取到预报（${lastApiError || '返回为空'}）`);
         } else {
             lines.push(`• 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);
         }
