@@ -31,7 +31,7 @@
 ### 2.2 严格领域模块归档
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 
-（`workers/src/` 共 **49 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、19 个 Bot 模块（对话编排 / 提示词与指令辅助 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 关怀素材挖掘 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入 / 微信扫码认证 / 纯文本格式化）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **50 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、20 个 Bot 模块（对话编排 / 提示词与指令辅助 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 关怀素材挖掘 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入 / 微信扫码认证 / 纯文本格式化）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -78,6 +78,7 @@
 | [`workers/src/bot-health.js`](../../workers/src/bot-health.js) | Bot 健康打卡 | 健康数据结构化沉淀：将步数、睡眠等一句话记入 `health_daily`（一天一行、UPSERT 幂等、旧值保留）；斤单位折半为公斤；日期统一东八区；「健康」指令回显最近 7 天统计；仅只读回显、不写回三方；保持模块在 500 行以内。 |
 | [`workers/src/bot-search.js`](../../workers/src/bot-search.js) | Bot 检索上游适配 | 主用 DeepSeek 官方 Search（`POST /v1/tools/search`，复用 `LLM_API_KEY`），Jina 作为回落；请求带 `need_content` 与日期锚点 `dateHints`，正文 ≥200 字优先于 summary；回包上限 1MB，失败回退空数组；支持 `runWebSearchMulti` 多词并行去重检索；客户端检索死线 12s。 |
 | [`workers/src/bot-web.js`](../../workers/src/bot-web.js) | Bot 联网检索 | 出站意图闸门（显式「查一下」/时效性问句出站，自身记录强制本地 RAG），检索后由模型合成回答；默认只给结论，追问出处时复用缓存；结果 6 小时缓存，每人每天 100 次上限与每分钟 2 次突发闸；规划 4s + 检索 12s + 合成 20s 严格死线控制；时区换算北京时间并提示差异。 |
+| [`workers/src/bot-weather.js`](../../workers/src/bot-weather.js) | 和风天气与晨报关怀 | Ed25519 JWT 与 API Key 双模认证，高精度 24h 逐小时极温与降水区间提取、昨日温差与昼夜温差计算；8:00 晨间关怀「无事不扰」静默门禁；白天随手查秒回（30 分钟缓存）。 |
 | [`workers/src/bot-claw.js`](../../workers/src/bot-claw.js) | 外部 IM 接入（微信 ClawBot / iLink 协议） | 每分钟 Cron 长轮询拉消息、游标排重、瞬时 5xx 短退避；经 iLink `sendmessage` 回发文本；成功拉信时刷新 `last_poll_at` 并清除 `last_error`。 |
 | [`workers/src/bot-claw-auth.js`](../../workers/src/bot-claw-auth.js) | 微信 ClawBot 扫码认证与 API | 微信 ClawBot 扫码绑定生命周期状态机（二维码获取/扫码轮询/节点重定向切换/绑定/解绑/D1 账户元数据持久化，令牌只落库不回传）与应用内配置 API。 |
 | [`workers/src/bot-media.js`](../../workers/src/bot-media.js) | Bot 图片接入 | 微信图片消息解析与下载；明文魔数嗅探失败时采用 AES-128-ECB + PKCS7 解密；支持直链与授权参数等多形态地址逐组探测；魔数验证成功后写入 R2 并存入 `bot_pending_media` 待存位（60 分钟过期）；回「记录」才落随手记；存图与视觉识别并行。 |

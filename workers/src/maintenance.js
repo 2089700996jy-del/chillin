@@ -19,6 +19,7 @@ import { pruneOldBackups } from './garden-media.js';
 import { pollClawAccounts } from './bot-claw.js';
 import { runOutreachChecks } from './bot-outreach.js';
 import { runReminderChecks } from './bot-reminders.js';
+import { runMorningWeatherCare } from './bot-weather.js';
 import { runAutoResume } from './agent-scheduler.js';
 
 /** 每分钟触发的那条 cron 表达式，与 wrangler.toml 保持一致 */
@@ -60,6 +61,14 @@ export async function runScheduled(env, event, pollOptions, ctx) {
         catch (err) { console.error('[scheduled] bot reminders failed:', err); }
         try { await runOutreachChecks(env, env.DB, undefined, pollOptions); }
         catch (err) { console.error('[scheduled] bot outreach failed:', err); }
+
+        // 每天早上 8:00（东八区）执行智能天气关怀（有雨/极端温差才提醒，平稳舒适完全静默）
+        const scheduledMs = Number.isFinite(pollOptions && pollOptions.nowMs) ? Number(pollOptions.nowMs) : Date.now();
+        const east8Date = new Date(scheduledMs + 8 * 3600 * 1000);
+        if (east8Date.getUTCHours() === 8 && east8Date.getUTCMinutes() === 0) {
+            try { await runMorningWeatherCare(env, env.DB, undefined, pollOptions); }
+            catch (err) { console.error('[scheduled] bot weather care failed:', err); }
+        }
         const opts = Object.assign({}, pollOptions);
         if (!opts.defer && ctx && typeof ctx.waitUntil === 'function') opts.defer = (task) => ctx.waitUntil(task);
 

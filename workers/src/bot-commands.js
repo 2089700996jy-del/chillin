@@ -23,6 +23,7 @@ import {
 import { handleClawLinkMessage } from './bot-links.js';
 import { maybeClawImageFollowUp } from './bot-image-flow.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
+import { maybeWeatherAnswer } from './bot-weather.js';
 import {
     parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
     runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder, skipReminderFollowUp,
@@ -434,6 +435,14 @@ export async function buildBotReply(env, db, userId, content) {
             await saveChatTurn(db, userId, 'assistant', commandReply);
         }
         return commandReply;
+    }
+
+    // 高精度天气问答：和风天气已配置时优先返回逐小时温度、降雨与温差信息
+    const weatherReply = await maybeWeatherAnswer(env, db, userId, text);
+    if (weatherReply) {
+        await saveChatTurn(db, userId, 'user', text);
+        await saveChatTurn(db, userId, 'assistant', weatherReply);
+        return weatherReply;
     }
 
     // 联网检索：「查一下 X」这类显式请求，或带时效性的问题（今天/最新/赛程…）且问句形态明显。
