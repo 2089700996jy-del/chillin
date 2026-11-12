@@ -2397,12 +2397,13 @@ integration('Bot 日常流程打通 - 聊天建待办、定时提醒与完成核
     const feedUpdated = await db.prepare("SELECT content FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0 ORDER BY id ASC LIMIT 1").first();
     assert.equal(feedUpdated.content, '✅ 去超市买鸡蛋');
 
-    // 4. 关键词核销定时提醒：完成 给电动牙刷充电 -> 提醒变为 done 并归档到随手记
+    // 4. 关键词核销定时提醒：完成 给电动牙刷充电 -> 提醒变为 done，且不写进随手记
     const doneRemindReply = await buildBotReply(env, db, 1, '搞定 给电动牙刷充电');
     assert.match(doneRemindReply, /搞定啦/);
-    assert.match(doneRemindReply, /已核销并归档到随手记/);
+    assert.match(doneRemindReply, /已核销/);
     const reminderDone = await db.prepare("SELECT status FROM bot_reminders WHERE user_id = 1 AND is_deleted = 0").first();
     assert.equal(reminderDone.status, 'done');
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0 AND content LIKE '%电动牙刷%'").first()).n, 0, '定时提醒完成不写进随手记');
 
     // 5. 新建另一条待办，发光杆「完成」自动划掉最近一条待办
     await buildBotReply(env, db, 1, '待办：读完第三章');

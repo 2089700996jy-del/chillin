@@ -321,14 +321,12 @@ export async function runCommand(env, db, userId, content) {
         const fired = await recentFiredReminder(db, userId, nowMs);
         if (fired && (!kw || fired.text.includes(kw))) {
             await completeReminder(db, userId, fired);
-            await saveFeed(db, userId, '✅ ' + fired.text);
-            return '记下了 ✅「' + fired.text + '」已完成并写进随手记。';
+            return '搞定啦 ✅ 提醒「' + fired.text + '」已标为完成。';
         }
         const target = await db.prepare("SELECT id, text FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC LIMIT 1").bind(userId, kw).first();
         if (target) {
             await db.prepare("UPDATE bot_reminders SET status = 'done', updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(target.id).run();
-            await saveFeed(db, userId, '✅ ' + target.text);
-            return '搞定啦 ✅ 待办提醒「' + target.text + '」已核销并归档到随手记。';
+            return '搞定啦 ✅ 待办提醒「' + target.text + '」已核销。';
         }
         const feedRow = await db.prepare("SELECT id, content FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND content LIKE '[ ] %' AND content LIKE '%' || ?2 || '%' ORDER BY id DESC LIMIT 1").bind(userId, kw).first();
         if (feedRow) {
@@ -344,11 +342,10 @@ export async function runCommand(env, db, userId, content) {
         if (fired) {
             if (parseDoneReply(text)) {
                 await completeReminder(db, userId, fired);
-                await saveFeed(db, userId, '✅ ' + fired.text);
-                return '记下了 ✅「' + fired.text + '」已经写进随手记。';
+                return '搞定啦 ✅ 提醒「' + fired.text + '」已标为完成。';
             }
             try { await skipReminderFollowUp(db, userId, fired); } catch (err) { console.error('[reminder] 取消失败追问: ' + (err && err.message)); }
-            return '好，那就不催了。做完了随时跟我说一声，我记进花园。';
+            return '好，那就不催了。做完了随时跟我说一声。';
         }
         if (parseDoneReply(text)) {
             const feedRow = await db.prepare("SELECT id, content FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND content LIKE '[ ] %' ORDER BY id DESC LIMIT 1").bind(userId).first();

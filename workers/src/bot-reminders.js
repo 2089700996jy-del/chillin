@@ -227,11 +227,11 @@ export function parseNotYetReply(text) {
 
 /** 到点开口 / 追问的文本（模板，不经过模型——模型多一层就可能忘记说了什么） */
 export function reminderFiredText(text) {
-    return '⏰ 提醒你：' + text + '\n\n做完了回「完成」，我把它记进随手记；今天不做了回「还没」。';
+    return '⏰ 提醒你：' + text + '\n\n做完了回「完成」；今天不做了回「还没」。';
 }
 
 export function reminderAskText(text) {
-    return '刚才提醒的「' + text + '」做得怎么样了？回「完成」我记一笔，回「还没」我就不催了。';
+    return '刚才提醒的「' + text + '」做得怎么样了？回「完成」标为完成，回「还没」我就不催了。';
 }
 
 async function loadBoundAccount(db, userId) {
@@ -289,7 +289,7 @@ export async function listReminders(db, userId, nowMs) {
         lines.push((i + 1) + '. ' + formatReminderTime(r.fire_at_ms, now) + ' — ' + r.text + (r.status === 'fired' ? '（刚提醒过）' : ''));
     });
     lines.push('');
-    lines.push('取消哪条就发「取消提醒 <编号>」；做完了回「完成」，我会把它记进随手记。');
+    lines.push('取消哪条就发「取消提醒 <编号>」；做完了回「完成」。');
     return lines.join('\n');
 }
 
