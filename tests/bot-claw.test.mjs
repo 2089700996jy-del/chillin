@@ -2405,6 +2405,23 @@ integration('Bot 日常流程打通 - 聊天建待办、定时提醒与完成核
     assert.equal(reminderDone.status, 'done');
     assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0 AND content LIKE '%电动牙刷%'").first()).n, 0, '定时提醒完成不写进随手记');
 
+    // 4b. 多条提醒相继触发（fired）场景：关键词核销较早的一条，准确命中且不落随手记
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, fired_at_ms, status, follow_up_at_ms, follow_up_ms, follow_up_status, follow_up_retry_at_ms, is_deleted) VALUES (1, 1, '早点睡', ?1, ?1, 'fired', ?2, 600000, 'pending', ?2, 0)")
+        .bind(Date.now() - 600000, Date.now()).run();
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, fired_at_ms, status, follow_up_at_ms, follow_up_ms, follow_up_status, follow_up_retry_at_ms, is_deleted) VALUES (1, 1, '吃维生素', ?1, ?1, 'fired', ?2, 600000, 'pending', ?2, 0)")
+        .bind(Date.now() - 300000, Date.now() + 300000).run();
+    const doneEarlierFired = await buildBotReply(env, db, 1, '完成 早点睡');
+    assert.match(doneEarlierFired, /搞定啦/);
+    assert.match(doneEarlierFired, /已核销/);
+    const earlierRow = await db.prepare("SELECT status, follow_up_retry_at_ms FROM bot_reminders WHERE text = '早点睡'").first();
+    assert.equal(earlierRow.status, 'done');
+    assert.equal(earlierRow.follow_up_retry_at_ms, 0);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0 AND content LIKE '%早点睡%'").first()).n, 0);
+
+    const doneLaterFired = await buildBotReply(env, db, 1, '完成 吃维生素');
+    assert.match(doneLaterFired, /已标为完成/);
+    assert.equal((await db.prepare("SELECT COUNT(*) AS n FROM quick_feeds WHERE user_id = 1 AND is_deleted = 0 AND content LIKE '%吃维生素%'").first()).n, 0);
+
     // 5. 新建另一条待办，发光杆「完成」自动划掉最近一条待办
     await buildBotReply(env, db, 1, '待办：读完第三章');
     const bareDoneReply = await buildBotReply(env, db, 1, '完成');

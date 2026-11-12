@@ -220,6 +220,34 @@ sqliteTest('提醒 - 列表与按编号取消：只动 pending，一律软删', 
     assert.match(await cancelReminder(db, 1, '交电费', NOW), /没找到待提醒里含/);
 });
 
+sqliteTest('提醒 - 列表与取消对 fired 与 pending 保持一致序号，取消 fired 停止追问', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    // 1 条已触发（fired）并在等待追问，1 条待触发（pending）
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, fired_at_ms, status, follow_up_at_ms, follow_up_ms, follow_up_status, follow_up_retry_at_ms, is_deleted) VALUES (1, 1, '敷面膜', ?1, ?1, 'fired', ?2, 600000, 'pending', ?2, 0)")
+        .bind(NOW - 300000, NOW + 300000).run();
+    await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (1, 1, '给电动牙刷充电', ?1, 'pending', 0)")
+        .bind(NOW + 3600000).run();
+
+    const list = await listReminders(db, 1, NOW);
+    assert.match(list, /1\. .* — 敷面膜（刚提醒过）/);
+    assert.match(list, /2\. .* — 给电动牙刷充电/);
+
+    // 按编号取消第 1 条（fired）
+    const cancelRes = await cancelReminder(db, 1, '1', NOW);
+    assert.match(cancelRes, /取消了：.*敷面膜/);
+    const row = await db.prepare("SELECT status, follow_up_retry_at_ms, is_deleted FROM bot_reminders WHERE text = '敷面膜'").first();
+    assert.equal(row.status, 'cancelled');
+    assert.equal(row.follow_up_retry_at_ms, 0, '取消 fired 提醒必须清空追问重试时间');
+    assert.equal(row.is_deleted, 1);
+
+    // 取消后，第 2 条升为第 1 条，按编号取消依然严丝合缝
+    const listAfter = await listReminders(db, 1, NOW);
+    assert.match(listAfter, /1\. .* — 给电动牙刷充电/);
+    assert.ok(!listAfter.includes('敷面膜'));
+});
+
 sqliteTest('提醒 - cron：到点开口带空 context_token，10 分钟后追问一次', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

@@ -293,27 +293,27 @@ export async function listReminders(db, userId, nowMs) {
     return lines.join('\n');
 }
 
-/** 「取消提醒 N」或「取消提醒 关键词」：只动 pending，软删 */
+/** 「取消提醒 N」或「取消提醒 关键词」：pending 或刚提醒过的 fired 均可取消并停止追问，一律软删 */
 export async function cancelReminder(db, userId, arg, nowMs) {
     const now = Number(nowMs) || Date.now();
     const key = String(arg == null ? '' : arg).trim();
     if (!key) return '取消哪条？先发「我的提醒」看编号，再发「取消提醒 1」。';
     let target = null;
     if (/^\d{1,2}$/.test(key)) {
-        const res = await db.prepare("SELECT id, text, fire_at_ms FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' ORDER BY fire_at_ms ASC, id ASC LIMIT 20")
+        const res = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status IN ('pending', 'fired') ORDER BY fire_at_ms ASC, id ASC LIMIT 20")
             .bind(userId).all();
         const list = (res && res.results) || [];
         target = list[Number(key) - 1] || null;
         if (!target) return '没有第 ' + key + ' 条待提醒，发「我的提醒」看看现在的编号。';
     } else {
-        target = await db.prepare("SELECT id, text, fire_at_ms FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC, id ASC LIMIT 1")
+        target = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status IN ('pending', 'fired') AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC, id ASC LIMIT 1")
             .bind(userId, key).first() || null;
         if (!target) return '没找到待提醒里含「' + key + '」的事，发「我的提醒」看看。';
     }
-    const upd = await db.prepare("UPDATE bot_reminders SET status = 'cancelled', is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'pending'")
+    const upd = await db.prepare("UPDATE bot_reminders SET status = 'cancelled', follow_up_retry_at_ms = 0, is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status IN ('pending', 'fired')")
         .bind(target.id, userId).run();
     if (Number((upd && upd.meta && upd.meta.changes) || 0) !== 1) {
-        return '这条刚刚变了（可能已经提醒过），发「我的提醒」看看最新的。';
+        return '这条刚刚变了（可能已被取消或核销），发「我的提醒」看看最新的。';
     }
     return '好，取消了：' + formatReminderTime(target.fire_at_ms, now) + ' — ' + target.text + '。';
 }

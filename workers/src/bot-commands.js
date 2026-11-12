@@ -323,9 +323,9 @@ export async function runCommand(env, db, userId, content) {
             await completeReminder(db, userId, fired);
             return '搞定啦 ✅ 提醒「' + fired.text + '」已标为完成。';
         }
-        const target = await db.prepare("SELECT id, text FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC LIMIT 1").bind(userId, kw).first();
+        const target = await db.prepare("SELECT id, text, status FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status IN ('pending', 'fired') AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC LIMIT 1").bind(userId, kw).first();
         if (target) {
-            await db.prepare("UPDATE bot_reminders SET status = 'done', updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(target.id).run();
+            await db.prepare("UPDATE bot_reminders SET status = 'done', follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(target.id).run();
             return '搞定啦 ✅ 待办提醒「' + target.text + '」已核销。';
         }
         const feedRow = await db.prepare("SELECT id, content FROM quick_feeds WHERE user_id = ?1 AND is_deleted = 0 AND content LIKE '[ ] %' AND content LIKE '%' || ?2 || '%' ORDER BY id DESC LIMIT 1").bind(userId, kw).first();
