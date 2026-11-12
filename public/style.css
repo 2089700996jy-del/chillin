@@ -1458,6 +1458,7 @@ body.dark-reader-body .timeline-filter__select {
   outline: none ;
   box-shadow: none ;
   font-family: var(--font-family);
+  caret-color: var(--accent-text, var(--accent-color));
   -webkit-appearance: none;
   appearance: none;
 }
@@ -1483,6 +1484,7 @@ body.dark-reader-body .timeline-filter__select {
   box-shadow: none ;
   line-height: 1.5;
   font-family: var(--font-family);
+  caret-color: var(--accent-text, var(--accent-color));
   -webkit-appearance: none;
   appearance: none;
 }
@@ -1588,7 +1590,14 @@ body.dark-reader-body .timeline-filter__select {
   outline: none;
   box-shadow: none;
   font-family: var(--font-family);
+  caret-color: var(--accent-text, var(--accent-color));
   min-width: 0;
+}
+.ios-editor-cover-input:focus,
+.ios-editor-cover-input:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
 }
 .ios-editor-cover-input::placeholder {
   color: var(--placeholder-color);
@@ -2124,8 +2133,15 @@ body.dark-reader-body .timeline-filter__select {
   color: var(--text-color);
   font-family: var(--font-family); 
   outline: none; 
+  caret-color: var(--accent-text, var(--accent-color));
   margin-bottom: 20px; 
   padding: 10px 0;
+}
+.note-paper-title:focus,
+.note-paper-title:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
 }
 .note-paper-content {
   width: 100%; 
@@ -2136,9 +2152,16 @@ body.dark-reader-body .timeline-filter__select {
   line-height: 32px;
   font-family: var(--font-family); 
   outline: none; 
+  caret-color: var(--accent-text, var(--accent-color));
   resize: none; 
   min-height: calc(60vh - 80px); 
   overflow: hidden;
+}
+.note-paper-content:focus,
+.note-paper-content:focus-visible {
+  outline: none;
+  border: none;
+  box-shadow: none;
 }
 .note-paper-content::placeholder, .note-paper-title::placeholder { 
   color: var(--placeholder-color);
@@ -10821,13 +10844,55 @@ body.dark-reader-body .k-directory-arrow {
   background: rgba(48, 209, 88, 0.18);
 }
 
-/* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none；组合胶囊容器内输入框由外层:focus-within统一呈现焦点环） */
-input:focus-visible:not(.k-journal-input):not(.k-searchbar-input):not(.cockpit-input),
-textarea:focus-visible,
-select:focus-visible,
-[contenteditable="true"]:focus-visible {
+/* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none；组合胶囊/无缝卡片/拟物纸张等无缝排版由外层或专用焦点光晕呈现） */
+textarea:focus-visible:not([class*="ios-"]):not([class*="note-paper-"]):not(.feed-textarea):not(.annotation-input):not(.form-group textarea):not(.widget-form-group textarea),
+select:focus-visible:not(.form-group select),
+[contenteditable="true"]:focus-visible,
+input:focus-visible:not(.k-journal-input):not(.k-searchbar-input):not(.cockpit-input):not([class*="ios-"]):not([class*="note-paper-"]):not(.feed-textarea):not(.ai-chat-input):not(.auth-input):not(#global-search-input):not(.prompts-search-input):not(.annotation-input):not(.form-group input):not(.widget-form-group input) {
   outline: 2px solid var(--focus-ring-color) !important;
   outline-offset: 1px;
+}
+
+/* 无缝编辑卡片、纸质拟物排版、搜索框与已有专属圆角光晕的表单容器：清除生硬直角外轮廓 */
+.ios-group-card input:focus,
+.ios-group-card input:focus-visible,
+.ios-group-card textarea:focus,
+.ios-group-card textarea:focus-visible,
+.ios-card-row input:focus,
+.ios-card-row input:focus-visible,
+.ios-card-row textarea:focus,
+.ios-card-row textarea:focus-visible,
+.ios-inner-input-stack input:focus,
+.ios-inner-input-stack input:focus-visible,
+.ios-inner-input-stack textarea:focus,
+.ios-inner-input-stack textarea:focus-visible,
+.note-paper-title:focus,
+.note-paper-title:focus-visible,
+.note-paper-content:focus,
+.note-paper-content:focus-visible,
+.feed-textarea:focus,
+.feed-textarea:focus-visible,
+.ai-chat-input:focus,
+.ai-chat-input:focus-visible,
+#global-search-input:focus,
+#global-search-input:focus-visible,
+.prompts-search-input:focus,
+.prompts-search-input:focus-visible,
+.auth-input:focus,
+.auth-input:focus-visible,
+.annotation-input:focus,
+.annotation-input:focus-visible,
+.form-group input:focus,
+.form-group input:focus-visible,
+.form-group textarea:focus,
+.form-group textarea:focus-visible,
+.form-group select:focus,
+.form-group select:focus-visible,
+.widget-form-group input:focus,
+.widget-form-group input:focus-visible,
+.widget-form-group textarea:focus,
+.widget-form-group textarea:focus-visible {
+  outline: none;
 }
 
 
