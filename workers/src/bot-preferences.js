@@ -37,6 +37,7 @@ const PREF_ALIASES = {
 const PREF_ORDER = ['tone', 'opinion', 'length', 'proactive', 'analysis', 'custom'];
 
 const LIST_RE = /^(?:我的|查看|看看)?\s*(?:交流)?偏好(?:列表)?[\s。！!～~]*$/i;
+const CLEAR_ALL_RE = /^(?:清空|清空全部|重置|忘记全部|删除全部)\s*(?:交流)?偏好[\s。！!～~]*$/i;
 const DELETE_RE = /^(?:忘记|删掉|删除|移除)\s*(?:交流)?偏好\s*[:：#]?\s*([\s\S]+)$/i;
 const DELETE_BARE_RE = /^(?:忘记|删掉|删除|移除)\s*(?:交流)?偏好[\s。！!～~]*$/i;
 const SET_COLON_RE = /^(?:设置|设定|记下|新增|改)?\s*(?:交流)?偏好\s*[:：]\s*([\s\S]+)$/i;
@@ -276,6 +277,11 @@ async function confirmPreferencePending(db, userId, pending) {
     }
     if (pending.action === 'set_preference') return confirmSetPreference(db, userId, pending);
     if (pending.action === 'delete_preference') return confirmDeletePreference(db, userId, pending);
+    if (pending.action === 'clear_preferences') {
+        await db.prepare("UPDATE bot_preferences SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE user_id = ?1 AND is_deleted = 0").bind(userId).run();
+        await clearPendingAction(db, userId);
+        return '已清空全部交流偏好，当前已恢复为系统默认出厂设定。';
+    }
     return null;
 }
 
@@ -288,6 +294,10 @@ export async function maybePreferenceCommand(db, userId, text) {
     if (!raw) return null;
 
     if (LIST_RE.test(raw)) return runListPreferences(db, userId);
+    if (CLEAR_ALL_RE.test(raw)) {
+        await savePendingAction(db, userId, 'clear_preferences', 'preference', 0, {});
+        return '要清空所有交流偏好（恢复为系统默认出厂的安静克制 INFP）吗？\n\n回「确认」执行，回「取消」不动。';
+    }
     if (DELETE_BARE_RE.test(raw)) return '要删哪条交流偏好？发「忘记偏好 <关键词或编号>」，我会先问一次再删。';
     if (SET_BARE_RE.test(raw)) return '想设成什么？比如「偏好 日常聊天：更自然，不要过度共情」。';
 
@@ -296,16 +306,16 @@ export async function maybePreferenceCommand(db, userId, text) {
     if (wantsConfirm || wantsCancel) {
         const pending = await readPendingAction(db, userId);
         if (!pending) return null;
-        if (pending.action !== 'set_preference' && pending.action !== 'delete_preference') return null;
+        if (pending.action !== 'set_preference' && pending.action !== 'delete_preference' && pending.action !== 'clear_preferences') return null;
         if (wantsCancel) {
             await clearPendingAction(db, userId);
             return '好，这条交流偏好不动了。';
         }
-        if (/^确认删除/i.test(raw) && pending.action !== 'delete_preference') {
+        if (/^确认删除/i.test(raw) && pending.action !== 'delete_preference' && pending.action !== 'clear_preferences') {
             return '这次待确认的是偏好设定，不是删除。回「确认」记下，或回「取消」放弃。';
         }
-        if (/^确认修改/i.test(raw) && pending.action === 'delete_preference') {
-            return '这次待确认的是删除偏好，不是修改。回「确认」删除，或回「取消」放弃。';
+        if (/^确认修改/i.test(raw) && (pending.action === 'delete_preference' || pending.action === 'clear_preferences')) {
+            return '这次待确认的是删除或清空偏好，不是修改。回「确认」执行，或回「取消」放弃。';
         }
         return confirmPreferencePending(db, userId, pending);
     }

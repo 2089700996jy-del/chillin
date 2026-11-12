@@ -487,10 +487,10 @@ function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {})
 
 export function generateFallbackReply(question, contextText) {
     if (!contextText || contextText.trim().length === 0 || contextText.includes('未检索到')) {
-        return `我在您的记忆花园里没有检索到与「${question}」直接相关的片段。可以换个关键词，或先在随手记/笔记里多记下一些想法。`;
+        return `翻了一下记录，没找到和「${question}」相关的事。可以换个词问我，或者之后在花园里多记一点。`;
     }
     const lines = contextText.split('\n').filter(Boolean);
-    return `针对您的提问 **“${question}”**，系统检索到以下相关记忆片段：\n\n` +
+    return `翻到之前记过这些相关的碎片：\n\n` +
         lines.slice(0, 8).map(l => l.startsWith('[') ? `\n### ${l}` : l).join('\n') +
-        `\n\n*(当前处于离线模式或大模型接口配置中，以上为记忆库直接检索汇总)*`;
+        `\n\n*(当前大模型未响应，以上为直接检索到的历史记录)*`;
 }

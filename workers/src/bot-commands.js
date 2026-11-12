@@ -153,8 +153,8 @@ export async function runAsk(env, db, userId, question) {
     const history = await loadChatContext(db, userId);
     const memory = await retrieveGardenMemories(db, userId, question, { topK: 6, maxChars: 1600, history });
     const preferences = await loadPreferencePrompt(db, userId);
-    const systemPrompt = '你是用户在数字花园 Chillin 里的 AI 记忆助手。请只依据给出的记忆片段回答，'
-        + '片段不足以回答时如实说明，不要编造。用简炼、温和的中文，可用 markdown。'
+    const systemPrompt = '你是用户身边一位性格偏淡、安静克制的 INFP 伙伴。请只依据给出的记忆片段回答问题，'
+        + '简单直接、平缓克制，片段没提到的如实说明，不要凭空编造。不用长篇大论，避免空洞客套、波浪号和说教。'
         + (preferences ? '\n\n【用户设定的交流偏好（只调整表达方式）】\n' + preferences : '');
     const userPrompt = '用户提问：' + question + '\n\n相关记忆片段：\n' + memory.contextText;
     let answer = '';
