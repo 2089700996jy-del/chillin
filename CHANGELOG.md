@@ -1,18 +1,32 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-11T06:01:59.400Z · 提交数：501
+> 生成时间：2026-11-12T06:57:40.274Z · 提交数：515
 
 ## 2026-11-11
 
 ### ✨ 新功能
 
+- **weather**: 绑定用户开发者ID (Q9838E560C) 补全 JWT Payload iss (v2.5.243)
+- **weather**: 绑定用户专属 API Host (kn359j8pjc.re.qweatherapi.com)
+- **weather**: 绑定用户专属项目与凭据ID默认值容错 (v2.5.243)
+- **weather**: 增强私钥与变量容错，新增天气诊断命令 (v2.5.243)
+- **weather**: 支持 QWeather 专属 API Host 与商用域名双向回退容错
+- **bot**: 接入和风天气 Ed25519 JWT 认证与 8:00 晨报智能关怀 (v2.5.243)
 - **rag**: 完成第三阶段数字花园知识统一 (v2.5.241)
 - **bot**: 完成第二阶段 AI 对话智能与认知升级 (v2.5.240)
 - **bot**: 恢复 11月8日经典 UI 布局并上线个人记忆核心 (v2.5.239)
 
 ### 🐛 缺陷修复
 
+- **security**: sanitize diagnose output, prevent turn saving, and pin qweather vars in wrangler.toml
+- **weather**: idempotency deduplication, cache bounding, and credential cleanup
+- **weather**: 遵循官方规范严格单一使用 X-QW-Api-Key Header (v2.5.244)
+- **weather**: 补齐 Payload iss 并兼容 X-QW-Api-Key 请求头 (v2.5.244)
+- **weather**: 严格遵循和风官方规范规范化 JWT Claims 并输出诊断 Token (v2.5.244)
+- **weather**: 优化模块行数并输出接口原始错误提示 (v2.5.243)
+- **weather**: 修复城市解析正则与微信Markdown排版错乱 (v2.5.243)
+- **weather**: 增强天气表惰性创建守卫与异常防护
 - **bot**: 修复主动关怀素材排重逻辑与跳过假性耗尽问题 (v2.5.242)
 
 ### ⏪ 回滚
