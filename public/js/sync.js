@@ -19,6 +19,24 @@ import {
 import { setHtml } from './trusted-types.js';
 import { idbSet, idbGetBatch, migrateFromLocalStorage } from './db.js';
 
+/** W3C Fetch 规范对 keepalive 请求体严格限制 64 KiB；设定 60 KiB 作为安全阈值防止超限抛出 TypeError: Failed to fetch */
+export const KEEPALIVE_MAX_BYTES = 60 * 1024;
+
+export function isKeepalivePayloadSafe(bodyStr) {
+    if (!bodyStr) return true;
+    try {
+        if (typeof Blob !== 'undefined') {
+            return new Blob([bodyStr]).size < KEEPALIVE_MAX_BYTES;
+        }
+        if (typeof TextEncoder !== 'undefined') {
+            return new TextEncoder().encode(bodyStr).length < KEEPALIVE_MAX_BYTES;
+        }
+        return bodyStr.length < KEEPALIVE_MAX_BYTES;
+    } catch (_) {
+        return false;
+    }
+}
+
 /** Per-user incremental sync cursor (migrates legacy global keys once). */
 function getSyncCursor(resource) {
     const keyed = localStorage.getItem(getLocalKey(`sync_${resource}`));
@@ -1135,16 +1153,17 @@ export async function syncFromApi() {
                     const pushedFeeds = makePushedTimestampMap(dirtyFeeds);
                     const pushedPrompts = makePushedTimestampMap(dirtyPrompts);
 
+                    const batchBody = JSON.stringify({
+                        weeklies: dirtyWeeklies,
+                        notes: dirtyNotes,
+                        bookmarks: dirtyBookmarks,
+                        feeds: dirtyFeeds,
+                        prompts: dirtyPrompts
+                    });
                     const res = await apiRequest('/api/sync/batch', {
                         method: 'POST',
-                        keepalive: true,
-                        body: JSON.stringify({
-                            weeklies: dirtyWeeklies,
-                            notes: dirtyNotes,
-                            bookmarks: dirtyBookmarks,
-                            feeds: dirtyFeeds,
-                            prompts: dirtyPrompts
-                        })
+                        keepalive: isKeepalivePayloadSafe(batchBody),
+                        body: batchBody
                     });
                     const resourceLists = { weeklies: state.database, notes: state.notesDatabase, bookmarks: state.bookmarksDatabase, feeds: state.feedsDatabase, prompts: state.promptsDatabase };
                     const conflictKeys = new Set(((res && res.conflicts) || []).map((entry) => entry.resource + ':' + String(entry.id)));
@@ -1294,10 +1313,11 @@ function apiSyncResource(resource, apiPath, item, method, opts = {}) {
     if (base && base.updated_at && !opts.force) payload.base_updated_at = base.updated_at;
     if (opts.force) payload.force_sync = true;
 
+    const itemBody = JSON.stringify({ [resource]: [stripClientSyncFlags(payload)] });
     return apiRequest('/api/sync/batch', {
         method: 'POST',
-        keepalive: true,
-        body: JSON.stringify({ [resource]: [stripClientSyncFlags(payload)] })
+        keepalive: isKeepalivePayloadSafe(itemBody),
+        body: itemBody
     }).then((res) => {
         const conflict = (res && res.conflicts || []).find((entry) => String(entry.id) === String(item.id));
         if (conflict) {

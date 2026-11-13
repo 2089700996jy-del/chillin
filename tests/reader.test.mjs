@@ -26,7 +26,7 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { decodeBuffer, rebuildBookText, cloudProgressTs, shouldAcceptCloudProgress, shouldPushLocalProgress } = await import('../public/js/reader.js');
+const { decodeBuffer, rebuildBookText, cloudProgressTs, shouldAcceptCloudProgress, shouldPushLocalProgress, pullCloudProgressForCurrentBook, showReaderSyncDiagnostic } = await import('../public/js/reader.js');
 
 test('Reader - decodeBuffer prioritizes UTF-8 and avoids GBK mojibake on Chinese text', () => {
     const originalText = '这是一个标准 UTF-8 编码的中文长篇小说章节测试。时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。';
@@ -193,4 +193,33 @@ test('Reader Progress Sync - 打开书籍与关闭退出不会毒化时间戳导
 
     // 滚动比例与还原必须基于可滚动高度 (scrollHeight - clientHeight)
     assert.match(readerSrc, /maxScroll\s*=\s*Math\.max\(0,\s*area\.scrollHeight\s*-\s*area\.clientHeight\)/, '还原滚动位置必须使用 maxScroll');
+});
+
+test('Reader Progress Sync - 切回前台 visibilitychange 自动拉取云端最新进度与冲突对齐', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const readerSrc = await fs.readFile(path.join(process.cwd(), 'public', 'js', 'reader.js'), 'utf8');
+
+    assert.equal(typeof pullCloudProgressForCurrentBook, 'function', 'pullCloudProgressForCurrentBook 必须是导出函数');
+    assert.match(readerSrc, /visibilitychange[\s\S]*?document\.visibilityState\s*===\s*['"]visible['"][\s\S]*?pullCloudProgressForCurrentBook/, '切回前台时必须自动触发拉取云端最新进度');
+
+    // 多端冲突解决规则：远端时间戳更新时采纳并跳转，本地旧进度不应反向覆盖
+    const local = { chapterIdx: 2, scrollPct: 20, timestamp: 1700000000000 };
+    const remoteNewer = { book_key: 'b::1', chapter_index: 8, scroll_percentage: 50, client_ts: 1700000500000 };
+    assert.equal(shouldAcceptCloudProgress(local, remoteNewer), true, '云端时间戳更新且章节更后必须采纳');
+    assert.equal(shouldPushLocalProgress(local, remoteNewer), false, '本地旧进度禁止覆盖云端新进度');
+});
+
+test('Reader Progress Sync - 状态栏 #reader-sync-status-text 诊断工具绑定与可视化比对', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const readerSrc = await fs.readFile(path.join(process.cwd(), 'public', 'js', 'reader.js'), 'utf8');
+
+    assert.equal(typeof showReaderSyncDiagnostic, 'function', 'showReaderSyncDiagnostic 必须是导出函数');
+    assert.match(readerSrc, /reader-sync-status-text[\s\S]*?showReaderSyncDiagnostic/, '必须为状态栏文字绑定诊断弹窗点击事件');
+    assert.match(readerSrc, /reader-sync-info[\s\S]*?showReaderSyncDiagnostic/, '必须为状态栏容器绑定诊断弹窗点击事件');
+
+    const diag = await showReaderSyncDiagnostic();
+    assert.ok(diag && typeof diag === 'object', '诊断函数必须返回结构化诊断对象');
+    assert.ok('queueCount' in diag, '诊断对象必须包含重试队列统计');
 });

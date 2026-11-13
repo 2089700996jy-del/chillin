@@ -314,3 +314,22 @@ test('Sync - 离线脏数据具有微状态感知提示样式', async () => {
     assert.match(css, /var\(--ios-orange\)/, '未同步指示点应使用 --ios-orange 醒目标识');
 });
 
+test('Sync Keepalive - W3C 64KB 规范防御：大于 60KB/64KB 自动关闭 keepalive', async () => {
+    const { isKeepalivePayloadSafe, KEEPALIVE_MAX_BYTES } = await import('../public/js/sync.js');
+    assert.equal(KEEPALIVE_MAX_BYTES, 60 * 1024, '安全阈值应设为 60KB');
+
+    // 1. 小型常规增量 Payload（< 60KB）：保持 keepalive: true 保活
+    const smallPayload = JSON.stringify({ notes: [{ id: 1, title: '短笔记', content: '测试内容' }] });
+    assert.equal(isKeepalivePayloadSafe(smallPayload), true, '小型增量请求必须允许 keepalive');
+
+    // 2. 超大长笔记 Payload（> 64KB）：强制禁用 keepalive 避免浏览器报 TypeError: Failed to fetch
+    const largeContent = 'a'.repeat(66 * 1024);
+    const largePayload = JSON.stringify({ notes: [{ id: 2, title: '长笔记', content: largeContent }] });
+    assert.equal(isKeepalivePayloadSafe(largePayload), false, '超出 60KB/64KB 必须关闭 keepalive');
+
+    // 3. 空值容错
+    assert.equal(isKeepalivePayloadSafe(''), true);
+    assert.equal(isKeepalivePayloadSafe(null), true);
+});
+
+

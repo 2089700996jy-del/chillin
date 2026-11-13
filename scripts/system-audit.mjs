@@ -131,7 +131,8 @@ function auditDebounceLifecycle() {
         const fnName = getEnclosingFunction(code, timerMatches[0].index);
 
         const hasVisibilityListener = /visibilitychange|pagehide|beforeunload/.test(code);
-        const hasKeepalive = /keepalive\s*:\s*true/.test(code);
+        // 识别静态 keepalive: true 或符合 W3C 规范的动态按体积判定（如 keepalive: isKeepalivePayloadSafe(...)）
+        const hasKeepalive = /keepalive\s*:\s*(?:true|[a-zA-Z0-9_$]+)/.test(code);
         const hasSendBeacon = /navigator\.sendBeacon/.test(code);
 
         if (!hasVisibilityListener) {

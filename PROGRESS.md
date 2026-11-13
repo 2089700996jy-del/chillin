@@ -26,7 +26,7 @@
 | **系统基座与配置路由** | `app.js`, `router.js`, `ui.js`, `actions.js`, `config.js`, `state.js`, `utils.js`, `version.js`, `trusted-types.js` | `api.js` (路由网关) | 无 | `tests/architecture.test.mjs`, `tests/a11y.test.mjs`, `tests/router.test.mjs` | 🟡 | 涉及首屏启动路由与配置获取，待全生命周期与全局错误边界核验 |
 | **账号鉴权与安全防线** | `auth.js`, `api.js` | `auth.js`, `security.js`, `security-network.js`, `security-crypto.js` | 0001, 0023, 0026 | `tests/auth.test.mjs`, `tests/security.test.mjs` | 🟡 | 涉及 Cookie 双轨会话、网络 Token 刷新与 PBKDF2 边缘计算，待移动端超时与切后台核验 |
 | **PWA 离线与增量同步** | `sync.js`, `db.js`, `pwa-update.js` (含 `sw.js`) | `garden-sync.js`, `garden-shared.js` | 0001~0011 | `tests/sync.test.mjs`, `tests/sw.test.mjs`, `tests/pwa-update.test.mjs` | 🟡 | 涉及 Service Worker 缓存穿透、IndexedDB 降级与 LWW 冲突合并，待离线恢复真机核验 |
-| **TXT 阅读器与跨端同步** | `reader.js` | `garden-resources.js`, `garden-books.js` | 0019, 0021 | `tests/reader.test.mjs`, `tests/books.test.mjs` | 🟢 | 已通过系统审计与暗病治理：补齐 keepalive: true 锁屏/切后台保活，消除移动端跨端同步丢包，挂载 window.checkReaderSync() 排查工具 |
+| **TXT 阅读器与跨端同步** | `reader.js` | `garden-resources.js`, `garden-books.js` | 0019, 0021 | `tests/reader.test.mjs`, `tests/books.test.mjs` | 🟢 | 已通过系统审计与暗病治理：动态 60KB 安全 keepalive 与 pagehide 退出保活，切回前台 visibilitychange 自动拉取云端对齐最新进度与冲突解决，手机状态栏点击可视化诊断 |
 | **数字花园资产 (周记/笔记/随手记/书签/提示词)** | `weeklies.js`, `notes.js`, `feeds.js`, `bookmarks.js`, `prompts.js`, `daily-spark.js` | `garden-resources.js`, `garden-shared.js` | 0001~0007, 0028, 0031 | `tests/garden.test.mjs`, `tests/router.test.mjs` | 🟡 | 涉及草稿防抖持久化、批量增量推送与软删，待防抖切后台刷新与网络重试核验 |
 | **双向维基与常青知识网络** | `wikilinks.js`, `evergreen-topics.js`, `search.js` | `rag-index.js`, `insights.js` | 0001, 0034(FTS5) | `tests/wikilinks.test.mjs`, `tests/evergreen.test.mjs`, `tests/search.test.mjs` | 🟢 | 纯文本双链 `[[wiki]]` 解析、XSS 洗标、搜索高亮与反向引用，无外部网络副作用 |
 | **AI 记忆回响 (RAG) 与模型编排** | `echo-ai.js` | `garden-echo.js`, `rag.js`, `rag-index.js`, `llm.js`, `ai.js`, `ai-runtime.js`, `ai-tools.js`, `agent-tools-expanded.js` | 0013, 0034(FTS5) | `tests/rag.test.mjs`, `tests/ai.test.mjs` | 🟡 | 涉及流式 SSE 请求、多步 Tool Calling 循环与 DeepSeek 网络交互，待网络超时降级核验 |
@@ -43,7 +43,7 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
-| v2.5.245 | 全项目暗病治理与跨端阅读同步修复：根据 system-audit 扫描报告清零全部 72 项 WARN 隐患；阅读器与同步模块补齐 visibilitychange + keepalive: true 移动端保活与 window.checkReaderSync 诊断；498 测试全过 |
+| v2.5.245 | 全项目暗病治理与跨端阅读同步修复：根据 system-audit 扫描报告清零全部 72 项 WARN 隐患；阅读器与同步模块补齐 visibilitychange + dynamic keepalive（防御 W3C 64KB 限制）、切回前台自动拉取云端对齐最新进度、手机状态栏点击可视化诊断；501 测试全过 |
 | v2.5.244 | 宏观工程治理基建：建立全项目功能健康度矩阵、新增 `scripts/system-audit.mjs` 静态契约与暗病扫描引擎、升级 `systematic-debugging` 全局巡检模式与文档测试硬门禁 |
 | v2.5.237 | 请求层冗余与通知消抖：PWA 切回前台加 15s 防抖与 inFlight 锁，过滤滞后云端版本；sw.js 推送采用固定 tag 杜绝叠加，后端订阅按设备去重；465 测试通过 |
 | v2.5.236 | 宽屏工作台与交互收口：收敛笔记工作台 `:has` 作用域消除留白与全站串扰；顶栏增设深浅外观一键切换与太阳/月亮自适应图标；462 测试通过 |
@@ -54,7 +54,7 @@
 ## 待办与健康度收敛清单 (Active Backlog)
 
 - [x] **运行 `npm run audit:system` 首批暗病治理（🟡 $\rightarrow$ 🟢 逐项收敛）**：
-  1. TXT 阅读器跨端同步：退出保活补齐 `keepalive: true` 与 `pagehide` 监听，挂载 `window.checkReaderSync()`（升为 🟢）；
+  1. TXT 阅读器跨端同步：退出保活补齐动态 60KB 安全 keepalive 与 pagehide 监听，切回前台自动拉取云端对齐最新进度，手机状态栏点击可视化诊断（升为 🟢）；
   2. 微信 ClawBot 扫码：补齐切后台 `visibilitychange` 暂停轮询，避免后台电量流量损耗；
   3. 异常吞错治理：71 处静默空 `catch {}` 块全部收敛治理（补齐降级日志与合规标记）；
   4. 全局暗病扫描阻断项（WARN）清零（72 $\rightarrow$ 0）。

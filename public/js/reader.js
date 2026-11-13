@@ -100,6 +100,25 @@ export function shouldPushLocalProgress(local, cloud) {
     return false;
 }
 
+export async function pullCloudProgressForCurrentBook(options = {}) {
+    if (actions.pullCloudProgressForCurrentBook) {
+        return actions.pullCloudProgressForCurrentBook(options);
+    }
+    return false;
+}
+
+export async function showReaderSyncDiagnostic() {
+    if (actions.showReaderSyncDiagnostic) {
+        return actions.showReaderSyncDiagnostic();
+    }
+    let queueCount = 0;
+    try {
+        const raw = typeof localStorage !== 'undefined' ? localStorage.getItem('reader_progress_queue') : null;
+        if (raw) queueCount = Object.keys(JSON.parse(raw) || {}).length;
+    } catch (_) { /* audit-ignore: intentional-fallback 读取排队队列失败降级为 0 */ }
+    return { local: null, cloudSummary: '', queueCount };
+}
+
 export function initReader() {
 // ── IndexedDB ──
 const DB_NAME = 'chillin_reader_db';
@@ -737,52 +756,103 @@ window.openReaderBook = async function(bookId) {
     area.addEventListener('scroll', onReaderScroll);
 
     // 尝试拉取云端进度并自动对齐
-    if (state.authToken || state.cookieSession) {
-        apiRequest('/api/reader/progress')
-            .then(async list => {
-                if (!Array.isArray(list) || !currentBookId || currentBookId !== bookId) return;
-                const cloud = list.find(p => p.book_key === bookKey);
-                const local = loadReaderProgress()[bookId] || null;
-                const localTs = Number((local && local.timestamp) || 0);
-
-                if (!cloud) {
-                    // 云端还没有这本书：把本机已有进度推上去（老设备首次联网也能补齐）
-                    if (local && localTs) {
-                        syncReaderProgressToCloud(currentBook, local.chapterIdx || 0, local.scrollPct || 0, '', localTs);
-                    }
-                    return;
-                }
-
-                if (shouldPushLocalProgress(local, cloud)) {
-                    syncReaderProgressToCloud(currentBook, local.chapterIdx, local.scrollPct || 0, '', localTs);
-                }
-
-                if (shouldAcceptCloudProgress(local, cloud) && cloud.chapter_index < chapterMetas.length) {
-                    const remoteTs = cloudProgressTs(cloud);
-                    saveReaderProgress(currentBookId, {
-                        chapterIdx: cloud.chapter_index,
-                        scrollPct: cloud.scroll_percentage || 0,
-                        timestamp: remoteTs || Date.now()
-                    });
-                    const diffChapter = currentChapterIdx !== cloud.chapter_index;
-                    const diffPct = Math.abs((cloud.scroll_percentage || 0) - ((local && local.scrollPct) || 0));
-                    if (diffChapter || diffPct > 10) {
-                        showToast(`已从云端同步最新进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage}%)`, 'info');
-                    }
-                    await loadChapterContent(cloud.chapter_index, { recordProgress: false });
-                    const contentEl = document.getElementById('reader-content-area');
-                    if (contentEl && cloud.scroll_percentage) {
-                        setTimeout(() => {
-                            const maxScroll = Math.max(0, contentEl.scrollHeight - contentEl.clientHeight);
-                            contentEl.scrollTop = (cloud.scroll_percentage / 100) * maxScroll;
-                        }, 200);
-                    }
-                }
-            })
-            .then(() => flushQueuedProgress())
-            .catch(err => console.warn('[reader] fetch cloud progress failed', err));
-    }
+    pullCloudProgressForCurrentBook({ isForegroundResume: false })
+        .then(() => flushQueuedProgress())
+        .catch(err => console.warn('[reader] fetch cloud progress failed', err));
 };
+
+async function pullCloudProgressForCurrentBook(options = {}) {
+    if (!currentBookId || !currentBook || (!state.authToken && !state.cookieSession)) return false;
+    const targetBookId = currentBookId;
+    const bookKey = currentBook.bookKey || computeBookKey(currentBook);
+    try {
+        const list = await apiRequest('/api/reader/progress');
+        if (!Array.isArray(list) || currentBookId !== targetBookId) return false;
+        const cloud = list.find(p => p.book_key === bookKey);
+        const local = loadReaderProgress()[targetBookId] || null;
+        const localTs = Number((local && local.timestamp) || 0);
+
+        if (!cloud) {
+            // 云端还没有这本书：把本机已有进度推上去（老设备首次联网也能补齐）
+            if (local && localTs) {
+                syncReaderProgressToCloud(currentBook, local.chapterIdx || 0, local.scrollPct || 0, '', localTs);
+            }
+            return false;
+        }
+
+        if (shouldPushLocalProgress(local, cloud)) {
+            syncReaderProgressToCloud(currentBook, local.chapterIdx, local.scrollPct || 0, '', localTs);
+        }
+
+        if (shouldAcceptCloudProgress(local, cloud) && cloud.chapter_index < chapterMetas.length) {
+            const remoteTs = cloudProgressTs(cloud);
+            const diffChapter = currentChapterIdx !== cloud.chapter_index;
+            const diffPct = Math.abs((cloud.scroll_percentage || 0) - ((local && local.scrollPct) || 0));
+
+            saveReaderProgress(targetBookId, {
+                chapterIdx: cloud.chapter_index,
+                scrollPct: cloud.scroll_percentage || 0,
+                timestamp: remoteTs || Date.now()
+            });
+
+            if (diffChapter || diffPct > 5) {
+                const toastMsg = options.isForegroundResume
+                    ? `已同步其他设备的最新阅读进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage || 0}%)`
+                    : `已从云端同步最新进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage || 0}%)`;
+                showToast(toastMsg, 'info');
+            }
+
+            await loadChapterContent(cloud.chapter_index, { recordProgress: false });
+            const contentEl = document.getElementById('reader-content-area');
+            if (contentEl && cloud.scroll_percentage) {
+                setTimeout(() => {
+                    const maxScroll = Math.max(0, contentEl.scrollHeight - contentEl.clientHeight);
+                    contentEl.scrollTop = ((cloud.scroll_percentage || 0) / 100) * maxScroll;
+                }, 200);
+            }
+            return true;
+        }
+    } catch (err) {
+        console.warn('[reader] pull cloud progress failed', err);
+    }
+    return false;
+}
+
+async function showReaderSyncDiagnostic() {
+    const queue = loadProgressQueue();
+    const queueKeys = Object.keys(queue);
+    const queueCount = queueKeys.length;
+    const local = currentBookId ? (loadReaderProgress()[currentBookId] || null) : null;
+    let localSummary = '无本地记录';
+    if (local) {
+        const localTime = local.timestamp ? new Date(local.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '未记录时间';
+        localSummary = `第 ${(local.chapterIdx || 0) + 1} 章 (${local.scrollPct || 0}%) [${localTime}]`;
+    }
+
+    let cloudSummary = '未登录或未拉取';
+    if (state.authToken || state.cookieSession) {
+        try {
+            const list = await apiRequest('/api/reader/progress');
+            if (Array.isArray(list) && currentBook) {
+                const bookKey = currentBook.bookKey || computeBookKey(currentBook);
+                const cloud = list.find(p => p.book_key === bookKey);
+                if (cloud) {
+                    const cTime = cloudProgressTs(cloud);
+                    const cloudTimeString = cTime ? new Date(cTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '未知';
+                    cloudSummary = `第 ${(cloud.chapter_index || 0) + 1} 章 (${cloud.scroll_percentage || 0}%) [${cloudTimeString}]`;
+                } else {
+                    cloudSummary = '云端尚无此书记录';
+                }
+            }
+        } catch (e) {
+            cloudSummary = '云端查询失败: ' + (e && e.message ? e.message : e);
+        }
+    }
+
+    const diagMsg = `【阅读进度跨端诊断】\n• 本地: ${localSummary}\n• 云端: ${cloudSummary}\n• 待补推队列: ${queueCount} 条`;
+    showToast(diagMsg, 'info', 6000);
+    return { local, cloudSummary, queueCount };
+}
 
 window.closeReaderBook = function() {
     actions.clearReaderSession?.();
@@ -1205,7 +1275,15 @@ document.addEventListener('touchmove', (e) => {
         }
     };
     document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') flushProgressOnExit();
+        if (document.visibilityState === 'hidden') {
+            flushProgressOnExit();
+        } else if (document.visibilityState === 'visible') {
+            if (currentBookId && currentBook) {
+                pullCloudProgressForCurrentBook({ isForegroundResume: true })
+                    .then(() => flushQueuedProgress())
+                    .catch((err) => console.warn('[reader] foreground pull progress failed', err));
+            }
+        }
     });
     window.addEventListener('pagehide', () => flushProgressOnExit());
 
@@ -1218,26 +1296,32 @@ document.addEventListener('touchmove', (e) => {
         }
     });
 
+    // 绑定阅读器状态栏点击查看跨端诊断信息（手机 PWA 用户无需 F12 控制台即可一键查看）
+    const syncStatusEl = document.getElementById('reader-sync-status-text');
+    if (syncStatusEl) {
+        syncStatusEl.style.cursor = 'pointer';
+        syncStatusEl.title = '点击查看多端阅读同步诊断';
+        syncStatusEl.addEventListener('click', (e) => {
+            e.stopPropagation();
+            showReaderSyncDiagnostic();
+        });
+    }
+    const syncInfoEl = document.getElementById('reader-sync-info');
+    if (syncInfoEl) {
+        syncInfoEl.style.cursor = 'pointer';
+        syncInfoEl.addEventListener('click', () => {
+            showReaderSyncDiagnostic();
+        });
+    }
+
     if (typeof window !== 'undefined') {
-        window.checkReaderSync = async function() {
-            const local = loadReaderProgress();
-            const queue = loadProgressQueue();
-            console.group('[Reader Sync Diagnostic]');
-            console.log('Local Progress (localStorage):', local);
-            console.log('Pending Retry Queue:', queue);
-            try {
-                const cloud = await apiRequest('/api/reader/books');
-                console.log('Cloud Books & Remote Progress:', cloud);
-            } catch (err) {
-                console.error('Cloud Sync Fetch Failed:', err);
-            }
-            console.groupEnd();
-            return { local, queue };
-        };
+        window.checkReaderSync = showReaderSyncDiagnostic;
     }
 
     actions.renderBookshelf = renderBookshelf;
     actions.clearReaderSession = clearReaderSession;
+    actions.pullCloudProgressForCurrentBook = pullCloudProgressForCurrentBook;
+    actions.showReaderSyncDiagnostic = showReaderSyncDiagnostic;
 
     return { renderBookshelf, openReaderDB };
 }
