@@ -18,14 +18,9 @@ const weatherCache = new Map(); // city -> { data, exp }
 
 /** Base64URL 编码（RFC 7515） */
 export function base64UrlEncode(bytesOrStr) {
+    const bytes = typeof bytesOrStr === 'string' ? new TextEncoder().encode(bytesOrStr) : (bytesOrStr instanceof Uint8Array ? bytesOrStr : new Uint8Array(bytesOrStr));
     let binary = '';
-    if (typeof bytesOrStr === 'string') {
-        const bytes = new TextEncoder().encode(bytesOrStr);
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    } else {
-        const bytes = bytesOrStr instanceof Uint8Array ? bytesOrStr : new Uint8Array(bytesOrStr);
-        for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
-    }
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
     return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -151,10 +146,7 @@ export function analyzeWeatherData(data, yesterday) {
     const daily = data.daily || [];
     const today = daily[0] || {};
 
-    let maxTemp = -999;
-    let maxTime = '';
-    let minTemp = 999;
-    let minTime = '';
+    let maxTemp = -999, maxTime = '', minTemp = 999, minTime = '';
     const rainHours = [];
 
     for (const h of hourly) {
@@ -211,13 +203,10 @@ export function analyzeWeatherData(data, yesterday) {
     const diurnalRange = (maxTemp > -900 && minTemp < 900) ? (maxTemp - minTemp) : 0;
     const diffMax = yesterday ? (maxTemp - Number(yesterday.temp_max)) : 0;
     const diffMin = yesterday ? (minTemp - Number(yesterday.temp_min)) : 0;
-
-    const hasRain = rainHours.length > 0;
-    const hasWarning = warnings.length > 0;
+    const hasRain = rainHours.length > 0, hasWarning = warnings.length > 0;
     const hasBigChange = Math.abs(diffMax) >= 3 || Math.abs(diffMin) >= 3;
     const hasHugeChange = Math.abs(diffMax) >= 5 || Math.abs(diffMin) >= 5;
-    const hasBigDiurnal = diurnalRange >= 8;
-    const hasStrongUv = uvIndex >= 3;
+    const hasBigDiurnal = diurnalRange >= 8, hasStrongUv = uvIndex >= 3;
 
     // 8:00 晨报门禁判定：有雨、有气象预警、较昨日温差≥3℃、昼夜温差≥8℃、紫外线强才触发
     const shouldNotify = hasRain || hasWarning || hasBigChange || hasBigDiurnal || hasStrongUv;
@@ -261,17 +250,46 @@ export function east8Dates(nowMs = Date.now()) {
     return { today, yesterday };
 }
 
-/** 获取常住城市（优先读用户档案常住地，默认福州） */
+// 排除非地名通用词（避免将“市区/小区/社区/郊区/超市/县城”等生活通用词误判为城市）
+export const GENERIC_CITY_WORDS = new Set(('市区,小区,社区,郊区,景区,校区,园区,厂区,矿区,林区,库区,港区,盲区,误区,灾区,战区,禁区,辖区,全区,片区,跨区,学区,站区,展区,牧区,商区,病区,工区,赛区,开发区,高新区,经开区,保税区,示范区,新区,超市,菜市,夜市,早市,黑市,股市,楼市,汇市,熊市,牛市,开市,闭市,休市,本市,全市,跨市,都市,省市,上市,市面,市中心,县城,全县,本县,跨县,邻县,外县').split(','));
+
+const CITY_PREFIX_RE = /^(?:如果|要是|假如)?(?:我和朋友|我和家人|我们|咱们|我)?(?:今天|明天|后天|大后天|昨天|现在|目前|最近|这几天|随后|本周|周末|周[一二三四五六日天])?(?:帮我|麻烦|请问|请|告诉我)?(?:想|打算|准备)?(?:查一下|查下|查查|查询|搜一下|搜下|搜搜|搜索|看一下|看下|看看|瞧瞧|问一下|问下|问问|知道|了解)?(?:准备去|打算去|计划去|要去|想去|去趟|去|到了|到|在|回|飞往|飞|往|来到|来)?(?:这个|那个|哪个)?/;
+
+const FAMOUS_CITIES_RE = /(?:北京|上海|天津|重庆|福州|厦门|泉州|漳州|莆田|宁德|南平|三明|龙岩|闽侯|连江|长乐|福清|平潭|晋江|石狮|南安|安溪|惠安|广州|深圳|珠海|佛山|东莞|中山|汕头|惠州|杭州|宁波|温州|嘉兴|湖州|绍兴|金华|衢州|舟山|台州|丽水|义乌|南京|无锡|徐州|常州|苏州|南通|连云港|淮安|盐城|扬州|镇江|泰州|宿迁|昆山|合肥|芜湖|蚌埠|黄山|南昌|九江|景德镇|赣州|济南|青岛|淄博|烟台|潍坊|威海|台北|新北|高雄|台中|香港|澳门|武汉|宜昌|襄阳|荆州|长沙|株洲|湘潭|岳阳|张家界|郑州|开封|洛阳|石家庄|唐山|秦皇岛|保定|雄安|太原|大同|呼和浩特|包头|鄂尔多斯|成都|绵阳|乐山|宜宾|贵阳|遵义|昆明|大理|丽江|西双版纳|拉萨|西安|咸阳|延安|汉中|宝鸡|兰州|敦煌|西宁|银川|乌鲁木齐|吐鲁番|喀什|哈尔滨|长春|吉林|延吉|沈阳|大连|南宁|桂林|北海|海口|三亚)/;
+
+/** 从用户提问中解析出城市名（无城市或为通用名词时返回 null） */
+export function extractCityFromText(text) {
+    const rawText = String(text || '').trim();
+    if (!rawText) return null;
+    const famousMatch = rawText.match(FAMOUS_CITIES_RE);
+    if (famousMatch) return famousMatch[0];
+
+    const suffixMatches = rawText.match(/[^\s，,。！？?]{2,10}(?:新区|[市区县])/g);
+    if (suffixMatches) {
+        for (const raw of suffixMatches) {
+            let candidate = raw.replace(CITY_PREFIX_RE, '').replace(/^[去到在回飞往看查问搜想]+/g, '');
+            if (!candidate || GENERIC_CITY_WORDS.has(candidate)) continue;
+            const clean = candidate.replace(/(?:新区|[市区县])$/, '');
+            if (clean.length >= 2 && clean.length <= 6 && !GENERIC_CITY_WORDS.has(clean)) return clean;
+        }
+    }
+    return null;
+}
+
+/** 获取常住城市（优先识别文本地名，次选用户档案常住地，默认福州） */
 export async function resolveUserCity(db, userId, text = '') {
-    const m = String(text || '').match(/(?:北京|上海|广州|深圳|福州|厦门|杭州|南京|成都|武汉|西安|重庆|长沙|天津|青岛|大连|沈阳|哈尔滨|苏州|无锡|常州|宁波|合肥|南昌|郑州|贵阳|昆明|海口|三亚|台北|香港|澳门|[^\s，,。！？?]{2,6}(?:市|区|县))/);
-    if (m) return m[0].replace(/[市区县]$/, '');
+    const fromText = extractCityFromText(text);
+    if (fromText) return fromText;
     if (db && userId) {
         try {
             const items = await listProfile(db, userId);
             for (const it of items) {
                 const s = (it.label || '') + (it.content || '');
                 const matchCity = s.match(/(?:现居|居住地|常住地|住址|地址|家在|位于|城市)[：:\s]*([^\s，,。]{2,8})/);
-                if (matchCity) return matchCity[1].replace(/[市区县]$/, '');
+                if (matchCity) {
+                    const parsed = extractCityFromText(matchCity[1]) || matchCity[1].replace(/(?:新区|[市区县])$/, '');
+                    if (parsed && !GENERIC_CITY_WORDS.has(parsed)) return parsed;
+                }
             }
         } catch (_) {}
     }
@@ -282,22 +300,7 @@ export async function resolveUserCity(db, userId, text = '') {
 async function ensureWeatherTable(db) {
     if (!db) return;
     try {
-        await db.prepare(`CREATE TABLE IF NOT EXISTS bot_weather_daily (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            city TEXT NOT NULL,
-            date TEXT NOT NULL,
-            temp_max INTEGER NOT NULL,
-            temp_min INTEGER NOT NULL,
-            max_time TEXT DEFAULT '',
-            min_time TEXT DEFAULT '',
-            rain_summary TEXT DEFAULT '',
-            uv_index INTEGER DEFAULT 0,
-            warning_text TEXT DEFAULT '',
-            notified INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT (datetime('now', '+8 hours')),
-            UNIQUE(user_id, date)
-        )`).run();
+        await db.prepare('CREATE TABLE IF NOT EXISTS bot_weather_daily (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, city TEXT NOT NULL, date TEXT NOT NULL, temp_max INTEGER NOT NULL, temp_min INTEGER NOT NULL, max_time TEXT DEFAULT "", min_time TEXT DEFAULT "", rain_summary TEXT DEFAULT "", uv_index INTEGER DEFAULT 0, warning_text TEXT DEFAULT "", notified INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime("now", "+8 hours")), UNIQUE(user_id, date))').run();
     } catch (_) {}
 }
 
@@ -312,9 +315,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
     const { today, yesterday } = east8Dates(nowMs);
     let accounts = [];
     try {
-        const res = await db.prepare(
-            "SELECT * FROM bot_claw_accounts WHERE is_deleted = 0 AND status = 'bound' AND outreach_enabled = 1 ORDER BY id LIMIT 5"
-        ).all();
+        const res = await db.prepare("SELECT * FROM bot_claw_accounts WHERE is_deleted = 0 AND status = 'bound' AND outreach_enabled = 1 ORDER BY id LIMIT 5").all();
         accounts = (res && res.results) || [];
     } catch (err) {
         return { state: 'error' };
@@ -330,9 +331,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         // 读今日记录：若今日已发送过晨报，避免重复推送（幂等保证）
         let todayRow = null;
         try {
-            todayRow = await db.prepare(
-                'SELECT notified FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
-            ).bind(acct.user_id, today).first();
+            todayRow = await db.prepare('SELECT notified FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, today).first();
         } catch (_) {}
         if (todayRow && todayRow.notified === 1) {
             summary.silent++;
@@ -342,9 +341,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         // 读昨日记录
         let yRow = null;
         try {
-            yRow = await db.prepare(
-                'SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
-            ).bind(acct.user_id, yesterday).first();
+            yRow = await db.prepare('SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, yesterday).first();
         } catch (_) {}
 
         // 抓取并分析今日
@@ -354,14 +351,10 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         // 写入今日基准记录
         await db.prepare(
             `INSERT INTO bot_weather_daily (user_id, city, date, temp_max, temp_min, max_time, min_time, rain_summary, uv_index, warning_text, notified)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0)
-             ON CONFLICT(user_id, date) DO UPDATE SET
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, 0) ON CONFLICT(user_id, date) DO UPDATE SET
              temp_max = excluded.temp_max, temp_min = excluded.temp_min, max_time = excluded.max_time, min_time = excluded.min_time,
              rain_summary = excluded.rain_summary, uv_index = excluded.uv_index, warning_text = excluded.warning_text`
-        ).bind(
-            acct.user_id, city, today, a.maxTemp, a.minTemp, a.maxTime, a.minTime,
-            a.rainSummary || '', a.uvIndex || 0, (a.warnings.map(w => w.title).join(';')) || ''
-        ).run();
+        ).bind(acct.user_id, city, today, a.maxTemp, a.minTemp, a.maxTime, a.minTime, a.rainSummary || '', a.uvIndex || 0, (a.warnings.map(w => w.title).join(';')) || '').run();
 
         // 门禁判定：无事不扰
         if (!a.shouldNotify) {
@@ -419,9 +412,7 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
     if (db && userId) {
         await ensureWeatherTable(db);
         try {
-            yRow = await db.prepare(
-                'SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2'
-            ).bind(userId, yesterday).first();
+            yRow = await db.prepare('SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(userId, yesterday).first();
         } catch (_) {}
     }
 

@@ -5,7 +5,8 @@ import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
 import {
     base64UrlEncode, pemToDer, getQWeatherToken, lookupCity,
     analyzeWeatherData, formatWeatherMessage, runMorningWeatherCare,
-    maybeWeatherAnswer, isWeatherQuery, diagnoseWeatherConfig
+    maybeWeatherAnswer, isWeatherQuery, diagnoseWeatherConfig,
+    extractCityFromText, resolveUserCity
 } from '../workers/src/bot-weather.js';
 
 const integration = sqliteTest;
@@ -272,5 +273,55 @@ integration('diagnoseWeatherConfig 诊断报告正常评估变量与连通性', 
     assert.match(report, /Key ID: 已配置/);
     assert.match(report, /Ed25519 签名: ✅ 签发成功/);
     assert.match(report, /城市解析: ✅ 成功/);
+});
+
+test('城市解析 - extractCityFromText 剥除动词前缀并排除通用后缀名词（市区/小区/超市/郊区）', () => {
+    // 1. 通用词必须安全返回 null，不误判为城市
+    assert.equal(extractCityFromText('今天去市区要不要带伞'), null);
+    assert.equal(extractCityFromText('今天小区冷吗'), null);
+    assert.equal(extractCityFromText('今天去超市要带伞吗'), null);
+    assert.equal(extractCityFromText('去郊区玩冷吗'), null);
+    assert.equal(extractCityFromText('社区今天会下雨吗'), null);
+    assert.equal(extractCityFromText('景区下雨吗'), null);
+    assert.equal(extractCityFromText('回县城冷吗'), null);
+    assert.equal(extractCityFromText('盲区会有大雨吗'), null);
+    assert.equal(extractCityFromText('今天冷不冷'), null);
+
+    // 2. 真实地名（带前缀动词/时间副词）必须精准剥离前缀
+    assert.equal(extractCityFromText('看看闽侯县天气'), '闽侯');
+    assert.equal(extractCityFromText('查一下朝阳区天气'), '朝阳');
+    assert.equal(extractCityFromText('帮我查下海淀区冷不冷'), '海淀');
+    assert.equal(extractCityFromText('明天去昆山市出差'), '昆山');
+    assert.equal(extractCityFromText('浦东新区今天下雪吗'), '浦东');
+    assert.equal(extractCityFromText('查一下雄安新区天气'), '雄安');
+    assert.equal(extractCityFromText('今天去北京出差要不要带伞'), '北京');
+    assert.equal(extractCityFromText('三亚热不热'), '三亚');
+    assert.equal(extractCityFromText('景德镇下雨吗'), '景德镇');
+});
+
+integration('城市解析 - resolveUserCity 遇到通用词回退至常住城市，真实县区精准提取', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    // 默认福州用户：问通用词时绝不产生“今天去市 / 今天小”等废词，回退至默认福州
+    assert.equal(await resolveUserCity(db, 1, '今天去市区要不要带伞'), '福州');
+    assert.equal(await resolveUserCity(db, 1, '今天小区冷吗'), '福州');
+    assert.equal(await resolveUserCity(db, 1, '去超市会下雨吗'), '福州');
+
+    // 问具体区县时精准提取
+    assert.equal(await resolveUserCity(db, 1, '看看闽侯县天气'), '闽侯');
+    assert.equal(await resolveUserCity(db, 1, '查下朝阳区几度'), '朝阳');
+
+    // 用户 2 档案中有常住地：厦门市思明区
+    await db.prepare(
+        "INSERT INTO bot_profile (user_id, label, content) VALUES (2, '常住地', '厦门市思明区')"
+    ).run();
+
+    // 用户 2 问通用词或无城市提问时，解析为用户的常住地厦门（且剥除思明区）
+    assert.equal(await resolveUserCity(db, 2, '今天去市区要不要带伞'), '厦门');
+    assert.equal(await resolveUserCity(db, 2, '今天冷吗'), '厦门');
+    // 用户 2 问其他城市时依然以具体查询优先
+    assert.equal(await resolveUserCity(db, 2, '看看闽侯县天气'), '闽侯');
 });
 
