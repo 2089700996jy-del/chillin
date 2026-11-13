@@ -328,6 +328,20 @@ integration('ClawBot - 取二维码落库为 pending，状态响应绝不泄露 
     assert.equal(JSON.stringify(body).includes('SECRET-TOKEN'), false, '状态响应绝不能带 bot_token');
 });
 
+test('ClawBot - 微信返回 liteapp 网页链接时自动编码为 SVG 矢量二维码图片', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    const liteappUrl = 'https://liteapp.weixin.qq.com/q/7GiQu1?qrcode=TEST-QR&bot_type=3';
+    const st = stubFetch({
+        '/ilink/bot/get_bot_qrcode': () => ({ json: { qrcode: 'TEST-QR', qrcode_img_content: liteappUrl } })
+    });
+    const started = await startClawLogin({}, db, 1, st.impl);
+    assert.equal(started.qrcode, 'TEST-QR');
+    assert.equal(started.rawUrl, liteappUrl);
+    assert.match(started.url, /^data:image\/svg\+xml;utf8,/, '必须输出以 data:image/svg+xml 开头的矢量二维码');
+    assert.match(started.url, /%3Csvg/, '必须包含 URL 编码的 svg 标签');
+});
+
 integration('ClawBot - 扫码确认写入凭证并规范化 baseurl，cursor 归零', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

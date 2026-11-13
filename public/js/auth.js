@@ -1221,6 +1221,7 @@ function clawEls() {
         unbind: document.getElementById('btn-bot-claw-unbind'),
         qr: document.getElementById('bot-claw-qr'),
         img: document.getElementById('bot-claw-qr-img'),
+        open: document.getElementById('btn-bot-claw-open'),
         qrHint: document.getElementById('bot-claw-qr-hint'),
         qrNote: document.getElementById('bot-claw-qr-note'),
         cancel: document.getElementById('btn-bot-claw-cancel')
@@ -1277,6 +1278,7 @@ function hideBotClawQr() {
     const els = clawEls();
     if (els.qr) els.qr.hidden = true;
     if (els.img) { els.img.onerror = null; els.img.removeAttribute('src'); }
+    if (els.open) { els.open.hidden = true; els.open.removeAttribute('href'); }
     if (els.cancel) els.cancel.hidden = true;
     if (els.qrNote) { els.qrNote.hidden = true; els.qrNote.textContent = ''; }
     clawExpiresAt = 0;
@@ -1380,10 +1382,15 @@ async function startBotClawBind() {
     try {
         const qr = await apiRequest('/api/bot/claw/qrcode', { method: 'POST' });
         const src = String((qr && qr.url) || '');
+        const rawUrl = String((qr && qr.rawUrl) || src);
         if (!/^(https:\/\/|data:image\/)/i.test(src)) throw new Error('二维码地址无效');
         const ttl = Math.max(CLAW_QR_MIN_TTL_SECONDS, Number(qr && qr.ttlSeconds) || 90);
         els.img.onerror = () => expireBotClawQr('二维码图片加载失败，请重新生成。');
         els.img.src = src;
+        if (els.open) {
+            els.open.href = rawUrl;
+            els.open.hidden = !rawUrl || !/^https:\/\//i.test(rawUrl);
+        }
         els.qr.hidden = false;
         els.cancel.hidden = false;
         els.qrNote.hidden = true;

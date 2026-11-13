@@ -1439,7 +1439,10 @@
                     <img id="bot-claw-qr-img" alt="微信扫码绑定 ClawBot 的二维码" width="180" height="180" decoding="async" referrerpolicy="no-referrer">
                     <div class="bot-claw-qr-hint" id="bot-claw-qr-hint">请用微信扫码，二维码约 90 秒内有效，实际以微信侧状态为准。</div>
                     <div class="bot-claw-qr-note" id="bot-claw-qr-note" aria-live="polite" hidden></div>
-                    <button type="button" class="btn-text" id="btn-bot-claw-cancel" hidden>取消扫码</button>
+                    <div style="margin-top: 8px; display: flex; gap: 12px; align-items: center; justify-content: center;">
+                        <a id="btn-bot-claw-open" class="btn-text" target="_blank" rel="noopener noreferrer" style="text-decoration: underline;" hidden>在微信中打开</a>
+                        <button type="button" class="btn-text" id="btn-bot-claw-cancel" hidden>取消扫码</button>
+                    </div>
                 </div>
 
                 <!-- 「关于我」个人档案：应用内查看/编辑/遗忘（与微信端共用同一份记忆） -->

@@ -3,6 +3,7 @@
  * 负责二维码获取、轮询扫码状态、节点重定向切换、绑定/解绑与账户元数据持久化。
  */
 import { jsonResponse } from './security.js';
+import { renderSVG } from 'uqr';
 import {
     ilinkBase,
     ilinkRedirectBase,
@@ -105,7 +106,18 @@ export async function saveQrRedirect(db, id, baseurl) {
 export async function startClawLogin(env, db, userId, fetchImpl = fetch) {
     const qr = await requestClawQrcode(fetchImpl);
     await upsertQrcode(db, userId, qr.qrcode);
-    return { qrcode: qr.qrcode, url: qr.url, ttlSeconds: QR_TTL_SECONDS, status: 'pending' };
+    let imageUrl = qr.url;
+    // 微信官方 iLink 返回的 qrcode_img_content 通常为移动端页面链接（如 https://liteapp.weixin.qq.com/...）
+    // 若不是直接图片（.png/.jpg/data:image），将其编码为矢量 SVG 二维码以供 <img> 标签直接渲染
+    if (imageUrl && !imageUrl.startsWith('data:image/') && !/\.(png|jpe?g|gif|webp|svg)(\?.*)?$/i.test(imageUrl)) {
+        try {
+            const svg = renderSVG(imageUrl, { ecc: 'M', border: 2 });
+            imageUrl = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg);
+        } catch (_) {
+            /* audit-ignore: intentional-fallback 二维码矢量图渲染失败时降级回退原始地址 */
+        }
+    }
+    return { qrcode: qr.qrcode, url: imageUrl, rawUrl: qr.url, ttlSeconds: QR_TTL_SECONDS, status: 'pending' };
 }
 
 /** 查询一次扫码状态；confirmed 时把凭证写入库 */
