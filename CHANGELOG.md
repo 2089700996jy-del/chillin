@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-12T10:24:06.917Z · 提交数：519
+> 生成时间：2026-11-13T01:53:33.294Z · 提交数：520
 
 ## 2026-11-12
 
@@ -12,6 +12,7 @@
 
 ### 🐛 缺陷修复
 
+- **ui**: remove harsh focus outlines on seamless inputs and paper editor
 - sync cancelReminder index with listReminders and allow completing fired reminders by keyword
 - reminders only alert and do not write to quick_feeds
 
