@@ -155,7 +155,7 @@ async function dohResolve(host, fetchImpl = fetch) {
                 }
             }
             return addrs;
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback DoH 请求异常继续尝试其他端点 */ }
     }
     return [];
 }
@@ -210,7 +210,7 @@ async function defaultLookup(host, deps = {}) {
         try {
             const dohAddrs = await dohResolve(host, fetchImpl);
             if (dohAddrs.length > 0) return dohAddrs;
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback DoH 兜底解析失败，抛出统一错误 */ }
     }
 
     if (addrs.length > 0 && !hasFakeIp) return addrs;
@@ -285,7 +285,7 @@ async function readPageText(res) {
                 if (bytes >= MAX_RESPONSE_BYTES) break;
             }
         } finally {
-            try { await reader.cancel(); } catch (_) { /* 已断开 */ }
+            try { await reader.cancel(); } catch (_) { /* audit-ignore: intentional-fallback 读取器取消异常安全忽略 */ }
         }
     } else if (typeof res.text === 'function') {
         const fullText = await res.text();
@@ -409,7 +409,7 @@ export async function runWebTool(env, name, args = {}, deps = {}) {
             let timer;
             if (controller) {
                 timer = setTimeout(() => {
-                    try { controller.abort(new Error('WEB_TIMEOUT')); } catch (_) {}
+                    try { controller.abort(new Error('WEB_TIMEOUT')); } catch (_) { /* audit-ignore: intentional-fallback 控制器超时终止异常忽略 */ }
                 }, FETCH_TIMEOUT_MS);
             }
 

@@ -183,7 +183,7 @@ function renderFeeds() {
                     if (feed.summary.trim().startsWith('{')) {
                         meta = JSON.parse(feed.summary);
                     }
-                } catch {}
+                } catch { /* audit-ignore: intentional-fallback 非 JSON 格式 summary 按纯文本渲染 */ }
             }
 
             let title = meta?.title || (feed.summary && !feed.summary.startsWith('{') ? feed.summary : '');
@@ -509,7 +509,7 @@ if (feedInputText) {
 function handleTodoToggle(todoBtn) {
     if (!todoBtn) return;
     if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate(10); } catch {}
+        try { navigator.vibrate(10); } catch { /* audit-ignore: intentional-fallback 移动端触觉反馈静默安全忽略 */ }
     }
     const feedCard = todoBtn.closest('.feed-item-card');
     const feedId = todoBtn.dataset.feedId || feedCard?.dataset?.feedId;

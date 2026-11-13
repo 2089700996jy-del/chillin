@@ -220,7 +220,7 @@ export async function readTextCapped(request, maxBytes) {
         total += value.byteLength;
         if (total > maxBytes) {
             // 立刻停止接收剩余字节，别把超大请求读完
-            try { await reader.cancel(); } catch (_) { /* 连接已断开 */ }
+            try { await reader.cancel(); } catch (_) { /* audit-ignore: intentional-fallback 取消读取超限请求流异常忽略 */ }
             return { ok: false, tooLarge: true, bytes: total };
         }
         chunks.push(value);

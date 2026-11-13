@@ -207,9 +207,9 @@ export async function ensureSoftDeleteSchema(db) {
     // ALTER 那批整体吞异常（本来就会失败），幂等的建索引单独一批。
     try {
         await db.batch(stmts.slice(0, 4).map((sql) => db.prepare(sql)));
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 旧库软删除列可能已存在，忽略 duplicate column 错误 */ }
     try {
         await db.batch(stmts.slice(4).map((sql) => db.prepare(sql)));
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 幂等索引创建异常安全忽略 */ }
     softDeleteSchemaReady = true;
 }

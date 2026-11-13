@@ -85,7 +85,7 @@ async function resolveSession(db, token, { upgrade = true } = {}) {
                 await db.prepare('UPDATE sessions SET last_seen_at = ?1 WHERE token = ?2')
                     .bind(Date.now(), row.token).run();
             }
-        } catch (_) { /* 活跃时间写入失败不影响鉴权 */ }
+        } catch (_) { /* audit-ignore: intentional-fallback 活跃时间写入失败不影响鉴权 */ }
         return row;
     }
 
@@ -97,7 +97,7 @@ async function resolveSession(db, token, { upgrade = true } = {}) {
             await db.prepare('DELETE FROM sessions WHERE token = ?1').bind(token).run();
             await db.prepare('INSERT INTO sessions (token, user_id, expires_at) VALUES (?1, ?2, ?3)')
                 .bind(hashed, legacy.user_id, legacy.expires_at).run();
-        } catch (_) { /* 忽略：下次请求会再试 */ }
+        } catch (_) { /* audit-ignore: intentional-fallback 忽略：下次请求会再试 */ }
     }
     return legacy;
 }

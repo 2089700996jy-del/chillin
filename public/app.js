@@ -39,7 +39,7 @@ initAppTheme();
 
 // Disable device vibration across the entire app as requested
 if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
-    try { navigator.vibrate = () => false; } catch (_) {}
+    try { navigator.vibrate = () => false; } catch (_) { /* audit-ignore: intentional-fallback 某些移动端环境禁用改写 navigator.vibrate */ }
 }
 
 // 锁定整页缩放：安卓/桌面靠 viewport，iOS Safari 只认私有的 gesture* 事件。

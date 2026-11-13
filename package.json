@@ -1,6 +1,6 @@
 {
   "name": "chillin",
-  "version": "2.5.244",
+  "version": "2.5.245",
   "description": "Chillin 数字花园 - 个人数字花园",
   "private": true,
   "type": "module",
@@ -17,6 +17,7 @@
     "restore": "node scripts/restore-d1.mjs",
     "restore:full": "node scripts/restore-full.mjs",
     "ship": "node scripts/ship.mjs",
+    "audit:system": "node scripts/system-audit.mjs",
     "changelog": "node scripts/changelog.mjs"
   },
   "dependencies": {

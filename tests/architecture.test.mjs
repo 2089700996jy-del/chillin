@@ -205,3 +205,21 @@ test('Architecture - 笔记列表按批渲染，且搜索能定位分页外的�
     const search = await fs.readFile(path.join(root, 'public', 'js', 'search.js'), 'utf8');
     assert.match(search, /actions\.ensureNoteRendered/, '搜索跳转必须优先按笔记类型扩窗，不能只依赖 feeds 的 ensureItemRendered');
 });
+
+test('Architecture - all frontend and worker modules are cataloged in rules and progress', async () => {
+    const arch = await fs.readFile(path.join(root, '.agents', 'rules', 'architecture.md'), 'utf8');
+    const progress = await fs.readFile(path.join(root, 'PROGRESS.md'), 'utf8');
+
+    const jsDir = path.join(root, 'public', 'js');
+    const jsFiles = (await fs.readdir(jsDir)).filter((f) => f.endsWith('.js'));
+    for (const f of jsFiles) {
+        assert.ok(progress.includes(f), `public/js/${f} must be cataloged in PROGRESS.md health matrix`);
+    }
+
+    const workerDir = path.join(root, 'workers', 'src');
+    const workerFiles = (await fs.readdir(workerDir)).filter((f) => f.endsWith('.js'));
+    for (const f of workerFiles) {
+        assert.ok(arch.includes(f), `workers/src/${f} must be cataloged in architecture.md`);
+        assert.ok(progress.includes(f), `workers/src/${f} must be cataloged in PROGRESS.md health matrix`);
+    }
+});

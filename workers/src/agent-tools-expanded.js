@@ -36,7 +36,7 @@ function parseTagList(value) {
     try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed.map(String).map((tag) => tag.trim()).filter(Boolean);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 非 JSON 数组标签，降级为正则分隔解析 */ }
     return raw.split(/[,，\s#]+/).map((tag) => tag.trim()).filter(Boolean);
 }
 

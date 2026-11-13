@@ -225,7 +225,7 @@ export async function handleSyncBatch(request, db, userId) {
             let full = current;
             try {
                 full = await db.prepare('SELECT * FROM ' + tableName + ' WHERE id = ?1').bind(item.id).first() || current;
-            } catch (_) {}
+            } catch (_) { /* audit-ignore: intentional-fallback 回读完整冲突快照异常使用已有的轻量行 */ }
             conflicts.push({ resource, id: item.id, cloud: formatter(full) });
         }
         return true;

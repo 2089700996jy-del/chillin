@@ -69,7 +69,7 @@ export async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
                             hasData = true;
                             onChunk(content);
                         }
-                    } catch {}
+                    } catch { /* audit-ignore: intentional-fallback SSE 单行数据非合法 JSON 时忽略 */ }
                 }
             }
         }
@@ -162,7 +162,7 @@ export async function callCustomLlmWithMessages(env, messages) {
         try {
             const aiRes = await env.AI.run('@cf/meta/llama-3-8b-instruct', { messages });
             if (aiRes && aiRes.response) return aiRes.response;
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback Workers AI 调用失败返回空字符串 */ }
     }
 
     return '';

@@ -65,7 +65,7 @@ function rescueAndConsolidateLocalData() {
                 if (Array.isArray(items)) rescuedPrompts.push(...items);
             }
         }
-    } catch (e) {}
+    } catch (e) { /* audit-ignore: intentional-fallback 遍历历史键读取失败安全降级 */ }
 
     const cleanList = (list, defaultIds) => {
         if (!Array.isArray(list)) return [];
@@ -276,7 +276,7 @@ function syncBasesStore() {
     return syncBasesCache;
 }
 function persistSyncBases() {
-    try { localStorage.setItem(syncBasesCacheKey || getLocalKey(SYNC_BASES_KEY), JSON.stringify(syncBasesStore())); } catch (_) {}
+    try { localStorage.setItem(syncBasesCacheKey || getLocalKey(SYNC_BASES_KEY), JSON.stringify(syncBasesStore())); } catch (_) { /* audit-ignore: intentional-fallback 隐私模式或存储超限忽略 */ }
 }
 function syncBaseKey(resource, id) { return resource + ':' + String(id); }
 export function getSyncBase(resource, id) {
@@ -324,7 +324,7 @@ function saveStoredList(key, list, max) {
         copy.pop();
         text = JSON.stringify(copy);
     }
-    try { localStorage.setItem(getLocalKey(key), text); } catch (_) {}
+    try { localStorage.setItem(getLocalKey(key), text); } catch (_) { /* audit-ignore: intentional-fallback 配额极端超限降级 */ }
 }
 
 export function getSyncConflicts() { return readStoredList(SYNC_CONFLICT_KEY); }
@@ -1137,6 +1137,7 @@ export async function syncFromApi() {
 
                     const res = await apiRequest('/api/sync/batch', {
                         method: 'POST',
+                        keepalive: true,
                         body: JSON.stringify({
                             weeklies: dirtyWeeklies,
                             notes: dirtyNotes,
@@ -1295,6 +1296,7 @@ function apiSyncResource(resource, apiPath, item, method, opts = {}) {
 
     return apiRequest('/api/sync/batch', {
         method: 'POST',
+        keepalive: true,
         body: JSON.stringify({ [resource]: [stripClientSyncFlags(payload)] })
     }).then((res) => {
         const conflict = (res && res.conflicts || []).find((entry) => String(entry.id) === String(item.id));

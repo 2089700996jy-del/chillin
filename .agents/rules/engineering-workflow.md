@@ -91,20 +91,23 @@ npx wrangler deploy --dry-run
 
 | 你改了什么 | 必须同批更新 |
 | :--- | :--- |
-| 新增 / 删除 / 重命名 `workers/src/*.js`、`public/js/*.js` 模块 | [`README.md`](../../README.md)（目录结构与模块数）、[`architecture.md`](architecture.md) 领域模块表、本文件 §1.1 覆盖矩阵 |
-| 新增数据库迁移 | [`README.md`](../../README.md)（迁移范围 0001–00XX）、[`architecture.md`](architecture.md) §3 迁移一致性 |
-| 新增 / 删除测试套件 | [`README.md`](../../README.md) 测试布局表、架构报告里的套件与用例数 |
-| 新增 / 移除用户可见功能、接口或存储方案 | [`README.md`](../../README.md) 功能一览与技术栈、[`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](../../docs/Chillin数字花园_产品全景与工程架构分析报告.md) |
+| 新增 / 删除 / 重命名 `workers/src/*.js`、`public/js/*.js` 模块 | [`README.md`](../../README.md)（目录结构与模块数）、[`architecture.md`](architecture.md) 领域模块表、[`PROGRESS.md`](../../PROGRESS.md) 健康度矩阵、本文件 §1.1 覆盖矩阵 |
+| 新增数据库迁移 | [`README.md`](../../README.md)（迁移范围 0001–00XX）、[`architecture.md`](architecture.md) §3 迁移一致性、[`PROGRESS.md`](../../PROGRESS.md) 矩阵 |
+| 新增 / 删除测试套件 | [`README.md`](../../README.md) 测试布局表、架构报告里的套件与用例数、[`PROGRESS.md`](../../PROGRESS.md) 矩阵 |
+| 新增 / 移除用户可见功能、接口或存储方案 | [`README.md`](../../README.md) 功能一览与技术栈、[`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](../../docs/Chillin数字花园_产品全景与工程架构分析报告.md)、[`PROGRESS.md`](../../PROGRESS.md) 功能健康度矩阵与近期变更 |
+| 涉及已有功能的重构或风险调整 | [`PROGRESS.md`](../../PROGRESS.md) 功能健康度矩阵的等级（🟢/🟡/🔴）与风险标注、[`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](../../docs/Chillin数字花园_产品全景与工程架构分析报告.md) |
 | 版本号变化（每次发布） | [`PROGRESS.md`](../../PROGRESS.md) 版本头与进展记录、架构报告的报告版本与在线基准（8 处锚点由 `npm run bump` 自动联动，**严禁手改单个文件**；`tests/docs.test.mjs` 会实跑 `--dry-run patch` 校验覆盖范围） |
 | 安全边界变化（CSP / 限流 / 口令策略 / 令牌） | [`security.md`](security.md)、[`public/_headers`](../../public/_headers) 注释、[`README.md`](../../README.md) 安全要点 |
 
 ### 5.2 机器校验（不靠自觉）
 
-[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 把「数字类事实」钉死，`npm test` 会直接卡住漂移：
+[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 把「数字类事实」与「全域映射」钉死，`npm test` 会直接卡住漂移：
 
 * `README.md` 里的 `js/` 模块数、`workers/src/` 模块数、迁移范围 `0001–00XX`、测试布局表行数，**必须等于磁盘上的真实数量**；
 * `architecture.md` 的模块表**必须覆盖 `workers/src/` 下的每一个文件**；
-* `package.json` / `PROGRESS.md` / `public/js/version.js` / `public/sw.js` / 架构报告的版本号**必须完全一致**。
+* `PROGRESS.md` 的全项目功能健康度矩阵**必须 100% 映射 `public/js/*.js` 与 `workers/src/*.js` 全部模块**，且每项评级（🟢/🟡/🔴）必须合法；
+* `package.json` / `PROGRESS.md` / `public/js/version.js` / `public/sw.js` / 架构报告的版本号**必须完全一致**；
+* 每次大版本或疑难暗病排查前，建议执行 `npm run audit:system`（调用 [`scripts/system-audit.mjs`](../../scripts/system-audit.mjs)）进行静态契约健康体检。
 
 报错时请**按失败信息更新文档**，而不是去改断言里的数字。
 

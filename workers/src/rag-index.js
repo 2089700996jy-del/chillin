@@ -62,7 +62,7 @@ function parseTagList(value) {
     try {
         const parsed = JSON.parse(raw);
         if (Array.isArray(parsed)) return parsed.map(String).map(s => s.trim()).filter(Boolean);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 非 JSON 标签字符串，降级正则分隔解析 */ }
     return raw.split(/[,，\s#]+/).map(s => s.trim()).filter(Boolean);
 }
 
@@ -150,7 +150,7 @@ async function attachBookProgress(db, userId, rows) {
                 r.progress_text = [ch, pct].filter(Boolean).join(' · ');
             }
         }
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 查询书籍最新进度异常保留原书目列表 */ }
     return rows;
 }
 

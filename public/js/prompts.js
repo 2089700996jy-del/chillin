@@ -420,7 +420,7 @@ export function initPrompts() {
         ta.style.opacity = '0';
         document.body.appendChild(ta);
         ta.select();
-        try { document.execCommand('copy'); } catch (e) {}
+        try { document.execCommand('copy'); } catch (e) { /* audit-ignore: intentional-fallback 旧版 execCommand 复制降级 */ }
         document.body.removeChild(ta);
     }
 

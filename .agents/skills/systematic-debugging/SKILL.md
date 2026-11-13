@@ -70,3 +70,41 @@ graph TD
 | **新建记录离线同步时被丢弃** | 离线新建未及时分配临时 ID，导致脏数据选择器过滤失效 | 检查是否调用了 `ensureLocalId`，查阅 `tests/sync.test.mjs` |
 | **Web Push 订阅发送报 404/410** | 用户的浏览器已撤销通知权限或注销了 Service Worker | 必须在 `sendEdgePush` 中捕获并从 `push_subscriptions` 物理删除该端点 |
 | **前端新增模块离线白屏** | 新建了 `public/js/foo.js` 但忘记在 `sw.js` 的 `ASSETS` 中登记 | 运行 `node --test tests/sw.test.mjs`，单测会自动指出缺失的模块路径 |
+
+---
+
+## 4. 全项目健康度巡检模式 (Macro Health Audit Mode)
+
+当用户提出 **“排查项目 Bug / 检查功能是否正常 / 为什么某功能在真机上没反应”** 等宏观或疑难需求时，**严禁仅凭单测全绿或表面语法无错就得出“代码没有问题”的草率结论**。
+
+必须强制进入本巡检模式，按以下标准作业程序执行：
+
+### Step 1: 静态暗病先行扫描
+排查启动时，首先在终端运行：
+```bash
+npm run audit:system
+```
+拉取全局静态契约报告，重点检查目标模块是否存在：
+1. **静默吞错捕获**：是否有空的 `catch {}` 或仅有 `console.log` 而未向 UI 提示 / 未重试排队的隐性断裂点；
+2. **防抖生命周期脱钩**：是否存在带防抖延迟的状态持久化，却未监听 `visibilitychange` / `pagehide`，导致切后台时未刷入状态丢失；
+3. **API 路由与 SQL 迁移断层**：核实前后端路径与数据表是否在迁移中真实声明。
+
+### Step 2: 锁定 🟡 评级模块并开展五维深度排查
+查阅 [`PROGRESS.md`](../../../PROGRESS.md) 的【全项目功能健康度矩阵】，对涉及的或所有标注为 🟡（仅理想路径测试）的模块，逐一排查以下 5 大真机盲区：
+
+1. **多端状态覆盖 (Multi-client Consistency)**：
+   - 检查两端计算实体唯一标识（如 `bookKey`）的算法是否严密一致；若两端各自从本地文件切章，是否会因字符编码、章名正则微小差异产生不同的指纹导致云端命中失败。
+2. **移动端后台中断 (Mobile Lifecycle Interruption)**：
+   - 移动端（尤其是 iOS Safari / PWA）在用户熄屏、切应用或划掉进程时，常规异步 `fetch` 会被系统瞬间挂起或杀进程。
+   - 检查推送请求是否配置了 `{ keepalive: true }` 或 `navigator.sendBeacon`；检查是否存在开书时的“首屏并发竞态”，导致用户误触滚动打上新时间戳把云端进度当成落后数据覆盖。
+3. **SW 缓存拦截与毒化 (Service Worker Invalidation)**：
+   - 检查请求 URL 是否命中了 Service Worker 的缓存拦截；检查移动端是否仍驻留老版本 JS 未激活，导致修复逻辑未在真机生效。
+4. **静默吞错与无声失败 (Silent Swallowed Exceptions)**：
+   - 检查网络请求层是否有 `.catch(err => console.warn(err))` 把 401 鉴权过期或 400 参数格式错误当成日常流程吞掉，导致界面毫无反馈。
+5. **Mock 测试盲区 (Mock vs Real Runtime Disparity)**：
+   - 项目单测依托 Node 内置 `node:sqlite`（`fake-d1`）在单线程内存跑通，**不代表真实 Cloudflare 边缘能跑通**；
+   - 警惕内存环境没有的约束：如 Cloudflare Workers 的 WebCrypto PBKDF2 10 万次硬上限、D1 并发事务锁、请求体长度硬限制与网络往返时序抖动。
+
+### Step 3: 输出可观测性诊断方案
+严禁盲猜打补丁。在确认根因前，优先在代码中植入显式可观测性挂载函数（如在控制台或界面提供 `window.checkSyncStatus()`），让用户在真机两端打印出实际的 Key、时间戳比对结果与最近 HTTP 响应，拿到确凿运行态证据后再做外科手术式修复。
+

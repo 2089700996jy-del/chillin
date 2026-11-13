@@ -317,7 +317,7 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
             fetchImpl
         });
     } catch (err) {
-        try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) {}
+        try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) { /* audit-ignore: intentional-fallback 回滚消息去重锁失败继续向外抛出主异常 */ }
         throw err;
     }
 }

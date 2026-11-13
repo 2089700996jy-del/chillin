@@ -301,3 +301,37 @@ test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包', ()
     assert.equal(pkg.engines.node, '>=22.5', 'Node 版本下限必须是 22.5');
     assert.match(pkg.scripts.pretest || '', /check-node/, 'npm test 必须先跑 Node 版本闸门');
 });
+
+test('Docs - PROGRESS.md 功能健康度矩阵覆盖全部 public/js/ 前端模块', () => {
+    const progress = read('PROGRESS.md');
+    assert.doesNotMatch(progress, /`[a-zA-Z0-9_-]+\*\.js`/, 'PROGRESS.md 严禁使用通配符（如 bot-*.js），每个模块必须具名登记');
+    for (const file of jsModules) {
+        assert.ok(
+            progress.includes(file),
+            `PROGRESS.md 的全项目功能健康度矩阵缺少 public/js/${file}——请同步更新文档（严禁使用通配符放行）`
+        );
+    }
+});
+
+test('Docs - PROGRESS.md 功能健康度矩阵覆盖全部 workers/src/ 领域模块', () => {
+    const progress = read('PROGRESS.md');
+    assert.doesNotMatch(progress, /`[a-zA-Z0-9_-]+\*\.js`/, 'PROGRESS.md 严禁使用通配符（如 bot-*.js），每个模块必须具名登记');
+    for (const file of workerModules) {
+        assert.ok(
+            progress.includes(file),
+            `PROGRESS.md 的全项目功能健康度矩阵缺少 workers/src/${file}——请同步更新文档（严禁使用通配符放行）`
+        );
+    }
+});
+
+test('Docs - PROGRESS.md 功能健康度矩阵评级合法', () => {
+    const progress = read('PROGRESS.md');
+    const rows = progress.split('\n').filter((l) => l.trim().startsWith('|') && (l.includes('🟢') || l.includes('🟡') || l.includes('🔴')));
+    assert.ok(rows.length >= 10, 'PROGRESS.md 健康度矩阵至少应有 10 个业务领域');
+    for (const r of rows) {
+        assert.match(r, /[🟢🟡🔴]/, '健康度矩阵每行必须显式标注 🟢、🟡 或 🔴');
+    }
+    const yellowRows = rows.filter((r) => r.includes('🟡'));
+    assert.ok(yellowRows.length >= 8, '除纯无副作用计算外，涉及网络/D1/防抖/切后台的模块在真机治理前必须诚实标注 🟡');
+});
+

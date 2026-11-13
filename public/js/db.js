@@ -88,7 +88,7 @@ export async function idbSet(key, value) {
         if (Array.isArray(value)) {
             try {
                 localStorage.setItem(key, JSON.stringify(value.slice(0, 30)));
-            } catch (_) {}
+            } catch (_) { /* audit-ignore: intentional-fallback 极端配额受限时放弃降级缓存 */ }
         }
     }
 }
@@ -146,11 +146,11 @@ export async function idbDel(key) {
         try {
             const tx = db.transaction(STORE_NAME, 'readwrite');
             tx.objectStore(STORE_NAME).delete(key);
-        } catch (e) {}
+        } catch (e) { /* audit-ignore: intentional-fallback 事务已关闭或已删除安全降级 */ }
     }
     try {
         localStorage.removeItem(key);
-    } catch (e) {}
+    } catch (e) { /* audit-ignore: intentional-fallback 隐私模式下移除存储失败忽略 */ }
 }
 
 /** 启动时自动将历史 localStorage 数据无缝转入 IndexedDB */
@@ -166,7 +166,7 @@ export async function migrateFromLocalStorage(keys) {
                 if (raw) {
                     await idbSet(k, JSON.parse(raw));
                 }
-            } catch (e) {}
+            } catch (e) { /* audit-ignore: intentional-fallback 损坏的历史键解析失败跳过 */ }
         }
         await idbSet('_idb_migrated', true);
         console.log('[IDB] localStorage to IndexedDB migration complete');

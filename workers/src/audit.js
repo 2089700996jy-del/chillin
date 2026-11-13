@@ -10,7 +10,7 @@ export function ugcHasViolation(row, cols) {
         let v = row[col];
         if (v == null) continue;
         if (typeof v === 'string' && v.trim().startsWith('[')) {
-            try { v = JSON.parse(v).map(x => (x && (x.content || x.title || x.text)) || '').join(' '); } catch {}
+            try { v = JSON.parse(v).map(x => (x && (x.content || x.title || x.text)) || '').join(' '); } catch { /* audit-ignore: intentional-fallback 非 JSON 数组字段按纯字符串扫描 */ }
         }
         if (typeof v === 'string' && UGC_VIOLATION_RE.test(v)) return true;
     }

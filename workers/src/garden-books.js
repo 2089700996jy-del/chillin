@@ -10,7 +10,7 @@ const MAX_BOOK_SIZE = 20 * 1024 * 1024;
 function normalizeBookKey(raw) {
     if (typeof raw !== 'string') return '';
     let key = raw;
-    try { key = decodeURIComponent(raw); } catch (_) { /* 非法转义则按原值处理 */ }
+    try { key = decodeURIComponent(raw); } catch (_) { /* audit-ignore: intentional-fallback 非法转义则按原值处理 */ }
     return key.trim().slice(0, 300);
 }
 

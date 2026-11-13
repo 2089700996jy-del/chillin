@@ -517,7 +517,7 @@ async function sendAiChatMessage() {
                                 setHtml(bubbleEl, markdownToHtml(fullText));
                                 aiChatBody.scrollTop = aiChatBody.scrollHeight;
                             }
-                        } catch (e) {}
+                        } catch (e) { /* audit-ignore: intentional-fallback SSE 单行数据非合法 JSON 时忽略 */ }
                     }
                 }
             }

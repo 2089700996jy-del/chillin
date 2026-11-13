@@ -234,7 +234,7 @@ async function readBodyCapped(res, maxBytes) {
         if (!value || !value.length) continue;
         size += value.length;
         if (size > maxBytes) {
-            if (typeof reader.cancel === 'function') { try { await reader.cancel(); } catch { /* 已断开则忽略 */ } }
+            if (typeof reader.cancel === 'function') { try { await reader.cancel(); } catch { /* audit-ignore: intentional-fallback 取消读取流异常静默忽略 */ } }
             return null;
         }
         chunks.push(value);

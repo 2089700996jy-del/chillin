@@ -486,7 +486,7 @@ export function setAppThemeMode(mode) {
     try {
         if (next === 'auto') localStorage.removeItem(APP_THEME_KEY);
         else localStorage.setItem(APP_THEME_KEY, next);
-    } catch (_) { /* 隐私模式下写不进去，本次会话内仍然生效 */ }
+    } catch (_) { /* audit-ignore: intentional-fallback 隐私模式下写不进去，本次会话内仍然生效 */ }
     return applyAppTheme(next);
 }
 

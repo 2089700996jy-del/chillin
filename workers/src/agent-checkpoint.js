@@ -46,7 +46,7 @@ const BLOCKED_RE = /(?:BLOCKED|阻塞|无法完成|未能完成|缺少[^\n]{0,20
 
 function parseJson(text) {
     const raw = String(text || '').trim().replace(/^\u0060\u0060\u0060(?:json)?/i, '').replace(/\u0060\u0060\u0060$/, '').trim();
-    try { return JSON.parse(raw); } catch (_) { /* 继续尝试截取 */ }
+    try { return JSON.parse(raw); } catch (_) { /* audit-ignore: intentional-fallback 非直接 JSON，继续尝试截取花括号片段 */ }
     const start = raw.indexOf('{');
     const end = raw.lastIndexOf('}');
     if (start === -1 || end <= start) return null;

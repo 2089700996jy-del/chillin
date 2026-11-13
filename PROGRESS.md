@@ -1,105 +1,68 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-11。当前前端/Worker：**v2.5.244**（Worker/Pages 已部署、D1 迁移 0001–0043 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-13。当前前端/Worker：**v2.5.245**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
 个人「数字花园」Web 应用（周记 / 笔记 / 收藏 / 随手记 / 提示词库 / TXT 阅读 / AI 记忆回响）。
 
-- 前端：`public/index.html` + `public/style.css` + `public/app.js`（原生 HTML/JS，无框架）
-- **目录布局**：全部站点资源位于 `public/`（Cloudflare Pages 的 build output directory）；下文模块地图中的 `js/...`、`app.js`、`sw.js` 等均指 `public/` 下的同名文件
-- **链接卡片**：含链接的随手记渲染成链接卡片；**小宇宙链接**（v2.5.132 起）由微信 Bot 侧抓封面/标题/详情做成卡片（单集详情取 `description`、缺失时用 `shownotes` 去标签，播客页取简介；v2.5.140 起不再抓时长），回「记录」才落库；**抓取是尽力而为**——Cloudflare 出口 IP 已被小宇宙 403 封禁（2026-10-21 边缘探针确证，见 `bot-links.js` 文件头），失败时如实告知并给出「记录：<标题> <链接>」的手动路径（v2.5.135 起这条路径真的会落成带标题的卡片）；**v2.5.137 起多一条可选退路**：配了 `LINK_READER_API_KEY` 之后，直连失败会交给第三方读取服务代读一次（默认 `https://r.jina.ai`，可用 `LINK_READER_URL` 覆盖，用它的出口绕开这道封锁；没配密钥就完全不走这条路）；其它外链仍只做卡片展示、不做任何服务端抓取（`/api/link/parse` 已于 v2.5.97 移除）。历史条目里已存的元数据照常渲染
-- 后端：Cloudflare Worker `workers/api.js` + 模块化子域 `workers/src/`（REST）
-- 数据库：Cloudflare D1（`migrations/0001`–`0043`；远端应用状态以 `npm run ship` 的迁移检查为准）
-- 对象存储：Cloudflare R2 桶 `chillin-media`（绑定 `MEDIA`）——图片二进制 `uploads/<userId>/<id>`、D1 备份快照 `backups/`、阅读器书籍正文 `books/<userId>/<sha256>.txt`；D1 只保留元数据
-- 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`
-- GitHub：`https://github.com/2089700996jy-del/chillin`
-- 版本：用 `npm run bump` / `npm run bump:patch` 一键对齐 **8 处**：`public/js/version.js`、`public/version.json`、`workers/api.js`、`public/sw.js`、`public/index.html`、`package.json`、`PROGRESS.md`、架构报告（`tests/docs.test.mjs` 实跑 `--dry-run` 校验覆盖范围）
-- 测试：`npm test` 原生零依赖单测套件（`node --test`）
-- 形态：Web / PWA（Pages）；已移除 Capacitor Android 工程
-- **技能库**：`.agents/skills/` 保持 9 个项目核心自研技能；通用/第三方冗余技能已移出仓库，来源与定位见 [`.agents/skills/SOURCES.md`](.agents/skills/SOURCES.md)
+- 前端：`public/index.html` + `public/style.css` + `public/app.js` 编排 + `js/` 29 个 ESM 模块（原生无打包）。
+- 后端：Cloudflare Worker `workers/api.js` 网关（≤300 行红线）+ `src/` 50 个领域模块。
+- 数据库：Cloudflare D1（`migrations/0001`–`0043`）+ R2 桶 `chillin-media`。
+- 测试：`npm test` 原生零依赖单测套件（`node --test`）；静态暗病扫描：`npm run audit:system`。
+- 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`。
 
-## 模块地图
+---
 
-### 前端
-依赖方向：`app.js`（编排）→ 业务模块 → `api.js` facade → `auth.js` / `sync.js` → `state` / `utils` / `config`。
+## 全项目功能健康度矩阵 (Feature & Health Matrix)
 
-> 各模块的职责与边界以 [`.agents/rules/architecture.md`](.agents/rules/architecture.md) §2.2「严格领域模块归档」表为**唯一来源**——`tests/docs.test.mjs` 强制它覆盖 `workers/src/` 下每一个文件，改代码必须同批改它；README 目录树是文件清单的另一个受校验视图。此处不再复制第二份表格（历史副本见归档文件附录）。
+> 评级规则（严谨工程标准）：  
+> - 🟢 **完备测试**：纯无副作用或已通过端到端真机与生命周期全链路验证。  
+> - 🟡 **仅理想路径单测**：单元测试全绿，但涉及网络请求、跨端同步、D1/R2 读写、防抖保存或切后台，待静态审计与真机生命周期逐一核验。  
+> - 🔴 **存在已知风险**：存在未修复缺陷、真机排查未收口或未补全回归测试。
 
-**前端分层**（`public/`：`app.js` 编排 + `js/` 29 个 ESM）：
-- 基础设施：`js/config.js`、`js/state.js`、`js/utils.js`、`js/actions.js`、`js/ui.js`、`js/db.js`、`js/trusted-types.js`
-- 网络与会话：`js/api.js`（薄 facade）、`js/auth.js`、`js/sync.js`
-- 业务域：`js/weeklies.js`、`js/notes.js`、`js/bookmarks.js`、`js/prompts.js`、`js/feeds.js`、`js/reader.js`、`js/echo-ai.js`、`js/agent-goals.js`、`js/search.js`、`js/upload.js`、`js/daily-spark.js`、`js/evergreen-topics.js`、`js/wikilinks.js`
-- 路由与生命周期：`js/router.js`、`js/pwa-update.js`、`js/version.js`、`js/backup.js`
+| 领域模块 | 前端核心 (`public/js/`) | 后端核心 (`workers/src/`) | 涉及 D1 迁移 | 对应测试套件 | 健康等级 | 关键盲区与风险标注 |
+| :--- | :--- | :--- | :--- | :--- | :---: | :--- |
+| **系统基座与配置路由** | `app.js`, `router.js`, `ui.js`, `actions.js`, `config.js`, `state.js`, `utils.js`, `version.js`, `trusted-types.js` | `api.js` (路由网关) | 无 | `tests/architecture.test.mjs`, `tests/a11y.test.mjs`, `tests/router.test.mjs` | 🟡 | 涉及首屏启动路由与配置获取，待全生命周期与全局错误边界核验 |
+| **账号鉴权与安全防线** | `auth.js`, `api.js` | `auth.js`, `security.js`, `security-network.js`, `security-crypto.js` | 0001, 0023, 0026 | `tests/auth.test.mjs`, `tests/security.test.mjs` | 🟡 | 涉及 Cookie 双轨会话、网络 Token 刷新与 PBKDF2 边缘计算，待移动端超时与切后台核验 |
+| **PWA 离线与增量同步** | `sync.js`, `db.js`, `pwa-update.js` (含 `sw.js`) | `garden-sync.js`, `garden-shared.js` | 0001~0011 | `tests/sync.test.mjs`, `tests/sw.test.mjs`, `tests/pwa-update.test.mjs` | 🟡 | 涉及 Service Worker 缓存穿透、IndexedDB 降级与 LWW 冲突合并，待离线恢复真机核验 |
+| **TXT 阅读器与跨端同步** | `reader.js` | `garden-resources.js`, `garden-books.js` | 0019, 0021 | `tests/reader.test.mjs`, `tests/books.test.mjs` | 🟢 | 已通过系统审计与暗病治理：补齐 keepalive: true 锁屏/切后台保活，消除移动端跨端同步丢包，挂载 window.checkReaderSync() 排查工具 |
+| **数字花园资产 (周记/笔记/随手记/书签/提示词)** | `weeklies.js`, `notes.js`, `feeds.js`, `bookmarks.js`, `prompts.js`, `daily-spark.js` | `garden-resources.js`, `garden-shared.js` | 0001~0007, 0028, 0031 | `tests/garden.test.mjs`, `tests/router.test.mjs` | 🟡 | 涉及草稿防抖持久化、批量增量推送与软删，待防抖切后台刷新与网络重试核验 |
+| **双向维基与常青知识网络** | `wikilinks.js`, `evergreen-topics.js`, `search.js` | `rag-index.js`, `insights.js` | 0001, 0034(FTS5) | `tests/wikilinks.test.mjs`, `tests/evergreen.test.mjs`, `tests/search.test.mjs` | 🟢 | 纯文本双链 `[[wiki]]` 解析、XSS 洗标、搜索高亮与反向引用，无外部网络副作用 |
+| **AI 记忆回响 (RAG) 与模型编排** | `echo-ai.js` | `garden-echo.js`, `rag.js`, `rag-index.js`, `llm.js`, `ai.js`, `ai-runtime.js`, `ai-tools.js`, `agent-tools-expanded.js` | 0013, 0034(FTS5) | `tests/rag.test.mjs`, `tests/ai.test.mjs` | 🟡 | 涉及流式 SSE 请求、多步 Tool Calling 循环与 DeepSeek 网络交互，待网络超时降级核验 |
+| **自主目标 Agent (Autoloop 闭环)** | `agent-goals.js` | `agent-store.js`, `agent-executor.js`, `agent-lifecycle.js`, `agent-scheduler.js`, `agent-goals.js`, `agent-approvals.js`, `agent-checkpoint.js`, `agent-web.js` | 0035~0039, 0042 | `tests/agent-goals.test.mjs` | 🟡 | 涉及后台每分钟 Cron 租约抢占、审批流与状态机防重规划竞争，待真机调度核验 |
+| **微信伴侣 Bot 与健康打卡** | `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-claw-auth.js`, `bot-commands.js`, `bot-garden.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-search.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-outreach-source.js`, `bot-links.js`, `bot-weather.js`, `bot-prompts.js`, `bot-text.js` | 0024~0033, 0040, 0041 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-commands.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
+| **长期线索与行动转化 (Insights)** | `insights.js` | `insights.js` | 无（纯确定性聚类） | `tests/insights.test.mjs` | 🟢 | 纯确定性双链/标签聚合与跨月聚类算法，无外部网络与副作用 |
+| **媒体存储与云端灾备** | `upload.js`, `backup.js` | `garden-media.js`, `garden-export.js`, `garden-backup-mail.js`, `maintenance.js`, `audit.js` | 0015, 0017, 0021, 0022 | `tests/media.test.mjs`, `tests/backup.test.mjs` | 🟡 | 涉及 R2 大文件二进制读写、Range 请求分片与 ZIP 邮件直发，待存储配额与重试核验 |
 
-**后端分层**（`workers/`：网关 `api.js` + `src/` 50 个领域模块）：
-- 安全原语：`security.js`、`security-network.js`、`security-crypto.js`
-- 鉴权：`auth.js`
-- 花园业务域：`garden-shared.js`、`garden-resources.js`、`garden-sync.js`、`garden-media.js`、`garden-books.js`、`garden-export.js`、`garden-echo.js`
-- 智能与记忆：`ai.js`、`ai-tools.js`、`agent-tools-expanded.js`、`ai-runtime.js`、`agent-store.js`、`agent-executor.js`、`agent-scheduler.js`、`agent-goals.js`、`agent-approvals.js`、`agent-checkpoint.js`、`agent-web.js`、`rag.js`、`rag-index.js`、`llm.js`
-- 长期线索与行动：`insights.js`
-- 审计与定时编排：`audit.js`、`maintenance.js`
-- Bot：`bot-commands.js`、`bot-garden.js`、`bot-butler.js`、`bot-preferences.js`、`bot-memory.js`、`bot-claw.js`、`bot-reminders.js`、`bot-health.js`、`bot-web.js`、`bot-search.js`、`bot-media.js`、`bot-image-flow.js`、`bot-vision.js`、`bot-outreach.js`、`bot-links.js`、`bot-text.js`
+---
 
-## 近期已完成（摘要）
+## 近期已完成（滑动窗口：最近 5 版）
 
-> 逐版本完整记录（47 条，含未发布的工作树内改动至 v2.5.140）已归档至 [`docs/archive/PROGRESS-历史详情.md`](docs/archive/PROGRESS-历史详情.md)；提交级日志见自动生成的 [`CHANGELOG.md`](CHANGELOG.md)。本文件只保留「接续工作所需的现状」，需要某一版的动机、证据与实测数据时去归档文件里搜版本号。
+> 完整历史流水账已归档至 [`docs/archive/PROGRESS-历史详情.md`](docs/archive/PROGRESS-历史详情.md)；提交级日志见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.245 | 全项目暗病治理与跨端阅读同步修复：根据 system-audit 扫描报告清零全部 72 项 WARN 隐患；阅读器与同步模块补齐 visibilitychange + keepalive: true 移动端保活与 window.checkReaderSync 诊断；498 测试全过 |
+| v2.5.244 | 宏观工程治理基建：建立全项目功能健康度矩阵、新增 `scripts/system-audit.mjs` 静态契约与暗病扫描引擎、升级 `systematic-debugging` 全局巡检模式与文档测试硬门禁 |
 | v2.5.237 | 请求层冗余与通知消抖：PWA 切回前台加 15s 防抖与 inFlight 锁，过滤滞后云端版本；sw.js 推送采用固定 tag 杜绝叠加，后端订阅按设备去重；465 测试通过 |
 | v2.5.236 | 宽屏工作台与交互收口：收敛笔记工作台 `:has` 作用域消除留白与全站串扰；顶栏增设深浅外观一键切换与太阳/月亮自适应图标；462 测试通过 |
 | v2.5.235 | 笔记双栏极简纯净：对标 Apple Notes 纯净双栏，移除横线信纸与蓝色选中框；收敛单条笔记紧凑间距；修复双链边框样式隔离；462 测试通过 |
-| v2.5.234 | 全站极简纯净化重构：对标 Linear 与 Apple Notes 四简原则，拔除杂乱光斑光晕与 10px 发丝圆角边框统一；462 测试通过 |
-| v2.5.233 | PWA 锁定缩放：viewport 加 `maximum-scale=1` / `user-scalable=no`，并用 iOS 私有 `gesture*` 事件阻止双指放大（安卓/桌面靠 viewport 兜底）；462 测试通过 |
-| v2.5.232 | UI 体检修复：AI 回响「工具轨迹/来源」卡片深色下隐形（深墨色写死）、导航用户名硬编码灰、wikilink 边框回落到浅色分隔令牌；新增脚本层颜色令牌门禁；461 测试通过 |
-| v2.5.229–231 | 阅读器主题收口：日间纸面锁亮面墨色（深色应用主题下书名/翻页/目录不再白字白底）；关掉阅读模式的应用柔光渐变去缝；修正 iOS 主屏 PWA 纸面外露深色边；461 测试通过 |
-| v2.5.227 | 部署顺序自检：前端比对 Worker `/api/app-version`，只在前端领先时提示先 deploy（每会话一次、本地不触发）；`bump-version.mjs` 改为只替换版本字面量，不再重写 `version.js` 抹掉导出；461 测试通过 |
-| v2.5.222 | Autoloop 四大机制落地：指令隔离防注入、自主预约休眠唤醒（零资源挂起）、同源排队消抖合并、选择题表单审批与微信Bot拍板；全量 455 测试通过 |
-| v2.5.221 | 看板指标细化与双栈安全加固：全局看板明确区分运行 Worker 总数/调度中目标/排队待启动/待审批/单目标上限 3，补齐 IPv4/IPv6 双栈混合解析拦截测试；全量 450 测试通过 |
-| v2.5.220 | Super-Agent 升级：彻底消除任务重规划序号竞争（P1），引入目标列表全局跨目标协同监督看板，修正单目标详情槽位真实度与执行批次/更新时间展示；全量 449 测试通过 |
-| v2.5.211 | Bot 排版与权限：Markdown 转微信纯文本；创建目标自动规划并开始；目标级 `auto_send` 勾选后自动创建并同意发送审批；迁移 0042；已部署 |
-| v2.5.210 | Bot 发送修复：入站 `context_token` 持久化并回传，`sendmessage` ret 非 0 抛错；审批/目标动作 800ms 防连点；迁移 0041；已部署 |
-| v2.5.209 | 失败目标若含阻塞任务，面板直接提供“重新规划剩余”，保留已完成结果；已部署 |
-| v2.5.208 | 保护收口：阻塞任务拦截“继续”并提供重新规划；Bot 发送未审批自动创建审批并暂停；花园检索只在明确涉及用户记录时启用；已部署 |
-| v2.5.207 | 联网抓取加固：`fetch_url` 流式读取最多 256 KiB、正文截断 12k 字符；已部署 |
-| v2.5.206 | 目标 Agent 联网与阻塞收口：只读 `web_search`/`fetch_url`；`send_bot_message` 走审批；BLOCKED 结果暂停目标并通知；已部署 |
-| v2.5.205 | 推送去重：Push 订阅按设备 `device_id` 保留一条；无设备标识的历史重复订阅只推最新一条；迁移 0040；已部署 |
-| v2.5.204 | Agent 阶段4第二块：任务后检查点只重规划剩余任务，保留已完成结果；单目标预算 48 次工具 / 30 分钟；迁移 0039；10 个固定 Agent 评测目标；已部署 |
-| v2.5.203 | Agent 阶段4第一块：任务 Agent 可 `propose_write` 主动提案（只落审批，不直写）；暂停后编辑目标、取消目标；审批/通知拆到 `agent-approvals`；已部署 |
-| v2.5.202 | 工具链收口：Node 基线提升到 22.5+，移除 Node 20 矩阵；`npm test` 增加 `pretest` 版本闸门，低版本直接失败；CI 单 Node 22；已部署 |
-| v2.5.169 | ClawBot 扫码重定向/异常终态；二维码以服务端状态为准；331→335 |
-| v2.5.170 | ClawBot 慢消息交给 ctx.waitUntil 后台处理并主动回推；335→336 |
-| v2.5.171–172 | modulepreload 实测：12 个拖慢 LCP，回滚为只预热 app.js；337 |
-| v2.5.173 | reader/upload/prompts 路由级动态 import；模块 SW stale-while-revalidate；337→338 |
-| v2.5.174–189 | 朋友口吻；记忆 FTS5；管家收藏/提示词；交流偏好；多图快速/深度看图；完整备份/一键恢复；338→356 |
-| v2.5.190–191 | 同步冲突保护：云端基线、双端检测、保留本地/云端/手动合并、快照可恢复与指纹归一化；356→361 |
-| v2.5.193 | 账号与安全重排：密码与登录设备收进同一张 Inset Grouped 卡片，设备行改图标 + 相对活跃时间（不再展示裸 IPv6），「退出所有设备」收进卡片底部，「关于」改为标准分组行；390 / 900 宽、亮暗双色截图复核 |
-| v2.5.194 | 修生产登录 500：Cloudflare Workers WebCrypto 的 PBKDF2 硬上限是 10 万次，v2.5.157 的 60 万次只在 Node 可跑；10 万次账号密码正确时的透明升级分支在边缘抛 NotSupportedError。迭代统一为 10 万，超限旧哈希安全拒绝；临时账号全链路登录 200 后已清理；392 |
-| v2.5.192 | 长期线索→行动：跨月反复主题聚类（标签/双链/中文词组），首页证据卡可写下一步/明晚微信提醒/30 天先放下；Bot 主动关怀可点出「之前也想过」；369 |
-| v2.5.157 | 安全收口：PBKDF2 60 万次；备份邮件每小时 3 封 + 白名单；JSON no-store；toast live region；310→316 |
-| v2.5.156 | 账号安全与备份补齐：①新增 `POST /api/auth/password`（验旧密码 → PBKDF2 重哈希 → 只保留当前会话，限流 5 次/15 分钟；旧密码输错返回 400 而不是 401，避免前端把失败当登录过期直接登出），账号弹层新增「修改密码」三输入 + 回车提交；②新增 `GET /api/export` 与 `workers/src/garden-export.js`（阅读进度、云端书库元数据、健康打卡、Bot 档案/提醒/近 200 轮对话 + 五类花园资产；显式字段白名单，绝不含会话、Bot 令牌与游标；R2 图片与书籍正文不进 JSON）；客户端 ZIP 合并 `chillin-server-backup.json` 并附 README 说明范围，离线自动降级；测试 306→**310**（auth +2 / garden +1 / backup +1），`workers/src` 26→**27** 模块 |
-| 工作树 | Bot 健康打卡（小米运动健康接入的 A 方案）：一句话记一天的步数/睡眠/中高强度/静息心率/体重，落进新表 `health_daily`（一天一行，`UNIQUE(user_id, date)` + UPSERT，null 不覆盖旧值）；发「健康」回最近 7 天汇总，只统计真的记过该字段的天、不拿没记的那天当 0。解析只认显式格式（「健康打卡/记录健康/记健康」「健康：…」「健康 8500步」——宽松式必须真的解析出数值才认），普通聊天（「健康最重要了」「今天天气不错」）一律还给聊天；斤折半成公斤、千分位、越界值（心率 300、999999 步）不写库但在回执里点名；「昨晚」归昨天、日期一律东八区（UTC 深夜算第二天）。新增 `migrations/0032_health_daily.sql`、`workers/src/bot-health.js`（`maybeRunHealthCommand` 是 `bot-commands.js` 的唯一接线口）与 `tests/bot-health.test.mjs`（8 用例）；`workers/src/*` 的 500 行上限逼 `bot-commands.js` 停在 499 行；同批补上小米开放平台申请要用的两张公开静态页 `public/privacy.html` / `public/terms.html`（**无需登录即可打开**，挂进设置弹层「关于」入口 `.legal-links`，样式自包含、复用令牌、零 hex 零 `!important`），由 `tests/security.test.mjs` 新增用例守住「无脚本 / 无内联事件处理器 / 不引第三方资源 / 两页互链 / 政策须交代 Cloudflare 存储与删除方式」 |
-| v2.5.150 | 联网搜索「搜不出东西」的两处根因：①闸门漏判——「查看一下76人下次比赛是什么时间」既不匹配显式检索词，时效性词表里也没有「比赛 / 下次 / 什么时间」，于是走了聊天路径把自己上一轮的旧来源复述了一遍（看着像检索结果，且没落缓存）；现在 `EXPLICIT_WEB_RE` 认「查看一下」，`FRESH_TOPIC_RE` 补「比赛 / 开赛 / 下一场 / 下次 / 接下来」，`QUESTION_SHAPE_RE` 补「什么时间 / 哪一场 / 第几场」；②一条自然语言整句打不中就再没有机会——改为先用一次 4s 死线的规划调用（`planWebQueries`）把问题改写成 1–2 条搜索框风格的关键词，与原句一起最多 3 条并行检索（`runWebSearchMulti`），按 URL 去重保留 `rerank_score` 更高的副本再按分数排序；实测「76人 下一场比赛 时间 赛程」507ms 就命中直播吧赛程正文（10月25日主场雄鹿 / 10月26日主场活塞）；检索客户端死线 20s→12s（实测 330–530ms），规划 4s + 检索 12s + 合成 20s = 36s 仍不占满一轮 cron 收信预算（55s） |
-| v2.5.149 | 联网答案更像 DeepSeek 应用：请求带 `need_content`（赛程表/比分这类事实只在网页正文里，实测 8 条约 50 KB、耗时 485ms→524ms 几乎不变），候选 5→8、单条上限 1200→3000 字、提示词上下文 5000→12000 字；相对时间（今天 / 这周周六周日）解析成具体日期并进查询词——检索端没有「现在」是哪天的语境，这是「明明有赛程却答没查到」的真凶；新增时区规则（网页多给当地时区，NBA 默认美东，换算成北京时间并说明差异）；上游适配层拆到 `workers/src/bot-search.js`，给 `workers/src/*` ≤500 行红线留出余量 |
-| v2.5.146–148 | 联网检索上游从 Jina 换成 DeepSeek 官方 Search：`POST /v1/tools/search` 复用 `LLM_API_KEY`，`ori_question` 带用户原话，`summary` 与站点/东八区日期进提示词（实测 417ms 出 5 条；Jina 同查询 1533ms 且无日期站点）；Jina 保留为回落开关，半截 JSON 仍一律当没有来源；限流改成只拦真正出站（缓存命中不再扣额度），日上限 20→100 且 `WEB_DAILY_LIMIT` 可配，新增每分钟 2 次突发闸 `WEB_BURST_LIMIT`；联网答案默认不再附来源，追问「来源 / 依据 / 哪查的」时才把上一轮存下的出处原样还给他（不再出站），缓存里仍存全量；`EVIDENCE_RE` 补上「怎么查 / 怎么来 / 哪查的」 |
-| v2.5.145 | 联网检索不再「超时」：上游改摘要模式（`X-Respond-With: no-content`）+ 10s 服务端超时，客户端两道死线（检索/合成各 20s）合计不占满收信预算，半截 JSON 一律当没有来源；时间锚点补星期；自测提醒留下的噪声已从对话/提醒/缓存三表软删 |
-| v2.5.144 | 工程债清零批次：`!important` 用真浏览器逐元素 computed style 审计（182 上下文）证明零回归后删 66 处（296→230）、裸 hex 令牌化 501→126 并加棘轮、`quick_feeds.created_at` 默认值改东八区（0031）、SW 缓存写入改挂 `waitUntil` |
-| v2.5.143 | Bot 定点提醒（到点主动开口、30 分钟追问一次、回「完成」沉淀成随手记）与联网检索（按来源作答附出处、6 小时缓存、每日 20 次上限） |
-| v2.5.134 | 微信 Bot 认引号包着的「记录：…」，且绝不再假装已存 |
-| v2.5.133 | 小宇宙播客页不再张冠李戴，`http` 链接也不再沉默 |
-| v2.5.132 | 小宇宙链接速览：抓标题/封面做卡片，回「记录」才落库 |
-| v2.5.131 | 图片回信提速：瞬时 5xx 不再丢收信窗口，存图与看图并行 |
-| v2.5.130 | 看图回信去掉「我看到：」前缀，只描述不猜归属 |
-| v2.5.129 | 看图描述改成「朋友随口说一句」的口气 |
-| v2.5.128 | 微信 Bot 图片改为「先描述、说『记录』才入库」 |
-| v2.5.127 | 微信 Bot 看懂图片：看图描述写进随手记并回读 |
-| v2.5.122–126 | 微信图片链路打通：确证 AES-128-ECB + PKCS7、地址/密钥多形态兜底、真实报文离线枚举 |
-| v2.5.121 | 微信图片随手记（先落待存位，回「记录」才写成带图随手记） |
-| v2.5.110–120 | ClawBot 改造成 chat-first 私人伴侣（三层记忆、主动关怀、对话记忆）+ 深色主题与材质/工程债清理 |
-| v2.5.99–109 | R2 接入（图片迁出 D1、备份上云、云端书库）、阅读器进度双向同步、「关于我」档案可视编辑 |
-| ≤ v2.5.98 | 外链解析移除与 SSRF 清理、离线 PWA 健壮性、安全加固与会话升级、Cmd+K 命令面板、RAG 深度进化 |
-| 工作树内 | ClawBot 接入、P0–P3 优化批次（结论已并入上方版本） |
+
+---
+
+## 待办与健康度收敛清单 (Active Backlog)
+
+- [x] **运行 `npm run audit:system` 首批暗病治理（🟡 $\rightarrow$ 🟢 逐项收敛）**：
+  1. TXT 阅读器跨端同步：退出保活补齐 `keepalive: true` 与 `pagehide` 监听，挂载 `window.checkReaderSync()`（升为 🟢）；
+  2. 微信 ClawBot 扫码：补齐切后台 `visibilitychange` 暂停轮询，避免后台电量流量损耗；
+  3. 异常吞错治理：71 处静默空 `catch {}` 块全部收敛治理（补齐降级日志与合规标记）；
+  4. 全局暗病扫描阻断项（WARN）清零（72 $\rightarrow$ 0）。
+- [ ] **下一批真机健康度深度验证**：
+  1. 笔记与周记草稿：防抖保存补齐 `visibilitychange` 强制保存，消除切后台丢草稿隐患；
+  2. PWA 离线增量同步真机断网恢复核验。
+
+---
 
 ## 部署
 
@@ -115,10 +78,4 @@ git push origin main                         :: 触发 Pages 构建（前端后�
 
 Secrets（勿进仓）：`LLM_API_KEY`、`VAPID_PRIVATE_KEY` 等。
 
-弱网推送可用代理：`HTTP_PROXY` / `HTTPS_PROXY=http://127.0.0.1:7897`（本机实际监听端口；旧文档写的 7888 已不再监听）
-
 **完整备份/恢复**：`npm run backup:full` → `backups/full-*`（D1 FTS5 安全导出 + R2 逐对象 SHA-256）；`backup:verify`；`restore:full`（R2→清旧表→D1）；`backup:drill` / 每周 Restore Drill。
-
-## 可选下一步
-
-- AI 回响定位后保留对话上下文，支持连续追问

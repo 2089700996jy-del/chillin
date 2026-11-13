@@ -58,7 +58,7 @@ export async function notifyAgentUser(env, db, userId, payload = {}) {
         } catch (err) {
             if (err && (err.statusCode === 404 || err.statusCode === 410)) {
                 try { await db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?1').bind(sub.endpoint).run(); }
-                catch (_) { /* 清理失败不影响主流程 */ }
+                catch (_) { /* audit-ignore: intentional-fallback 清理过期订阅失败不影响主流程 */ }
             } else {
                 console.error('[agent-notify] push failed:', err && err.message ? err.message : err);
             }

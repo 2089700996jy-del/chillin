@@ -36,11 +36,11 @@ async function readErrorMessage(res) {
     try {
         const data = await res.clone().json();
         if (data && data.error) return String(data.error);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 非 JSON 错误响应，继续尝试文本解析 */ }
     try {
         const text = (await res.clone().text()).trim();
         if (text && text.length < 200 && !text.startsWith('<')) return text;
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 文本解析失败，降级使用状态码文案 */ }
     if (res.status === 429) return '请求过于频繁，请稍后再试';
     if (res.status >= 500) return `服务暂时不可用 (${res.status})`;
     return `请求失败 (${res.status})`;
@@ -167,7 +167,7 @@ export function logout(opts = {}) {
     localStorage.removeItem('chillin_token');
     localStorage.removeItem('chillin_user');
     clearSyncCursorsForUser(uid);
-    try { localStorage.removeItem(PUSH_SYNC_FAILED_KEY); } catch (_) {}
+    try { localStorage.removeItem(PUSH_SYNC_FAILED_KEY); } catch (_) { /* audit-ignore: intentional-fallback 隐私模式下移除存储标记忽略 */ }
     checkAuth();
     if (opts.silent) return;
     if (opts.reason === 'expired') {
@@ -235,13 +235,13 @@ async function doLogin() {
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
 
         checkAuth();
-        try { window.dispatchEvent(new CustomEvent('chillin:auth-ready')); } catch (_) {}
+        try { window.dispatchEvent(new CustomEvent('chillin:auth-ready')); } catch (_) { /* audit-ignore: intentional-fallback 派发 auth-ready 事件异常降级 */ }
         const sync = await import('./sync.js');
-        try { sync.loadLocalData(); } catch (_) {}
+        try { sync.loadLocalData(); } catch (_) { /* audit-ignore: intentional-fallback 登录后读取本地缓存异常降级 */ }
         Promise.resolve()
             .then(() => sync.syncFromApi())
             .catch((e) => console.warn('[login] sync after login failed', e));
-        try { sync.checkAndMergeGuestData(); } catch (_) {}
+        try { sync.checkAndMergeGuestData(); } catch (_) { /* audit-ignore: intentional-fallback 游客数据合并失败不阻断登录流程 */ }
         // 推送权限改为用户在「账号与安全」里主动点击「开启通知」时申请，避免登录即弹窗被永久拒绝
     } catch (err) {
         const errorMsg = formatAuthError(err, err._authRes, err._authData);
@@ -441,7 +441,7 @@ export async function apiRequest(path, options = {}) {
             try {
                 const errBody = await res.json();
                 detail = errBody && errBody.error ? String(errBody.error) : '';
-            } catch (_) {}
+            } catch (_) { /* audit-ignore: intentional-fallback 非 JSON 错误响应，保留默认状态码文案 */ }
             throw new Error(detail || `接口请求异常 (${res.status})`);
         }
         return res.json();
@@ -494,7 +494,7 @@ export async function logoutAllDevices() {
     if (!(await confirmDialog('将退出所有设备上的登录状态，是否继续？'))) return;
     try {
         await apiRequest('/api/auth/logout-all', { method: 'POST' });
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 服务端退出全部会话失败仍继续清理本机 */ }
     logout({ silent: true });
     showToast('已退出所有设备', 'info');
 }
@@ -554,7 +554,7 @@ async function changePassword() {
                 : '密码已更新', 'ok');
             try {
                 renderSessions(await apiRequest('/api/auth/sessions'));
-            } catch (_) { /* 设备列表刷新失败不影响改密结果 */ }
+            } catch (_) { /* audit-ignore: intentional-fallback 设备列表刷新失败不影响改密结果 */ }
         }
     } catch (err) {
         showToast(err?.message || '修改密码失败，请稍后再试', 'error');
@@ -664,7 +664,7 @@ function rememberPushServerState(next) {
     try {
         if (next === 'failed') localStorage.setItem(PUSH_SYNC_FAILED_KEY, '1');
         else localStorage.removeItem(PUSH_SYNC_FAILED_KEY);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 隐私模式下无法写入 localStorage 忽略 */ }
 }
 
 /** 刷新系统推送通知状态指示与操作按钮 */
@@ -1231,6 +1231,14 @@ function stopBotClawPolling() {
     if (clawPollTimer) { clearInterval(clawPollTimer); clawPollTimer = 0; }
     clawCheckInFlight = false;
     clawLastCheckAt = 0;
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden' && clawPollTimer) {
+            stopBotClawPolling();
+        }
+    });
 }
 
 function hideBotClawQr() {

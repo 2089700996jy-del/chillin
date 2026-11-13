@@ -291,7 +291,7 @@ export async function resolveUserCity(db, userId, text = '') {
                     if (parsed && !GENERIC_CITY_WORDS.has(parsed)) return parsed;
                 }
             }
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 从用户画像读取城市失败默认降级到福州 */ }
     }
     return '福州';
 }
@@ -301,7 +301,7 @@ async function ensureWeatherTable(db) {
     if (!db) return;
     try {
         await db.prepare('CREATE TABLE IF NOT EXISTS bot_weather_daily (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, city TEXT NOT NULL, date TEXT NOT NULL, temp_max INTEGER NOT NULL, temp_min INTEGER NOT NULL, max_time TEXT DEFAULT "", min_time TEXT DEFAULT "", rain_summary TEXT DEFAULT "", uv_index INTEGER DEFAULT 0, warning_text TEXT DEFAULT "", notified INTEGER DEFAULT 0, created_at TEXT DEFAULT (datetime("now", "+8 hours")), UNIQUE(user_id, date))').run();
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 幂等创建天气日表失败忽略 */ }
 }
 
 /** 每天早上 8:00 执行的智能晨报关怀 */
@@ -332,7 +332,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         let todayRow = null;
         try {
             todayRow = await db.prepare('SELECT notified FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, today).first();
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 查询今日记录异常按未推送处理 */ }
         if (todayRow && todayRow.notified === 1) {
             summary.silent++;
             continue;
@@ -342,7 +342,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         let yRow = null;
         try {
             yRow = await db.prepare('SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, yesterday).first();
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 查询昨日温差基准异常跳过温差对比 */ }
 
         // 抓取并分析今日
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
@@ -413,7 +413,7 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
         await ensureWeatherTable(db);
         try {
             yRow = await db.prepare('SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(userId, yesterday).first();
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 读取昨日温度对比基准异常降级跳过 */ }
     }
 
     const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);

@@ -150,7 +150,7 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
             try {
                 const parsed = JSON.parse(res.text);
                 if (parsed && parsed.error) message = parsed.error;
-            } catch (_) { /* 非 JSON 响应，保留默认文案 */ }
+            } catch (_) { /* audit-ignore: intentional-fallback 非 JSON 响应，保留默认文案 */ }
             throw new Error(message);
         }
 

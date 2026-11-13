@@ -11,11 +11,11 @@ import { state } from './state.js';
 export function decodeBuffer(buf) {
     try {
         return new TextDecoder('utf-8', { fatal: true }).decode(buf);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback UTF-8 严格解码失败，尝试 GBK */ }
     try {
         const text = new TextDecoder('gbk').decode(buf);
         if ((text.match(/[\u4e00-\u9fa5]/g) || []).length > 0) return text;
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback GBK 解码失败，最终降级有损 UTF-8 */ }
     return new TextDecoder('utf-8', { fatal: false }).decode(buf);
 }
 
@@ -207,7 +207,7 @@ function loadReaderSettings() {
             if (!parsed.fontFamily) parsed.fontFamily = 'sans';
             return parsed;
         }
-    } catch (e) { /* 解析失败按默认处理 */ }
+    } catch (e) { /* audit-ignore: intentional-fallback 解析失败按默认处理 */ }
     return { theme: systemPreferredTheme(), fontSize: 18, lineHeight: '1.8', fontFamily: 'sans' };
 }
 function saveReaderSettings(s) {
@@ -221,7 +221,7 @@ function loadProgressQueue() {
     try { return JSON.parse(localStorage.getItem(PROGRESS_QUEUE_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
 function saveProgressQueue(queue) {
-    try { localStorage.setItem(PROGRESS_QUEUE_KEY, JSON.stringify(queue)); } catch (_) { /* 配额满则放弃排队，进度仍在本机 */ }
+    try { localStorage.setItem(PROGRESS_QUEUE_KEY, JSON.stringify(queue)); } catch (_) { /* audit-ignore: intentional-fallback 配额满则放弃排队，进度仍在本机 */ }
 }
 /** 同一本书只留最新一条，避免补推时把更旧的进度写回云端 */
 function queueProgress(payload) {
@@ -238,11 +238,16 @@ function dropQueuedProgress(bookKey) {
 }
 
 /** 发一次进度；服务端返回 applied:false 表示比云端旧、被写入保护拒绝，同样算处理完毕（不再重试） */
-async function pushProgress(payload) {
-    return await apiRequest('/api/reader/progress', { method: 'POST', body: JSON.stringify(payload) });
+async function pushProgress(payload, options = {}) {
+    return await apiRequest('/api/reader/progress', {
+        method: 'POST',
+        body: JSON.stringify(payload),
+        keepalive: true,
+        ...options
+    });
 }
 
-async function syncReaderProgressToCloud(book, chapterIdx, scrollPct, chapterTitle, ts) {
+async function syncReaderProgressToCloud(book, chapterIdx, scrollPct, chapterTitle, ts, options = {}) {
     if (!book || (!state.authToken && !state.cookieSession)) return;
     const bookKey = book.bookKey || computeBookKey(book);
     const payload = {
@@ -255,7 +260,7 @@ async function syncReaderProgressToCloud(book, chapterIdx, scrollPct, chapterTit
         client_ts: Number(ts) || Date.now()
     };
     try {
-        await pushProgress(payload);
+        await pushProgress(payload, options);
         dropQueuedProgress(bookKey);
         const statusEl = document.getElementById('reader-sync-status-text');
         if (statusEl) statusEl.textContent = '已同步至云端 ' + new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
@@ -1186,21 +1191,23 @@ document.addEventListener('touchmove', (e) => {
     // P2：网络恢复后自动补推断网期间积压的阅读进度
     window.addEventListener('online', () => { flushQueuedProgress(); });
 
-    // 切换到后台 / 锁屏时立即刷入当前阅读进度（避免换设备时缺少最新位置）
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden') {
-            if (readerSessionDirty && currentBookId && currentBook && chapterMetas.length) {
-                const ch = chapterMetas[currentChapterIdx];
-                const area = document.getElementById('reader-content-area');
-                const maxScroll = (area && area.scrollHeight > area.clientHeight) ? (area.scrollHeight - area.clientHeight) : 0;
-                const pct = maxScroll > 0 ? Math.round((area.scrollTop / maxScroll) * 100) : 0;
-                const nowTs = Date.now();
-                saveReaderProgress(currentBookId, { chapterIdx: currentChapterIdx, scrollPct: pct, timestamp: nowTs });
-                syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '', nowTs);
-                readerSessionDirty = false;
-            }
+    // 切换到后台 / 锁屏 / 关页面时立即刷入当前阅读进度（通过 keepalive 保证换设备时同步不丢包）
+    const flushProgressOnExit = () => {
+        if (readerSessionDirty && currentBookId && currentBook && chapterMetas.length) {
+            const ch = chapterMetas[currentChapterIdx];
+            const area = document.getElementById('reader-content-area');
+            const maxScroll = (area && area.scrollHeight > area.clientHeight) ? (area.scrollHeight - area.clientHeight) : 0;
+            const pct = maxScroll > 0 ? Math.round((area.scrollTop / maxScroll) * 100) : 0;
+            const nowTs = Date.now();
+            saveReaderProgress(currentBookId, { chapterIdx: currentChapterIdx, scrollPct: pct, timestamp: nowTs });
+            syncReaderProgressToCloud(currentBook, currentChapterIdx, pct, ch ? ch.title : '', nowTs, { keepalive: true });
+            readerSessionDirty = false;
         }
+    };
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'hidden') flushProgressOnExit();
     });
+    window.addEventListener('pagehide', () => flushProgressOnExit());
 
     // 双击正文区域平滑切换心流沉浸模式（Zen Mode：自动隐藏底栏与目录，纯粹享受文字）
     document.getElementById('reader-content-area')?.addEventListener('dblclick', () => {
@@ -1210,6 +1217,24 @@ document.addEventListener('touchmove', (e) => {
             showToast(isZen ? '进入沉浸阅读（双击退出）' : '已退出沉浸模式', 'info');
         }
     });
+
+    if (typeof window !== 'undefined') {
+        window.checkReaderSync = async function() {
+            const local = loadReaderProgress();
+            const queue = loadProgressQueue();
+            console.group('[Reader Sync Diagnostic]');
+            console.log('Local Progress (localStorage):', local);
+            console.log('Pending Retry Queue:', queue);
+            try {
+                const cloud = await apiRequest('/api/reader/books');
+                console.log('Cloud Books & Remote Progress:', cloud);
+            } catch (err) {
+                console.error('Cloud Sync Fetch Failed:', err);
+            }
+            console.groupEnd();
+            return { local, queue };
+        };
+    }
 
     actions.renderBookshelf = renderBookshelf;
     actions.clearReaderSession = clearReaderSession;

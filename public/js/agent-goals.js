@@ -701,7 +701,7 @@ async function runAction(action) {
     } catch (err) {
         showToast(err.message || '目标操作失败', 'error');
         if (currentGoalId) {
-            try { await openGoal(currentGoalId); } catch (_) { }
+            try { await openGoal(currentGoalId); } catch (_) { /* audit-ignore: intentional-fallback 刷新目标详情失败降级保留原界面 */ }
         }
     } finally {
         if (token === autoToken) busy = false;
@@ -854,7 +854,7 @@ async function renderCockpit(targetGoalId = null) {
     if (!latestGoalsList || !latestGoalsList.length) {
         try {
             await Promise.all([refreshList(), refreshInbox()]);
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 刷新列表或收件箱失败降级使用本地已有数据 */ }
     }
 
     const goals = latestGoalsList || [];

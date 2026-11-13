@@ -89,7 +89,7 @@ function getStoredTodayMood() {
 function setStoredTodayMood(moodId) {
     try {
         localStorage.setItem(`chillin_mood_${getTodayKey()}`, moodId);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 隐私模式或本地配额受限时忽略打卡状态持久化 */ }
 }
 
 /** 1. 3秒心绪打卡条 */
@@ -276,7 +276,7 @@ export function getEligibleMemories() {
                     } else if (!f.summary.startsWith('{')) {
                         feedTitle = f.summary;
                     }
-                } catch {}
+                } catch { /* audit-ignore: intentional-fallback 非 JSON 格式 summary 按纯文本兼容 */ }
             }
             // 若内容为纯 URL 且无标题，智能识别知名媒体平台标签
             if (!feedTitle && f.content) {
@@ -290,7 +290,7 @@ export function getEligibleMemories() {
                         else if (host.includes('zhihu.com')) feedTitle = '💡 知乎';
                         else if (host.includes('github.com')) feedTitle = '🐙 GitHub';
                         else if (host.includes('weixin.qq.com')) feedTitle = '💬 微信文章';
-                    } catch {}
+                    } catch { /* audit-ignore: intentional-fallback 非标准 URL 无法解析 hostname 时保留兜底 */ }
                 }
             }
 

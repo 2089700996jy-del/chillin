@@ -30,14 +30,14 @@ async function forceRefreshToLatest(opts = {}) {
             const regs = await navigator.serviceWorker.getRegistrations();
             await Promise.all(regs.map((r) => r.unregister().catch(() => false)));
         }
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback ServiceWorker 注销失败不影响后续刷新 */ }
 
     try {
         if ('caches' in window) {
             const keys = await caches.keys();
             await Promise.all(keys.map((k) => caches.delete(k).catch(() => false)));
         }
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback CacheStorage 清除失败不影响后续刷新 */ }
 
     const url = new URL(window.location.href);
     url.searchParams.set('_fresh', String(Date.now()));
@@ -54,7 +54,7 @@ function stripFreshParam() {
         url.searchParams.delete('_fresh');
         const next = url.pathname + (url.searchParams.toString() ? `?${url.searchParams}` : '') + url.hash;
         history.replaceState(null, '', next);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 某些嵌入式 webview 禁用 replaceState 忽略 */ }
 }
 
 if (typeof window !== 'undefined') {
@@ -109,11 +109,11 @@ async function probeWorkerVersionSkew() {
         try {
             if (sessionStorage.getItem('chillin_worker_skew') === workerVersion) return;
             sessionStorage.setItem('chillin_worker_skew', workerVersion);
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 隐私模式无法读写 sessionStorage 忽略 */ }
 
         console.warn('[deploy] frontend is ahead of the worker:', APP_VERSION, '>', workerVersion);
         showToast(`后端还停在 v${workerVersion}，请先 npx wrangler deploy`, 'warn');
-    } catch (_) { /* 离线或 Worker 不可达：静默 */ }
+    } catch (_) { /* audit-ignore: intentional-fallback 离线或 Worker 不可达：静默 */ }
 }
 
 /**
@@ -137,7 +137,7 @@ export function initPwaUpdates() {
         if (justReloadedForUpdate) {
             sessionStorage.removeItem(SESSION_RELOAD_KEY);
         }
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 隐私模式下访问 sessionStorage 失败降级 */ }
 
     let reloading = false;
     let bannerShown = false;
@@ -146,7 +146,7 @@ export function initPwaUpdates() {
     const softReload = (reason) => {
         if (reloading || forceRefreshing) return;
         reloading = true;
-        try { sessionStorage.setItem(SESSION_RELOAD_KEY, '1'); } catch (_) {}
+        try { sessionStorage.setItem(SESSION_RELOAD_KEY, '1'); } catch (_) { /* audit-ignore: intentional-fallback 隐私模式忽略更新标记写入 */ }
         // 更新提示只走底部 banner 这一条通道；不再额外弹 toast，避免一次更新出现两条提醒
         const msg = document.querySelector('#pwa-update-bar #pwa-update-msg');
         if (msg) msg.textContent = reason || '正在刷新到新版本…';
@@ -242,13 +242,13 @@ export function initPwaUpdates() {
                 const data = await res.json();
                 const remote = String(data.version || '').trim();
                 if (remote && isVersionAhead(remote, APP_VERSION)) {
-                    try { await reg?.update(); } catch (_) {}
+                    try { await reg?.update(); } catch (_) { /* audit-ignore: intentional-fallback 后台被限制更新忽略 */ }
                     ensureBanner(`云端已是 v${remote}，当前 v${APP_VERSION}`);
                     return true;
                 }
                 return false;
             } catch (_) {
-                // try next probe
+                /* audit-ignore: intentional-fallback 探针失败继续尝试下一地址 */
             }
         }
         return false;

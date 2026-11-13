@@ -59,13 +59,13 @@ function extractJson(text) {
     const candidate = fenced ? fenced[1].trim() : raw;
     try {
         return JSON.parse(candidate);
-    } catch (_) {}
+    } catch (_) { /* audit-ignore: intentional-fallback 非完整 JSON 代码块，尝试花括号截取 */ }
     const start = candidate.indexOf('{');
     const end = candidate.lastIndexOf('}');
     if (start >= 0 && end > start) {
         try {
             return JSON.parse(candidate.slice(start, end + 1));
-        } catch (_) {}
+        } catch (_) { /* audit-ignore: intentional-fallback 花括号截取仍无法解析返回 null */ }
     }
     return null;
 }

@@ -32,7 +32,7 @@ function readDismissed() {
 function dismissThread(id) {
     const map = readDismissed();
     map[id] = Date.now();
-    try { localStorage.setItem(getLocalKey(DISMISS_KEY), JSON.stringify(map)); } catch (_) {}
+    try { localStorage.setItem(getLocalKey(DISMISS_KEY), JSON.stringify(map)); } catch (_) { /* audit-ignore: intentional-fallback 隐私模式或本地存储受限时忽略持久化 */ }
     currentThreads = currentThreads.filter(thread => thread.id !== id);
     renderThreads();
 }
