@@ -309,3 +309,95 @@ test('Auth - 推送订阅上传失败不再静默成功', async () => {
     assert.match(src, /syncPushSubscription\(existingSub\)/, '已存在的浏览器订阅也要重新同步，不能只提示成功');
     assert.match(src, /syncPushSubscription\(subscription\)/, '新订阅必须等服务器确认后才提示成功');
 });
+
+test('Auth ClawBot - 扫码等待中切后台暂停定时器，切回前台未过期恢复轮询，已过期触发失效', async () => {
+    // 准备浏览器全局环境 Mock（若尚未初始化）
+    if (typeof globalThis.window === 'undefined') globalThis.window = globalThis;
+    if (typeof globalThis.localStorage === 'undefined') {
+        const store = new Map();
+        globalThis.localStorage = {
+            getItem: (k) => store.get(k) || null,
+            setItem: (k, v) => store.set(k, String(v)),
+            removeItem: (k) => store.delete(k),
+            clear: () => store.clear()
+        };
+    }
+    if (typeof globalThis.location === 'undefined') {
+        globalThis.location = { hostname: 'localhost', origin: 'http://localhost', protocol: 'http:' };
+    }
+    const domEls = {
+        'bot-claw-title': { textContent: '' },
+        'bot-claw-hint': { textContent: '' },
+        'btn-bot-claw-bind': { hidden: false, disabled: false, textContent: '' },
+        'btn-bot-claw-unbind': { hidden: true },
+        'bot-claw-qr': { hidden: false },
+        'bot-claw-qr-img': { removeAttribute: () => {}, onerror: null },
+        'bot-claw-qr-hint': { textContent: '' },
+        'bot-claw-qr-note': { hidden: true, textContent: '' },
+        'btn-bot-claw-cancel': { hidden: false }
+    };
+    let visibilityState = 'visible';
+    let visibilityHandler = null;
+    globalThis.document = {
+        get visibilityState() { return visibilityState; },
+        getElementById: (id) => domEls[id] || null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: (event, handler) => {
+            if (event === 'visibilitychange') visibilityHandler = handler;
+        }
+    };
+
+    const {
+        handleBotClawVisibilityChange,
+        isBotClawWaitingForScan,
+        startBotClawPolling,
+        stopBotClawPolling,
+        _setBotClawTestState,
+        _getBotClawTestState
+    } = await import('../public/js/auth.js');
+
+    // 1. 初始化等待扫码状态：有效期 60 秒
+    _setBotClawTestState({
+        clawExpiresAt: Date.now() + 60000,
+        clawScanStartedAt: Date.now(),
+        clawCheckInFlight: false,
+        clawLastCheckAt: 0
+    });
+    domEls['bot-claw-qr'].hidden = false;
+    assert.equal(isBotClawWaitingForScan(), true, '二维码处于未隐藏且有过期时间时应处于等待扫码状态');
+
+    startBotClawPolling();
+    const state1 = _getBotClawTestState();
+    assert.ok(state1.clawPollTimer, '启动轮询后定时器句柄必须有效');
+
+    // 2. 切到后台（hidden）：用户切换至微信准备扫码，定时器暂停以省电/省流量，但上下文与二维码完整保留
+    visibilityState = 'hidden';
+    handleBotClawVisibilityChange();
+    const state2 = _getBotClawTestState();
+    assert.equal(state2.clawPollTimer, 0, '切后台必须清除定时器句柄，防止无意义后台空转');
+    assert.ok(state2.clawExpiresAt > 0, '切后台绝对不能销毁二维码有效时间');
+    assert.equal(domEls['bot-claw-qr'].hidden, false, '切后台二维码 DOM 必须保留');
+    assert.equal(isBotClawWaitingForScan(), true, '切后台期间扫码等待标记依然有效');
+
+    // 3. 切回前台（visible）且未过期：立即恢复定时器，并直接打上最新 check 时间戳触发核验
+    visibilityState = 'visible';
+    handleBotClawVisibilityChange();
+    const state3 = _getBotClawTestState();
+    assert.ok(state3.clawPollTimer, '切回前台必须恢复轮询定时器');
+    assert.ok(state3.clawLastCheckAt > 0, '切回前台必须立即记录最新核查时间');
+
+    stopBotClawPolling();
+
+    // 4. 切回前台（visible）但已超时过期：触发失效逻辑，隐藏二维码并提示过期
+    _setBotClawTestState({
+        clawExpiresAt: Date.now() - 5000,
+        clawScanStartedAt: Date.now() - 60000
+    });
+    handleBotClawVisibilityChange();
+    assert.equal(domEls['bot-claw-qr'].hidden, true, '超时切回前台必须隐藏二维码');
+    assert.match(domEls['bot-claw-title'].textContent, /已过期|超时/, '超时切回前台标题必须提示过期');
+    assert.equal(isBotClawWaitingForScan(), false, '已过期状态不再被判定为等待扫码');
+
+    stopBotClawPolling();
+});

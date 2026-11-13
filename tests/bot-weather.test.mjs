@@ -230,6 +230,47 @@ integration('runMorningWeatherCare 在降雨或大温差时向微信发送晨报
     assert.equal(turnsAfter.results.length, 1, '聊天记录中依然只有一条推送');
 });
 
+integration('runMorningWeatherCare 查重 SQL 异常时安全跳过，绝不发生重复推送', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, cursor, bound_at_ms, is_deleted, outreach_enabled) VALUES (1, 'bound', 'token', 'https://ilink', 'bot', 'user', '', 0, 0, 1)"
+    ).run();
+
+    const fetcher = mockFetch({
+        '/v2/city/lookup': { code: '200', location: [{ id: '101230101', name: '福州', adm1: '福建省' }] },
+        '/weather/24h': {
+            code: '200',
+            hourly: [
+                { fxTime: '2026-11-11T14:00+08:00', temp: '22', precip: '5.0', text: '大雨' }
+            ]
+        },
+        '/weather/3d': { code: '200', daily: [{ fxDate: '2026-11-11', tempMax: '22', tempMin: '15', textDay: '大雨', uvIndex: '1' }] },
+        '/weather/warning/now': { code: '200', warning: [] },
+        '/indices/1d': { code: '200', daily: [] },
+        '/ilink/bot/sendmessage': { ret: 0 }
+    });
+
+    // 拦截 prepare：模拟查询 bot_weather_daily 发生 D1 偶发故障抛错
+    const origPrepare = db.prepare.bind(db);
+    db.prepare = (sql) => {
+        if (typeof sql === 'string' && sql.includes('SELECT notified FROM bot_weather_daily')) {
+            return {
+                bind: () => ({
+                    first: async () => { throw new Error('D1 Transient DB Error'); }
+                })
+            };
+        }
+        return origPrepare(sql);
+    };
+
+    const env = mockWeatherEnv();
+    const res = await runMorningWeatherCare(env, db, fetcher.impl, { nowMs: Date.parse('2026-11-11T08:00:00+08:00') });
+    assert.equal(res.checked, 1, '已检查 1 个用户');
+    assert.equal(res.notified, 0, '发生 D1 查重异常时严禁推送发信');
+    assert.equal(fetcher.calls.filter((c) => c.url.includes('/ilink/bot/sendmessage')).length, 0, '不可调用微信推送接口');
+});
+
 integration('maybeWeatherAnswer 白天随手查天气秒回', async () => {
     const db = await createTestDb();
     await seedUser(db, 1);

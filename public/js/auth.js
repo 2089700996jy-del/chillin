@@ -1227,18 +1227,50 @@ function clawEls() {
     };
 }
 
-function stopBotClawPolling() {
+export function stopBotClawPolling() {
     if (clawPollTimer) { clearInterval(clawPollTimer); clawPollTimer = 0; }
     clawCheckInFlight = false;
     clawLastCheckAt = 0;
 }
 
-if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
-    document.addEventListener('visibilitychange', () => {
-        if (document.visibilityState === 'hidden' && clawPollTimer) {
-            stopBotClawPolling();
+export function pauseBotClawPolling() {
+    if (clawPollTimer) { clearInterval(clawPollTimer); clawPollTimer = 0; }
+    clawCheckInFlight = false;
+}
+
+export function isBotClawWaitingForScan() {
+    const els = clawEls();
+    return Boolean(clawExpiresAt && (!els.qr || !els.qr.hidden));
+}
+
+export function handleBotClawVisibilityChange() {
+    if (typeof document === 'undefined') return;
+    if (document.visibilityState === 'hidden') {
+        if (clawPollTimer) {
+            pauseBotClawPolling();
         }
-    });
+        return;
+    }
+    if (document.visibilityState === 'visible') {
+        if (!isBotClawWaitingForScan()) return;
+        const now = Date.now();
+        if (clawScanStartedAt && (now - clawScanStartedAt > CLAW_SCAN_MAX_MS)) {
+            failBotClawQr('扫码超时', '长时间没有收到微信确认，请重新生成二维码。');
+            return;
+        }
+        if (now >= clawExpiresAt) {
+            expireBotClawQr('二维码已过期，请重新生成。');
+            return;
+        }
+        paintBotClawCountdown();
+        startBotClawPolling();
+        clawLastCheckAt = now;
+        pollBotClawOnce();
+    }
+}
+
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+    document.addEventListener('visibilitychange', handleBotClawVisibilityChange);
 }
 
 function hideBotClawQr() {
@@ -1381,7 +1413,7 @@ function cancelBotClawScan() {
     if (els.bind) { els.bind.hidden = false; els.bind.disabled = false; els.bind.textContent = '绑定微信'; }
 }
 
-async function pollBotClawOnce() {
+export async function pollBotClawOnce() {
     if (clawCheckInFlight) return;
     clawCheckInFlight = true;
     try {
@@ -1432,7 +1464,7 @@ async function pollBotClawOnce() {
     }
 }
 
-function startBotClawPolling() {
+export function startBotClawPolling() {
     stopBotClawPolling();
     clawLastCheckAt = 0;
     clawPollTimer = setInterval(() => {
@@ -1470,6 +1502,24 @@ async function unbindBotClaw() {
         if (els.bind) els.bind.disabled = false;
         if (els.unbind) els.unbind.disabled = false;
     }
+}
+
+export function _setBotClawTestState(state = {}) {
+    if ('clawExpiresAt' in state) clawExpiresAt = state.clawExpiresAt;
+    if ('clawScanStartedAt' in state) clawScanStartedAt = state.clawScanStartedAt;
+    if ('clawPollTimer' in state) clawPollTimer = state.clawPollTimer;
+    if ('clawCheckInFlight' in state) clawCheckInFlight = state.clawCheckInFlight;
+    if ('clawLastCheckAt' in state) clawLastCheckAt = state.clawLastCheckAt;
+}
+
+export function _getBotClawTestState() {
+    return {
+        clawExpiresAt,
+        clawScanStartedAt,
+        clawPollTimer,
+        clawCheckInFlight,
+        clawLastCheckAt
+    };
 }
 
 /** 把已保存的外观模式映射到「外观」分段控件的选中态（批次 A） */

@@ -332,7 +332,10 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         let todayRow = null;
         try {
             todayRow = await db.prepare('SELECT notified FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, today).first();
-        } catch (_) { /* audit-ignore: intentional-fallback 查询今日记录异常按未推送处理 */ }
+        } catch (err) {
+            console.error('[bot-weather] 查询今日晨报记录失败，跳过该用户以避免重复推送 user=' + acct.user_id + ':', err);
+            continue;
+        }
         if (todayRow && todayRow.notified === 1) {
             summary.silent++;
             continue;
