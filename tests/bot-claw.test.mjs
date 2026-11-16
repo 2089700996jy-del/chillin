@@ -1901,11 +1901,11 @@ test('ClawBot - 看图：取回并压平描述、超长截断、没密钥不发�
     assert.match(deepText, /同一个登录错误/);
 });
 
-test('Bot - 文字聊天默认走 deepseek-flash，并显式关闭 thinking', async () => {
+test('Bot - 文字聊天默认走 deepseek-flash，设置超时且不携带非标准 thinking', async () => {
     const realFetch = globalThis.fetch;
     const calls = [];
     globalThis.fetch = async (url, init) => {
-        calls.push({ url: String(url), body: JSON.parse(init.body) });
+        calls.push({ url: String(url), body: JSON.parse(init.body), signal: init.signal });
         return new Response(JSON.stringify({ choices: [{ message: { content: '好' } }] }), { status: 200 });
     };
     try {
@@ -1915,7 +1915,8 @@ test('Bot - 文字聊天默认走 deepseek-flash，并显式关闭 thinking', as
         );
         assert.equal(reply, '好');
         assert.equal(calls[0].body.model, 'deepseek-flash', 'model 名必须是 flash；带日期的是版本名');
-        assert.equal(calls[0].body.thinking.type, 'disabled', '闲聊默认不思考，避免首字延迟');
+        assert.equal(calls[0].body.thinking, undefined, 'DeepSeek 官方 API 不支持非标准 Anthropic thinking 字段');
+        assert.ok(calls[0].signal, '请求必须配置 AbortSignal 超时保护');
         assert.equal(calls[0].body.temperature, 0.7);
     } finally {
         globalThis.fetch = realFetch;

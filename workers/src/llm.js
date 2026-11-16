@@ -30,12 +30,11 @@ export async function callCustomLlmStreamWithMessages(env, messages, onChunk) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
+            signal: AbortSignal.timeout(25000),
             body: JSON.stringify({
                 model,
                 messages,
                 temperature: 0.7,
-                // 聊天/主动关怀是短对话，默认 high thinking 只会增加首字延迟；显式关闭
-                thinking: { type: 'disabled' },
                 stream: true
             })
         });
@@ -99,8 +98,7 @@ export async function callCustomLlmWithTools(env, messages, tools, options = {})
     const body = {
         model,
         messages,
-        temperature: options.temperature == null ? 0.2 : options.temperature,
-        thinking: { type: 'disabled' }
+        temperature: options.temperature == null ? 0.2 : options.temperature
     };
     if (Array.isArray(tools) && tools.length) {
         body.tools = tools;
@@ -113,6 +111,7 @@ export async function callCustomLlmWithTools(env, messages, tools, options = {})
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${apiKey}`
         },
+        signal: AbortSignal.timeout(25000),
         body: JSON.stringify(body)
     });
     if (!res.ok) {
@@ -138,12 +137,11 @@ export async function callCustomLlmWithMessages(env, messages) {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${apiKey}`
             },
+            signal: AbortSignal.timeout(25000),
             body: JSON.stringify({
                 model,
                 messages,
-                temperature: 0.7,
-                // 闲聊/问答不需要长思维链：关闭 thinking，保留 temperature 的效果
-                thinking: { type: 'disabled' }
+                temperature: 0.7
             })
         });
 

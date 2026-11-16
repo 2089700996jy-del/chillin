@@ -211,7 +211,6 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
     let polls = 0;
     let consecutiveErrors = 0;
     let successMarked = false;
-    let background = Promise.resolve();
     do {
         polls++;
         let updates;
@@ -263,16 +262,15 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
                 await saveCursor(db, account.id, cursor);
             }
         };
-        if (typeof defer === 'function' && updates.msgs.length) {
-            background = background.then(batch, batch);
-            defer(background.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
-            if (nextCursor) cursor = nextCursor;
-        } else {
-            if (updates.msgs.length) await batch();
-            else if (nextCursor) {
-                cursor = nextCursor;
-                await saveCursor(db, account.id, cursor);
+        if (updates.msgs.length) {
+            const task = batch();
+            if (typeof defer === 'function') {
+                defer(task.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
             }
+            await task;
+        } else if (nextCursor) {
+            cursor = nextCursor;
+            await saveCursor(db, account.id, cursor);
         }
     } while (Date.now() < accountDeadline);
     console.log('[bot-claw] 轮询 ' + polls + ' 轮后让出 id=' + account.id);
