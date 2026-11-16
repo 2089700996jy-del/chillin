@@ -269,15 +269,15 @@ export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
 export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     const topK = opts.topK || 8;
     const maxChars = opts.maxChars || 1600;
-    let tokens = tokenizeQuery(question).slice(0, 24);
+    let tokens = tokenizeQuery(question).slice(0, 12);
     const timeRange = parseTimeRangeFromQuestion(question);
 
     // 多轮对话主题继承：短问（如“还有吗”“详细说说”）没有独立主题时，从历史追问。
     if (tokens.length < 2 && Array.isArray(opts.history) && opts.history.length > 0) {
         const prevUserMessages = opts.history.filter(h => h && h.role === 'user' && typeof h.content === 'string');
         if (prevUserMessages.length > 0) {
-            const inheritedTokens = tokenizeQuery(prevUserMessages[prevUserMessages.length - 1].content).slice(0, 12);
-            tokens = [...new Set([...tokens, ...inheritedTokens])].slice(0, 24);
+            const inheritedTokens = tokenizeQuery(prevUserMessages[prevUserMessages.length - 1].content).slice(0, 8);
+            tokens = [...new Set([...tokens, ...inheritedTokens])].slice(0, 12);
         }
     }
 

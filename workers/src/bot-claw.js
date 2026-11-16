@@ -306,15 +306,32 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
             ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)
             : await buildBotReply(env, db, userId, text);
         if (!reply) return;
-        await sendClawText({
-            token: String(account.bot_token || ''),
-            baseurl: account.baseurl,
-            botId: account.ilink_bot_id,
-            toUserId: from,
-            contextToken: msg.context_token,
-            text: reply,
-            fetchImpl
-        });
+        try {
+            await sendClawText({
+                token: String(account.bot_token || ''),
+                baseurl: account.baseurl,
+                botId: account.ilink_bot_id,
+                toUserId: from,
+                contextToken: msg.context_token || account.last_context_token || '',
+                text: reply,
+                fetchImpl
+            });
+        } catch (sendErr) {
+            if (account.last_context_token && account.last_context_token !== msg.context_token) {
+                console.error('[bot-claw] 首次回复发送失败，重试 last_context_token: ' + (sendErr && sendErr.message));
+                await sendClawText({
+                    token: String(account.bot_token || ''),
+                    baseurl: account.baseurl,
+                    botId: account.ilink_bot_id,
+                    toUserId: from,
+                    contextToken: account.last_context_token,
+                    text: reply,
+                    fetchImpl
+                });
+            } else {
+                throw sendErr;
+            }
+        }
     } catch (err) {
         try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) { /* audit-ignore: intentional-fallback 回滚消息去重锁失败继续向外抛出主异常 */ }
         throw err;

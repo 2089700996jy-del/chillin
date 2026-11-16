@@ -183,9 +183,15 @@ async function runChat(env, db, userId, text, history, options = {}) {
         effectiveHistory = effectiveHistory.slice(-2);
     }
     const needsGarden = shouldRetrieveGarden(queryText, effectiveHistory);
-    const memory = needsGarden
-        ? await retrieveGardenMemories(db, userId, queryText, { topK: 4, maxChars: 1200, history: effectiveHistory })
-        : { tokens: [], sources: [], contextText: '' };
+    let memory = { tokens: [], sources: [], contextText: '' };
+    if (needsGarden) {
+        try {
+            memory = await retrieveGardenMemories(db, userId, queryText, { topK: 4, maxChars: 1200, history: effectiveHistory });
+        } catch (err) {
+            console.error('[bot] 花园记忆检索异常，降级无记忆对话: ' + (err && err.message));
+            memory = { tokens: [], sources: [], contextText: '' };
+        }
+    }
     const sources = memory.sources || [];
     // 没有主题词时不拿「最近几条」硬凑记忆：那会让「在吗」突然翻旧账；有主题词但没命中也不注入检索失败指令。
     const hasTopic = Array.isArray(memory.tokens) && memory.tokens.length > 0;

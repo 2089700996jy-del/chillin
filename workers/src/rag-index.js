@@ -176,15 +176,20 @@ export function buildFtsMatch(tokens) {
 }
 
 export async function fetchMemoryRows(db, cfg, userId, tokens, limit) {
-    const filter = buildLikeFilter(cfg, tokens);
-    const where = filter.sql ? ' AND (' + filter.sql + ')' : '';
-    const sql = 'SELECT ' + cfg.select + ' FROM ' + cfg.table +
-        ' WHERE user_id = ? AND is_deleted = 0' + where +
-        ' ORDER BY ' + cfg.order + ' DESC, id DESC LIMIT ?';
-    const res = await db.prepare(sql).bind(userId, ...filter.binds, limit).all();
-    let rows = (res && res.results) || [];
-    if (cfg.type === '书籍') rows = await attachBookProgress(db, userId, rows);
-    return rows;
+    try {
+        const filter = buildLikeFilter(cfg, tokens);
+        const where = filter.sql ? ' AND (' + filter.sql + ')' : '';
+        const sql = 'SELECT ' + cfg.select + ' FROM ' + cfg.table +
+            ' WHERE user_id = ? AND is_deleted = 0' + where +
+            ' ORDER BY ' + cfg.order + ' DESC, id DESC LIMIT ?';
+        const res = await db.prepare(sql).bind(userId, ...filter.binds, limit).all();
+        let rows = (res && res.results) || [];
+        if (cfg.type === '书籍') rows = await attachBookProgress(db, userId, rows);
+        return rows;
+    } catch (_) {
+        /* audit-ignore: intentional-fallback 单表记忆候选检索失败降级为空列表 */
+        return [];
+    }
 }
 
 export async function fetchFtsHits(db, userId, match) {
@@ -202,13 +207,18 @@ export async function fetchFtsHits(db, userId, match) {
 
 export async function fetchRowsByIds(db, cfg, userId, ids) {
     if (!ids.length) return [];
-    const placeholders = ids.map(() => '?').join(',');
-    const sql = 'SELECT ' + cfg.select + ' FROM ' + cfg.table +
-        ' WHERE user_id = ? AND is_deleted = 0 AND id IN (' + placeholders + ')';
-    const res = await db.prepare(sql).bind(userId, ...ids).all();
-    let rows = (res && res.results) || [];
-    if (cfg.type === '书籍') rows = await attachBookProgress(db, userId, rows);
-    return rows;
+    try {
+        const placeholders = ids.map(() => '?').join(',');
+        const sql = 'SELECT ' + cfg.select + ' FROM ' + cfg.table +
+            ' WHERE user_id = ? AND is_deleted = 0 AND id IN (' + placeholders + ')';
+        const res = await db.prepare(sql).bind(userId, ...ids).all();
+        let rows = (res && res.results) || [];
+        if (cfg.type === '书籍') rows = await attachBookProgress(db, userId, rows);
+        return rows;
+    } catch (_) {
+        /* audit-ignore: intentional-fallback FTS 回表单表异常降级为空列表 */
+        return [];
+    }
 }
 
 /** 跨模块常青主题（#tag）与双向链接（wikilink）关联加载 */
@@ -236,26 +246,31 @@ export async function loadLinkedMemories(db, userId, seeds) {
             }
         }
         if (!clauses.length) return [];
-        const sql = 'SELECT ' + cfg.select + ' FROM ' + cfg.table +
-            ' WHERE user_id = ? AND is_deleted = 0 AND (' + clauses.join(' OR ') + ') LIMIT 30';
-        const res = await db.prepare(sql).bind(userId, ...binds).all();
-        let rows = (res && res.results) || [];
-        if (cfg.type === '书籍') rows = await attachBookProgress(db, userId, rows);
-        return rows.map(row => {
-            const item = normalizeMemoryRow(cfg, row);
-            if (!item) return null;
-            const matchedLink = links.find(link => item.title.toLowerCase().includes(link));
-            if (matchedLink) {
-                item.relation = '链接「' + matchedLink + '」';
+        try {
+            const sql = 'SELECT ' + cfg.select + ' FROM ' + cfg.table +
+                ' WHERE user_id = ? AND is_deleted = 0 AND (' + clauses.join(' OR ') + ') LIMIT 30';
+            const res = await db.prepare(sql).bind(userId, ...binds).all();
+            let rows = (res && res.results) || [];
+            if (cfg.type === '书籍') rows = await attachBookProgress(db, userId, rows);
+            return rows.map(row => {
+                const item = normalizeMemoryRow(cfg, row);
+                if (!item) return null;
+                const matchedLink = links.find(link => item.title.toLowerCase().includes(link));
+                if (matchedLink) {
+                    item.relation = '链接「' + matchedLink + '」';
+                    return item;
+                }
+                const matchedTag = tags.find(t => item.tags.includes(t) || item.body.includes('#' + t));
+                if (matchedTag) {
+                    item.relation = '同主题 #' + matchedTag;
+                    return item;
+                }
                 return item;
-            }
-            const matchedTag = tags.find(t => item.tags.includes(t) || item.body.includes('#' + t));
-            if (matchedTag) {
-                item.relation = '同主题 #' + matchedTag;
-                return item;
-            }
-            return item;
-        }).filter(Boolean);
+            }).filter(Boolean);
+        } catch (_) {
+            /* audit-ignore: intentional-fallback 关联记忆检索异常降级为空列表 */
+            return [];
+        }
     }));
     return groups.flat();
 }
