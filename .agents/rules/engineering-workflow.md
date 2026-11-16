@@ -124,12 +124,14 @@ npx wrangler deploy --dry-run
 >
 > 它还会**校验远端 D1 迁移是否全部应用**：本地测试通过 `fake-d1` 执行**全部**迁移，因此「迁移漏应用」这类漂移在本地永远测不出来——`0019_reader_progress.sql` 曾因此漏应用 12 天，而依赖它的接口已随 Worker 上线，线上持续报 `no such table`。发现未应用迁移时 `ship` 直接中断并给出 `wrangler d1 migrations apply DB --remote`。
 
-### 5.4 双轨部署流水线与线上探活复验机制
+### 5.4 双轨部署与生产一致性验证机制
 
-1. **Worker 部署与 D1 迁移流水线 (GitHub Actions)**：
-   * CI 在 `deploy-worker` 阶段严格遵循「**先应用远端 D1 迁移，再部署 Worker**」顺序（`npx wrangler d1 migrations apply DB --remote` ➔ `npx wrangler deploy`），彻底消除 Worker 依赖新字段但数据库未迁移引发的运行时空表/字段缺失故障。
+1. **Worker 部署与 D1 迁移权责解耦 (最小权限原则)**：
+   * **D1 迁移为有状态数据库演进**：CI 中配置的 `CLOUDFLARE_API_TOKEN` 仅具备边缘 Worker 脚本发布权限，不持有破坏性数据库变更权限；
+   * **本地发布强拦截**：[`scripts/ship.mjs`](../../scripts/ship.mjs) 内置 `checkRemoteMigrations` 闸门，在每次发布前强制校验远端 D1 迁移状态；若有新增或待应用迁移，必须先执行 `npx wrangler d1 migrations apply DB --remote` 后才允许发版；
+   * **CI 自动化 Worker 部署**：GitHub Actions 在 `quality-gate` 全部通过后自动执行 `npx wrangler deploy` 更新边缘 Worker 路由与逻辑。
 2. **Pages 前端静态分发 (Cloudflare Git Integration)**：
-   * Pages 不由 GitHub Actions 直接下发，而是由 Cloudflare 官方 Git Webhook 监听 `main` 分支自动捕获 `public/` 目录进行独立原子发布。
+   * Pages 不由 GitHub Actions 直接下发，而是由 Cloudflare 官方 Git Webhook 监听 `main` 分支自动捕获 `public/` 目录进行独立原子发布；CI 中的 `Pages output layout is complete` 只负责确保发布目录完整。
 3. **版本验收双卡点**：
    * 不能仅凭 GitHub Actions 绿色即断言线上已更新完毕，发布后必须双向探活复验：
      - **后端 Worker 探活**：`https://chillin-api.2089700996jy.workers.dev/api/health`（验证 `APP_VERSION` 与健康状态）；

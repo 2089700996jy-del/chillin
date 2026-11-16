@@ -292,7 +292,7 @@ test('Docs - 行动文档里内联点名的文件路径必须存在', () => {
     assert.equal(stale.length, 0, '以下文档引用的文件已不存在（多半是改名/拆分后忘了同步）：\n' + stale.join('\n'));
 });
 
-test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包与 D1 远端迁移', () => {
+test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包与自动部署', () => {
     const ci = read('.github/workflows/ci.yml');
     assert.match(ci, /pull_request/, '必须在 PR 上跑，不能只跑 main push');
     assert.match(ci, /node-version: '22'/, 'CI 必须使用 Node 22 基线');
@@ -300,7 +300,7 @@ test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包与 D
     assert.match(ci, /npm test/, 'CI 必须跑完整单测');
     assert.match(ci, /wrangler deploy --dry-run/, 'CI 必须验证 Worker 能打包');
     assert.match(ci, /public\/\$f/, 'CI 必须继续检查 Pages 发布目录的完整文件清单');
-    assert.match(ci, /wrangler d1 migrations apply DB --remote/, 'CI 部署 Worker 前必须先执行远端 D1 迁移');
+    assert.match(ci, /npx wrangler deploy/, 'CI deploy-worker 必须执行 Worker 部署');
 
     const pkg = JSON.parse(read('package.json'));
     assert.equal(pkg.engines.node, '>=22.5', 'Node 版本下限必须是 22.5');
