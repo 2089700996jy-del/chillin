@@ -40,7 +40,7 @@ test('Docs - README 的模块数量与磁盘一致', () => {
     assert.equal(Number(workers[1]), workerModules.length, 'README 说 workers/src/ 有 ' + workers[1] + ' 个模块，实际 ' + workerModules.length + ' 个——请同步文档');
 });
 
-test('Docs - README 的迁移数量与范围与 migrations/ 一致', () => {
+test('Docs - README 与架构报告的迁移数量与范围与 migrations/ 一致', () => {
     const last = migrations[migrations.length - 1].slice(0, 4);
     const tech = readme.match(/(\d+) 个迁移 0001–(\d{4})/);
     const tree = readme.match(/D1 迁移 0001–(\d{4})/);
@@ -53,6 +53,10 @@ test('Docs - README 的迁移数量与范围与 migrations/ 一致', () => {
     const progress = read('PROGRESS.md').match(/`migrations\/0001`–`(\d{4})`/);
     assert.ok(progress, 'PROGRESS 应写明迁移范围');
     assert.equal(progress[1], last, 'PROGRESS 的迁移范围结尾是 ' + progress[1] + '，最新迁移是 ' + last + '——请同步文档');
+
+    const reportMatch = read(reportPath).match(/D1 迁移 0001–(\d{4}) 已应用/);
+    assert.ok(reportMatch, '架构报告应写明已应用的 D1 迁移范围');
+    assert.equal(reportMatch[1], last, '架构报告的迁移范围结尾是 ' + reportMatch[1] + '，最新迁移是 ' + last + '——请同步文档');
 });
 
 test('Docs - 架构报告正文的行数承诺与用例数与磁盘一致', () => {
@@ -288,7 +292,7 @@ test('Docs - 行动文档里内联点名的文件路径必须存在', () => {
     assert.equal(stale.length, 0, '以下文档引用的文件已不存在（多半是改名/拆分后忘了同步）：\n' + stale.join('\n'));
 });
 
-test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包', () => {
+test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包与 D1 远端迁移', () => {
     const ci = read('.github/workflows/ci.yml');
     assert.match(ci, /pull_request/, '必须在 PR 上跑，不能只跑 main push');
     assert.match(ci, /node-version: '22'/, 'CI 必须使用 Node 22 基线');
@@ -296,6 +300,7 @@ test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包', ()
     assert.match(ci, /npm test/, 'CI 必须跑完整单测');
     assert.match(ci, /wrangler deploy --dry-run/, 'CI 必须验证 Worker 能打包');
     assert.match(ci, /public\/\$f/, 'CI 必须继续检查 Pages 发布目录的完整文件清单');
+    assert.match(ci, /wrangler d1 migrations apply DB --remote/, 'CI 部署 Worker 前必须先执行远端 D1 迁移');
 
     const pkg = JSON.parse(read('package.json'));
     assert.equal(pkg.engines.node, '>=22.5', 'Node 版本下限必须是 22.5');
@@ -333,5 +338,13 @@ test('Docs - PROGRESS.md 功能健康度矩阵评级合法', () => {
     }
     const yellowRows = rows.filter((r) => r.includes('🟡'));
     assert.ok(yellowRows.length >= 8, '除纯无副作用计算外，涉及网络/D1/防抖/切后台的模块在真机治理前必须诚实标注 🟡');
+});
+
+test('Docs - PROGRESS.md 功能健康度矩阵引用的测试套件必须真实存在', () => {
+    const progress = read('PROGRESS.md');
+    const matches = [...progress.matchAll(/tests\/[a-z0-9-]+\.test\.mjs/g)].map((m) => m[0]);
+    assert.ok(matches.length > 0, 'PROGRESS.md 应包含测试套件引用');
+    const missing = matches.filter((rel) => !fs.existsSync(path.join(root, rel)));
+    assert.equal(missing.length, 0, 'PROGRESS.md 引用了不存在的测试套件（改名或重构后未同步）：\n' + missing.join('\n'));
 });
 

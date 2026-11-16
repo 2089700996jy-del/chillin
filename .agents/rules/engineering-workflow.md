@@ -123,3 +123,14 @@ npx wrangler deploy --dry-run
 > 推荐直接用 [`npm run ship`](../../scripts/ship.mjs) 代替手工流程：它会先跑单测与预打包演练，再做版本联动，并强制校验提交信息格式（`--push` 可一并推送）。
 >
 > 它还会**校验远端 D1 迁移是否全部应用**：本地测试通过 `fake-d1` 执行**全部**迁移，因此「迁移漏应用」这类漂移在本地永远测不出来——`0019_reader_progress.sql` 曾因此漏应用 12 天，而依赖它的接口已随 Worker 上线，线上持续报 `no such table`。发现未应用迁移时 `ship` 直接中断并给出 `wrangler d1 migrations apply DB --remote`。
+
+### 5.4 双轨部署流水线与线上探活复验机制
+
+1. **Worker 部署与 D1 迁移流水线 (GitHub Actions)**：
+   * CI 在 `deploy-worker` 阶段严格遵循「**先应用远端 D1 迁移，再部署 Worker**」顺序（`npx wrangler d1 migrations apply DB --remote` ➔ `npx wrangler deploy`），彻底消除 Worker 依赖新字段但数据库未迁移引发的运行时空表/字段缺失故障。
+2. **Pages 前端静态分发 (Cloudflare Git Integration)**：
+   * Pages 不由 GitHub Actions 直接下发，而是由 Cloudflare 官方 Git Webhook 监听 `main` 分支自动捕获 `public/` 目录进行独立原子发布。
+3. **版本验收双卡点**：
+   * 不能仅凭 GitHub Actions 绿色即断言线上已更新完毕，发布后必须双向探活复验：
+     - **后端 Worker 探活**：`https://chillin-api.2089700996jy.workers.dev/api/health`（验证 `APP_VERSION` 与健康状态）；
+     - **前端 Pages 探活**：`https://chillin-bfc.pages.dev/version.json`（验证 `version` 与发布时间戳是否推进到目标版本）。

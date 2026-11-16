@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-16。当前前端/Worker：**v2.5.249**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-16。当前前端/Worker：**v2.5.250**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
@@ -29,9 +29,9 @@
 | **TXT 阅读器与跨端同步** | `reader.js` | `garden-resources.js`, `garden-books.js` | 0019, 0021 | `tests/reader.test.mjs`, `tests/books.test.mjs` | 🟢 | 已通过系统审计与暗病治理：动态 60KB 安全 keepalive 与 pagehide 退出保活，切回前台 visibilitychange 自动拉取云端对齐最新进度与冲突解决，手机状态栏点击可视化诊断 |
 | **数字花园资产 (周记/笔记/随手记/书签/提示词)** | `weeklies.js`, `notes.js`, `feeds.js`, `bookmarks.js`, `prompts.js`, `daily-spark.js` | `garden-resources.js`, `garden-shared.js` | 0001~0007, 0028, 0031 | `tests/garden.test.mjs`, `tests/router.test.mjs` | 🟡 | 涉及草稿防抖持久化、批量增量推送与软删，待防抖切后台刷新与网络重试核验 |
 | **双向维基与常青知识网络** | `wikilinks.js`, `evergreen-topics.js`, `search.js` | `rag-index.js`, `insights.js` | 0001, 0034(FTS5) | `tests/wikilinks.test.mjs`, `tests/evergreen.test.mjs`, `tests/search.test.mjs` | 🟢 | 纯文本双链 `[[wiki]]` 解析、XSS 洗标、搜索高亮与反向引用，无外部网络副作用 |
-| **AI 记忆回响 (RAG) 与模型编排** | `echo-ai.js` | `garden-echo.js`, `rag.js`, `rag-index.js`, `llm.js`, `ai.js`, `ai-runtime.js`, `ai-tools.js`, `agent-tools-expanded.js` | 0013, 0034(FTS5) | `tests/rag.test.mjs`, `tests/ai.test.mjs` | 🟡 | 涉及流式 SSE 请求、多步 Tool Calling 循环与 DeepSeek 网络交互，待网络超时降级核验 |
+| **AI 记忆回响 (RAG) 与模型编排** | `echo-ai.js` | `garden-echo.js`, `rag.js`, `rag-index.js`, `llm.js`, `ai.js`, `ai-runtime.js`, `ai-tools.js`, `agent-tools-expanded.js` | 0013, 0034(FTS5) | `tests/rag.test.mjs`, `tests/agent.test.mjs` | 🟡 | 涉及流式 SSE 请求、多步 Tool Calling 循环与 DeepSeek 网络交互，待网络超时降级核验 |
 | **自主目标 Agent (Autoloop 闭环)** | `agent-goals.js` | `agent-store.js`, `agent-executor.js`, `agent-lifecycle.js`, `agent-scheduler.js`, `agent-goals.js`, `agent-approvals.js`, `agent-checkpoint.js`, `agent-web.js` | 0035~0039, 0042 | `tests/agent-goals.test.mjs` | 🟡 | 涉及后台每分钟 Cron 租约抢占、审批流与状态机防重规划竞争，待真机调度核验 |
-| **微信伴侣 Bot 与健康打卡** | `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-claw-auth.js`, `bot-commands.js`, `bot-garden.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-search.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-outreach-source.js`, `bot-links.js`, `bot-weather.js`, `bot-prompts.js`, `bot-text.js` | 0024~0033, 0040, 0041 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-commands.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
+| **微信伴侣 Bot 与健康打卡** | `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-claw-auth.js`, `bot-commands.js`, `bot-garden.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-search.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-outreach-source.js`, `bot-links.js`, `bot-weather.js`, `bot-prompts.js`, `bot-text.js` | 0024~0033, 0040, 0041, 0043 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-weather.test.mjs`, `tests/bot-reminders.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
 | **长期线索与行动转化 (Insights)** | `insights.js` | `insights.js` | 无（纯确定性聚类） | `tests/insights.test.mjs` | 🟢 | 纯确定性双链/标签聚合与跨月聚类算法，无外部网络与副作用 |
 | **媒体存储与云端灾备** | `upload.js`, `backup.js` | `garden-media.js`, `garden-export.js`, `garden-backup-mail.js`, `maintenance.js`, `audit.js` | 0015, 0017, 0021, 0022 | `tests/media.test.mjs`, `tests/backup.test.mjs` | 🟡 | 涉及 R2 大文件二进制读写、Range 请求分片与 ZIP 邮件直发，待存储配额与重试核验 |
 
@@ -43,11 +43,11 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.250 | 架构报告数字同步门禁补齐、健康矩阵过期测试路径清理与 CI 远端 D1 迁移预执行流水线解耦：补齐 `tests/docs.test.mjs` 对架构报告迁移范围 `0001–0043` 门禁；清理并校验健康矩阵中 `tests/rag.test.mjs`、`tests/agent.test.mjs` 与微信测试路径真实性；CI `deploy-worker` 流水线显式注入 `npx wrangler d1 migrations apply DB --remote` 确保 Worker 部署前完成数据库迁移，并明确 Pages 异步发布机制；505 测试全过 |
 | v2.5.249 | 微信聊天排版真人紧凑化：优化 toClawText 换行过滤，将 Markdown 段落间的连续换行符统一收紧为单换行，消除微信气泡中突兀的物理空行，使回复呈现真人打字般自然紧凑的视觉效果；504 测试全过 |
 | v2.5.248 | 微信 Bot 人格回退与 RAG 熔断防沉寂治理：100% 完整回退 CHAT_SYSTEM_PROMPT 为用户自定义调优的原版 INFP 克制人格；修复心理/反思生活对话（如“为什么我经常收藏却不去读”）误触发重型 RAG 检索导致 D1 参数超限与未捕获异常中断缺陷；为多表候选回表与关联查询补齐全局安全容错降级；token 截断至 12 个大幅减轻 D1 负载；补齐 context_token 发送容错重试；504 测试全过 |
 | v2.5.247 | 修复微信长轮询慢问答丢包：收信长轮询直接 await batch 杜绝大模型问答在 Cloudflare Cron 结束时被 runtime 掐死丢包；移除非标准 thinking 参数并注入 25s 超时保护；504 测试全过 |
 | v2.5.246 | 修复 ClawBot 微信重定向节点覆写与长轮询饥饿：解决手机确认时 baseurl 被默认域名覆盖导致收发信瘫痪的问题，双重防守兜底重定向主机；轮询按 last_poll_at 轮转防饥饿；504 测试全过 |
-| v2.5.245 | 全项目暗病治理、跨端阅读同步与微信二维码修复：清零 72 项暗病 WARN；阅读器与同步动态 60KB keepalive 与前台对齐；ClawBot 修复官方 iLink 网页链接无法被 img 标签渲染为图片的 Bug（引入 uqr 边缘端矢量 SVG 转码），补齐在微信中直接打开跳转；bot-weather 晨报查重 D1 异常安全熔断；504 测试全过 |
 
 ---
 
