@@ -15,5 +15,6 @@ export function toClawText(raw) {
     text = text.replace(/^\s*\|(.+)\|\s*$/gm, (_, row) => row.split('|').map((cell) => cell.trim()).filter(Boolean).join(' · '));
     text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1：$2');
     text = text.replace(/^---+$/gm, '');
-    return text.replace(/\n{3,}/g, '\n\n').trim();
+    // 微信聊天气泡按真人日常打字紧凑排版：消除段落间多余的空行，多换行统一收紧为单换行
+    return text.replace(/\n{2,}/g, '\n').trim();
 }

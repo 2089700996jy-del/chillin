@@ -258,11 +258,12 @@ test('ClawBot - 回复消息带回传的 context_token，正文截到 4000 字�
     assert.ok(long.endsWith('…'));
 });
 
-test('Bot text - Markdown 转成微信可读纯文本', () => {
+test('Bot text - Markdown 转成微信紧凑纯文本，消除冗余空行', () => {
     const out = toClawText('## 今日三条\n**标题**\n- 要点一\n[来源](https://example.com/a)\n\n\n结尾');
-    assert.equal(out, '【今日三条】\n【标题】\n• 要点一\n来源：https://example.com/a\n\n结尾');
+    assert.equal(out, '【今日三条】\n【标题】\n• 要点一\n来源：https://example.com/a\n结尾');
     assert.ok(!out.includes('**'));
     assert.ok(!out.includes('##'));
+    assert.ok(!out.includes('\n\n'));
 });
 
 test('ClawBot - sendmessage 返回 ret 非 0 必须抛错，不能假装已发送', async () => {
