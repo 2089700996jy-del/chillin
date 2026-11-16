@@ -45,12 +45,15 @@ export async function upsertQrcode(db, userId, qrcode) {
 }
 
 export async function markBound(db, userId, info) {
+    const rawBase = (info && typeof info.baseurl === 'string') ? info.baseurl.trim() : '';
+    const safeBase = rawBase ? ilinkBase(rawBase) : '';
     await db.prepare(
-        "UPDATE bot_claw_accounts SET status = 'bound', bot_token = ?2, baseurl = ?3, ilink_bot_id = ?4, "
-        + "ilink_user_id = ?5, qrcode = '', qr_expires_at = NULL, cursor = '', bound_at_ms = ?6, "
+        "UPDATE bot_claw_accounts SET status = 'bound', bot_token = ?2, "
+        + "baseurl = CASE WHEN ?3 != '' THEN ?3 WHEN baseurl != '' THEN baseurl ELSE 'https://ilinkai.weixin.qq.com' END, "
+        + "ilink_bot_id = ?4, ilink_user_id = ?5, qrcode = '', qr_expires_at = NULL, cursor = '', bound_at_ms = ?6, "
         + "last_error = '', updated_at = datetime('now', '+8 hours') "
         + 'WHERE user_id = ?1 AND is_deleted = 0'
-    ).bind(userId, info.botToken, ilinkBase(info.baseurl), info.ilinkBotId, info.ilinkUserId, Date.now()).run();
+    ).bind(userId, info.botToken, safeBase, info.ilinkBotId, info.ilinkUserId, Date.now()).run();
 }
 
 export async function markUnBound(db, userId) {
@@ -130,7 +133,8 @@ export async function checkClawLogin(env, db, userId, fetchImpl = fetch) {
             await markAccountError(db, row.id, 'confirmed 响应缺少 bot_token/ilink_bot_id');
             return publicStatus(await readAccount(db, userId));
         }
-        await markBound(db, userId, state);
+        const effectiveBaseurl = (state.baseurl && ilinkBase(state.baseurl)) || row.baseurl || '';
+        await markBound(db, userId, Object.assign({}, state, { baseurl: effectiveBaseurl }));
         console.log('[bot-claw] 绑定成功 ilink_bot_id=' + state.ilinkBotId);
         return publicStatus(await readAccount(db, userId));
     }

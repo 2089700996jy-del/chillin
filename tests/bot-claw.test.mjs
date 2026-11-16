@@ -376,8 +376,9 @@ integration('ClawBot - scaned_but_redirect 先持久化新主机，再在新主�
     const st = stubFetch({
         '/ilink/bot/get_bot_qrcode': () => ({ json: { qrcode: 'QR-REDIRECT', qrcode_img_content: 'https://x/qr.png' } }),
         '/ilink/bot/get_qrcode_status': (u) => u.startsWith(redirectBase)
-            ? { json: { status: 'confirmed', bot_token: 'BOT-R', baseurl: redirectBase, ilink_bot_id: 'bot-r@im.bot', ilink_user_id: 'owner@im.wechat' } }
-            : { json: { status: 'scaned_but_redirect', redirect_host: 'ilink2.weixin.qq.com' } }
+            ? { json: { status: 'confirmed', bot_token: 'BOT-R', ilink_bot_id: 'bot-r@im.bot', ilink_user_id: 'owner@im.wechat' } }
+            : { json: { status: 'scaned_but_redirect', redirect_host: 'ilink2.weixin.qq.com' } },
+        '/ilink/bot/getupdates': () => ({ json: { msgs: [], get_updates_buf: 'cursor-1' } })
     });
     await startClawLogin({}, db, 1, st.impl);
     const redirected = await checkClawLogin({}, db, 1, st.impl);
@@ -397,8 +398,15 @@ integration('ClawBot - scaned_but_redirect 先持久化新主机，再在新主�
     assert.ok(st.calls[2].url.startsWith(redirectBase), '确认前必须先去 redirect_host 轮询');
     row = await db.prepare('SELECT * FROM bot_claw_accounts WHERE user_id = 1').first();
     assert.equal(row.status, 'bound');
-    assert.equal(row.baseurl, redirectBase);
+    assert.equal(row.baseurl, redirectBase, '微信 confirmed 响应不传 baseurl 时必须沿用重定向主机，不能被重置回默认域名');
+
+    // 随后 cron 长轮询必须向 redirectBase 发起 getupdates，而非官方默认域名
+    await pollClawAccounts({}, db, st.impl, { budgetMs: 0 });
+    const updateCall = st.calls.find(c => c.url.includes('/ilink/bot/getupdates'));
+    assert.ok(updateCall, '必须发起 getupdates 请求');
+    assert.ok(updateCall.url.startsWith(redirectBase), 'getupdates 必须请求重定向主机：' + (updateCall && updateCall.url));
 });
+
 
 integration('ClawBot - binded_redirect 清掉二维码并给出明确提示，不假装绑定', async () => {
     const db = createTestDb();
@@ -1652,6 +1660,17 @@ integration('ClawBot - 成功拉到信就擦掉历史 last_error，并把 last_p
     await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
     row = await db.prepare('SELECT last_error FROM bot_claw_accounts WHERE id = 1').first();
     assert.equal(String(row.last_error || ''), '', '反复失败后成功都要擦干净');
+
+    // 验证多账号调度按 last_poll_at 升序与空值优先轮转（杜绝新绑定的高 ID 账号饥饿）
+    await seedUser(db, 2);
+    await seedUser(db, 3);
+    await db.prepare("INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, last_poll_at) VALUES (2, 'bound', 'T2', 'https://ilinkai.weixin.qq.com', 'bot2@im.bot', 'u2', '2026-11-16 09:00:00')").run();
+    await db.prepare("INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, last_poll_at) VALUES (3, 'bound', 'T3', 'https://ilinkai.weixin.qq.com', 'bot3@im.bot', 'u3', NULL)").run();
+    const st2 = stubFetch({ '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: '', msgs: [] } }) });
+    await pollClawAccounts({}, db, st2.impl, { budgetMs: 0 });
+    const updateCalls = st2.calls.filter(c => c.url.includes('/ilink/bot/getupdates'));
+    const polledTokens = updateCalls.map(c => (c.init && c.init.headers && c.init.headers.Authorization || '').replace('Bearer ', ''));
+    assert.deepEqual(polledTokens, ['T3', 'T2'], '未轮询过的账号 3 和更早的账号 2 必须优先轮询');
 });
 
 integration('Bot - 光杆「记住」直接要内容，不再答「我没有写入能力」', async () => {

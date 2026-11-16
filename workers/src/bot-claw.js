@@ -266,6 +266,7 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
         if (typeof defer === 'function' && updates.msgs.length) {
             background = background.then(batch, batch);
             defer(background.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
+            if (nextCursor) cursor = nextCursor;
         } else {
             if (updates.msgs.length) await batch();
             else if (nextCursor) {
@@ -334,7 +335,7 @@ export async function pollClawAccounts(env, db, fetchImpl = fetch, options = {})
     // budget 为 0 表示只拉一轮（单测收紧预算用），不能落进同一毫秒里空转
     const runDeadline = budget > 0 ? Date.now() + budget : 0;
     const rows = await db.prepare(
-        "SELECT * FROM bot_claw_accounts WHERE is_deleted = 0 AND status = 'bound' ORDER BY id LIMIT ?1"
+        "SELECT * FROM bot_claw_accounts WHERE is_deleted = 0 AND status = 'bound' ORDER BY last_poll_at ASC NULLS FIRST, id ASC LIMIT ?1"
     ).bind(MAX_ACCOUNTS_PER_RUN).all();
     const accounts = (rows && rows.results) || [];
     const slice = accounts.length ? Math.max(POLL_MIN_SLICE_MS, Math.floor(budget / accounts.length)) : budget;
