@@ -30,7 +30,7 @@ import {
     taskPrompt,
     parseSleepDirective
 } from '../workers/src/agent-executor.js';
-import { maybeRunAgentCommand } from '../workers/src/bot-garden.js';
+import { maybeRunAgentCommand } from '../workers/src/bot-agent-commands.js';
 import { requestAgentProposal, runProposalTool, PROPOSE_CHOICE_TOOL } from '../workers/src/agent-approvals.js';
 import { checkpointAfterTask, replanRemaining } from '../workers/src/agent-checkpoint.js';
 import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns, distillWebText, wrapUntrustedContent } from '../workers/src/agent-web.js';

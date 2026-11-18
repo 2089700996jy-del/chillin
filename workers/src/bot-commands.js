@@ -6,9 +6,10 @@
 
 import {
     parseBookmarkCommand, parsePromptCommand, runBookmarkCommand, runPromptCommand,
-    runRecord, runCommitPendingMedia, saveFeed, maybeRunAgentCommand,
+    runRecord, runCommitPendingMedia, saveFeed,
     BOOKMARK_BARE_RE, PROMPT_BARE_RE, BOOKMARK_BARE_REPLY, PROMPT_BARE_REPLY
 } from './bot-garden.js';
+import { maybeRunAgentCommand } from './bot-agent-commands.js';
 export { parseBookmarkCommand, parsePromptCommand };
 import { maybeManageGarden } from './bot-butler.js';
 import { maybePreferenceCommand, loadPreferencePrompt } from './bot-preferences.js';
@@ -266,9 +267,12 @@ async function runForget(db, userId, req) {
     return req.all ? ('整份档案已清空，忘了 ' + res.removed + ' 条。') : ('已忘记 ' + res.removed + ' 条。');
 }
 
-/** 已支持的显式指令；返回 null 表示「不是指令」，交给对话模型 */
-export async function runCommand(env, db, userId, content) {
-    const text = normalizeCommandText(content) || String(content || '').trim();
+// ───────────────────────── 结构化指令分发器 ─────────────────────────
+
+/**
+ * 1. 系统与偏好档案指令 (System / Settings / Profile)
+ */
+async function dispatchSystemCommand(env, db, userId, text) {
     if (HELP_RE.test(text)) return BOT_HELP_TEXT;
 
     if (OUTREACH_OFF_RE.test(text)) {
@@ -298,9 +302,18 @@ export async function runCommand(env, db, userId, content) {
     // 意图明确但没带内容（光杆「记住」）：先答清楚，别丢给对话模型
     if (REMEMBER_BARE_RE.test(text)) return REMEMBER_BARE_REPLY;
 
+    const remember = parseRememberCommand(text);
+    if (remember) return runRemember(db, userId, remember);
+
+    return null;
+}
+
+/**
+ * 2. 定点提醒与待办事项指令 (Reminders & Tasks)
+ */
+async function dispatchReminderCommand(db, userId, text, nowMs) {
     // 定点提醒：解析是纯同步的，执行要查库。
     // 顺序讲究——「我的提醒 / 取消提醒 / 完成」都排在普通记录指令之前，否则「待办」会被当成闲聊。
-    const nowMs = Date.now();
     const remind = parseRemindCommand(text, nowMs);
     if (remind.matched) return runRemind(db, userId, remind, nowMs);
     if (isReminderList(text)) return listReminders(db, userId, nowMs);
@@ -363,17 +376,13 @@ export async function runCommand(env, db, userId, content) {
         }
     }
 
-    // 健康打卡：一天一行，重复打卡是合并而不是新增（判别与执行都在 bot-health）
-    const healthReply = await maybeRunHealthCommand(db, userId, text, nowMs);
-    if (healthReply !== null) return healthReply;
+    return null;
+}
 
-    // 目标 Agent：建目标 / 看进度 / 排队继续 / 审批，复用网页端同一套函数
-    const agentReply = await maybeRunAgentCommand(env, db, userId, text);
-    if (agentReply !== null) return agentReply;
-
-    const remember = parseRememberCommand(text);
-    if (remember) return runRemember(db, userId, remember);
-
+/**
+ * 3. 花园资源写入与管理指令 (Garden Resources)
+ */
+async function dispatchGardenCommand(db, userId, text) {
     const record = parseRecordCommand(text);
     if (record) return runRecord(db, userId, record);
 
@@ -392,6 +401,13 @@ export async function runCommand(env, db, userId, content) {
     // 光杆「记录」：确认把刚才暂存的图片写进随手记（放在 RECORD_RE 之后，避免抢走「记录：X」）
     if (PENDING_COMMIT_RE.test(text)) return runCommitPendingMedia(db, userId);
 
+    return null;
+}
+
+/**
+ * 4. 媒体追问、外部链接与联网检索指令 (Media / Search)
+ */
+async function dispatchMediaSearchCommand(env, db, userId, text) {
     // 连续图片后的追问：只在有待存图片、且问句确实指向图片时走深度看图
     const imageFollowUp = await maybeClawImageFollowUp(env, db, userId, text);
     if (imageFollowUp !== null) return imageFollowUp;
@@ -405,6 +421,42 @@ export async function runCommand(env, db, userId, content) {
 
     const askCmd = text.match(/^(?:问|ask|\/ai)[\s:：]+([\s\S]+)$/i);
     if (askCmd) return runAsk(env, db, userId, askCmd[1].trim());
+
+    return null;
+}
+
+/**
+ * 已支持的显式指令路由器：分流至 6 大结构化领域
+ * (System/Settings, Reminders/Tasks, Health, Agent Goals, Garden Resources, Media/Search)
+ * 返回 null 表示「不是指令」，交给对话模型
+ */
+export async function runCommand(env, db, userId, content) {
+    const text = normalizeCommandText(content) || String(content || '').trim();
+    const nowMs = Date.now();
+
+    // 1. 系统、设置与偏好档案 (System / Settings)
+    const systemReply = await dispatchSystemCommand(env, db, userId, text);
+    if (systemReply !== null) return systemReply;
+
+    // 2. 定点提醒与待办事项 (Reminders / Tasks)
+    const reminderReply = await dispatchReminderCommand(db, userId, text, nowMs);
+    if (reminderReply !== null) return reminderReply;
+
+    // 3. 健康打卡（一天一行，重复合并） (Health)
+    const healthReply = await maybeRunHealthCommand(db, userId, text, nowMs);
+    if (healthReply !== null) return healthReply;
+
+    // 4. 目标 Agent CLI（建目标/查进度/继续/暂停/重规划/受控审批） (Agent Goals)
+    const agentReply = await maybeRunAgentCommand(env, db, userId, text);
+    if (agentReply !== null) return agentReply;
+
+    // 5. 花园资源（随手记/管家管理/收藏/提示词/暂存媒体提交） (Garden Resources)
+    const gardenReply = await dispatchGardenCommand(db, userId, text);
+    if (gardenReply !== null) return gardenReply;
+
+    // 6. 媒体与检索（看图追问/播客链接速览/语义检索/知识问答） (Media / Search)
+    const mediaReply = await dispatchMediaSearchCommand(env, db, userId, text);
+    if (mediaReply !== null) return mediaReply;
 
     return null;
 }

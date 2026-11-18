@@ -32,7 +32,7 @@
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
 * **代码行数约束**：`workers/src/` 下各领域模块代码行数严格控制在 **800 行以内**（由 `tests/architecture.test.mjs` 自动校验，严防单体巨石，同时为后续模块整合保留合理空间）。
 
-（`workers/src/` 共 **50 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、20 个 Bot 模块（对话编排 / 提示词与指令辅助 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 关怀素材挖掘 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入 / 微信扫码认证 / 纯文本格式化）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **51 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、21 个 Bot 模块（对话编排 / 提示词与指令辅助 / 管家写入 / 目标 Agent CLI / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 关怀素材挖掘 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入 / 微信扫码认证 / 纯文本格式化）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -69,7 +69,8 @@
 | [`workers/src/bot-commands.js`](../../workers/src/bot-commands.js) | Bot 对话编排（chat-first，自然回应） | ClawBot 消息分流层：**默认只聊天、不写库**，显式「记录：…」落随手记、「记住/忘记」动档案（光杆「记录」确认待存图落库）；`claimBotMessage` 幂等排重、「搜 X」查记忆、「问 X」走 Echo AI；来源脚注默认不附（用户追问时给出「[类型] YYYY-MM-DD」）；指令前置 `normalizeCommandText` 净化；系统提示词声明真实能力与确定性回复规则；时间锚点附带星期。 |
 | [`workers/src/bot-prompts.js`](../../workers/src/bot-prompts.js) | Bot 提示词与指令格式化辅助 | 小助手帮助文本、系统提示词模板、输入包裹符剥除与来源标签格式化。 |
 | [`workers/src/bot-image-flow.js`](../../workers/src/bot-image-flow.js) | Bot 多图编排 | 一条消息多张图、连续图片批次与深度看图问答：默认快速逐张识图，多图先合进 `bot_pending_media` 待存批次；用户追问多图共同问题时将批次交由模型处理；回「记录」才按张落随手记，未确认不动业务表。 |
-| [`workers/src/bot-garden.js`](../../workers/src/bot-garden.js) | Bot 管家写入与目标命令 | 确定性指令落库：随手记（含待存图/链接确认）、收藏、提示词；格式不对只给提示绝不乱写；承载 Bot 目标命令（建目标/我的目标/看目标/开始排队/暂停/审批/同意/拒绝），只调用 `agent-*` 现有接口，排队不执行、写入仍走审批。 |
+| [`workers/src/bot-garden.js`](../../workers/src/bot-garden.js) | Bot 管家写入 | 确定性指令落库：随手记（含待存图/链接确认）、收藏、提示词；格式不对只给提示绝不乱写。 |
+| [`workers/src/bot-agent-commands.js`](../../workers/src/bot-agent-commands.js) | Bot 目标 Agent CLI | 微信 Bot 下的目标管理与受控审批 CLI（创建目标/查看进度/排队执行/暂停/重规划/审批决策与拍板），调用已有 Agent 领域函数，排队不执行、写入仍走审批。 |
 | [`workers/src/bot-preferences.js`](../../workers/src/bot-preferences.js) | Bot 交流偏好 | 独立于「关于我」事实档案的表达方式记忆：用户偏好反馈先写 `bot_pending_actions` 提案，回「确认」才落库；聊天、RAG 与主动关怀均注入偏好；支持软删并限制 8 条 / 800 字符预算。 |
 | [`workers/src/bot-butler.js`](../../workers/src/bot-butler.js) | Bot 管家管理 | 收藏与提示词的管理：改动先写 `bot_pending_actions` 待确认提案，10 分钟过期；删除统一标记 `is_deleted = 1` 软删；预览阶段不落库，全字段校验归属与格式。 |
 | [`workers/src/bot-memory.js`](../../workers/src/bot-memory.js) | Bot 私人记忆 | 三层记忆读写：截断上下文记忆、「关于我」事实档案增删查（全软删、参数化绑定、上限约束），并提供 `/api/bot/profile` 应用内编辑接口；维护 `bot_pending_media`（每人一张、60 分钟过期）承接图片确认。 |
