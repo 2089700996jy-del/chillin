@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-16。当前前端/Worker：**v2.5.250**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-18。当前前端/Worker：**v2.5.251**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
@@ -43,11 +43,11 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.251 | 架构重构第一阶段（解除行数红线枷锁与实体四重异名归一）：废除 500 行物理行数死线调整为 800 行高内聚上限，保持 workers/api.js 224 行薄路由红线；剔除 garden-shared.js 与 bot-weather.js 运行时的 ALTER TABLE / CREATE TABLE DDL 注入；前端统一周记命名为 state.weeklies 与 ui.currentWeeklyId，IndexedDB 存储键平滑升级至 gardenWeeklies 并提供 100% 透明向后兼容与防丢保障；505 测试全过 |
 | v2.5.250 | 架构报告 D1 迁移范围同步、功能健康度矩阵过期测试路径清理与双轨发布机制规范：补齐 `tests/docs.test.mjs` 对架构报告迁移范围 `0001–0043` 门禁；清理并校验健康矩阵中 `tests/rag.test.mjs`、`tests/agent.test.mjs` 与微信测试路径真实性；梳理规约与 CI 架构：D1 远端迁移在发布前由本地/发布脚本执行确认，CI 执行质量门禁后自动部署 Worker，Pages 经 Cloudflare Git Webhook 独立原子发布；505 测试全过 |
 | v2.5.249 | 微信聊天排版真人紧凑化：优化 toClawText 换行过滤，将 Markdown 段落间的连续换行符统一收紧为单换行，消除微信气泡中突兀的物理空行，使回复呈现真人打字般自然紧凑的视觉效果；504 测试全过 |
 | v2.5.248 | 微信 Bot 人格回退与 RAG 熔断防沉寂治理：100% 完整回退 CHAT_SYSTEM_PROMPT 为用户自定义调优的原版 INFP 克制人格；修复心理/反思生活对话（如“为什么我经常收藏却不去读”）误触发重型 RAG 检索导致 D1 参数超限与未捕获异常中断缺陷；为多表候选回表与关联查询补齐全局安全容错降级；token 截断至 12 个大幅减轻 D1 负载；补齐 context_token 发送容错重试；504 测试全过 |
 | v2.5.247 | 修复微信长轮询慢问答丢包：收信长轮询直接 await batch 杜绝大模型问答在 Cloudflare Cron 结束时被 runtime 掐死丢包；移除非标准 thinking 参数并注入 25s 超时保护；504 测试全过 |
-| v2.5.246 | 修复 ClawBot 微信重定向节点覆写与长轮询饥饿：解决手机确认时 baseurl 被默认域名覆盖导致收发信瘫痪的问题，双重防守兜底重定向主机；轮询按 last_poll_at 轮转防饥饿；504 测试全过 |
 
 ---
 

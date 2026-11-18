@@ -25,8 +25,6 @@ import {
     handleAiChat
 } from './src/ai.js';
 
-import { ensureSoftDeleteSchema } from './src/garden-shared.js';
-
 import {
     handleUpload,
     handleFileView,
@@ -67,7 +65,7 @@ import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.250';
+const APP_VERSION = '2.5.251';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -123,7 +121,6 @@ async function router(path, method, request, env, ctx) {
     if (!userId) {
         return jsonResponse({ error: '未登录或登录已过期' }, 401);
     }
-    await ensureSoftDeleteSchema(db);
 
     // Agent 目标与任务：目标 CRUD、计划、逐任务执行、审批
     if (path.startsWith('/api/agent/')) return handleAgentGoalApi(request, env, url, db, userId);

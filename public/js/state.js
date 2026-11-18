@@ -93,7 +93,13 @@ export const state = {
     authUser: savedUser,
     // true 表示会话由服务端 HttpOnly Cookie 维持；若本地已存有有效用户档案，乐观假定会话有效，避免首屏闪烁登录遮罩
     cookieSession: Boolean(savedUser && !savedToken),
-    database: [],
+    weeklies: [],
+    get database() {
+        return this.weeklies;
+    },
+    set database(val) {
+        this.weeklies = val;
+    },
     notesDatabase: [],
     bookmarksDatabase: [],
     promptsDatabase: [],

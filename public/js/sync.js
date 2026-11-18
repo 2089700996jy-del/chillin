@@ -72,7 +72,7 @@ function rescueAndConsolidateLocalData() {
             } else if (key.includes('gardenNotes')) {
                 const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedNotes.push(...items);
-            } else if (key.includes('gardenData')) {
+            } else if (key.includes('gardenData') || key.includes('gardenWeeklies')) {
                 const items = readJsonValue(key);
                 if (Array.isArray(items)) rescuedWeeklies.push(...items);
             } else if (key.includes('gardenBookmarks')) {
@@ -528,7 +528,7 @@ export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
 
 function resourceList(resource) {
     return {
-        weeklies: state.database,
+        weeklies: state.weeklies,
         notes: state.notesDatabase,
         bookmarks: state.bookmarksDatabase,
         prompts: state.promptsDatabase,
@@ -843,11 +843,22 @@ export function loadLocalData() {
 
     const currentFeeds = readJsonValue(getLocalKey('gardenFeeds')) || [];
     const currentNotes = readJsonValue('gardenNotes') || readJsonValue(getLocalKey('gardenNotes')) || [];
-    const currentData = readJsonValue('gardenData') || readJsonValue(getLocalKey('gardenData')) || [];
+    const currentWeekliesRaw = readJsonValue(getLocalKey('gardenWeeklies')) || readJsonValue('gardenWeeklies');
+    const legacyWeekliesRaw = readJsonValue(getLocalKey('gardenData')) || readJsonValue('gardenData');
+    const currentWeeklies = (Array.isArray(currentWeekliesRaw) && currentWeekliesRaw.length > 0)
+        ? currentWeekliesRaw
+        : ((Array.isArray(legacyWeekliesRaw) && legacyWeekliesRaw.length > 0) ? legacyWeekliesRaw : (currentWeekliesRaw || legacyWeekliesRaw || []));
+
+    if ((!Array.isArray(currentWeekliesRaw) || currentWeekliesRaw.length === 0) && Array.isArray(legacyWeekliesRaw) && legacyWeekliesRaw.length > 0) {
+        try {
+            localStorage.setItem(getLocalKey('gardenWeeklies'), JSON.stringify(legacyWeekliesRaw));
+        } catch (_) { /* audit-ignore: intentional-fallback 迁移历史键写入失败安全降级 */ }
+    }
+
     const currentBookmarks = readJsonValue('gardenBookmarks') || readJsonValue(getLocalKey('gardenBookmarks')) || [];
     const currentPrompts = readJsonValue(getLocalKey('gardenPrompts')) || [];
 
-    state.database = mergeDataLists(currentData, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
+    state.weeklies = mergeDataLists(currentWeeklies, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
     state.notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES);
     state.bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS);
     state.promptsDatabase = mergeDataLists(currentPrompts, rescued.prompts.length > 0 ? rescued.prompts : DEFAULT_PROMPTS);
@@ -863,6 +874,7 @@ export function loadLocalData() {
     }
 
     migrateFromLocalStorage([
+        getLocalKey('gardenWeeklies'),
         getLocalKey('gardenData'),
         getLocalKey('gardenNotes'),
         getLocalKey('gardenBookmarks'),
@@ -883,6 +895,7 @@ export function loadLocalData() {
 export async function hydrateFromIndexedDb() {
     try {
         const keys = [
+            getLocalKey('gardenWeeklies'),
             getLocalKey('gardenData'),
             getLocalKey('gardenNotes'),
             getLocalKey('gardenBookmarks'),
@@ -893,7 +906,15 @@ export async function hydrateFromIndexedDb() {
         const dataMap = await idbGetBatch(keys);
         let hasNewData = false;
 
-        const idbWeeklies = dataMap[getLocalKey('gardenData')];
+        let idbWeeklies = dataMap[getLocalKey('gardenWeeklies')];
+        const legacyData = dataMap[getLocalKey('gardenData')];
+
+        // Transparent migration fallback: if gardenWeeklies is empty and gardenData exists, load and migrate it
+        if ((!Array.isArray(idbWeeklies) || idbWeeklies.length === 0) && Array.isArray(legacyData) && legacyData.length > 0) {
+            idbWeeklies = legacyData;
+            await idbSet(getLocalKey('gardenWeeklies'), legacyData);
+        }
+
         const idbNotes = dataMap[getLocalKey('gardenNotes')];
         const idbBookmarks = dataMap[getLocalKey('gardenBookmarks')];
         const idbPrompts = dataMap[getLocalKey('gardenPrompts')];
@@ -901,9 +922,9 @@ export async function hydrateFromIndexedDb() {
         const idbEchoCards = dataMap[getLocalKey('gardenEchoCards')];
 
         if (Array.isArray(idbWeeklies) && idbWeeklies.length > 0) {
-            const beforeLen = state.database.length;
-            state.database = mergeDataLists(state.database, idbWeeklies);
-            if (state.database.length !== beforeLen) hasNewData = true;
+            const beforeLen = state.weeklies.length;
+            state.weeklies = mergeDataLists(state.weeklies, idbWeeklies);
+            if (state.weeklies.length !== beforeLen) hasNewData = true;
         }
         if (Array.isArray(idbNotes) && idbNotes.length > 0) {
             const beforeLen = state.notesDatabase.length;
@@ -1018,8 +1039,8 @@ export async function syncFromApi() {
         {
             resource: 'weeklies',
             path: '/api/weeklies',
-            getList: () => state.database,
-            setList: (list) => { state.database = list; },
+            getList: () => state.weeklies,
+            setList: (list) => { state.weeklies = list; },
             save: saveDatabase,
             shouldRefresh: () => getActiveViewId() === 'view-home',
             refresh: () => refresh('weeklies', {
@@ -1138,7 +1159,7 @@ export async function syncFromApi() {
                         return payload;
                     });
 
-                const dirtyWeeklies = dirtyOnly(state.database, 'weeklies');
+                const dirtyWeeklies = dirtyOnly(state.weeklies, 'weeklies');
                 const dirtyNotes = dirtyOnly(state.notesDatabase, 'notes');
                 const dirtyBookmarks = dirtyOnly(state.bookmarksDatabase, 'bookmarks');
                 const dirtyFeeds = dirtyOnly(state.feedsDatabase, 'feeds');
@@ -1165,7 +1186,7 @@ export async function syncFromApi() {
                         keepalive: isKeepalivePayloadSafe(batchBody),
                         body: batchBody
                     });
-                    const resourceLists = { weeklies: state.database, notes: state.notesDatabase, bookmarks: state.bookmarksDatabase, feeds: state.feedsDatabase, prompts: state.promptsDatabase };
+                    const resourceLists = { weeklies: state.weeklies, notes: state.notesDatabase, bookmarks: state.bookmarksDatabase, feeds: state.feedsDatabase, prompts: state.promptsDatabase };
                     const conflictKeys = new Set(((res && res.conflicts) || []).map((entry) => entry.resource + ':' + String(entry.id)));
                     for (const changed of (res && res.updated) || []) {
                         if (conflictKeys.has(changed.resource + ':' + String(changed.id))) continue;
@@ -1202,7 +1223,7 @@ export async function syncFromApi() {
                     const onlyWritten = (map, resource) => !hasUpdatedField
                         ? map
                         : new Map([...map].filter(([id]) => updatedKeys.has(resource + ':' + String(id))));
-                    clearPushedDirtyFlags(state.database, onlyWritten(pushedWeeklies, 'weeklies'));
+                    clearPushedDirtyFlags(state.weeklies, onlyWritten(pushedWeeklies, 'weeklies'));
                     clearPushedDirtyFlags(state.notesDatabase, onlyWritten(pushedNotes, 'notes'));
                     clearPushedDirtyFlags(state.bookmarksDatabase, onlyWritten(pushedBookmarks, 'bookmarks'));
                     clearPushedDirtyFlags(state.feedsDatabase, onlyWritten(pushedFeeds, 'feeds'));
@@ -1262,8 +1283,9 @@ export async function syncFromApi() {
 }
 
 export function saveDatabase() {
-    idbSet(getLocalKey('gardenData'), state.database);
+    idbSet(getLocalKey('gardenWeeklies'), state.weeklies);
 }
+export const saveWeekliesDatabase = saveDatabase;
 export function saveNotesDatabase() {
     idbSet(getLocalKey('gardenNotes'), state.notesDatabase);
 }
@@ -1375,7 +1397,7 @@ export function filterRealGuestItems(list, defaultIds) {
 export async function checkAndMergeGuestData() {
     if (!state.authUser) return;
 
-    const guestData = readJsonValue('default_gardenData') || [];
+    const guestData = readJsonValue('default_gardenWeeklies') || readJsonValue('default_gardenData') || [];
     const guestNotes = readJsonValue('default_gardenNotes') || [];
     const guestBookmarks = readJsonValue('default_gardenBookmarks') || [];
     const guestFeeds = readJsonValue('default_gardenFeeds') || [];
@@ -1392,13 +1414,13 @@ export async function checkAndMergeGuestData() {
     if (totalRealGuestCount > 0) {
         if (await confirmDialog('检测到您在未登录时在当前设备上创建了本地数据（周记/笔记/收藏/随手记/提示词）。是否将这些数据导入并同步到您当前的账号中？')) {
             try {
-                const userKey = getLocalKey('gardenData');
-                let userDatabase = readJsonValue(userKey) || [];
+                const userKey = getLocalKey('gardenWeeklies');
+                let userDatabase = readJsonValue(userKey) || readJsonValue(getLocalKey('gardenData')) || [];
                 userDatabase = [...userDatabase, ...realGuestData].filter((item, index, self) =>
                     self.findIndex(t => t.id === item.id) === index
                 );
                 localStorage.setItem(userKey, JSON.stringify(userDatabase));
-                state.database = userDatabase;
+                state.weeklies = userDatabase;
 
                 const userNotesKey = getLocalKey('gardenNotes');
                 let userNotesDatabase = readJsonValue(userNotesKey) || [];
@@ -1450,6 +1472,7 @@ export async function checkAndMergeGuestData() {
                     })
                 });
 
+                localStorage.removeItem('default_gardenWeeklies');
                 localStorage.removeItem('default_gardenData');
                 localStorage.removeItem('default_gardenNotes');
                 localStorage.removeItem('default_gardenBookmarks');

@@ -186,30 +186,3 @@ export async function fetchUpdatedAtMap(db, tableName, userId, ids) {
     return map;
 }
 
-let softDeleteSchemaReady = false;
-
-export async function ensureSoftDeleteSchema(db) {
-    if (softDeleteSchemaReady) return;
-    const stmts = [
-        "ALTER TABLE weeklies ADD COLUMN is_deleted INTEGER DEFAULT 0",
-        "ALTER TABLE notes ADD COLUMN is_deleted INTEGER DEFAULT 0",
-        "ALTER TABLE bookmarks ADD COLUMN is_deleted INTEGER DEFAULT 0",
-        "ALTER TABLE quick_feeds ADD COLUMN is_deleted INTEGER DEFAULT 0",
-        "CREATE INDEX IF NOT EXISTS idx_weeklies_updated_at ON weeklies(updated_at)",
-        "CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at)",
-        "CREATE INDEX IF NOT EXISTS idx_weeklies_is_deleted ON weeklies(is_deleted)",
-        "CREATE INDEX IF NOT EXISTS idx_notes_is_deleted ON notes(is_deleted)",
-        "CREATE INDEX IF NOT EXISTS idx_bookmarks_is_deleted ON bookmarks(is_deleted)",
-        "CREATE INDEX IF NOT EXISTS idx_quick_feeds_is_deleted ON quick_feeds(is_deleted)"
-    ];
-    // 与 migrations/0013_soft_deletes.sql 等价，只是老库的兜底（已迁移的库上这些 ALTER 必然
-    // 报 duplicate column）。原来逐条串行 run() 要 10 次 D1 往返；拆成两批：
-    // ALTER 那批整体吞异常（本来就会失败），幂等的建索引单独一批。
-    try {
-        await db.batch(stmts.slice(0, 4).map((sql) => db.prepare(sql)));
-    } catch (_) { /* audit-ignore: intentional-fallback 旧库软删除列可能已存在，忽略 duplicate column 错误 */ }
-    try {
-        await db.batch(stmts.slice(4).map((sql) => db.prepare(sql)));
-    } catch (_) { /* audit-ignore: intentional-fallback 幂等索引创建异常安全忽略 */ }
-    softDeleteSchemaReady = true;
-}

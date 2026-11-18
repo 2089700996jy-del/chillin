@@ -66,7 +66,7 @@ const loadMoreWeeklies = () => {
         weeklyLoadMoreObserver.disconnect();
         weeklyLoadMoreObserver = null;
     }
-    if (weeklyVisibleCount >= state.database.length) return;
+    if (weeklyVisibleCount >= state.weeklies.length) return;
     weeklyVisibleCount += WEEKLY_PAGE_SIZE;
     renderCards();
 };
@@ -95,7 +95,7 @@ const renderWeeklyAnnotationsList = () => {
         item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
             if (await confirmDialog("确定要删除这条追加说明吗？")) {
                 currentWeeklyAnnotations = currentWeeklyAnnotations.filter(a => a.id !== ann.id);
-                const article = state.database.find(d => d.id === ui.currentArticleId);
+                const article = state.weeklies.find(d => d.id === ui.currentWeeklyId);
                 if (article) {
                     article.annotations = currentWeeklyAnnotations;
                     saveDatabase();
@@ -119,9 +119,9 @@ const renderCards = (filter = weeklyCategoryFilter) => {
         weeklyLoadMoreObserver.disconnect();
         weeklyLoadMoreObserver = null;
     }
-    weeklyFilter?.update(state.database);
+    weeklyFilter?.update(state.weeklies); // weeklyFilter?.update(state.database)
     const range = weeklyFilter?.getValue() || { year: 'all', month: 'all' };
-    const filteredDB = filterItemsByYearMonth(state.database, (item) => item && item.date, range.year, range.month)
+    const filteredDB = filterItemsByYearMonth(state.weeklies, (item) => item && item.date, range.year, range.month)
         .filter(item => filter === 'all' || item.category === filter)
         .sort((a, b) => b.id - a.id);
     const sortedDB = filteredDB.slice(0, weeklyVisibleCount);
@@ -188,7 +188,7 @@ const generateWeeklyWidgetsHtml = (data) => {
 };
 
 const openArticle = (item, opts = {}) => {
-    ui.currentArticleId = item.id;
+    ui.currentWeeklyId = item.id;
     if (articleCategory) articleCategory.innerText = '';
     articleDate.innerText = item.date;
     articleTitle.innerText = item.title;
@@ -245,7 +245,7 @@ const hasUnsavedChanges = () => {
 
     if (editId) {
         // 编辑已有文章：与原始数据库文章对比
-        const item = state.database.find(d => d.id === parseInt(editId));
+        const item = state.weeklies.find(d => d.id === parseInt(editId));
         if (!item) return false;
         const originalMusic = item.weeklyData?.music || {};
         const originalMedia = (item.weeklyData?.media && item.weeklyData.media[0]) || {};
@@ -514,7 +514,7 @@ const openWeeklyEditor = (editId = null, opts = {}) => {
     editorForm.reset();
     if (editId) {
         editorPageTitle.innerText = "编辑记忆";
-        const item = state.database.find(d => d.id === editId || String(d.id) === String(editId));
+        const item = state.weeklies.find(d => d.id === editId || String(d.id) === String(editId));
         if (item) {
             document.getElementById('edit-id').value = item.id;
             document.getElementById('edit-category').value = item.category;
@@ -543,7 +543,7 @@ const openWeeklyEditor = (editId = null, opts = {}) => {
     actions.switchView('editor', opts);
 };
 
-btnEditArticle.addEventListener('click', () => openWeeklyEditor(ui.currentArticleId));
+btnEditArticle.addEventListener('click', () => openWeeklyEditor(ui.currentWeeklyId));
 btnCancelEdit.addEventListener('click', () => {
     handleExitWeeklyEditor(() => {
         const isNew = !document.getElementById('edit-id').value;
@@ -555,7 +555,7 @@ editorForm.addEventListener('submit', (e) => {
     e.preventDefault();
     const idStr = document.getElementById('edit-id').value;
     const isEdit = !!idStr;
-    const existingWeekly = isEdit ? state.database.find(d => String(d.id) === String(idStr)) : null;
+    const existingWeekly = isEdit ? state.weeklies.find(d => String(d.id) === String(idStr)) : null;
     const pickedDateVal = document.getElementById('edit-date')?.value || '';
     const finalDate = pickedDateVal ? formatChineseDate(pickedDateVal) : (existingWeekly ? existingWeekly.date : getChineseDate());
     const newData = {
@@ -577,7 +577,7 @@ editorForm.addEventListener('submit', (e) => {
     };
     if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
     stampLocalUpdate(newData);
-    if (isEdit) { const index = state.database.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) state.database[index] = newData; } else { state.database.push(newData); }
+    if (isEdit) { const index = state.weeklies.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) state.weeklies[index] = newData; } else { state.weeklies.push(newData); }
     discardWeeklyDraft();
     saveDatabase(); apiSyncWeekly(newData, isEdit ? 'PUT' : 'POST'); renderCards(); actions.switchView('home');
 });
@@ -660,9 +660,9 @@ window.addEventListener('beforeunload', (e) => {
 
 btnDeleteArticle.addEventListener('click', async () => {
     if(await confirmDialog("确定要永久删除这篇记忆吗？")) { 
-        const deletedId = ui.currentArticleId; 
+        const deletedId = ui.currentWeeklyId; 
         addDeletedId(deletedId);
-        state.database = state.database.filter(d => d.id !== ui.currentArticleId); 
+        state.weeklies = state.weeklies.filter(d => d.id !== ui.currentWeeklyId); 
         saveDatabase(); 
         apiSyncWeekly({id: deletedId}, 'DELETE'); 
         renderCards(); 
@@ -682,7 +682,7 @@ document.getElementById('btn-add-weekly-annotation').addEventListener('click', (
     currentWeeklyAnnotations.push(newAnn);
     inputEl.value = '';
     
-    const article = state.database.find(d => d.id === ui.currentArticleId);
+    const article = state.weeklies.find(d => d.id === ui.currentWeeklyId);
     if (article) {
         article.annotations = currentWeeklyAnnotations;
         saveDatabase();
@@ -704,7 +704,7 @@ filterBtns.forEach(btn => {
     actions.ensureWeeklyRendered = (selector) => {
         const matched = /data-id="([^"]+)"/.exec(String(selector || ''));
         if (!matched) return false;
-        const target = state.database.find((item) => String(item.id) === decodeCssEscapedId(matched[1]));
+        const target = state.weeklies.find((item) => String(item.id) === decodeCssEscapedId(matched[1]));
         if (!target) return false;
 
         let changed = false;
@@ -722,7 +722,7 @@ filterBtns.forEach(btn => {
         }
 
         const filtered = filterItemsByYearMonth(
-            state.database,
+            state.weeklies,
             (item) => item && item.date,
             weeklyFilter?.getValue().year || 'all',
             weeklyFilter?.getValue().month || 'all'

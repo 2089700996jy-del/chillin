@@ -179,6 +179,54 @@ test('IDB - fallback to localStorage and batch reads', async () => {
     assert.deepEqual(batch['test_key_1'], [{ id: 1, title: 'Item 1' }]);
     assert.deepEqual(batch['test_key_2'], [{ id: 2, title: 'Item 2' }]);
     assert.equal(batch['non_existent'], null);
+
+    // Entity Unification: state.weeklies and backward-compatible state.database getter/setter
+    const { state } = await import('../public/js/state.js');
+    assert.ok(Array.isArray(state.weeklies), 'state.weeklies should be an array');
+    assert.equal(state.database, state.weeklies, 'state.database should return state.weeklies');
+    const sample = [{ id: 8001, title: '周记测试' }];
+    state.database = sample;
+    assert.deepEqual(state.weeklies, sample, 'Setting state.database should update state.weeklies');
+    state.weeklies = [{ id: 8002, title: '周记测试2' }];
+    assert.deepEqual(state.database, state.weeklies, 'state.database should reflect state.weeklies');
+
+    // Entity Unification: ui.currentWeeklyId and backward-compatible ui.currentArticleId getter/setter
+    const { ui } = await import('../public/js/ui.js');
+    ui.currentWeeklyId = 123;
+    assert.equal(ui.currentArticleId, 123, 'ui.currentArticleId getter should return currentWeeklyId');
+    ui.currentArticleId = 456;
+    assert.equal(ui.currentWeeklyId, 456, 'ui.currentArticleId setter should update currentWeeklyId');
+    assert.equal(ui.currentArticleId, 456);
+
+    // Entity Unification: hydrateFromIndexedDb migrates legacy gardenData to gardenWeeklies
+    const { hydrateFromIndexedDb, saveDatabase } = await import('../public/js/sync.js');
+    const { idbDel } = await import('../public/js/db.js');
+    const { getLocalKey } = await import('../public/js/auth.js');
+    const weekliesKey = getLocalKey('gardenWeeklies');
+    const dataKey = getLocalKey('gardenData');
+
+    const legacyWeeklyData = [{ id: 9901, title: '历史周记存档', date: '2026-11-18' }];
+    await idbDel(weekliesKey);
+    await idbSet(dataKey, legacyWeeklyData);
+    state.weeklies = [];
+
+    await hydrateFromIndexedDb();
+
+    const found = state.weeklies.find(w => w.id === 9901);
+    assert.ok(found, 'state.weeklies should contain legacy data');
+    assert.equal(found.title, '历史周记存档');
+
+    const migrated = await idbGet(weekliesKey);
+    assert.ok(Array.isArray(migrated), 'gardenWeeklies should be populated');
+    assert.equal(migrated.find(w => w.id === 9901)?.title, '历史周记存档');
+
+    state.weeklies.push({ id: 9902, title: '新周记' });
+    saveDatabase();
+    const updated = await idbGet(weekliesKey);
+    assert.equal(updated.find(w => w.id === 9902)?.title, '新周记');
+
+    await idbDel(dataKey);
+    await idbDel(weekliesKey);
 });
 
 test('IDB - QuotaExceeded fallback saves slice snapshot without throwing', async () => {
@@ -290,6 +338,7 @@ test('Sync - filterRealGuestItems filters unedited mock placeholders and preserv
 
 test('Sync - 本地存档损坏时安全降级为空值（不再让裸 JSON.parse 中断离线同步）', async () => {
     const { readJsonValue } = await import('../public/js/sync.js');
+    const originalLocalStorage = globalThis.localStorage;
     globalThis.localStorage = {
         getItem(key) {
             if (key === 'broken') return '{不是合法 JSON';
@@ -302,7 +351,7 @@ test('Sync - 本地存档损坏时安全降级为空值（不再让裸 JSON.pars
         assert.equal(readJsonValue('missing'), null, '缺失的 key 必须返回 null');
         assert.deepEqual(readJsonValue('ok'), [{ id: 1 }], '合法存档应正常解析');
     } finally {
-        delete globalThis.localStorage;
+        globalThis.localStorage = originalLocalStorage;
     }
 });
 
@@ -331,5 +380,6 @@ test('Sync Keepalive - W3C 64KB 规范防御：大于 60KB/64KB 自动关闭 kee
     assert.equal(isKeepalivePayloadSafe(''), true);
     assert.equal(isKeepalivePayloadSafe(null), true);
 });
+
 
 

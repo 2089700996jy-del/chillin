@@ -30,6 +30,7 @@
 
 ### 2.2 严格领域模块归档
 所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
+* **代码行数约束**：`workers/src/` 下各领域模块代码行数严格控制在 **800 行以内**（由 `tests/architecture.test.mjs` 自动校验，严防单体巨石，同时为后续模块整合保留合理空间）。
 
 （`workers/src/` 共 **50 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、20 个 Bot 模块（对话编排 / 提示词与指令辅助 / 管家写入 / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 关怀素材挖掘 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入 / 微信扫码认证 / 纯文本格式化）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
@@ -39,7 +40,7 @@
 | [`workers/src/security-network.js`](../../workers/src/security-network.js) | 网络与输入防线 | CORS / 安全响应头、跨实例共享限流、客户端 IP 取信、图片二进制魔数嗅探、输入校验、`jsonResponse` 与 SSE 包装。 |
 | [`workers/src/security-crypto.js`](../../workers/src/security-crypto.js) | 密码学原语 | PBKDF2-SHA256 强哈希（10 万次 + 动态盐，Cloudflare Workers 硬上限；旧哈希登录时透明升级）、`timingSafeEqualStr` 恒定时间比对、口令强度校验。 |
 | [`workers/src/auth.js`](../../workers/src/auth.js) | 账号鉴权与会话 | 注册 / 登录 / 登出、Cookie + Bearer 双轨会话签发与轮换（库内只存令牌摘要）、设备列表与吊销、自助改密（验旧密码 + 吊销其它会话）、Web Push 订阅。 |
-| [`workers/src/garden-shared.js`](../../workers/src/garden-shared.js) | 花园公共设施 | 行格式化、归属与软删校验、墓碑 id 集合查询、惰性 schema 守卫。 |
+| [`workers/src/garden-shared.js`](../../workers/src/garden-shared.js) | 花园公共设施 | 行格式化、归属与软删校验、墓碑 id 集合查询。 |
 | [`workers/src/garden-resources.js`](../../workers/src/garden-resources.js) | 数字花园资产领域 | 周记、笔记、随手记、收藏、提示词 CRUD 与软删、阅读进度同步。 |
 | [`workers/src/garden-sync.js`](../../workers/src/garden-sync.js) | 增量同步与统计 | 聚合增量拉取 `/api/sync/pull`、脏数据批量推送（D1 分片）、热力图数据统计。 |
 | [`workers/src/garden-backup-mail.js`](../../workers/src/garden-backup-mail.js) | 数据备份邮件直发 | 承接全量 ZIP 压缩包经由 Resend API 发送至用户邮箱，带频控（每人每小时 3 封）与白名单校验。 |
@@ -49,7 +50,7 @@
 | [`workers/src/garden-echo.js`](../../workers/src/garden-echo.js) | 回响、通知与审计入口 | AI 回响卡片、周期回顾、Web Push 通知派发、UGC 审计入口。 |
 | [`workers/src/insights.js`](../../workers/src/insights.js) | 长期线索与行动转化 | 从最近 180 天的随手记/笔记/周记里做确定性主题聚类：显式 `#标签`/`[[双链]]` 优先，中文 2–4 字词组与英文词兜底；同一主题至少跨 2 个自然月、跨度 ≥14 天才成为线索，证据只回短句与日期，不导出全文。`GET /api/insights/threads` 供首页「正在生长的线索」；`buildThreadCandidates` 把多记录线索交给主动关怀，让 Bot 能说「你之前也想过这个」；`POST /api/reminders` 复用 `createReminderAt` 把线索落成明晚微信提醒。不调用模型、不新增迁移，关闭的线索只在客户端本地 30 天。 |
 | [`workers/src/rag.js`](../../workers/src/rag.js) | 记忆回响 RAG 引擎 | 自然语言时间范围解析、停用词过滤、分词、多轮上下文继承、全资产多特征加权打分与兜底回复。 |
-| [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持 `rag.js` 不越过 500 行红线。 |
+| [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持 `rag.js` 不越过 800 行红线。 |
 | [`workers/src/llm.js`](../../workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式与非流式包装、敏感词合规审查。 |
 | [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：优先走只读 Agent 工具循环；模型不可用，或记录类问题没有触发任何工具时，退回 RAG 以确保基于真实数据；SSE 额外推送 `tool` 轨迹事件。 |
 | [`workers/src/ai-tools.js`](../../workers/src/ai-tools.js) | Agent 只读工具层 | 四个基础只读工具（花园概览 / 最近记录 / 关键词检索 / 读取单条）与 Tool Gateway：JSON Schema 参数校验、用户隔离、软删过滤、时间窗、引用返回；硬拒绝任何非 `read` 工具。 |
@@ -75,7 +76,7 @@
 | [`workers/src/bot-outreach.js`](../../workers/src/bot-outreach.js) | Bot 主动关怀（朋友口吻，不煽情） | 关怀资格判定：东八区 10:00–22:30 时窗内每天至多随机开口一次；刚聊完 30 分钟内不插嘴，素材取自 3–180 天前旧记录；具备模型 SKIP 否决权与概率闸门；账号级开关与逐条发送审计；送达后写入对话记忆并标注出处。 |
 | [`workers/src/bot-outreach-source.js`](../../workers/src/bot-outreach-source.js) | Bot 主动关怀素材挖掘层 | 从 3~180 天前的历史记录中筛选挖掘候选素材、打分与跨月份线索聚类。 |
 | [`workers/src/bot-reminders.js`](../../workers/src/bot-reminders.js) | Bot 定点提醒 | 提醒时刻智能解析（中文数字、相对时间，无法解析则反问）；每分钟 cron 到点主动开口；30 分钟后追问一次，超 2 小时标记 missed 不补发；回「完成」沉淀为随手记；独立开关控制。 |
-| [`workers/src/bot-health.js`](../../workers/src/bot-health.js) | Bot 健康打卡 | 健康数据结构化沉淀：将步数、睡眠等一句话记入 `health_daily`（一天一行、UPSERT 幂等、旧值保留）；斤单位折半为公斤；日期统一东八区；「健康」指令回显最近 7 天统计；仅只读回显、不写回三方；保持模块在 500 行以内。 |
+| [`workers/src/bot-health.js`](../../workers/src/bot-health.js) | Bot 健康打卡 | 健康数据结构化沉淀：将步数、睡眠等一句话记入 `health_daily`（一天一行、UPSERT 幂等、旧值保留）；斤单位折半为公斤；日期统一东八区；「健康」指令回显最近 7 天统计；仅只读回显、不写回三方；保持模块在 800 行以内。 |
 | [`workers/src/bot-search.js`](../../workers/src/bot-search.js) | Bot 检索上游适配 | 主用 DeepSeek 官方 Search（`POST /v1/tools/search`，复用 `LLM_API_KEY`），Jina 作为回落；请求带 `need_content` 与日期锚点 `dateHints`，正文 ≥200 字优先于 summary；回包上限 1MB，失败回退空数组；支持 `runWebSearchMulti` 多词并行去重检索；客户端检索死线 12s。 |
 | [`workers/src/bot-web.js`](../../workers/src/bot-web.js) | Bot 联网检索 | 出站意图闸门（显式「查一下」/时效性问句出站，自身记录强制本地 RAG），检索后由模型合成回答；默认只给结论，追问出处时复用缓存；结果 6 小时缓存，每人每天 100 次上限与每分钟 2 次突发闸；规划 4s + 检索 12s + 合成 20s 严格死线控制；时区换算北京时间并提示差异。 |
 | [`workers/src/bot-weather.js`](../../workers/src/bot-weather.js) | 和风天气与晨报关怀 | Ed25519 JWT 与 API Key 双模认证，高精度 24h 逐小时极温与降水区间提取、昨日温差与昼夜温差计算；8:00 晨间关怀「无事不扰」静默门禁；白天随手查秒回（30 分钟缓存）。 |
