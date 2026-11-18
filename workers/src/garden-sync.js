@@ -240,7 +240,6 @@ export async function handleSyncBatch(request, db, userId) {
 
     for (const item of weeklies) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
-        if (weeklies.length > 1 && item.id === 1) continue;
         if (item.id != null && !allowedWeeklies.has(item.id)) continue;
         if (item.id != null && deletedWeeklies.has(Number(item.id))) continue;
         if (await checkConflict('weeklies', item, ownedWeeklies.current, formatWeekly, 'weeklies')) continue;
@@ -258,7 +257,6 @@ export async function handleSyncBatch(request, db, userId) {
 
     for (const item of notes) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
-        if (notes.length > 2 && (item.id === 101 || item.id === 102)) continue;
         if (item.id != null && !allowedNotes.has(item.id)) continue;
         if (item.id != null && deletedNotes.has(Number(item.id))) continue;
         if (await checkConflict('notes', item, ownedNotes.current, formatNote, 'notes')) continue;
@@ -275,7 +273,6 @@ export async function handleSyncBatch(request, db, userId) {
 
     for (const item of bookmarks) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
-        if (bookmarks.length > 3 && (item.id === 201 || item.id === 202 || item.id === 203)) continue;
         if (item.id != null && !allowedBookmarks.has(item.id)) continue;
         if (item.id != null && deletedBookmarks.has(Number(item.id))) continue;
         if (await checkConflict('bookmarks', item, ownedBookmarks.current, formatBookmark, 'bookmarks')) continue;
@@ -293,7 +290,6 @@ export async function handleSyncBatch(request, db, userId) {
 
     for (const item of feeds) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
-        if (feeds.length > 1 && item.id === 1) continue;
         if (item.id != null && !allowedFeeds.has(item.id)) continue;
         if (item.id != null && deletedFeeds.has(Number(item.id))) continue;
         if (await checkConflict('feeds', item, ownedFeeds.current, formatFeed, 'quick_feeds')) continue;

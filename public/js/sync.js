@@ -2,7 +2,7 @@
  * Local persistence & cloud sync: merge, incremental pull, apiSync*, auto-sync.
  * Depends on auth.js for HTTP (apiRequest / getLocalKey / refresh).
  */
-import { showToast, getEast8Time, skeletonListHtml, ensureLocalId, selectDirtyItems, confirmDialog } from './utils.js';
+import { showToast, getEast8Time, skeletonListHtml, ensureLocalId, selectDirtyItems, confirmDialog, generateUniqueId } from './utils.js';
 import {
     state,
     DEFAULT_WEEKLY,
@@ -1153,6 +1153,9 @@ export async function syncFromApi() {
                 const dirtyOnly = (list, resource) => selectDirtyItems(list, deleted)
                     .filter((item) => !conflicted.has(resource + ':' + String(item.id)))
                     .map((item) => {
+                        if (resource === 'weeklies' && Number(item.id) === 1) {
+                            item.id = generateUniqueId();
+                        }
                         const payload = stripClientSyncFlags(item);
                         const base = getSyncBase(resource, item.id);
                         if (base && base.updated_at) payload.base_updated_at = base.updated_at;
@@ -1237,6 +1240,10 @@ export async function syncFromApi() {
                     }
 
                     saveDatabase(); saveNotesDatabase(); saveBookmarksDatabase(); saveFeedsDatabase(); savePromptsDatabase();
+                    if (getActiveViewId() === 'view-home') refresh('weeklies');
+                    else if (getActiveViewId() === 'view-notes') refresh('notes');
+                    else if (getActiveViewId() === 'view-bookmarks') refresh('bookmarks');
+                    else if (getActiveViewId() === 'view-feeds') refresh('feeds');
                 }
                 setSyncStatus(conflictTotal > 0 ? '同步冲突待处理' : '已同步', conflictTotal > 0 ? 'warn' : 'ok', conflictTotal > 0 ? 0 : 2000);
             } catch (e) {
@@ -1311,6 +1318,7 @@ function markSyncedItem(item, pushedUpdatedAt) {
 function handleSyncFailure(err) {
     console.warn('[sync] failed:', err);
     setSyncStatus('未同步', 'warn');
+    showToast('同步未完成：' + (err && err.message ? err.message : '网络异常，稍后自动重试'), 'error');
     if (!pendingSyncRetryTimer) {
         pendingSyncRetryTimer = setTimeout(() => {
             pendingSyncRetryTimer = null;
@@ -1321,7 +1329,12 @@ function handleSyncFailure(err) {
 
 function apiSyncResource(resource, apiPath, item, method, opts = {}) {
     // 单条推送同样要保证 id：服务端缺 id 时会自增另赋，客户端将永远对不上
-    if (method !== 'DELETE' && item) ensureLocalId(item);
+    if (method !== 'DELETE' && item) {
+        if (resource === 'weeklies' && Number(item.id) === 1) {
+            item.id = generateUniqueId();
+        }
+        ensureLocalId(item);
+    }
     if (method === 'DELETE') {
         return apiRequest(`${apiPath}/${item.id}`, { method: 'DELETE' })
             .then((res) => { setSyncStatus('已同步', 'ok', 1800); return res; })
@@ -1359,6 +1372,8 @@ function apiSyncResource(resource, apiPath, item, method, opts = {}) {
             rememberSyncBase(resource, item, changed.updated_at);
         }
         markSyncedItem(item, changed.updated_at || payload.updated_at);
+        saveResource(resource);
+        refreshResource(resource);
         setSyncStatus('已同步', 'ok', 1800);
         return res;
     }).catch((err) => { handleSyncFailure(err); return null; });

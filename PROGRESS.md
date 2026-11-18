@@ -1,12 +1,12 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-18。当前前端/Worker：**v2.5.253**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-18。当前前端/Worker：**v2.5.254**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0043` 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 
 个人「数字花园」Web 应用（周记 / 笔记 / 收藏 / 随手记 / 提示词库 / TXT 阅读 / AI 记忆回响）。
 
-- 前端：`public/index.html` + `public/style.css` + `public/app.js` 编排 + `js/` 30 个 ESM 模块（原生无打包）。
+- 前端：`public/index.html` + `public/style.css` + `public/app.js` 编排 + `js/` 29 个 ESM 模块（原生无打包）。
 - 后端：Cloudflare Worker `workers/api.js` 网关（≤300 行红线）+ `src/` 51 个领域模块。
 - 数据库：Cloudflare D1（`migrations/0001`–`0043`）+ R2 桶 `chillin-media`。
 - 测试：`npm test` 原生零依赖单测套件（`node --test`）；静态暗病扫描：`npm run audit:system`。
@@ -31,7 +31,7 @@
 | **双向维基与常青知识网络** | `wikilinks.js`, `evergreen-topics.js`, `search.js` | `rag-index.js`, `insights.js` | 0001, 0034(FTS5) | `tests/wikilinks.test.mjs`, `tests/evergreen.test.mjs`, `tests/search.test.mjs` | 🟢 | 纯文本双链 `[[wiki]]` 解析、XSS 洗标、搜索高亮与反向引用，无外部网络副作用 |
 | **AI 记忆回响 (RAG) 与模型编排** | `echo-ai.js` | `garden-echo.js`, `rag.js`, `rag-index.js`, `llm.js`, `ai.js`, `ai-runtime.js`, `ai-tools.js`, `agent-tools-expanded.js` | 0013, 0034(FTS5) | `tests/rag.test.mjs`, `tests/agent.test.mjs` | 🟡 | 涉及流式 SSE 请求、多步 Tool Calling 循环与 DeepSeek 网络交互，待网络超时降级核验 |
 | **自主目标 Agent (Autoloop 闭环)** | `agent-goals.js` | `agent-store.js`, `agent-executor.js`, `agent-lifecycle.js`, `agent-scheduler.js`, `agent-goals.js`, `agent-approvals.js`, `agent-checkpoint.js`, `agent-web.js` | 0035~0039, 0042 | `tests/agent-goals.test.mjs` | 🟡 | 涉及后台每分钟 Cron 租约抢占、审批流与状态机防重规划竞争，待真机调度核验 |
-| **微信伴侣 Bot 与健康打卡** | `bot-claw-ui.js`, `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-claw-auth.js`, `bot-commands.js`, `bot-garden.js`, `bot-agent-commands.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-search.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-outreach-source.js`, `bot-links.js`, `bot-weather.js`, `bot-prompts.js`, `bot-text.js` | 0024~0033, 0040, 0041, 0043 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-weather.test.mjs`, `tests/bot-reminders.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
+| **微信伴侣 Bot 与健康打卡** | `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-claw-auth.js`, `bot-commands.js`, `bot-garden.js`, `bot-agent-commands.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-search.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-outreach-source.js`, `bot-links.js`, `bot-weather.js`, `bot-prompts.js`, `bot-text.js` | 0024~0033, 0040, 0041, 0043 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-weather.test.mjs`, `tests/bot-reminders.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
 | **长期线索与行动转化 (Insights)** | `insights.js` | `insights.js` | 无（纯确定性聚类） | `tests/insights.test.mjs` | 🟢 | 纯确定性双链/标签聚合与跨月聚类算法，无外部网络与副作用 |
 | **媒体存储与云端灾备** | `upload.js`, `backup.js` | `garden-media.js`, `garden-export.js`, `garden-backup-mail.js`, `maintenance.js`, `audit.js` | 0015, 0017, 0021, 0022 | `tests/media.test.mjs`, `tests/backup.test.mjs` | 🟡 | 涉及 R2 大文件二进制读写、Range 请求分片与 ZIP 邮件直发，待存储配额与重试核验 |
 

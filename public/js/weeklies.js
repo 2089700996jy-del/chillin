@@ -16,6 +16,7 @@ import {
     mountDateFilter,
     filterItemsByYearMonth,
     decodeCssEscapedId,
+    generateUniqueId,
 } from './utils.js';
 import { state } from './state.js';
 import { ui } from './ui.js';
@@ -558,8 +559,10 @@ editorForm.addEventListener('submit', (e) => {
     const existingWeekly = isEdit ? state.weeklies.find(d => String(d.id) === String(idStr)) : null;
     const pickedDateVal = document.getElementById('edit-date')?.value || '';
     const finalDate = pickedDateVal ? formatChineseDate(pickedDateVal) : (existingWeekly ? existingWeekly.date : getChineseDate());
+    const rawId = isEdit ? parseInt(idStr) : generateUniqueId();
+    const finalId = (rawId === 1) ? generateUniqueId() : rawId;
     const newData = {
-        id: isEdit ? parseInt(idStr) : Date.now(), 
+        id: finalId, 
         category: document.getElementById('edit-category').value, 
         title: document.getElementById('edit-title').value, 
         summary: document.getElementById('edit-summary').value, 
@@ -577,7 +580,13 @@ editorForm.addEventListener('submit', (e) => {
     };
     if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
     stampLocalUpdate(newData);
-    if (isEdit) { const index = state.weeklies.findIndex(d => d.id === parseInt(idStr)); if(index !== -1) state.weeklies[index] = newData; } else { state.weeklies.push(newData); }
+    if (isEdit) {
+        const index = state.weeklies.findIndex(d => d.id === rawId || String(d.id) === String(rawId));
+        if (index !== -1) state.weeklies[index] = newData;
+        else state.weeklies.push(newData);
+    } else {
+        state.weeklies.push(newData);
+    }
     discardWeeklyDraft();
     saveDatabase(); apiSyncWeekly(newData, isEdit ? 'PUT' : 'POST'); renderCards(); actions.switchView('home');
 });
