@@ -44,6 +44,10 @@ export {
     idbSet,
     idbDel,
     migrateFromLocalStorage,
+    readerDbPut,
+    readerDbGet,
+    readerDbGetAll,
+    readerDbDelete,
 } from './db.js';
 
 export {

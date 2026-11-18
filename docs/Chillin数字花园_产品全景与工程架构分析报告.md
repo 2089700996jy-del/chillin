@@ -1,9 +1,9 @@
 # Chillin 数字花园：产品全景与技术工程治理深度报告
 
 > **编制对象**：产品经理 (Product Manager) / 技术负责人 / 架构师  
-> **报告版本**：v2.5.252 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
+> **报告版本**：v2.5.253 (2026 年度技术演进、产品重构、常青花园、双向维基与安全备份治理全景审计)
 > **应用形态**：Web / PWA (跨平台极速响应，双端工效学优化)  
-> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v299`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0043 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
+> **在线基准**：Pages 前端（发布目录 `public/`，版本随 `public/version.json` 公布；Service Worker `chillin-v300`） + Cloudflare Worker 边缘无服务架构（已部署，D1 迁移 0001–0043 已应用）+ Cloudflare D1 边缘关系型存储 + Cloudflare R2 边缘对象存储（图片 / 书籍正文 / 备份快照，D1 只存元数据；21 张存量图片已搬迁并逐张复验）
 > **代码仓库**：[GitHub / 2089700996jy-del/chillin](https://github.com/2089700996jy-del/chillin)  
 
 ---
@@ -120,7 +120,7 @@ mindmap
       全屏手势与半屏抽屉 (Bottom Sheet)
       单 RTT 聚合增量同步 (/api/sync/pull)
       同步基线与冲突中心（保留本地/云端/手动合并）
-      Service Worker 全模块预缓存 29 个业务模块
+      Service Worker 全模块预缓存 30 个业务模块
       Cloudflare D1 边缘分布式存储
 ```
 
@@ -256,7 +256,7 @@ Chillin 拒绝无意义的通用泛化聊天，专注打造基于个人历史数
 * **编辑冲突保护（v2.5.190）**：每条记录保存上次同步的云端基线（`updated_at` + 内容指纹）；拉取发现「本地 dirty + 云端已变 + 内容不同」时，不执行 LWW 覆盖，而是保留本地并进入冲突中心，提供「保留本地 / 保留云端 / 手动合并」；推送携带 `base_updated_at`，服务端乐观锁拒绝过期写入并回传云端版本，只有用户确认后才带 `force_sync`。被替换的版本先写入本地历史快照（上限 30 条，可恢复）；云端已删除而本地仍有编辑时，本地版本另存为新记录，确保重要内容不静默丢失。
 
 #### ③ 工业级 PWA 离线韧性网络
-* **Service Worker 模块化全量缓存**：预缓存全部 29 个 ES 业务子模块（含 Trusted Types 收口模块、Wikilinks、Backup、Daily Spark、Evergreen Topics 等）与应用图标，彻底终结了断网时拉取 JS 降级为 HTML 导致的 `Uncaught SyntaxError` 页面白屏崩溃。
+* **Service Worker 模块化全量缓存**：预缓存全部 30 个 ES 业务子模块（含 Trusted Types 收口模块、Wikilinks、Backup、Daily Spark、Evergreen Topics 等）与应用图标，彻底终结了断网时拉取 JS 降级为 HTML 导致的 `Uncaught SyntaxError` 页面白屏崩溃。
 * **版本探测与平滑更新**：`version.json` 强绕过 SW 缓存拦截，后台定期毫秒级轻量探活。探测到新版本后静默拉取资源，提供“检测到新版本，点击即时生效”的平滑热更新体验；同一次更新只保留一条底部提示，不再 banner + toast 双提醒。
 * **断网感知与自动补偿重连**：监听 `online` / `offline` 事件，断网时安全切换离线提示，重连瞬间自动静默发起云端差异同步，无缝抹平网络颠簸。
 * **游标分页拉取（v2.5.165）**：`/api/sync/pull?page_size=100&cursor_<resource>=…` 用 keyset 游标把周记/笔记/收藏/提示词/随手记分页返回，客户端逐页合并后仍写满完整本地缓存；旧客户端不带 `page_size` 时行为完全不变，离线全量口径不被裁成服务器第一页。

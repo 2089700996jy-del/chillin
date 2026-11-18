@@ -4,10 +4,165 @@
  */
 
 const DB_NAME = 'chillin_db';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'garden_store';
 
 let dbPromise = null;
+
+/** 重置内部连接 Promise（仅供单测环境隔离使用） */
+export function _resetDbPromiseForTest() {
+    dbPromise = null;
+}
+
+/** 标记历史 chillin_reader_db 迁移已完成 */
+function markReaderDbMigrated(targetDb) {
+    try { if (typeof localStorage !== 'undefined') localStorage.setItem('_reader_db_migrated', '1'); } catch (_) { /* audit-ignore: intentional-fallback */ }
+    try {
+        if (targetDb && targetDb.objectStoreNames.contains(STORE_NAME)) {
+            const tx = targetDb.transaction(STORE_NAME, 'readwrite');
+            tx.objectStore(STORE_NAME).put(true, '_reader_db_migrated');
+        }
+    } catch (_) { /* audit-ignore: intentional-fallback */ }
+}
+
+/**
+ * 历史旧版 chillin_reader_db 平滑迁移：
+ * 若浏览器中存在历史独立的 chillin_reader_db，将其 'books' 与 'chapters' 的历史记录无缝灌入主库 chillin_db
+ */
+export async function migrateOldReaderDb(targetDb) {
+    if (!targetDb || typeof indexedDB === 'undefined') return;
+    try {
+        if (typeof localStorage !== 'undefined' && localStorage.getItem('_reader_db_migrated')) {
+            return;
+        }
+    } catch (_) { /* audit-ignore: intentional-fallback */ }
+
+    const alreadyMigrated = await new Promise((resolve) => {
+        try {
+            if (!targetDb.objectStoreNames.contains(STORE_NAME)) return resolve(false);
+            const tx = targetDb.transaction(STORE_NAME, 'readonly');
+            const req = tx.objectStore(STORE_NAME).get('_reader_db_migrated');
+            req.onsuccess = () => resolve(!!req.result);
+            req.onerror = () => resolve(false);
+        } catch (_) {
+            /* audit-ignore: intentional-fallback 异常时降级继续迁移检查 */
+            resolve(false);
+        }
+    });
+    if (alreadyMigrated) {
+        try { if (typeof localStorage !== 'undefined') localStorage.setItem('_reader_db_migrated', '1'); } catch (_) { /* audit-ignore: intentional-fallback */ }
+        return;
+    }
+
+    if (typeof indexedDB.databases === 'function') {
+        try {
+            const dbs = await indexedDB.databases();
+            const exists = dbs && dbs.some((d) => d.name === 'chillin_reader_db');
+            if (!exists) {
+                markReaderDbMigrated(targetDb);
+                return;
+            }
+        } catch (_) {
+            /* audit-ignore: intentional-fallback databases() 不受支持或被安全沙箱拦截时回退尝试直接打开 */
+        }
+    }
+
+    await new Promise((resolve) => {
+        let isNewDb = false;
+        let oldReq;
+        try {
+            oldReq = indexedDB.open('chillin_reader_db');
+        } catch (_) {
+            /* audit-ignore: intentional-fallback 打开旧库失败安全放行 */
+            return resolve();
+        }
+
+        oldReq.onupgradeneeded = (e) => {
+            // 若 oldVersion === 0 说明先前不存在此库，系本次 open 触发新建，回滚新建
+            if (e.oldVersion === 0) {
+                isNewDb = true;
+                if (e.target.transaction) {
+                    try { e.target.transaction.abort(); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                }
+            }
+        };
+
+        oldReq.onsuccess = async (e) => {
+            const oldDb = e.target.result;
+            if (isNewDb) {
+                try { oldDb.close(); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                try { indexedDB.deleteDatabase('chillin_reader_db'); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                markReaderDbMigrated(targetDb);
+                return resolve();
+            }
+
+            const hasBooks = oldDb.objectStoreNames.contains('books');
+            const hasChapters = oldDb.objectStoreNames.contains('chapters');
+            if (!hasBooks && !hasChapters) {
+                try { oldDb.close(); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                try { indexedDB.deleteDatabase('chillin_reader_db'); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                markReaderDbMigrated(targetDb);
+                return resolve();
+            }
+
+            try {
+                const books = hasBooks ? await new Promise((res) => {
+                    const tx = oldDb.transaction('books', 'readonly');
+                    const r = tx.objectStore('books').getAll();
+                    r.onsuccess = () => res(r.result || []);
+                    r.onerror = () => res([]);
+                }) : [];
+
+                const chapters = hasChapters ? await new Promise((res) => {
+                    const tx = oldDb.transaction('chapters', 'readonly');
+                    const r = tx.objectStore('chapters').getAll();
+                    r.onsuccess = () => res(r.result || []);
+                    r.onerror = () => res([]);
+                }) : [];
+
+                if (books.length > 0 || chapters.length > 0) {
+                    const storesToUse = [];
+                    if (books.length > 0) storesToUse.push('books');
+                    if (chapters.length > 0) storesToUse.push('chapters');
+                    await new Promise((res, rej) => {
+                        const tx = targetDb.transaction(storesToUse, 'readwrite');
+                        if (books.length > 0) {
+                            const bStore = tx.objectStore('books');
+                            for (const b of books) {
+                                bStore.put(b);
+                            }
+                        }
+                        if (chapters.length > 0) {
+                            const cStore = tx.objectStore('chapters');
+                            for (const c of chapters) {
+                                cStore.put(c);
+                            }
+                        }
+                        tx.oncomplete = () => res();
+                        tx.onerror = () => rej(tx.error);
+                    });
+                    console.log(`[IDB] Migrated ${books.length} books and ${chapters.length} chapters from chillin_reader_db to chillin_db`);
+                }
+
+                markReaderDbMigrated(targetDb);
+                try { oldDb.close(); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                try { indexedDB.deleteDatabase('chillin_reader_db'); } catch (_) { /* audit-ignore: intentional-fallback */ }
+            } catch (copyErr) {
+                console.warn('[IDB] Error copying from old reader DB:', copyErr);
+                try { oldDb.close(); } catch (_) { /* audit-ignore: intentional-fallback */ }
+            }
+            resolve();
+        };
+
+        oldReq.onerror = () => {
+            if (isNewDb) {
+                try { indexedDB.deleteDatabase('chillin_reader_db'); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                markReaderDbMigrated(targetDb);
+            }
+            resolve();
+        };
+    });
+}
 
 /** 打开或获取全局 IndexedDB 实例 */
 export function openDatabase() {
@@ -23,8 +178,22 @@ export function openDatabase() {
                 if (!db.objectStoreNames.contains(STORE_NAME)) {
                     db.createObjectStore(STORE_NAME);
                 }
+                if (!db.objectStoreNames.contains('books')) {
+                    db.createObjectStore('books', { keyPath: 'id' });
+                }
+                if (!db.objectStoreNames.contains('chapters')) {
+                    db.createObjectStore('chapters', { keyPath: 'id' });
+                }
             };
-            req.onsuccess = (e) => resolve(e.target.result);
+            req.onsuccess = async (e) => {
+                const db = e.target.result;
+                try {
+                    await migrateOldReaderDb(db);
+                } catch (migErr) {
+                    console.warn('[IDB] reader db migration error:', migErr);
+                }
+                resolve(db);
+            };
             req.onerror = (err) => {
                 console.warn('[IDB] open failed, fallback to localStorage:', err);
                 resolve(null);
@@ -216,4 +385,72 @@ export async function getStorageEstimate() {
         percent,
         isPersistent
     };
+}
+
+/** Reader 数据存储助手函数：写入记录到指定 store ('books' | 'chapters') */
+export function readerDbPut(store, obj) {
+    return new Promise((resolve, reject) => {
+        openDatabase().then((db) => {
+            if (!db) return reject(new Error('IndexedDB not available'));
+            try {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).put(obj);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            } catch (e) {
+                reject(e);
+            }
+        }).catch(reject);
+    });
+}
+
+/** Reader 数据存储助手函数：读取指定 store 的单条记录 */
+export function readerDbGet(store, key) {
+    return new Promise((resolve, reject) => {
+        openDatabase().then((db) => {
+            if (!db) return resolve(undefined);
+            try {
+                const tx = db.transaction(store, 'readonly');
+                const req = tx.objectStore(store).get(key);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            } catch (e) {
+                reject(e);
+            }
+        }).catch(reject);
+    });
+}
+
+/** Reader 数据存储助手函数：读取指定 store 的所有记录 */
+export function readerDbGetAll(store) {
+    return new Promise((resolve, reject) => {
+        openDatabase().then((db) => {
+            if (!db) return resolve([]);
+            try {
+                const tx = db.transaction(store, 'readonly');
+                const req = tx.objectStore(store).getAll();
+                req.onsuccess = () => resolve(req.result || []);
+                req.onerror = () => reject(req.error);
+            } catch (e) {
+                reject(e);
+            }
+        }).catch(reject);
+    });
+}
+
+/** Reader 数据存储助手函数：删除指定 store 的记录 */
+export function readerDbDelete(store, key) {
+    return new Promise((resolve, reject) => {
+        openDatabase().then((db) => {
+            if (!db) return reject(new Error('IndexedDB not available'));
+            try {
+                const tx = db.transaction(store, 'readwrite');
+                tx.objectStore(store).delete(key);
+                tx.oncomplete = () => resolve();
+                tx.onerror = () => reject(tx.error);
+            } catch (e) {
+                reject(e);
+            }
+        }).catch(reject);
+    });
 }

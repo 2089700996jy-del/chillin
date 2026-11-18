@@ -4,6 +4,7 @@ import { actions } from './actions.js';
 import { setHtml } from './trusted-types.js';
 import { apiRequest, fetchWithFallback } from './api.js';
 import { state } from './state.js';
+import { openDatabase, readerDbPut, readerDbGet, readerDbGetAll, readerDbDelete } from './db.js';
 
 /**
  * 文本解码：优先严格尝试 UTF-8，遇到非法字节时平滑降级至 GBK
@@ -120,63 +121,12 @@ export async function showReaderSyncDiagnostic() {
 }
 
 export function initReader() {
-// ── IndexedDB ──
-const DB_NAME = 'chillin_reader_db';
-const DB_VER = 1;
-let readerDB = null;
-
-function openReaderDB() {
-    return new Promise((resolve, reject) => {
-        if (readerDB) return resolve(readerDB);
-        const req = indexedDB.open(DB_NAME, DB_VER);
-        req.onupgradeneeded = (e) => {
-            const d = e.target.result;
-            if (!d.objectStoreNames.contains('books')) d.createObjectStore('books', { keyPath: 'id' });
-            if (!d.objectStoreNames.contains('chapters')) d.createObjectStore('chapters', { keyPath: 'id' });
-        };
-        req.onsuccess = (e) => { readerDB = e.target.result; resolve(readerDB); };
-        req.onerror = () => reject(req.error);
-    });
-}
-
-function rdbPut(store, obj) {
-    return new Promise((resolve, reject) => {
-        openReaderDB().then(db => {
-            const tx = db.transaction(store, 'readwrite');
-            tx.objectStore(store).put(obj);
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    });
-}
-function rdbGet(store, key) {
-    return new Promise((resolve, reject) => {
-        openReaderDB().then(db => {
-            const req = db.transaction(store, 'readonly').objectStore(store).get(key);
-            req.onsuccess = () => resolve(req.result);
-            req.onerror = () => reject(req.error);
-        });
-    });
-}
-function rdbGetAll(store) {
-    return new Promise((resolve, reject) => {
-        openReaderDB().then(db => {
-            const req = db.transaction(store, 'readonly').objectStore(store).getAll();
-            req.onsuccess = () => resolve(req.result || []);
-            req.onerror = () => reject(req.error);
-        });
-    });
-}
-function rdbDelete(store, key) {
-    return new Promise((resolve, reject) => {
-        openReaderDB().then(db => {
-            const tx = db.transaction(store, 'readwrite');
-            tx.objectStore(store).delete(key);
-            tx.oncomplete = resolve;
-            tx.onerror = () => reject(tx.error);
-        });
-    });
-}
+// ── IndexedDB (Unified chillin_db) ──
+const openReaderDB = openDatabase;
+const rdbPut = readerDbPut;
+const rdbGet = readerDbGet;
+const rdbGetAll = readerDbGetAll;
+const rdbDelete = readerDbDelete;
 
 // ── Reader State ──
 let currentBookId = null;
@@ -394,7 +344,7 @@ async function saveBookToLocalDB(text, meta, onProgress) {
     for (let i = 0; i < chapters.length; i += BATCH) {
         if (onProgress) onProgress(i, chapters.length);
         const batch = chapters.slice(i, i + BATCH);
-        const tx = (await openReaderDB()).transaction('chapters', 'readwrite');
+        const tx = (await openDatabase()).transaction('chapters', 'readwrite');
         const store = tx.objectStore('chapters');
         for (let j = 0; j < batch.length; j++) {
             const ch = batch[j];
@@ -1219,7 +1169,7 @@ document.getElementById('book-file-input').addEventListener('change', function()
 });
 
 // Initial bookshelf render on first load
-openReaderDB().then(() => {
+openDatabase().then(() => {
     if (document.getElementById('view-reader').classList.contains('active')) renderBookshelf();
 });
 
@@ -1323,5 +1273,5 @@ document.addEventListener('touchmove', (e) => {
     actions.pullCloudProgressForCurrentBook = pullCloudProgressForCurrentBook;
     actions.showReaderSyncDiagnostic = showReaderSyncDiagnostic;
 
-    return { renderBookshelf, openReaderDB };
+    return { renderBookshelf, openReaderDB: openDatabase };
 }

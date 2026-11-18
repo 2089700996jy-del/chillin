@@ -222,4 +222,180 @@ test('Reader Progress Sync - 状态栏 #reader-sync-status-text 诊断工具绑�
     const diag = await showReaderSyncDiagnostic();
     assert.ok(diag && typeof diag === 'object', '诊断函数必须返回结构化诊断对象');
     assert.ok('queueCount' in diag, '诊断对象必须包含重试队列统计');
+
+    // ── 统一 IndexedDB 存储层 (chillin_db v2) 与历史数据库平滑迁移 ──
+    const dbModule = await import('../public/js/db.js');
+    const apiModule = await import('../public/js/api.js');
+
+    // 1. API facade 与 db.js 统一函数导出校验
+    for (const fn of ['readerDbPut', 'readerDbGet', 'readerDbGetAll', 'readerDbDelete', 'openDatabase']) {
+        assert.equal(typeof dbModule[fn], 'function', `db.js 必须导出 ${fn}`);
+        assert.equal(typeof apiModule[fn], 'function', `api.js 必须重导出 ${fn}`);
+    }
+
+    // 2. reader.js 移除了本地独立 chillin_reader_db 模板代码
+    assert.doesNotMatch(readerSrc, /const\s+DB_NAME\s*=\s*['"]chillin_reader_db['"]/, 'reader.js 应移除本地 chillin_reader_db 定义');
+    assert.doesNotMatch(readerSrc, /function\s+openReaderDB\s*\(/, 'reader.js 应移除本地 openReaderDB 模板代码');
+    assert.doesNotMatch(readerSrc, /function\s+rdbPut\s*\(/, 'reader.js 应移除本地 rdbPut 模板代码');
+    assert.match(readerSrc, /import\s*\{[^}]*readerDbPut[^}]*\}\s*from\s*['"]\.\/db\.js['"]/, 'reader.js 应从 db.js 引入 readerDb* 系列统一操作');
+
+    // 3. Mock IndexedDB 验证 chillin_db v2 结构创建与 CRUD
+    function createMockIndexedDB() {
+        const databases = new Map();
+        return {
+            _databases: databases,
+            databases: async () => Array.from(databases.entries()).map(([name, db]) => ({ name, version: db.version })),
+            deleteDatabase: (name) => {
+                databases.delete(name);
+                const req = { onsuccess: null, onerror: null };
+                setTimeout(() => { if (req.onsuccess) req.onsuccess({ target: req }); }, 0);
+                return req;
+            },
+            open: (name, version) => {
+                const req = { result: null, error: null, transaction: null, onsuccess: null, onerror: null, onupgradeneeded: null };
+                setTimeout(() => {
+                    let dbRecord = databases.get(name);
+                    const oldVersion = dbRecord ? dbRecord.version : 0;
+                    const newVersion = version !== undefined ? version : (oldVersion || 1);
+                    if (!dbRecord) {
+                        dbRecord = { version: newVersion, stores: new Map() };
+                        databases.set(name, dbRecord);
+                    }
+                    const dbObj = {
+                        name,
+                        version: dbRecord.version,
+                        objectStoreNames: {
+                            contains: (sName) => dbRecord.stores.has(sName),
+                            get length() { return dbRecord.stores.size; }
+                        },
+                        createObjectStore: (sName, options = {}) => {
+                            const store = { keyPath: options.keyPath || null, data: new Map() };
+                            dbRecord.stores.set(sName, store);
+                            return store;
+                        },
+                        transaction: (storeNames, mode) => {
+                            let aborted = false;
+                            const tx = {
+                                mode,
+                                oncomplete: null,
+                                onerror: null,
+                                abort: () => { aborted = true; },
+                                objectStore: (sName) => {
+                                    const storeRecord = dbRecord.stores.get(sName);
+                                    if (!storeRecord) throw new Error(`Store not found: ${sName}`);
+                                    return {
+                                        put: (val, key) => {
+                                            const actualKey = storeRecord.keyPath ? val[storeRecord.keyPath] : key;
+                                            storeRecord.data.set(actualKey, val);
+                                            const r = { onsuccess: null, onerror: null, result: actualKey };
+                                            setTimeout(() => { if (r.onsuccess) r.onsuccess({ target: r }); }, 0);
+                                            return r;
+                                        },
+                                        get: (key) => {
+                                            const res = storeRecord.data.get(key);
+                                            const r = { onsuccess: null, onerror: null, result: res !== undefined ? res : undefined };
+                                            setTimeout(() => { if (r.onsuccess) r.onsuccess({ target: r }); }, 0);
+                                            return r;
+                                        },
+                                        getAll: () => {
+                                            const res = Array.from(storeRecord.data.values());
+                                            const r = { onsuccess: null, onerror: null, result: res };
+                                            setTimeout(() => { if (r.onsuccess) r.onsuccess({ target: r }); }, 0);
+                                            return r;
+                                        },
+                                        delete: (key) => {
+                                            storeRecord.data.delete(key);
+                                            const r = { onsuccess: null, onerror: null };
+                                            setTimeout(() => { if (r.onsuccess) r.onsuccess({ target: r }); }, 0);
+                                            return r;
+                                        }
+                                    };
+                                }
+                            };
+                            setTimeout(() => { if (!aborted && tx.oncomplete) tx.oncomplete(); }, 0);
+                            return tx;
+                        },
+                        close: () => {}
+                    };
+                    req.result = dbObj;
+                    if (newVersion > oldVersion) {
+                        dbRecord.version = newVersion;
+                        dbObj.version = newVersion;
+                        let aborted = false;
+                        const upgradeTx = { abort: () => { aborted = true; databases.delete(name); } };
+                        req.transaction = upgradeTx;
+                        if (req.onupgradeneeded) req.onupgradeneeded({ target: req, oldVersion, newVersion });
+                        if (aborted) { if (req.onerror) req.onerror({ target: req }); return; }
+                    }
+                    if (req.onsuccess) req.onsuccess({ target: req });
+                }, 0);
+                return req;
+            }
+        };
+    }
+
+    try {
+        const mockIDB = createMockIndexedDB();
+        globalThis.indexedDB = mockIDB;
+        dbModule._resetDbPromiseForTest();
+
+        const db = await dbModule.openDatabase();
+        assert.ok(db, 'openDatabase 应返回可用 db 实例');
+        assert.equal(db.version, 2, 'chillin_db 应提升至版本 2');
+        assert.equal(db.objectStoreNames.contains('books'), true, 'onupgradeneeded 应创建 books store');
+        assert.equal(db.objectStoreNames.contains('chapters'), true, 'onupgradeneeded 应创建 chapters store');
+        assert.equal(db.objectStoreNames.contains('garden_store'), true, 'onupgradeneeded 应保留 garden_store');
+
+        // 测试 CRUD 统一操作
+        await dbModule.readerDbPut('books', { id: 'book_test_1', title: '三体', author: '刘慈欣', totalChapters: 3 });
+        const book = await dbModule.readerDbGet('books', 'book_test_1');
+        assert.equal(book.title, '三体');
+        assert.equal(book.author, '刘慈欣');
+
+        await dbModule.readerDbPut('chapters', { id: 'book_test_1_0', bookId: 'book_test_1', index: 0, title: '科学边界' });
+        const ch = await dbModule.readerDbGet('chapters', 'book_test_1_0');
+        assert.equal(ch.title, '科学边界');
+
+        const allBooks = await dbModule.readerDbGetAll('books');
+        assert.equal(allBooks.length, 1);
+
+        await dbModule.readerDbDelete('books', 'book_test_1');
+        const deletedBook = await dbModule.readerDbGet('books', 'book_test_1');
+        assert.equal(deletedBook, undefined);
+
+        // 4. 历史 chillin_reader_db 平滑迁移测试
+        dbModule._resetDbPromiseForTest();
+        const freshMock = createMockIndexedDB();
+        globalThis.indexedDB = freshMock;
+
+        // 预置旧库数据
+        const oldBooks = new Map([['legacy_1', { id: 'legacy_1', title: '百年孤独', author: '马尔克斯' }]]);
+        const oldChapters = new Map([['legacy_1_0', { id: 'legacy_1_0', bookId: 'legacy_1', title: '第一章' }]]);
+        freshMock._databases.set('chillin_reader_db', {
+            version: 1,
+            stores: new Map([
+                ['books', { keyPath: 'id', data: oldBooks }],
+                ['chapters', { keyPath: 'id', data: oldChapters }]
+            ])
+        });
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('_reader_db_migrated');
+
+        // 打开新库触发自动迁移
+        const migratedDb = await dbModule.openDatabase();
+        assert.ok(migratedDb);
+
+        const migratedBooks = await dbModule.readerDbGetAll('books');
+        assert.equal(migratedBooks.length, 1);
+        assert.equal(migratedBooks[0].title, '百年孤独');
+
+        const migratedChapter = await dbModule.readerDbGet('chapters', 'legacy_1_0');
+        assert.equal(migratedChapter.title, '第一章');
+
+        // 验证旧库被清理
+        assert.equal(freshMock._databases.has('chillin_reader_db'), false, '迁移后历史旧库 chillin_reader_db 应被安全清理');
+    } finally {
+        delete globalThis.indexedDB;
+        dbModule._resetDbPromiseForTest();
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('_reader_db_migrated');
+    }
 });

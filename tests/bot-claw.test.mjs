@@ -2379,6 +2379,7 @@ integration('Bot - 读取服务返回 Microlink 形状的 JSON 也出卡片，�
 test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭弹层会停轮询', () => {
     const html = fs.readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
     const auth = fs.readFileSync(new URL('../public/js/auth.js', import.meta.url), 'utf8');
+    const botClawUi = fs.readFileSync(new URL('../public/js/bot-claw-ui.js', import.meta.url), 'utf8');
     const api = fs.readFileSync(new URL('../workers/api.js', import.meta.url), 'utf8');
     const maintenance = fs.readFileSync(new URL('../workers/src/maintenance.js', import.meta.url), 'utf8');
 
@@ -2387,19 +2388,19 @@ test('ClawBot - 应用内二维码绑定/解绑卡片接齐四个端点，关闭
     }
     assert.match(html, /referrerpolicy="no-referrer"/, '二维码图片必须不带 Referer，避免 CDN 拒绝');
 
-    assert.ok(auth.includes("apiRequest('/api/bot/claw/status')"), '打开设置时必须读取绑定状态');
-    assert.ok(auth.includes("apiRequest('/api/bot/claw/qrcode', { method: 'POST' })"), '绑定按钮必须申请二维码');
-    assert.ok(auth.includes("apiRequest('/api/bot/claw/check', { method: 'POST' })"), '展示二维码后必须轮询扫码状态');
-    assert.ok(auth.includes("apiRequest('/api/bot/claw', { method: 'DELETE' })"), '解绑必须走 DELETE 端点');
-    assert.ok(auth.includes('data:image'), '二维码地址必须支持 data:image 兜底');
-    assert.ok(auth.includes('stopBotClawPolling'), '关闭弹层/取消时必须能停掉轮询');
+    assert.ok(botClawUi.includes("apiRequest('/api/bot/claw/status')"), '打开设置时必须读取绑定状态');
+    assert.ok(botClawUi.includes("apiRequest('/api/bot/claw/qrcode', { method: 'POST' })"), '绑定按钮必须申请二维码');
+    assert.ok(botClawUi.includes("apiRequest('/api/bot/claw/check', { method: 'POST' })"), '展示二维码后必须轮询扫码状态');
+    assert.ok(botClawUi.includes("apiRequest('/api/bot/claw', { method: 'DELETE' })"), '解绑必须走 DELETE 端点');
+    assert.ok(botClawUi.includes('data:image'), '二维码地址必须支持 data:image 兜底');
+    assert.ok(auth.includes('stopBotClawPolling') || botClawUi.includes('stopBotClawPolling'), '关闭弹层/取消时必须能停掉轮询');
     assert.match(auth, /MutationObserver/, '弹层关闭要靠 class 变化停轮询');
-    assert.ok(auth.includes('确认后自动完成绑定'), '扫码后要告诉用户去手机上确认');
-    assert.match(auth, /二维码进入刷新窗口/, '倒计时到 0 不能直接判过期，要继续问服务端');
-    assert.match(auth, /CLAW_SCAN_MAX_MS/, '本地只做超时兜底');
-    assert.match(auth, /scaned_but_redirect/, '前端要知道扫码重定向不是终态');
-    assert.match(auth, /binded_redirect/, '前端要展示已绑定其他实例的明确提示');
-    assert.match(auth, /need_verifycode/, '前端要展示需要配对码的明确提示');
+    assert.ok(botClawUi.includes('确认后自动完成绑定'), '扫码后要告诉用户去手机上确认');
+    assert.match(botClawUi, /二维码进入刷新窗口/, '倒计时到 0 不能直接判过期，要继续问服务端');
+    assert.match(botClawUi, /CLAW_SCAN_MAX_MS/, '本地只做超时兜底');
+    assert.match(botClawUi, /scaned_but_redirect/, '前端要知道扫码重定向不是终态');
+    assert.match(botClawUi, /binded_redirect/, '前端要展示已绑定其他实例的明确提示');
+    assert.match(botClawUi, /need_verifycode/, '前端要展示需要配对码的明确提示');
     assert.match(api, /runScheduled\(env, event, undefined, ctx\)/, 'scheduled 入口必须把 ctx 传下去');
     assert.match(maintenance, /ctx\.waitUntil/, '重活必须转交 waitUntil');
 });

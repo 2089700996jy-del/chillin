@@ -17,6 +17,8 @@
    * 如确需引入外部安全库（例如 DOMPurify），必须**自托管**于 `public/vendor/`（现为 `public/vendor/dompurify.min.js` 3.1.7，其 SHA-384 已与官方发布版本逐一比对），**严禁依赖任何第三方 CDN**——`public/_headers` 的 CSP `script-src` 只放行 `'self'` 与三个内联脚本的 sha256 白名单，引入 CDN 会让脚本被浏览器直接拒绝执行；
    * 杜绝在 `package.json` 中随意添加客户端运行时 `dependencies`。
    * **首屏体积预算**：`public/` 下 JS 合计 gzip ≤ 195 KB（新增 Web 桌面工作台边栏、三栏 Agent 驾驶舱与双栏笔记工作台后上调并剪裁冗余）、CSS 合计 gzip ≤ 58 KB、单文件 gzip ≤ 20 KB，由 `tests/architecture.test.mjs` 机器校验。上调预算必须是一次有意识的改动（改测试里的 `BUDGET` 并写明原因），不允许无声膨胀。
+3. **前端模块划分 (`public/js/` 共 30 个 ESM 模块)**：
+   * 前端模块按业务领域清晰解耦（`auth.js` 聚焦会话鉴权与安全设置，`bot-claw-ui.js` 独立负责微信伴侣 Bot 扫码绑定、状态轮询与主动关怀 UI）。
 
 ---
 
