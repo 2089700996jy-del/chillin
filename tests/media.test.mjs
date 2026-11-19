@@ -118,6 +118,22 @@ test('Media - upload rejects a payload whose magic number is not an image', { sk
     assert.equal(r2.store.size, 0, 'nothing may be written to R2 when validation fails');
 });
 
+test('Media - upload rejects a payload exceeding the 15MB limit with 413', { skip: sqliteSkip }, async () => {
+    const db = createTestDb();
+    await seedUser(db, 7);
+    const r2 = new FakeR2();
+
+    const req = new Request('https://x/api/upload', {
+        method: 'POST',
+        headers: { 'Content-Length': String(16 * 1024 * 1024 + 100) },
+        body: new FormData()
+    });
+    const res = await handleUpload(req, { MEDIA: r2 }, db, 7);
+    assert.equal(res.status, 413);
+    const json = await res.json();
+    assert.match(json.error, /15MB/);
+});
+
 test('Media - backup retention keeps the newest snapshots and drops expired ones', async () => {
     const r2 = new FakeR2();
     const day = 24 * 60 * 60 * 1000;

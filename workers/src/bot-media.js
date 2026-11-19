@@ -13,8 +13,8 @@
 import { handleUpload } from './garden-media.js';
 
 const IMAGE_ITEM_TYPE = 2;
-/** 与 garden-media 的上限保持一致：5MB */
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+/** 与 garden-media 的上限保持一致：15MB */
+const MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 const URL_FIELDS = ['media', 'url', 'hd_url', 'mid_url', 'thumb_url', 'download_url'];
 const NESTED_URL_FIELDS = ['url', 'download_url', 'full_url', 'cdn_url', 'src'];
 

@@ -5,17 +5,30 @@ import { API_BASE, resolveAssetUrl } from './api.js';
 import { showToast } from './utils.js';
 import { setHtml } from './trusted-types.js';
 
-// 客户端图片压缩，避免手机相册原图过大（限制 5MB）
+// 客户端图片压缩，避免手机相册原图过大（支持至 15MB）
 export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality = 0.85) => {
     return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = (event) => {
-            const img = new Image();
-            img.src = event.target.result;
-            img.onload = () => {
-                let width = img.width;
-                let height = img.height;
+        let objectUrl = null;
+        let cleanedUp = false;
+        const cleanup = () => {
+            if (!cleanedUp) {
+                cleanedUp = true;
+                if (objectUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
+                    try { URL.revokeObjectURL(objectUrl); } catch (_) {}
+                }
+            }
+        };
+
+        const img = new Image();
+        img.onload = () => {
+            try {
+                let width = img.naturalWidth || img.width;
+                let height = img.naturalHeight || img.height;
+
+                if (!width || !height) {
+                    cleanup();
+                    return reject(new Error('Invalid image dimensions'));
+                }
 
                 if (width > maxWidth || height > maxHeight) {
                     if (width > height) {
@@ -36,21 +49,38 @@ export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality =
                 // 优先 WebP（同画质体积通常比 JPEG 小 25%~35%），不支持时回退 JPEG
                 const mime = supportsWebpExport() ? 'image/webp' : 'image/jpeg';
                 canvas.toBlob((blob) => {
+                    cleanup();
                     if (blob) {
                         resolve(blob);
-                    } else if (mime === 'image/webp') {
+                    } else {
                         // 探测通过但导出失败：再试一次 JPEG
                         canvas.toBlob((jpegBlob) => {
                             jpegBlob ? resolve(jpegBlob) : reject(new Error('Canvas to Blob conversion failed'));
                         }, 'image/jpeg', quality);
-                    } else {
-                        reject(new Error('Canvas to Blob conversion failed'));
                     }
                 }, mime, quality);
-            };
-            img.onerror = (err) => reject(err);
+            } catch (err) {
+                cleanup();
+                reject(err);
+            }
         };
-        reader.onerror = (err) => reject(err);
+        img.onerror = (err) => {
+            cleanup();
+            reject(err);
+        };
+
+        if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            try {
+                objectUrl = URL.createObjectURL(file);
+                img.src = objectUrl;
+                return;
+            } catch (_) {}
+        }
+
+        const reader = new FileReader();
+        reader.onload = (event) => { img.src = event.target.result; };
+        reader.onerror = (err) => { cleanup(); reject(err); };
+        reader.readAsDataURL(file);
     });
 };
 
@@ -122,8 +152,23 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     pendingRetry = null;
 
     let uploadFile = file;
-    // GIF 可能是动图，重编码会丢掉动画，保持原样上传
-    if (file.type && file.type.startsWith('image/') && file.type !== 'image/gif') {
+    // 乐观即时预览：封面图选择后立即就地回显缩略图，不等网络往返
+    if (targetInput && targetInput.id === 'edit-cover') {
+        const previewWrap = document.getElementById('edit-cover-preview');
+        const previewImg = document.getElementById('edit-cover-preview-img');
+        if (previewWrap && previewImg && typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+            try {
+                previewImg.src = URL.createObjectURL(file);
+                previewWrap.style.display = 'block';
+            } catch (_) { /* audit-ignore: intentional-fallback */ }
+        }
+    }
+
+    // 检测是否为图片（支持大写扩展名以及移动端 MIME 为空的照片），GIF 动图跳过压缩保持帧序列
+    const isGif = file.type === 'image/gif' || /\.gif$/i.test(file.name || '');
+    const isImage = (file.type && file.type.startsWith('image/')) ||
+                    /\.(jpe?g|png|webp|gif|bmp|heic|heif|jfif|tiff?)$/i.test(file.name || '');
+    if (isImage && !isGif) {
         try {
             if (btn) setHtml(btn, '<span style="font-size:12px;opacity:0.9;">🔄 压缩中...</span>');
             const compressedBlob = await compressImage(file, 1600, 1600, 0.85);
@@ -159,7 +204,7 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
             return;
         }
         if (res.status === 413) {
-            showToast('上传失败：图片文件过大，单张最大支持 5MB', 'error');
+            showToast('上传失败：图片文件过大，单张最大支持 15MB', 'error');
             return;
         }
         if (res.status < 200 || res.status >= 300) {
@@ -198,6 +243,12 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
                     targetInput.dispatchEvent(new Event('change', { bubbles: true }));
 
                     if (targetInput.id === 'edit-cover') {
+                        const previewWrap = document.getElementById('edit-cover-preview');
+                        const previewImg = document.getElementById('edit-cover-preview-img');
+                        if (previewWrap && previewImg) {
+                            previewImg.src = resolveAssetUrl(src);
+                            previewWrap.style.display = 'block';
+                        }
                         showToast('封面图已上传并填入！', 'success');
                     } else if (targetInput.id === 'feed-media-url') {
                         const previewWrap = document.getElementById('feed-media-preview');
@@ -221,6 +272,14 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
         }
     } catch (err) {
         console.error('[Upload] error:', err);
+        if (targetInput && targetInput.id === 'edit-cover' && !targetInput.value) {
+            const previewWrap = document.getElementById('edit-cover-preview');
+            const previewImg = document.getElementById('edit-cover-preview-img');
+            if (previewWrap && previewImg) {
+                previewImg.src = '';
+                previewWrap.style.display = 'none';
+            }
+        }
         // 记住这次上传，让用户点一下就能重试，不必重新选文件
         pendingRetry = { file: uploadFile, targetInput, mode, btn };
         showToast('图片上传失败：' + (err.message || '未知错误') + '，可点击「重试上传」', 'error');

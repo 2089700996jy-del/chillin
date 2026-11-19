@@ -12,7 +12,7 @@ import {
     sniffImageMime
 } from './security.js';
 
-const MAX_SIZE = 5 * 1024 * 1024;
+const MAX_SIZE = 15 * 1024 * 1024;
 const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 
 /** R2 对象键：按用户分目录，便于日后按用户整目录清理 */
@@ -28,7 +28,7 @@ export async function handleUpload(request, env, db, userId) {
     // 避免把超大请求整体读入内存后再判长度。
     const declaredLength = Number(request.headers.get('Content-Length') || 0);
     if (declaredLength && declaredLength > MAX_SIZE + 64 * 1024) {
-        return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
+        return jsonResponse({ error: '文件过大，最大支持 15MB' }, 413);
     }
 
     try {
@@ -38,12 +38,12 @@ export async function handleUpload(request, env, db, userId) {
 
         // File.size 在读取内容前即可用：超限文件不再复制进内存
         if (typeof file.size === 'number' && file.size > MAX_SIZE) {
-            return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
+            return jsonResponse({ error: '文件过大，最大支持 15MB' }, 413);
         }
 
         const arrayBuffer = await file.arrayBuffer();
         if (arrayBuffer.byteLength > MAX_SIZE) {
-            return jsonResponse({ error: '文件过大，最大支持 5MB' }, 413);
+            return jsonResponse({ error: '文件过大，最大支持 15MB' }, 413);
         }
         const sniffed = sniffImageMime(new Uint8Array(arrayBuffer));
         const claimed = (file.type || '').toLowerCase();
