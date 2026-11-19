@@ -9,7 +9,7 @@
  * - 响应体大小防护：前置 Content-Length 拦截与流式 256 KiB 上限截断，防范内存 OOM 与 Zip/HTML 炸弹；
  * - 统一超时保护：全局 AbortController 严格控制 15 秒总执行预算并及时释放底层连接。
  */
-import { runWebSearch } from './bot-search.js';
+import { runWebSearch } from './bot-web.js';
 import { readerEndpoint } from './bot-links.js';
 import dns from 'node:dns/promises';
 

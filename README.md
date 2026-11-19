@@ -43,11 +43,11 @@ public/             Cloudflare Pages 的**发布目录**（build output director
   icons/            PWA 图标（180 / 192 / 512）
   vendor/           自托管第三方运行时（DOMPurify 3.1.7，字节与官方发布一致，见测试校验）
 workers/api.js      网关路由、CORS、鉴权闸门、定时任务
-workers/src/        51 个领域模块（security / security-network / security-crypto / auth /
+workers/src/        46 个领域模块（security / security-network / security-crypto / auth /
                     garden-shared / garden-resources / garden-sync / garden-backup-mail / garden-media / garden-books /
-                    garden-export / garden-echo / insights / rag / rag-index / llm / ai / ai-tools / agent-tools-expanded / ai-runtime / agent-store / agent-executor / agent-lifecycle / agent-scheduler / agent-goals / agent-approvals / agent-checkpoint / agent-web / audit / bot-commands / bot-prompts / bot-text / bot-garden / bot-agent-commands / bot-butler / bot-preferences /
-                    bot-claw / bot-claw-auth / bot-memory / bot-health / bot-outreach / bot-outreach-source / bot-reminders /
-                    bot-web / bot-search / bot-weather / bot-media / bot-image-flow / bot-vision / bot-links /
+                    garden-export / garden-echo / insights / rag / rag-index / llm / ai / ai-tools / agent-tools-expanded / ai-runtime / agent-store / agent-executor / agent-lifecycle / agent-scheduler / agent-goals / agent-approvals / agent-checkpoint / agent-web / audit / bot-commands / bot-garden / bot-agent-commands / bot-butler / bot-preferences /
+                    bot-claw / bot-memory / bot-health / bot-outreach / bot-reminders /
+                    bot-web / bot-weather / bot-media / bot-image-flow / bot-vision / bot-links /
                     maintenance）
 migrations/         D1 迁移 0001–0043（含会话令牌哈希与元数据、共享限流、审计保留索引、阅读进度同步与写入保护、图片元数据/R2 搬迁、阅读器云端书库、created_at 东八区口径统一、微信 ClawBot 绑定表、Bot 对话上下文与「关于我」档案、Bot 主动关怀开关与发送审计、图片待存确认位、待存卡片元数据、Bot 定点提醒状态机、联网检索缓存、quick_feeds 时间默认值东八区重建、健康打卡每日一行 health_daily、Bot 提醒追问状态机与退避重试、长期记忆 FTS5 索引与关联召回、Bot 管家待确认动作、Bot 交流偏好、多图待存批次、Agent 目标/任务/运行/步骤/审批、Agent 单目标预算、Push 设备去重、Bot 最近入站 context_token、目标级 Bot 自动发送授权、天气每日记录与晨间关怀）
 tests/              Node 原生单测（node:test，零第三方测试框架）
@@ -190,7 +190,7 @@ npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校
 | [`tests/bot-health.test.mjs`](tests/bot-health.test.mjs) | 健康打卡：一句话解析出步数/睡眠/中高强度/静息心率/体重（斤折半、千分位）、越界值点名不写库、只认显式格式不劫持聊天、一天一行 UPSERT 只覆盖本次字段、日期一律东八区、汇总只统计真的记过该字段的天（真实 SQLite） |
 | [`tests/bot-outreach.test.mjs`](tests/bot-outreach.test.mjs) | Bot 主动关怀：东八区时窗与当天唯一开口时刻、每天至多一次、刚聊完 30 分钟内不插嘴、6 小时内聊过时把最近对话当背景、只用 3 天前旧素材、随机频率闸门、模型 SKIP 否决权、内容安全、发送失败与开关接口、**主动消息写进对话记忆（带出处）**（真实 SQLite） |
 | [`tests/bot-reminders.test.mjs`](tests/bot-reminders.test.mjs) | 定点提醒：中文数字与相对/绝对时刻解析、越界与「已经过去」一律反问不猜、只软删的取消、到点必达与 10 分钟只追问一次（慢任务 2 小时）、追问失败退避重试与次数上限、超 2 小时不补发、发送失败退回 pending、同一分钟幂等（真实 SQLite） |
-| [`tests/bot-web.test.mjs`](tests/bot-web.test.mjs) | 联网检索：三档分流闸门（花园线索强制回本地）、上游 DeepSeek/Jina 双形态 JSON 与 markdown 解析去重、`need_content` 正文优先于 summary、相对时间并成具体日期（东八区）、半截 JSON 一律不当来源、失败分类与文案、6 小时缓存与每人每天 100 次上限（命中缓存不扣额度）与每分钟 2 次突发闸、合成死线退化与出处按需（真实 SQLite）；v2.5.150 起先做 4s 死线的检索词规划（`planWebQueries`）再多条并行检索（最多 3 条、按 `rerank_score` 去重排序、部分失败不影响整体）；上游适配层在同名的 `workers/src/bot-search.js` |
+| [`tests/bot-web.test.mjs`](tests/bot-web.test.mjs) | 联网检索：三档分流闸门（花园线索强制回本地）、上游 DeepSeek/Jina 双形态 JSON 与 markdown 解析去重、`need_content` 正文优先于 summary、相对时间并成具体日期（东八区）、半截 JSON 一律不当来源、失败分类与文案、6 小时缓存与每人每天 100 次上限（命中缓存不扣额度）与每分钟 2 次突发闸、合成死线退化与出处按需（真实 SQLite）；v2.5.150 起先做 4s 死线的检索词规划（`planWebQueries`）再多条并行检索（最多 3 条、按 `rerank_score` 去重排序、部分失败不影响整体）；上游适配层统一在 `workers/src/bot-web.js` |
 | [`tests/bot-weather.test.mjs`](tests/bot-weather.test.mjs) | 和风天气：Ed25519 JWT 与 API Key 双模认证、24h 逐小时极温与降水区间提取、昨日温差与昼夜温差计算、8:00 晨间关怀「无事不扰」静默门禁、白天随手查（真实 SQLite） |
 | [`tests/docs.test.mjs`](tests/docs.test.mjs) | **文档一致性门禁**：README 的模块数 / 迁移范围 / 测试套件数必须等于磁盘真实数量、架构规约模块表必须覆盖全部 `workers/src/*.js`、各文档版本号必须一致 |
 

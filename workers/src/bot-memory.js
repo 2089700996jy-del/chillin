@@ -12,7 +12,6 @@
  */
 
 import { jsonResponse, readJsonCapped, isValidRecordId } from './security.js';
-import { formatProfileTimeTag } from './bot-prompts.js';
 
 /** 注入提示词的最近对话条数上限 */
 export const CHAT_CONTEXT_TURNS = 8;
@@ -362,6 +361,26 @@ export async function updateProfileItem(db, userId, id, content, label = '') {
     ).bind(clip(body, PROFILE_ITEM_MAX_CHARS), clip(label, 40), rid, Number(userId)).run();
     const changes = (res && res.meta && res.meta.changes) || 0;
     return { ok: changes > 0, reason: changes > 0 ? '' : 'not_found' };
+}
+
+export function formatProfileTimeTag(dateInput, nowMs = Date.now()) {
+    if (!dateInput) return '';
+    const dateStr = String(dateInput).slice(0, 10);
+    const targetMs = Date.parse(dateStr + 'T00:00:00+08:00');
+    if (isNaN(targetMs)) return '（' + dateStr + ' 确认）';
+    const nowEast8 = new Date(nowMs + 8 * 3600 * 1000);
+    const todayStr = nowEast8.toISOString().slice(0, 10);
+    const todayMs = Date.parse(todayStr + 'T00:00:00+08:00');
+    const diffDays = Math.round((todayMs - targetMs) / 86400000);
+    let rel = '今天';
+    if (diffDays === 1) rel = '昨天';
+    else if (diffDays === 2) rel = '前天';
+    else if (diffDays >= 3 && diffDays < 7) rel = diffDays + '天前';
+    else if (diffDays >= 7 && diffDays < 14) rel = '上周';
+    else if (diffDays >= 14 && diffDays < 30) rel = Math.floor(diffDays / 7) + '周前';
+    else if (diffDays >= 30 && diffDays < 365) rel = Math.floor(diffDays / 30) + '个月前';
+    else if (diffDays >= 365) rel = Math.floor(diffDays / 365) + '年前';
+    return '（' + rel + '确认 · ' + dateStr + '）';
 }
 
 /** 拼成注入提示词的档案块（受字符预算约束，带确认日期时间知觉，空档案返回空串） */

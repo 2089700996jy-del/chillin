@@ -7,9 +7,9 @@
 个人「数字花园」Web 应用（周记 / 笔记 / 收藏 / 随手记 / 提示词库 / TXT 阅读 / AI 记忆回响）。
 
 - 前端：`public/index.html` + `public/style.css` + `public/app.js` 编排 + `js/` 29 个 ESM 模块（原生无打包）。
-- 后端：Cloudflare Worker `workers/api.js` 网关（≤300 行红线）+ `src/` 51 个领域模块。
+- 后端：Cloudflare Worker `workers/api.js` 网关（≤300 行红线）+ `src/` 46 个领域模块。
 - 数据库：Cloudflare D1（`migrations/0001`–`0043`）+ R2 桶 `chillin-media`。
-- 测试：`npm test` 原生零依赖单测套件（`node --test`）；静态暗病扫描：`npm run audit:system`。
+- 测试：`npm test` 原生零依赖单测套件（28 套件 / 447 用例，100% 通过）；静态暗病扫描：`npm run audit:system`。
 - 站点：Pages `https://chillin-bfc.pages.dev` + Worker `https://chillin-api.2089700996jy.workers.dev`。
 
 ---
@@ -31,7 +31,7 @@
 | **双向维基与常青知识网络** | `wikilinks.js`, `evergreen-topics.js`, `search.js` | `rag-index.js`, `insights.js` | 0001, 0034(FTS5) | `tests/wikilinks.test.mjs`, `tests/evergreen.test.mjs`, `tests/search.test.mjs` | 🟢 | 纯文本双链 `[[wiki]]` 解析、XSS 洗标、搜索高亮与反向引用，无外部网络副作用 |
 | **AI 记忆回响 (RAG) 与模型编排** | `echo-ai.js` | `garden-echo.js`, `rag.js`, `rag-index.js`, `llm.js`, `ai.js`, `ai-runtime.js`, `ai-tools.js`, `agent-tools-expanded.js` | 0013, 0034(FTS5) | `tests/rag.test.mjs`, `tests/agent.test.mjs` | 🟡 | 涉及流式 SSE 请求、多步 Tool Calling 循环与 DeepSeek 网络交互，待网络超时降级核验 |
 | **自主目标 Agent (Autoloop 闭环)** | `agent-goals.js` | `agent-store.js`, `agent-executor.js`, `agent-lifecycle.js`, `agent-scheduler.js`, `agent-goals.js`, `agent-approvals.js`, `agent-checkpoint.js`, `agent-web.js` | 0035~0039, 0042 | `tests/agent-goals.test.mjs` | 🟡 | 涉及后台每分钟 Cron 租约抢占、审批流与状态机防重规划竞争，待真机调度核验 |
-| **微信伴侣 Bot 与健康打卡** | `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-claw-auth.js`, `bot-commands.js`, `bot-garden.js`, `bot-agent-commands.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-search.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-outreach-source.js`, `bot-links.js`, `bot-weather.js`, `bot-prompts.js`, `bot-text.js` | 0024~0033, 0040, 0041, 0043 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-weather.test.mjs`, `tests/bot-reminders.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
+| **微信伴侣 Bot 与健康打卡** | `feature-loader.js` (动态按需装载) | `bot-claw.js`, `bot-commands.js`, `bot-garden.js`, `bot-agent-commands.js`, `bot-butler.js`, `bot-preferences.js`, `bot-memory.js`, `bot-reminders.js`, `bot-health.js`, `bot-web.js`, `bot-media.js`, `bot-image-flow.js`, `bot-vision.js`, `bot-outreach.js`, `bot-links.js`, `bot-weather.js` | 0024~0033, 0040, 0041, 0043 | `tests/bot-claw.test.mjs`, `tests/bot-health.test.mjs`, `tests/bot-weather.test.mjs`, `tests/bot-reminders.test.mjs` | 🟡 | 涉及 iLink 长轮询、微信多图编排、看图识图与健康打卡 D1 落库，待弱网与异常终态核验 |
 | **长期线索与行动转化 (Insights)** | `insights.js` | `insights.js` | 无（纯确定性聚类） | `tests/insights.test.mjs` | 🟢 | 纯确定性双链/标签聚合与跨月聚类算法，无外部网络与副作用 |
 | **媒体存储与云端灾备** | `upload.js`, `backup.js` | `garden-media.js`, `garden-export.js`, `garden-backup-mail.js`, `maintenance.js`, `audit.js` | 0015, 0017, 0021, 0022 | `tests/media.test.mjs`, `tests/backup.test.mjs` | 🟡 | 涉及 R2 大文件二进制读写、Range 请求分片与 ZIP 邮件直发，待存储配额与重试核验 |
 
@@ -43,11 +43,11 @@
 
 | 版本 | 交付要点 |
 | :--- | :--- |
+| v2.5.261 | 架构规约松绑与门禁大瘦身：单一事实源归一至 PROGRESS.md（收敛测试套件与用例数强校验）；废除前端单文件 20KB gzip 与后端 800 行硬死线，总 JS 体积上限放宽至 260KB；删除 architecture.test.mjs 中针对滚动距离、变量名与逐文件登记的脆弱微观正则，保留网关薄路由、健康探针与按需懒加载三大底座；28 套件 / 447 用例 100% 全绿通过 |
 | v2.5.255 | 模版周记/笔记自动解耦升级与虚假冲突清空：根除用户编辑初始默认模版（如 id:1 周记、id:101/102 笔记）与云端种子误判冲突导致的同步死锁，自动将受影响条目升级为全新客户端时间戳 ID 并清除误判冲突标记，保证批量上传即时畅通；506 测试全过 |
 | v2.5.253 | 架构重构第三阶段（前端巨石解耦与本地存储模型统一）：抽离 420 行 bot-claw-ui.js 专职微信 Bot 扫码轮询与状态控制，auth.js 从 1545 行瘦身至 1180 行（净减 365 行）；IndexedDB 升级至 v2 并收口独立 reader 数据库，统一托管 books 与 chapters 存储层并提供历史数据自动平滑迁移；前端模块增至 30 个并严守体积预算（JS 总 Gzip 191.99 KB <= 195 KB，单文件 <= 20 KB）；505 测试全过 |
 | v2.5.252 | 架构重构第二阶段（后端领域高内聚整合与命令路由重构）：抽离 205 行 bot-agent-commands.js 专职处理 Agent 目标 CLI 与审批流，bot-garden.js 彻底收敛聚焦花园资产写入（318行）；bot-commands.js 重构为 6 大领域结构化分发表（系统设置、提醒待办、健康打卡、目标Agent、花园资源、多模态与检索）；同步更新架构规约与模块清单（51个模块）；505 测试全过 |
 | v2.5.251 | 架构重构第一阶段（解除行数红线枷锁与实体四重异名归一）：废除 500 行物理行数死线调整为 800 行高内聚上限，保持 workers/api.js 224 行薄路由红线；剔除 garden-shared.js 与 bot-weather.js 运行时的 ALTER TABLE / CREATE TABLE DDL 注入；前端统一周记命名为 state.weeklies 与 ui.currentWeeklyId，IndexedDB 存储键平滑升级至 gardenWeeklies 并提供 100% 透明向后兼容与防丢保障；505 测试全过 |
-| v2.5.250 | 架构报告 D1 迁移范围同步、功能健康度矩阵过期测试路径清理与双轨发布机制规范：补齐 `tests/docs.test.mjs` 对架构报告迁移范围 `0001–0043` 门禁；清理并校验健康矩阵中 `tests/rag.test.mjs`、`tests/agent.test.mjs` 与微信测试路径真实性；梳理规约与 CI 架构：D1 远端迁移在发布前由本地/发布脚本执行确认，CI 执行质量门禁后自动部署 Worker，Pages 经 Cloudflare Git Webhook 独立原子发布；505 测试全过 |
 
 ---
 

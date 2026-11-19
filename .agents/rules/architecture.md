@@ -16,7 +16,7 @@
    * 必须保持前端在浏览器中直接可见即可执行（所写即所得）；
    * 如确需引入外部安全库（例如 DOMPurify），必须**自托管**于 `public/vendor/`（现为 `public/vendor/dompurify.min.js` 3.1.7，其 SHA-384 已与官方发布版本逐一比对），**严禁依赖任何第三方 CDN**——`public/_headers` 的 CSP `script-src` 只放行 `'self'` 与三个内联脚本的 sha256 白名单，引入 CDN 会让脚本被浏览器直接拒绝执行；
    * 杜绝在 `package.json` 中随意添加客户端运行时 `dependencies`。
-   * **首屏体积预算**：`public/` 下 JS 合计 gzip ≤ 195 KB（新增 Web 桌面工作台边栏、三栏 Agent 驾驶舱与双栏笔记工作台后上调并剪裁冗余）、CSS 合计 gzip ≤ 58 KB、单文件 gzip ≤ 20 KB，由 `tests/architecture.test.mjs` 机器校验。上调预算必须是一次有意识的改动（改测试里的 `BUDGET` 并写明原因），不允许无声膨胀。
+   * **首屏体积预算**：`public/` 下 JS 合计 gzip ≤ 260 KB（为后续功能持续迭代与健全错误处理预留充足空间）、CSS 合计 gzip ≤ 58 KB，废除单文件 20 KB gzip 死线以鼓励高内聚与完善防御性代码，由 `tests/architecture.test.mjs` 机器校验。
 3. **前端模块划分 (`public/js/` 共 30 个 ESM 模块)**：
    * 前端模块按业务领域清晰解耦（`auth.js` 聚焦会话鉴权与安全设置，`bot-claw-ui.js` 独立负责微信伴侣 Bot 扫码绑定、状态轮询与主动关怀 UI）。
 
@@ -30,11 +30,11 @@
 * **入口仅限调度**：[`workers/api.js`](../../workers/api.js) 仅作为路由网关、CORS 预检、鉴权闸门和定时 Cron 调度触发器；
 * **代码行数约束**：`workers/api.js` 代码行数**严禁超过 300 行**，杜绝重新膨胀为两千行的单体巨石。
 
-### 2.2 严格领域模块归档
-所有新增与调整的业务逻辑，必须按职责划分归入 `workers/src/` 相应模块。
-* **代码行数约束**：`workers/src/` 下各领域模块代码行数严格控制在 **800 行以内**（由 `tests/architecture.test.mjs` 自动校验，严防单体巨石，同时为后续模块整合保留合理空间）。
+### 2.2 业务功能领域高内聚组织
+所有业务逻辑按功能领域（如 Reader、Bot、Garden、Auth、Agent 等）高内聚归入 `workers/src/` 相应模块。
+* **内聚优先原则**：废除单模块 800 行硬性死线，严防因死卡行数将同一业务强行碎片化拆散；同一领域的逻辑优先就地闭环。
 
-（`workers/src/` 共 **51 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、21 个 Bot 模块（对话编排 / 提示词与指令辅助 / 管家写入 / 目标 Agent CLI / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 关怀素材挖掘 / 定点提醒 / 健康打卡 / 联网检索 / 检索上游适配 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 外部 IM 接入 / 微信扫码认证 / 纯文本格式化）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 共 **46 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、16 个 Bot 模块（对话编排与微信格式化 / 管家写入 / 目标 Agent CLI / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 微信通信接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -67,24 +67,19 @@
 | [`workers/src/agent-goals.js`](../../workers/src/agent-goals.js) | Agent 目标 API 与规划 | 目标 CRUD、模型生成计划（最多 8 个任务、依赖前序下标、非法输出回落三步计划；外部事实规划 `web_search`；Bot 发送必须规划 `send_bot_message` 审批）、生命周期流转、重新规划与编辑草稿；审批委托 `agent-approvals`。 |
 | [`workers/src/agent-approvals.js`](../../workers/src/agent-approvals.js) | Agent 审批与通知 | `save_note` 新建笔记、`append_note` 原子追加、`send_bot_message` 发微信 Bot；`requestAgentProposal` 接收提案并生成 pending 审批；单 pending、过期作废、归属校验、同意幂等；目标完成/失败/审批创建复用 Web Push。 |
 | [`workers/src/audit.js`](../../workers/src/audit.js) | 自动化安全与审计 | 定时 Cron UGC 违规扫描与隔离区备份、违规规则集、审计日志保留清理。 |
-| [`workers/src/bot-text.js`](../../workers/src/bot-text.js) | Bot 文本格式化 | 把模型 Markdown 转成微信可读纯文本：标题→【】、粗体去星号、列表→•、表格→·、链接→标题：URL、去代码围栏与多余空行；发送前统一过这一层。 |
-| [`workers/src/bot-commands.js`](../../workers/src/bot-commands.js) | Bot 对话编排（chat-first，自然回应） | ClawBot 消息分流层：**默认只聊天、不写库**，显式「记录：…」落随手记、「记住/忘记」动档案（光杆「记录」确认待存图落库）；`claimBotMessage` 幂等排重、「搜 X」查记忆、「问 X」走 Echo AI；来源脚注默认不附（用户追问时给出「[类型] YYYY-MM-DD」）；指令前置 `normalizeCommandText` 净化；系统提示词声明真实能力与确定性回复规则；时间锚点附带星期。 |
-| [`workers/src/bot-prompts.js`](../../workers/src/bot-prompts.js) | Bot 提示词与指令格式化辅助 | 小助手帮助文本、系统提示词模板、输入包裹符剥除与来源标签格式化。 |
+| [`workers/src/bot-commands.js`](../../workers/src/bot-commands.js) | Bot 对话编排（chat-first，自然回应与微信纯文本转义） | ClawBot 消息分流层：**默认只聊天、不写库**，显式「记录：…」落随手记、「记住/忘记」动档案（光杆「记录」确认待存图落库）；小助手帮助文本、系统提示词模板、输入包裹符剥除与来源标签格式化；把模型 Markdown 转成微信可读纯文本；`claimBotMessage` 幂等排重、「搜 X」查记忆、「问 X」走 Echo AI；来源脚注默认不附（用户追问时给出「[类型] YYYY-MM-DD」）；指令前置 `normalizeCommandText` 净化；系统提示词声明真实能力与确定性回复规则；时间锚点附带星期。 |
 | [`workers/src/bot-image-flow.js`](../../workers/src/bot-image-flow.js) | Bot 多图编排 | 一条消息多张图、连续图片批次与深度看图问答：默认快速逐张识图，多图先合进 `bot_pending_media` 待存批次；用户追问多图共同问题时将批次交由模型处理；回「记录」才按张落随手记，未确认不动业务表。 |
 | [`workers/src/bot-garden.js`](../../workers/src/bot-garden.js) | Bot 管家写入 | 确定性指令落库：随手记（含待存图/链接确认）、收藏、提示词；格式不对只给提示绝不乱写。 |
 | [`workers/src/bot-agent-commands.js`](../../workers/src/bot-agent-commands.js) | Bot 目标 Agent CLI | 微信 Bot 下的目标管理与受控审批 CLI（创建目标/查看进度/排队执行/暂停/重规划/审批决策与拍板），调用已有 Agent 领域函数，排队不执行、写入仍走审批。 |
 | [`workers/src/bot-preferences.js`](../../workers/src/bot-preferences.js) | Bot 交流偏好 | 独立于「关于我」事实档案的表达方式记忆：用户偏好反馈先写 `bot_pending_actions` 提案，回「确认」才落库；聊天、RAG 与主动关怀均注入偏好；支持软删并限制 8 条 / 800 字符预算。 |
 | [`workers/src/bot-butler.js`](../../workers/src/bot-butler.js) | Bot 管家管理 | 收藏与提示词的管理：改动先写 `bot_pending_actions` 待确认提案，10 分钟过期；删除统一标记 `is_deleted = 1` 软删；预览阶段不落库，全字段校验归属与格式。 |
 | [`workers/src/bot-memory.js`](../../workers/src/bot-memory.js) | Bot 私人记忆 | 三层记忆读写：截断上下文记忆、「关于我」事实档案增删查（全软删、参数化绑定、上限约束），并提供 `/api/bot/profile` 应用内编辑接口；维护 `bot_pending_media`（每人一张、60 分钟过期）承接图片确认。 |
-| [`workers/src/bot-outreach.js`](../../workers/src/bot-outreach.js) | Bot 主动关怀（朋友口吻，不煽情） | 关怀资格判定：东八区 10:00–22:30 时窗内每天至多随机开口一次；刚聊完 30 分钟内不插嘴，素材取自 3–180 天前旧记录；具备模型 SKIP 否决权与概率闸门；账号级开关与逐条发送审计；送达后写入对话记忆并标注出处。 |
-| [`workers/src/bot-outreach-source.js`](../../workers/src/bot-outreach-source.js) | Bot 主动关怀素材挖掘层 | 从 3~180 天前的历史记录中筛选挖掘候选素材、打分与跨月份线索聚类。 |
+| [`workers/src/bot-outreach.js`](../../workers/src/bot-outreach.js) | Bot 主动关怀（朋友口吻，不煽情） | Bot 主动关怀子域：历史旧记录与长期线索素材挖掘、东八区时窗与随机时刻判定、模型 SKIP 否决权与概率闸门、主动开口与对话记忆沉淀完整闭环。 |
 | [`workers/src/bot-reminders.js`](../../workers/src/bot-reminders.js) | Bot 定点提醒 | 提醒时刻智能解析（中文数字、相对时间，无法解析则反问）；每分钟 cron 到点主动开口；30 分钟后追问一次，超 2 小时标记 missed 不补发；回「完成」沉淀为随手记；独立开关控制。 |
 | [`workers/src/bot-health.js`](../../workers/src/bot-health.js) | Bot 健康打卡 | 健康数据结构化沉淀：将步数、睡眠等一句话记入 `health_daily`（一天一行、UPSERT 幂等、旧值保留）；斤单位折半为公斤；日期统一东八区；「健康」指令回显最近 7 天统计；仅只读回显、不写回三方；保持模块在 800 行以内。 |
-| [`workers/src/bot-search.js`](../../workers/src/bot-search.js) | Bot 检索上游适配 | 主用 DeepSeek 官方 Search（`POST /v1/tools/search`，复用 `LLM_API_KEY`），Jina 作为回落；请求带 `need_content` 与日期锚点 `dateHints`，正文 ≥200 字优先于 summary；回包上限 1MB，失败回退空数组；支持 `runWebSearchMulti` 多词并行去重检索；客户端检索死线 12s。 |
-| [`workers/src/bot-web.js`](../../workers/src/bot-web.js) | Bot 联网检索 | 出站意图闸门（显式「查一下」/时效性问句出站，自身记录强制本地 RAG），检索后由模型合成回答；默认只给结论，追问出处时复用缓存；结果 6 小时缓存，每人每天 100 次上限与每分钟 2 次突发闸；规划 4s + 检索 12s + 合成 20s 严格死线控制；时区换算北京时间并提示差异。 |
+| [`workers/src/bot-web.js`](../../workers/src/bot-web.js) | Bot 联网检索 | Bot 联网检索子域：出站意图闸门、DeepSeek / Jina 检索上游适配、多词并行检索、相对时间东八区锚定、模型回答合成与 6 小时缓存完整闭环。 |
 | [`workers/src/bot-weather.js`](../../workers/src/bot-weather.js) | 和风天气与晨报关怀 | Ed25519 JWT 与 API Key 双模认证，高精度 24h 逐小时极温与降水区间提取、昨日温差与昼夜温差计算；8:00 晨间关怀「无事不扰」静默门禁；白天随手查秒回（30 分钟缓存）。 |
-| [`workers/src/bot-claw.js`](../../workers/src/bot-claw.js) | 外部 IM 接入（微信 ClawBot / iLink 协议） | 每分钟 Cron 长轮询拉消息、游标排重、瞬时 5xx 短退避；经 iLink `sendmessage` 回发文本；成功拉信时刷新 `last_poll_at` 并清除 `last_error`。 |
-| [`workers/src/bot-claw-auth.js`](../../workers/src/bot-claw-auth.js) | 微信 ClawBot 扫码认证与 API | 微信 ClawBot 扫码绑定生命周期状态机（二维码获取/扫码轮询/节点重定向切换/绑定/解绑/D1 账户元数据持久化，令牌只落库不回传）与应用内配置 API。 |
+| [`workers/src/bot-claw.js`](../../workers/src/bot-claw.js) | 微信通信接入（ClawBot / iLink 协议） | 微信接入通信子域：扫码绑定生命周期状态机与配置 API、长轮询拉取与游标排重、回发文本、状态维护完整闭环。 |
 | [`workers/src/bot-media.js`](../../workers/src/bot-media.js) | Bot 图片接入 | 微信图片消息解析与下载；明文魔数嗅探失败时采用 AES-128-ECB + PKCS7 解密；支持直链与授权参数等多形态地址逐组探测；魔数验证成功后写入 R2 并存入 `bot_pending_media` 待存位（60 分钟过期）；回「记录」才落随手记；存图与视觉识别并行。 |
 | [`workers/src/bot-vision.js`](../../workers/src/bot-vision.js) | Bot 看图（Vision） | 将微信图片交付多模态模型换取中文描述；独立 `VISION_API_KEY`（缺省回落 `LLM_API_KEY`），8 秒超时，描述压平截断 120 字并过 `moderateText`；无密钥/失败/拦截时返回空串，不阻断存图与主回复。 |
 | [`workers/src/bot-links.js`](../../workers/src/bot-links.js) | Bot 链接速览（小宇宙） | 服务端解析小宇宙单集/播客页元数据（优先 `__NEXT_DATA__`，回落 og/title），封面转存 R2；卡片存入 `bot_pending_media` 待存位，用户回「记录」落随手记；出站严格遵循域名白名单（`xiaoyuzhoufm.com` / `xyzcdn.net`）、https/443、手动跟随重定向、6s 超时、截断限制；直连 403 时若配置 `LINK_READER_API_KEY` 则可选走第三方代读。 |

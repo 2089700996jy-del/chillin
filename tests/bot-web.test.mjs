@@ -22,16 +22,14 @@ import {
     WEB_BURST_LIMIT,
     WEB_ANSWER_TIMEOUT_MS,
     WEB_QUERY_PLAN_TIMEOUT_MS,
-    parseQueryLines
-} from '../workers/src/bot-web.js';
-import {
+    parseQueryLines,
     parseSearchPayload,
     runWebSearch,
     dateHints,
     runWebSearchMulti,
     WEB_SEARCH_TIMEOUT_MS,
     WEB_SEARCH_MAX_QUERIES
-} from '../workers/src/bot-search.js';
+} from '../workers/src/bot-web.js';
 
 const NOW = Date.parse('2026-10-23T12:19:00+00:00');
 const SEARCH_JSON = JSON.stringify({

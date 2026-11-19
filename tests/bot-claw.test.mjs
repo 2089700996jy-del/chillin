@@ -21,7 +21,7 @@ import {
     handleClawApi,
     pollClawAccounts
 } from '../workers/src/bot-claw.js';
-import { toClawText } from '../workers/src/bot-text.js';
+import { toClawText } from '../workers/src/bot-commands.js';
 import {
     extractClawImageItems,
     resolveClawImageUrl,
@@ -73,7 +73,7 @@ import {
     INTENT_PROFILE_QA,
     INTENT_KNOWLEDGE_RAG,
     INTENT_CHITCHAT
-} from '../workers/src/bot-prompts.js';
+} from '../workers/src/bot-commands.js';
 import {
     listPreferences,
     loadPreferencePrompt,

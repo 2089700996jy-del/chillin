@@ -22,7 +22,253 @@
 
 import { callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
-import { runWebSearchMulti, WEB_SEARCH_MAX_QUERIES } from './bot-search.js';
+
+/** 默认检索端点（DeepSeek 官方 Search API：POST + JSON） */
+export const WEB_SEARCH_DEFAULT_URL = 'https://api.deepseek.com/v1/tools/search';
+/** Jina Search 端点（回落用：GET + 路径拼接查询词） */
+export const JINA_SEARCH_DEFAULT_URL = 'https://s.jina.ai';
+/** DeepSeek Search 文档规定 query / ori_question 上限 128 字符，超了先截断再发 */
+export const WEB_SEARCH_QUERY_MAX_CHARS = 128;
+/** 客户端检索超时上限（12s 留出余量） */
+export const WEB_SEARCH_TIMEOUT_MS = 12000;
+/** 应答体积上限（防上游失控） */
+export const WEB_SEARCH_MAX_BYTES = 1024 * 1024;
+export const WEB_SEARCH_RESULTS = 8;
+/** 一次问答最多并行搜几条检索词（规划出来的变体） */
+export const WEB_SEARCH_MAX_QUERIES = 3;
+/** 单条来源正文上限 */
+export const WEB_SNIPPET_MAX_CHARS = 3000;
+/** 正文短到这个长度以下当导航残渣，回落到 summary */
+export const WEB_CONTENT_MIN_CHARS = 200;
+
+function searchEndpoint(base, query) {
+    const clean = String(base || JINA_SEARCH_DEFAULT_URL).replace(/\s+/g, '');
+    const trimmed = clean.replace(/\/+$/, '');
+    const q = encodeURIComponent(query);
+    return trimmed.includes('?') ? trimmed + '&q=' + q : trimmed + '/' + q;
+}
+
+async function readBodyCapped(res, maxBytes) {
+    if (!res || !res.body || !res.body.getReader) {
+        const text = await res.text();
+        return String(text || '').slice(0, maxBytes);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let out = '';
+    let total = 0;
+    for (;;) {
+        const chunk = await reader.read();
+        if (chunk.done) break;
+        total += chunk.value ? chunk.value.byteLength : 0;
+        out += decoder.decode(chunk.value || new Uint8Array(), { stream: true });
+        if (total > maxBytes) break;
+    }
+    out += decoder.decode();
+    return out;
+}
+
+function cleanText(raw, maxChars) {
+    const text = String(raw || '')
+        .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+        .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&nbsp;/gi, ' ')
+        .replace(/&amp;/gi, '&')
+        .replace(/&lt;/gi, '<')
+        .replace(/&gt;/gi, '>')
+        .replace(/&quot;/gi, '"')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return text.slice(0, maxChars);
+}
+
+function parseTextPayload(text) {
+    const items = [];
+    for (const block of String(text || '').split(/\n{2,}/)) {
+        const urlMatch = block.match(/https?:\/\/[^\s)>\]]+/);
+        if (!urlMatch) continue;
+        const titleLine = block.split('\n').map((l) => l.trim()).find((l) => l
+            && !/^https?:\/\//.test(l)
+            && !/^(Title|URL|URL Source|Published Time|Markdown Content)\s*:/i.test(l));
+        items.push({ title: titleLine || '', url: urlMatch[0], snippet: block });
+    }
+    return items;
+}
+
+function pickSnippet(it) {
+    const content = String(it.content || '').trim();
+    if (content.length >= WEB_CONTENT_MIN_CHARS) return content;
+    return it.summary || content || it.snippet || it.description || it.text || '';
+}
+
+export function parseSearchPayload(body) {
+    const text = String(body || '').trim();
+    let items = [];
+    const looksJson = text.startsWith('{') || text.startsWith('[');
+    if (looksJson) {
+        try {
+            const json = JSON.parse(text);
+            const data = Array.isArray(json) ? json : (json.data || json.results || []);
+            items = (Array.isArray(data) ? data : []).map((it) => ({
+                title: it.title || '',
+                url: it.url || '',
+                snippet: pickSnippet(it),
+                site: it.site_name || it.site || '',
+                date: dateInEast8(it.date || it.published_time || ''),
+                score: Number(it.rerank_score || it.score || 0) || 0
+            }));
+        } catch (err) {
+            return [];
+        }
+    }
+    if (!items.length && !looksJson) items = parseTextPayload(text);
+    const seen = new Set();
+    const out = [];
+    for (const it of items) {
+        const url = String(it.url || '').trim();
+        if (!/^https?:\/\//i.test(url) || seen.has(url)) continue;
+        seen.add(url);
+        out.push({
+            title: cleanText(it.title, 120) || url,
+            url: url.slice(0, 300),
+            snippet: cleanText(it.snippet, WEB_SNIPPET_MAX_CHARS),
+            site: cleanText(it.site, 60),
+            date: String(it.date || '').slice(0, 10),
+            score: Number(it.score || 0) || 0
+        });
+        if (out.length >= WEB_SEARCH_RESULTS) break;
+    }
+    return out;
+}
+
+function dateInEast8(value) {
+    const s = String(value || '').trim();
+    if (!s) return '';
+    const t = Date.parse(s);
+    if (!Number.isFinite(t)) return '';
+    return new Date(t + 8 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+export function resolveSearchProvider(env) {
+    const forced = String((env && env.SEARCH_PROVIDER) || '').trim().toLowerCase();
+    if (forced === 'jina' || forced === 'deepseek') return forced;
+    const url = String((env && env.SEARCH_API_URL) || '').trim();
+    if (url && !url.includes('/tools/search')) return 'jina';
+    return 'deepseek';
+}
+
+function deepseekSearchUrl(env) {
+    const explicit = String((env && env.SEARCH_API_URL) || '').trim();
+    if (explicit.includes('/tools/search')) return explicit.replace(/\/+$/, '');
+    let base = String((env && env.LLM_API_BASE) || WEB_SEARCH_DEFAULT_URL).trim().replace(/\/+$/, '');
+    if (base.includes('/tools/search')) return base;
+    if (!/v[0-9]+$/.test(base)) base += '/v1';
+    return base + '/tools/search';
+}
+
+function searchKey(env, provider) {
+    const fallback = provider === 'deepseek' ? env && env.LLM_API_KEY : env && env.LINK_READER_API_KEY;
+    return String((env && env.SEARCH_API_KEY) || fallback || '').trim();
+}
+
+export async function runWebSearch(env, query, fetchImpl = fetch, oriQuestion = '') {
+    const provider = resolveSearchProvider(env);
+    const key = searchKey(env, provider);
+    if (!key) return { ok: false, reason: 'no-key' };
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), WEB_SEARCH_TIMEOUT_MS);
+    try {
+        let res;
+        if (provider === 'deepseek') {
+            const hints = dateHints(oriQuestion || query, Date.now()).join(' ');
+            const queryText = [String(query || '').trim(), hints].filter(Boolean).join(' ');
+            const body = {
+                query: queryText.slice(0, WEB_SEARCH_QUERY_MAX_CHARS),
+                count: WEB_SEARCH_RESULTS,
+                need_content: true
+            };
+            const ori = String(oriQuestion || '').trim().slice(0, WEB_SEARCH_QUERY_MAX_CHARS);
+            if (ori) body.ori_question = ori;
+            res = await fetchImpl(deepseekSearchUrl(env), {
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-Type': 'application/json',
+                    Authorization: 'Bearer ' + key,
+                    'User-Agent': 'ChillinBot/1.0'
+                },
+                body: JSON.stringify(body),
+                signal: ctrl.signal
+            });
+        } else {
+            const url = searchEndpoint(env && env.SEARCH_API_URL, query);
+            res = await fetchImpl(url, {
+                method: 'GET',
+                headers: {
+                    Accept: 'application/json',
+                    Authorization: 'Bearer ' + key,
+                    'x-api-key': key,
+                    'X-Respond-With': 'no-content',
+                    'X-Timeout': '10',
+                    'User-Agent': 'ChillinBot/1.0'
+                },
+                signal: ctrl.signal
+            });
+        }
+        if (!res.ok) return { ok: false, reason: 'http-' + res.status };
+        const sources = parseSearchPayload(await readBodyCapped(res, WEB_SEARCH_MAX_BYTES));
+        if (!sources.length) return { ok: false, reason: 'empty' };
+        return { ok: true, sources, provider };
+    } catch (err) {
+        return { ok: false, reason: err && err.name === 'AbortError' ? 'timeout' : 'network' };
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+export function dateHints(text, nowMs) {
+    const t = String(text || '');
+    const base = new Date((Number(nowMs) || Date.now()) + 8 * 3600 * 1000);
+    const day = (n) => new Date(base.getTime() + n * 86400000).toISOString().slice(0, 10);
+    const wd = base.getUTCDay();
+    const seen = [];
+    const push = (v) => { if (v && seen.indexOf(v) === -1) seen.push(v); };
+    if (/今天|今日|今晚/.test(t)) push(day(0));
+    if (/明天|明日|明晚|次日/.test(t)) push(day(1));
+    if (/昨天|昨日/.test(t)) push(day(-1));
+    if (/周末|周[六6]|星期[六6]/.test(t)) push(day((6 - wd + 7) % 7));
+    if (/周末|周[日天]|星期[日天]/.test(t)) push(day((0 - wd + 7) % 7));
+    return seen.slice(0, 3);
+}
+
+export async function runWebSearchMulti(env, queries, fetchImpl = fetch, oriQuestion = '') {
+    const list = [];
+    const seen = new Set();
+    for (const raw of (Array.isArray(queries) ? queries : [queries])) {
+        const q = String(raw || '').trim();
+        if (!q || seen.has(q)) continue;
+        seen.add(q);
+        list.push(q);
+        if (list.length >= WEB_SEARCH_MAX_QUERIES) break;
+    }
+    if (!list.length) return { ok: false, reason: 'empty' };
+    const results = await Promise.all(list.map((q) => runWebSearch(env, q, fetchImpl, oriQuestion)));
+    const okOnes = results.filter((r) => r && r.ok);
+    if (!okOnes.length) return { ok: false, reason: (results[0] && results[0].reason) || 'empty' };
+    const byUrl = new Map();
+    for (const r of okOnes) {
+        for (const s of r.sources) {
+            const prev = byUrl.get(s.url);
+            if (!prev || Number(s.score || 0) > Number(prev.score || 0)) byUrl.set(s.url, s);
+        }
+    }
+    const sources = [...byUrl.values()]
+        .sort((a, b) => Number(b.score || 0) - Number(a.score || 0))
+        .slice(0, WEB_SEARCH_RESULTS);
+    if (!sources.length) return { ok: false, reason: 'empty' };
+    return { ok: true, sources, provider: okOnes[0].provider, queries: list };
+}
 
 /** 合成答案的上限：模型慢到超时就退化成「只给来源」，绝不把整轮收信拖死 */
 export const WEB_ANSWER_TIMEOUT_MS = 20000;

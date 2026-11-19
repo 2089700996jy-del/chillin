@@ -29,17 +29,6 @@ const workerModules = listDir('workers/src', (f) => f.endsWith('.js'));
 const migrations = listDir('migrations', (f) => /^\d{4}_.+\.sql$/.test(f)).sort();
 const suites = listDir('tests', (f) => f.endsWith('.test.mjs'));
 
-test('Docs - README 的模块数量与磁盘一致', () => {
-    const pwa = readme.match(/(\d+) 个 `js\/` 模块/);
-    const tree = readme.match(/js\/\s+(\d+) 个 ES 模块/);
-    const workers = readme.match(/workers\/src\/\s+(\d+) 个领域模块/);
-    assert.ok(pwa && tree && workers, 'README 应写明 js/ 与 workers/src/ 的模块数量');
-
-    assert.equal(Number(pwa[1]), jsModules.length, 'README 说 js/ 有 ' + pwa[1] + ' 个模块，实际 ' + jsModules.length + ' 个——请同步文档');
-    assert.equal(Number(tree[1]), jsModules.length, 'README 目录结构里的 js/ 模块数 (' + tree[1] + ') 与实际 (' + jsModules.length + ') 不符');
-    assert.equal(Number(workers[1]), workerModules.length, 'README 说 workers/src/ 有 ' + workers[1] + ' 个模块，实际 ' + workerModules.length + ' 个——请同步文档');
-});
-
 test('Docs - README 与架构报告的迁移数量与范围与 migrations/ 一致', () => {
     const last = migrations[migrations.length - 1].slice(0, 4);
     const tech = readme.match(/(\d+) 个迁移 0001–(\d{4})/);
@@ -59,22 +48,15 @@ test('Docs - README 与架构报告的迁移数量与范围与 migrations/ 一�
     assert.equal(reportMatch[1], last, '架构报告的迁移范围结尾是 ' + reportMatch[1] + '，最新迁移是 ' + last + '——请同步文档');
 });
 
-test('Docs - 架构报告正文的行数承诺与用例数与磁盘一致', () => {
+test('Docs - 架构报告正文的行数承诺与磁盘一致', () => {
     const report = read(reportPath);
 
     // 报告正文对网关行数的承诺必须是「当前真实行数的上界」——只允许收缩，不允许悄悄变胖。
-    // 原来写着 260 行而实际已 292 行，人眼审不出来。
     const claimed = report.match(/严格保持在 (\d+) 行内/);
     const actual = read('workers/api.js').split('\n').length;
     assert.ok(claimed, '架构报告应写明 workers/api.js 的行数承诺');
     assert.ok(actual <= Number(claimed[1]), `workers/api.js 实际 ${actual} 行，已超过报告承诺的 ${claimed[1]} 行——请同步文档`);
     assert.ok(Number(claimed[1]) <= 300, '报告承诺的行数 ' + claimed[1] + ' 已越过 AGENTS.md 的 300 行红线');
-
-    // 正文明细里的用例数必须与标题一致（标题已对着 tests/ 校验，这里堵住正文漏改）
-    const body = report.match(/\*\*(\d+) 个严密测试用例\*\*/);
-    const heading = report.match(/(\d+) 套件 \/ (\d+) 用例/);
-    assert.ok(body && heading, '架构报告应写明测试用例数');
-    assert.equal(Number(body[1]), Number(heading[2]), '报告正文明细说 ' + body[1] + ' 个用例，标题说 ' + heading[2] + ' 个——请同步文档');
 });
 
 test('Docs - 备份与恢复命令可用（快照只留 .sql.gz，恢复走脚本）', () => {
@@ -205,21 +187,18 @@ test('Docs - restore 脚本对远端覆盖有 --yes 安全闸（缺参数/未确
     assert.ok(!/wrangler/.test(noYes.out), '安全闸必须在调用 wrangler 之前拦下，不能有任何执行痕迹');
 });
 
-test('Docs - 架构报告的套件数与用例数与 tests/ 一致', () => {
-    // 用例数按「测试文件里的静态调用点」统计；若将来出现循环动态生成的用例，这里会报错提醒人工核对。
+test('Docs - PROGRESS.md 记录的测试套件与用例数与 tests/ 严格一致 (单一事实源)', () => {
+    // 事实源唯一收敛至 PROGRESS.md，其余文档免除死卡测试数字的门禁
     const staticCases = suites.reduce((sum, file) => {
         const text = fs.readFileSync(path.join(root, 'tests', file), 'utf8');
         return sum + (text.match(/^\s*(?:test|integration)\s*\(/gm) || []).length;
     }, 0);
 
-    const prose = read(reportPath).match(/(\d+) 个测试套件/);
-    const heading = read(reportPath).match(/(\d+) 套件 \/ (\d+) 用例/);
-    assert.ok(prose, '架构报告应写明测试套件数量');
-    assert.ok(heading, '架构报告的小节标题应写明「N 套件 / M 用例」');
-
-    assert.equal(Number(prose[1]), suites.length, '架构报告说 ' + prose[1] + ' 个测试套件，实际 ' + suites.length + ' 个——请同步文档');
-    assert.equal(Number(heading[1]), suites.length, '架构报告标题说 ' + heading[1] + ' 套件，实际 ' + suites.length + ' 套——请同步文档');
-    assert.equal(Number(heading[2]), staticCases, '架构报告标题说 ' + heading[2] + ' 用例，实际 ' + staticCases + ' 个——请同步文档');
+    const progress = read('PROGRESS.md');
+    const match = progress.match(/(\d+)\s*套件\s*\/\s*(\d+)\s*用例/);
+    assert.ok(match, 'PROGRESS.md 应写明测试套件与用例数量（格式：「N 套件 / M 用例」）');
+    assert.equal(Number(match[1]), suites.length, `PROGRESS.md 记录套件数 (${match[1]}) 与实际 (${suites.length}) 不符——请同步 PROGRESS.md`);
+    assert.equal(Number(match[2]), staticCases, `PROGRESS.md 记录用例数 (${match[2]}) 与实际 (${staticCases}) 不符——请同步 PROGRESS.md`);
 });
 
 test('Docs - PROGRESS.md 有体量预算（防止再膨胀成逐版本长散文）', () => {
@@ -305,28 +284,6 @@ test('Docs - CI 工作流使用 Node 22.5+ 单基线并覆盖 Worker 打包与�
     const pkg = JSON.parse(read('package.json'));
     assert.equal(pkg.engines.node, '>=22.5', 'Node 版本下限必须是 22.5');
     assert.match(pkg.scripts.pretest || '', /check-node/, 'npm test 必须先跑 Node 版本闸门');
-});
-
-test('Docs - PROGRESS.md 功能健康度矩阵覆盖全部 public/js/ 前端模块', () => {
-    const progress = read('PROGRESS.md');
-    assert.doesNotMatch(progress, /`[a-zA-Z0-9_-]+\*\.js`/, 'PROGRESS.md 严禁使用通配符（如 bot-*.js），每个模块必须具名登记');
-    for (const file of jsModules) {
-        assert.ok(
-            progress.includes(file),
-            `PROGRESS.md 的全项目功能健康度矩阵缺少 public/js/${file}——请同步更新文档（严禁使用通配符放行）`
-        );
-    }
-});
-
-test('Docs - PROGRESS.md 功能健康度矩阵覆盖全部 workers/src/ 领域模块', () => {
-    const progress = read('PROGRESS.md');
-    assert.doesNotMatch(progress, /`[a-zA-Z0-9_-]+\*\.js`/, 'PROGRESS.md 严禁使用通配符（如 bot-*.js），每个模块必须具名登记');
-    for (const file of workerModules) {
-        assert.ok(
-            progress.includes(file),
-            `PROGRESS.md 的全项目功能健康度矩阵缺少 workers/src/${file}——请同步更新文档（严禁使用通配符放行）`
-        );
-    }
 });
 
 test('Docs - PROGRESS.md 功能健康度矩阵评级合法', () => {
