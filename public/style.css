@@ -1653,6 +1653,10 @@ body.dark-reader-body .timeline-filter__select {
   margin-top: 4px;
   background: rgba(0, 0, 0, 0.03);
   border: 1px solid transparent;
+  cursor: pointer;
+}
+.ios-cover-input-wrap .ios-input-icon {
+  cursor: pointer;
 }
 .ios-cover-preview img {
   width: 100%;
@@ -4334,6 +4338,15 @@ body.keyboard-open .fab-btn {
   margin-left: 5px;
   vertical-align: middle;
   box-shadow: 0 0 0 1px rgba(255, 149, 0, 0.2);
+  position: relative;
+}
+.sync-dirty-dot::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: -10px;
+  right: -10px;
 }
 
 .feed-tags {

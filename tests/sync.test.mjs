@@ -572,5 +572,81 @@ test('Sync - apiSyncWeekly accepts numeric/string ID and syncs item from state',
     }
 });
 
+test('Sync - apiSyncWeekly accepts server ID remapping for mock ID 1', async () => {
+    const { apiSyncWeekly } = await import('../public/js/sync.js');
+    const { state } = await import('../public/js/state.js');
+
+    const originalFetch = globalThis.fetch;
+    const remappedServerId = 1732000000999;
+
+    state.weeklies = [{
+        id: 1,
+        title: '已编辑转正周记',
+        category: '🌸',
+        summary: '摘要',
+        date: '2026年11月16日',
+        _dirty: true
+    }];
+
+    globalThis.fetch = async (url, opts) => {
+        if (String(url).includes('/api/sync/batch')) {
+            // 模拟服务端将 mock ID 1 重映射为新时间戳 ID
+            return new Response(JSON.stringify({
+                updated: [{ resource: 'weeklies', id: remappedServerId, updated_at: '2026-11-19 12:30:00' }],
+                conflicts: []
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    try {
+        const item = state.weeklies[0];
+        const res = await apiSyncWeekly(item, 'PUT', { force: true });
+        assert.ok(res);
+        assert.equal(item.id, remappedServerId, '客户端应当接受服务端重分配的 ID');
+        assert.equal(item._dirty, false, '成功接收映射后 _dirty 应当为 false');
+        assert.equal(item.updated_at, '2026-11-19 12:30:00');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('Sync - apiSyncWeekly accepts server ID remapping even with multiple updated items', async () => {
+    const { apiSyncWeekly } = await import('../public/js/sync.js');
+    const { state } = await import('../public/js/state.js');
+
+    const originalFetch = globalThis.fetch;
+    const remappedServerId = 1732000000888;
+
+    state.weeklies = [{
+        id: 1,
+        title: '多资源返回重映射',
+        _dirty: true
+    }];
+
+    globalThis.fetch = async (url) => {
+        if (String(url).includes('/api/sync/batch')) {
+            return new Response(JSON.stringify({
+                updated: [
+                    { resource: 'notes', id: 101, updated_at: '2026-11-19 10:00:00' },
+                    { resource: 'weeklies', id: remappedServerId, updated_at: '2026-11-19 12:35:00' }
+                ],
+                conflicts: []
+            }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    try {
+        const item = state.weeklies[0];
+        const res = await apiSyncWeekly(item, 'PUT', { force: true });
+        assert.ok(res);
+        assert.equal(item.id, remappedServerId);
+        assert.equal(item._dirty, false);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
 
 

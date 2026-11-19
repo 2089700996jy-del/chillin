@@ -1,5 +1,6 @@
 /** Global image upload to /api/upload; writes resolved URL into target input. */
 import { state } from './state.js';
+import { actions } from './actions.js';
 import { API_BASE, resolveAssetUrl } from './api.js';
 import { showToast } from './utils.js';
 import { setHtml } from './trusted-types.js';
@@ -56,6 +57,19 @@ export const compressImage = (file, maxWidth = 1600, maxHeight = 1600, quality =
 /** 上一次失败的上传：供「重试上传」复用，避免用户重新选文件 */
 let pendingRetry = null;
 
+export function clearPendingRetry(btn = null) {
+    pendingRetry = null;
+    if (btn) {
+        delete btn.dataset.uploadRetry;
+        if (btn.dataset.originalHtml) setHtml(btn, btn.dataset.originalHtml);
+    } else {
+        document.querySelectorAll('.btn-upload-image[data-upload-retry]').forEach((b) => {
+            delete b.dataset.uploadRetry;
+            if (b.dataset.originalHtml) setHtml(b, b.dataset.originalHtml);
+        });
+    }
+}
+
 /** 浏览器 canvas 是否支持导出 WebP（Safari 14+ / Chrome / Firefox 全支持，仍需探测兜底） */
 let webpSupported = null;
 function supportsWebpExport() {
@@ -99,10 +113,13 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
 
     let originalBtnHtml = '';
     if (btn) {
-        originalBtnHtml = btn.innerHTML;
+        if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
+        originalBtnHtml = btn.dataset.originalHtml;
+        delete btn.dataset.uploadRetry;
         btn.disabled = true;
         setHtml(btn, '<span style="font-size:12px;opacity:0.9;">⏳ 正在上传...</span>');
     }
+    pendingRetry = null;
 
     let uploadFile = file;
     // GIF 可能是动图，重编码会丢掉动画，保持原样上传
@@ -213,7 +230,7 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
                 setHtml(btn, '<span style="font-size:12px;opacity:0.9;">↻ 重试上传</span>');
                 btn.dataset.uploadRetry = '1';
             } else {
-                setHtml(btn, originalBtnHtml);
+                setHtml(btn, btn.dataset.originalHtml || originalBtnHtml);
                 delete btn.dataset.uploadRetry;
             }
             btn.disabled = false;
@@ -224,10 +241,24 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
 }
 
 export function initUpload() {
-    const globalImageUploader = document.getElementById('global-image-uploader');
+    actions.clearPendingRetry = clearPendingRetry;
+    if (typeof document === 'undefined') return;
+    const getGlobalUploader = () => document.getElementById('global-image-uploader');
     let currentUploadTargetInput = null;
     let currentUploadMode = 'value';
     let currentActiveUploadBtn = null;
+
+    // 清理重试状态：监听封面移除与输入框清空（捕获阶段，防止子元素 stopPropagation 吞掉点击）
+    document.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-clear-cover') || e.target.closest('.ios-cover-preview-clear')) {
+            clearPendingRetry();
+        }
+    }, true);
+    document.getElementById('edit-cover')?.addEventListener('input', (e) => {
+        if (!e.target.value.trim()) {
+            clearPendingRetry();
+        }
+    });
 
     // 1. 全局委托：支持所有带有 .btn-upload-image 的上传与插入按钮
     document.addEventListener('click', (e) => {
@@ -243,21 +274,26 @@ export function initUpload() {
             return;
         }
 
+        // 主动选文件：清除重试标记，拉起原生文件选择器
+        clearPendingRetry(btn);
+
         const targetId = btn.dataset.target;
         currentUploadTargetInput = document.getElementById(targetId);
         currentUploadMode = btn.dataset.mode || (currentUploadTargetInput?.tagName === 'TEXTAREA' ? 'markdown' : 'value');
         currentActiveUploadBtn = btn;
 
-        if (globalImageUploader) {
+        const uploader = getGlobalUploader();
+        if (uploader) {
             // 关键修复：每次点击前主动清空 value，确保选择同名文件或取消后重选均能触发 change 事件
-            globalImageUploader.value = '';
-            globalImageUploader.click();
+            uploader.value = '';
+            uploader.click();
         }
     });
 
     // 2. 监听文件选择框选择事件
-    if (globalImageUploader) {
-        globalImageUploader.addEventListener('change', async (e) => {
+    const uploader = getGlobalUploader();
+    if (uploader) {
+        uploader.addEventListener('change', async (e) => {
             const file = e.target.files?.[0];
             if (!file) return;
 

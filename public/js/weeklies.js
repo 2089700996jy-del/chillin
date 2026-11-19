@@ -150,8 +150,8 @@ const renderCards = (filter = weeklyCategoryFilter) => {
                 const triggerSync = (e) => {
                     e.stopPropagation();
                     e.preventDefault();
-                    showToast('正在尝试同步该周记...', 'info');
-                    apiSyncWeekly(item).then((res) => {
+                    showToast('正在强制同步该周记到云端...', 'info');
+                    apiSyncWeekly(item, 'PUT', { force: true }).then((res) => {
                         if (res && !item._dirty) {
                             showToast('周记同步成功！', 'success');
                             renderCards();
@@ -674,13 +674,36 @@ if (editCoverEl) {
     editCoverEl.addEventListener('input', updateCoverPreview);
     editCoverEl.addEventListener('change', updateCoverPreview);
 }
-document.getElementById('btn-clear-cover')?.addEventListener('click', () => {
+document.getElementById('btn-clear-cover')?.addEventListener('click', (e) => {
+    e.stopPropagation();
+    actions.clearPendingRetry?.();
     if (editCoverEl) {
         editCoverEl.value = '';
         updateCoverPreview();
         editCoverEl.dispatchEvent(new Event('input', { bubbles: true }));
     }
 });
+const editCoverPreviewEl = document.getElementById('edit-cover-preview');
+if (editCoverPreviewEl) {
+    editCoverPreviewEl.addEventListener('click', (e) => {
+        if (e.target.closest('#btn-clear-cover')) return;
+        const coverUploadBtn = document.querySelector('.btn-upload-image[data-target="edit-cover"]');
+        if (coverUploadBtn) {
+            actions.clearPendingRetry?.(coverUploadBtn);
+            coverUploadBtn.click();
+        }
+    });
+}
+const coverIconEl = document.querySelector('.ios-cover-input-wrap .ios-input-icon');
+if (coverIconEl) {
+    coverIconEl.addEventListener('click', () => {
+        const coverUploadBtn = document.querySelector('.btn-upload-image[data-target="edit-cover"]');
+        if (coverUploadBtn) {
+            actions.clearPendingRetry?.(coverUploadBtn);
+            coverUploadBtn.click();
+        }
+    });
+}
 
 // 自由书写正文图片实时缩略图栏交互
 const editContentEl = document.getElementById('edit-content');

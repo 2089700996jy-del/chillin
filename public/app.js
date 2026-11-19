@@ -327,11 +327,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
     loadLocalData();
 
-    // 空闲时预热 agent-goals 模块，刷新待审批徽标并保证首次点击零延迟
+    // 立即预热 upload 模块，确保移动端用户点按上传时具备完整的瞬态激活（transient activation）且无需等待空闲延迟
+    loadFeature('upload').catch(() => {});
+
+    // 空闲时预热 agent-goals 模块
+    const preloadLazyFeatures = () => {
+        loadFeature('agent-goals').catch(() => {});
+    };
     if (typeof requestIdleCallback === 'function') {
-        requestIdleCallback(() => loadFeature('agent-goals').catch(() => {}));
+        requestIdleCallback(preloadLazyFeatures);
     } else {
-        setTimeout(() => loadFeature('agent-goals').catch(() => {}), 2000);
+        setTimeout(preloadLazyFeatures, 1500);
     }
 
     // 会话恢复：优先本地 Bearer（旧版），其次服务端 HttpOnly Cookie（新版）

@@ -410,6 +410,42 @@ integration('Sync batch - mock ID 1 归属防御与安全时间戳重分配', as
     assert.equal(user2Row.title, '💰 转正');
 });
 
+integration('Sync batch - 软删除模版 ID 1 携带真实内容时自动重分配时间戳（绝不静默丢弃）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    // 1. 用户 1 的 mock ID 1 已被软删，携带内容再次提交时，应自动分配新时间戳
+    await db.prepare("INSERT INTO weeklies (id, category, title, summary, date, user_id, is_deleted) VALUES (1, '🌸', '模版已被删除', '摘要', '2023-10-22', 1, 1)").run();
+    const user1MockWeekly = { id: 1, title: '💰 用户1编辑转正周记', content: '正文' };
+    const resMock = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [user1MockWeekly] }), db, 1);
+    assert.equal(resMock.status, 200);
+    const bodyMock = await resMock.json();
+    assert.ok(bodyMock.updated.length > 0);
+    assert.notEqual(bodyMock.updated[0].id, 1, '已被软删的 ID 1 提交新内容时应分配新时间戳 ID');
+
+    // 2. 软删除且无实际内容（空标题、空正文）的 ID 1，应当保持跳过
+    const emptyWeekly = { id: 1, title: '', content: '' };
+    const resEmpty = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [emptyWeekly] }), db, 1);
+    const bodyEmpty = await resEmpty.json();
+    assert.ok(!bodyEmpty.updated || bodyEmpty.updated.length === 0, '空内容不应当重分配或写入');
+
+    // 3. 普通已软删除的真实周记（非模版 ID 1），严守墓碑防线，不被批量推送静默复活
+    await db.prepare("INSERT INTO weeklies (id, category, title, summary, date, user_id, is_deleted) VALUES (998, '🌸', '已删普通周记', '摘要', '2023-10-22', 1, 1)").run();
+    const normalDeletedWeekly = { id: 998, title: '普通周记尝试写入', content: '内容' };
+    const resNormal = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [normalDeletedWeekly] }), db, 1);
+    const bodyNormal = await resNormal.json();
+    assert.ok(!bodyNormal.updated.some(item => Number(item.id) === 998), '普通已删周记保持墓碑');
+
+    // 4. 普通已软删除的真实周记，若用户带上 force_sync 强制推送真实内容，应允许复活并落库
+    const forceWeekly = { id: 998, title: '用户强制同步已删周记', content: '新内容', force_sync: true };
+    const resForce = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [forceWeekly] }), db, 1);
+    const bodyForce = await resForce.json();
+    assert.ok(bodyForce.updated.some(item => Number(item.id) === 998), 'force_sync 应允许复活普通周记');
+    const restoredRow = await db.prepare('SELECT id, is_deleted, title FROM weeklies WHERE id = 998').first();
+    assert.equal(restoredRow.is_deleted, 0);
+    assert.equal(restoredRow.title, '用户强制同步已删周记');
+});
+
 integration('Sync batch - 非法 JSON 与非对象载荷返回 400', async () => {
     const db = createTestDb();
     await seedUser(db, 1);

@@ -252,7 +252,17 @@ export async function handleSyncBatch(request, db, userId) {
                 continue;
             }
         }
-        if (item.id != null && deletedWeeklies.has(Number(item.id))) continue;
+        if (item.id != null && deletedWeeklies.has(Number(item.id))) {
+            const hasContent = (item.title && item.title.trim()) || (item.content && item.content.trim());
+            if (Number(item.id) === 1 && hasContent) {
+                item.id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+                allowedWeeklies.add(item.id);
+            } else if (item.force_sync && hasContent) {
+                // 用户显式强制同步携带真实内容的周记：解除软删除墓碑防线并恢复落库
+            } else {
+                continue;
+            }
+        }
         if (await checkConflict('weeklies', item, ownedWeeklies.current, formatWeekly, 'weeklies')) continue;
         pushedIds.weeklies.push(item.id);
         const weeklyData = item.weekly_data || (item.weeklyData ? JSON.stringify(item.weeklyData) : null);

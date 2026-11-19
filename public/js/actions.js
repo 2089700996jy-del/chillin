@@ -42,4 +42,5 @@ export const actions = {
     renderTopicShelves: null,
     openTopicDetailSheet: null,
     refreshAgentInbox: null,
+    clearPendingRetry: null,
 };

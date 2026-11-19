@@ -161,3 +161,38 @@ test('Media - backup retention is a no-op without an R2 binding', async () => {
     const result = await pruneOldBackups({});
     assert.deepEqual(result, { scanned: 0, deleted: 0 });
 });
+
+test('Media - 全局隐藏上传 input 杜绝 pointer-events: none 并符合无障碍隐形规范', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const html = await fs.readFile(path.join(process.cwd(), 'public', 'index.html'), 'utf8');
+    const match = html.match(/<input\s+type="file"\s+id="global-image-uploader"[^>]*>/);
+    assert.ok(match, '必须存在 global-image-uploader');
+    const uploaderTag = match[0];
+    assert.ok(!uploaderTag.includes('pointer-events: none'), '移动端 WebKit 会丢弃 pointer-events: none 的 click()，绝不能包含该样式');
+    assert.ok(uploaderTag.includes('clip: rect(0, 0, 0, 0)') || uploaderTag.includes('clip:rect(0,0,0,0)'), '应使用标准 clip 隐形');
+    assert.ok(uploaderTag.includes('opacity: 0') || uploaderTag.includes('opacity:0'));
+});
+
+test('Media - upload.js 导出 clearPendingRetry 并在重试与清空时重置按钮状态', async () => {
+    if (typeof globalThis.localStorage === 'undefined') {
+        globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
+    }
+    if (typeof globalThis.window === 'undefined') globalThis.window = globalThis;
+    if (typeof globalThis.location === 'undefined') globalThis.location = { hostname: 'localhost' };
+    const { clearPendingRetry } = await import('../public/js/upload.js');
+    assert.equal(typeof clearPendingRetry, 'function', 'clearPendingRetry 应当被导出');
+
+    const fakeBtn = {
+        innerHTML: '<span>↻ 重试上传</span>',
+        dataset: { uploadRetry: '1', originalHtml: '<span>上传</span>' }
+    };
+    clearPendingRetry(fakeBtn);
+    assert.equal(fakeBtn.dataset.uploadRetry, undefined, 'uploadRetry 标记应被清除');
+    assert.equal(fakeBtn.innerHTML, '<span>上传</span>', '按钮应恢复 originalHtml');
+
+    const { actions } = await import('../public/js/actions.js');
+    const { initUpload } = await import('../public/js/upload.js');
+    initUpload();
+    assert.equal(typeof actions.clearPendingRetry, 'function', 'actions.clearPendingRetry 应当被初始化注册');
+});

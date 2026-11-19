@@ -106,10 +106,7 @@ function rescueAndConsolidateLocalData() {
     };
 }
 
-/**
- * 安全读取 localStorage 中的 JSON 值：存档被手工改坏或写入中断时返回 null，
- * 由调用方决定降级。裸 JSON.parse 会让一个损坏的 key 抛异常，中断整条离线同步链路。
- */
+/** 安全读取 localStorage 中的 JSON 值 */
 export function readJsonValue(key) {
     try {
         const raw = localStorage.getItem(key);
@@ -214,10 +211,7 @@ export function makePushedTimestampMap(items) {
     return map;
 }
 
-/**
- * 安全清除脏标记：仅清除更新时间戳不超过本次推送快照的记录
- * 若用户在网络传输期间进行了新编辑，其 updated_at 会大于推送快照，从而安全保留 _dirty: true
- */
+/** 安全清除脏标记：仅清除更新时间戳不超过本次推送快照的记录 */
 export function clearPushedDirtyFlags(list, pushedMap) {
     if (!Array.isArray(list) || !pushedMap) return false;
     let changed = false;
@@ -1083,6 +1077,7 @@ function retireLocalMockItem(resource, item) {
     if (state.authToken || state.cookieSession) {
         apiRequest(`/api/${resource}/${oldId}`, { method: 'DELETE' }).catch(() => {});
     }
+    saveResource(resource);
 }
 
 /** 自动升级本地具有模版特征的预置 Mock 数据，赋予客户端唯一时间戳 ID 并清理冲突 */
@@ -1167,10 +1162,7 @@ export function upgradeLocalMockItems() {
     return changed || notesChanged || bookmarksChanged || feedsChanged || promptsChanged;
 }
 
-/**
- * 阶段二异步注水：从 IndexedDB 批量拉取全量数据，
- * 当 IndexedDB 中有因超限未完整存入 localStorage 的历史全量数据时，无缝合并并静默刷新视图。
- */
+/** 阶段二异步注水：从 IndexedDB 批量拉取全量数据 */
 export async function hydrateFromIndexedDb() {
     try {
         const keys = [
@@ -1244,11 +1236,7 @@ export async function hydrateFromIndexedDb() {
 const PULL_PAGE_SIZE = 100;
 const PULL_MAX_PAGES = 500;
 
-/**
- * 聚合拉取的分页版本：每次 RTT 只取每种资源的一页，用服务端 keyset 游标续页。
- * 离线口径不变——页面拉完后仍合并进完整的本地缓存，不裁成服务器第一页。
- * 旧版 Worker 不认识 page_size 时会直接返回全量；没有 next 就视为一次拉完。
- */
+/** 聚合拉取的分页版本：每次 RTT 取每种资源一页，合并进本地缓存 */
 async function pullAggregatedPages(pullSpecs) {
     const accumulated = Object.fromEntries(pullSpecs.map((spec) => [spec.resource, []]));
     const cursors = {};
@@ -1484,7 +1472,20 @@ export async function syncFromApi() {
                     for (const changed of (res && res.updated) || []) {
                         if (conflictKeys.has(changed.resource + ':' + String(changed.id))) continue;
                         const list = resourceLists[changed.resource];
-                        const item = (list || []).find((entry) => String(entry.id) === String(changed.id));
+                        let item = (list || []).find((entry) => String(entry.id) === String(changed.id));
+                        if (!item && changed.resource === 'weeklies') {
+                            const mock = (list || []).find((e) => Number(e.id) === 1 || String(e.id) === '1');
+                            if (mock) {
+                                const oldId = String(mock.id);
+                                mock.id = changed.id;
+                                item = mock;
+                                saveResource('weeklies');
+                                if (pushedWeeklies && pushedWeeklies.has(oldId)) {
+                                    pushedWeeklies.set(String(changed.id), pushedWeeklies.get(oldId));
+                                    pushedWeeklies.delete(oldId);
+                                }
+                            }
+                        }
                         if (item && changed.updated_at) {
                             item.updated_at = changed.updated_at;
                             rememberSyncBase(changed.resource, item, changed.updated_at);
@@ -1629,6 +1630,7 @@ async function apiSyncResource(resource, apiPath, item, method, opts = {}) {
         }[resource] || [];
         resolvedItem = list.find(entry => entry && String(entry.id) === String(item)) || { id: item };
     }
+    const originalId = resolvedItem?.id;
 
     // 单条推送同样要保证 id：服务端缺 id 时会自增另赋，客户端将永远对不上
     if (method !== 'DELETE' && resolvedItem) {
@@ -1668,7 +1670,15 @@ async function apiSyncResource(resource, apiPath, item, method, opts = {}) {
             setSyncStatus('同步冲突待处理', 'warn');
             return res;
         }
-        const changed = (res && res.updated || []).find((entry) => String(entry.id) === String(resolvedItem.id));
+        let changed = (res && res.updated || []).find((entry) => String(entry.id) === String(resolvedItem.id));
+        if (!changed && res && res.updated && (Number(resolvedItem.id) === 1 || String(resolvedItem.id) === '1' || Number(originalId) === 1 || String(originalId) === '1')) {
+            const mapped = res.updated.find((entry) => entry.resource === resource);
+            if (mapped) {
+                resolvedItem.id = mapped.id;
+                changed = mapped;
+                saveResource(resource);
+            }
+        }
         if (!changed) {
             resolvedItem._dirty = true;
             setSyncStatus('未同步', 'warn');
