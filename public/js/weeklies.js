@@ -688,7 +688,9 @@ if (editCoverPreviewEl) {
     editCoverPreviewEl.addEventListener('click', (e) => {
         if (e.target.closest('#btn-clear-cover')) return;
         const coverUploadBtn = document.querySelector('.btn-upload-image[data-target="edit-cover"]');
-        if (coverUploadBtn) {
+        if (actions.triggerImageUpload) {
+            actions.triggerImageUpload({ targetInputId: 'edit-cover', mode: 'value', btn: coverUploadBtn });
+        } else if (coverUploadBtn) {
             actions.clearPendingRetry?.(coverUploadBtn);
             coverUploadBtn.click();
         }
@@ -698,7 +700,9 @@ const coverIconEl = document.querySelector('.ios-cover-input-wrap .ios-input-ico
 if (coverIconEl) {
     coverIconEl.addEventListener('click', () => {
         const coverUploadBtn = document.querySelector('.btn-upload-image[data-target="edit-cover"]');
-        if (coverUploadBtn) {
+        if (actions.triggerImageUpload) {
+            actions.triggerImageUpload({ targetInputId: 'edit-cover', mode: 'value', btn: coverUploadBtn });
+        } else if (coverUploadBtn) {
             actions.clearPendingRetry?.(coverUploadBtn);
             coverUploadBtn.click();
         }

@@ -43,4 +43,5 @@ export const actions = {
     openTopicDetailSheet: null,
     refreshAgentInbox: null,
     clearPendingRetry: null,
+    triggerImageUpload: null,
 };

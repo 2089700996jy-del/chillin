@@ -240,13 +240,31 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
     }
 }
 
+let currentUploadTargetInput = null;
+let currentUploadMode = 'value';
+let currentActiveUploadBtn = null;
+
+/**
+ * 直接同步拉起系统图片选择器，规避移动端合成事件传递（Synthetic Event Chaining）导致瞬态激活失效
+ */
+export function triggerImageUpload({ targetInput = null, targetInputId = 'edit-cover', mode = 'value', btn = null } = {}) {
+    const input = targetInput || (targetInputId ? document.getElementById(targetInputId) : null);
+    currentUploadTargetInput = input;
+    currentUploadMode = mode || (input?.tagName === 'TEXTAREA' ? 'markdown' : 'value');
+    currentActiveUploadBtn = btn;
+    clearPendingRetry(btn);
+    const uploader = document.getElementById('global-image-uploader');
+    if (uploader) {
+        uploader.value = '';
+        uploader.click();
+    }
+}
+
 export function initUpload() {
     actions.clearPendingRetry = clearPendingRetry;
+    actions.triggerImageUpload = triggerImageUpload;
     if (typeof document === 'undefined') return;
     const getGlobalUploader = () => document.getElementById('global-image-uploader');
-    let currentUploadTargetInput = null;
-    let currentUploadMode = 'value';
-    let currentActiveUploadBtn = null;
 
     // 清理重试状态：监听封面移除与输入框清空（捕获阶段，防止子元素 stopPropagation 吞掉点击）
     document.addEventListener('click', (e) => {
@@ -274,20 +292,10 @@ export function initUpload() {
             return;
         }
 
-        // 主动选文件：清除重试标记，拉起原生文件选择器
-        clearPendingRetry(btn);
-
         const targetId = btn.dataset.target;
-        currentUploadTargetInput = document.getElementById(targetId);
-        currentUploadMode = btn.dataset.mode || (currentUploadTargetInput?.tagName === 'TEXTAREA' ? 'markdown' : 'value');
-        currentActiveUploadBtn = btn;
-
-        const uploader = getGlobalUploader();
-        if (uploader) {
-            // 关键修复：每次点击前主动清空 value，确保选择同名文件或取消后重选均能触发 change 事件
-            uploader.value = '';
-            uploader.click();
-        }
+        const targetInput = targetId ? document.getElementById(targetId) : null;
+        const mode = btn.dataset.mode || (targetInput?.tagName === 'TEXTAREA' ? 'markdown' : 'value');
+        triggerImageUpload({ targetInput, mode, btn });
     });
 
     // 2. 监听文件选择框选择事件

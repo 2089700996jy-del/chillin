@@ -1192,31 +1192,17 @@ export async function hydrateFromIndexedDb() {
         const idbFeeds = dataMap[getLocalKey('gardenFeeds')];
         const idbEchoCards = dataMap[getLocalKey('gardenEchoCards')];
 
-        if (Array.isArray(idbWeeklies) && idbWeeklies.length > 0) {
-            const beforeLen = state.weeklies.length;
-            state.weeklies = mergeDataLists(state.weeklies, idbWeeklies);
-            if (state.weeklies.length !== beforeLen) hasNewData = true;
-        }
-        if (Array.isArray(idbNotes) && idbNotes.length > 0) {
-            const beforeLen = state.notesDatabase.length;
-            state.notesDatabase = mergeDataLists(state.notesDatabase, idbNotes);
-            if (state.notesDatabase.length !== beforeLen) hasNewData = true;
-        }
-        if (Array.isArray(idbBookmarks) && idbBookmarks.length > 0) {
-            const beforeLen = state.bookmarksDatabase.length;
-            state.bookmarksDatabase = mergeDataLists(state.bookmarksDatabase, idbBookmarks);
-            if (state.bookmarksDatabase.length !== beforeLen) hasNewData = true;
-        }
-        if (Array.isArray(idbPrompts) && idbPrompts.length > 0) {
-            const beforeLen = state.promptsDatabase.length;
-            state.promptsDatabase = mergeDataLists(state.promptsDatabase, idbPrompts);
-            if (state.promptsDatabase.length !== beforeLen) hasNewData = true;
-        }
-        if (Array.isArray(idbFeeds) && idbFeeds.length > 0) {
-            const beforeLen = state.feedsDatabase.length;
-            state.feedsDatabase = mergeDataLists(state.feedsDatabase, idbFeeds);
-            if (state.feedsDatabase.length !== beforeLen) hasNewData = true;
-        }
+        const mergeResource = (curr, idb) => {
+            if (!Array.isArray(idb) || idb.length === 0) return curr;
+            const next = mergeDataLists(curr, idb);
+            if (next.length !== curr.length || JSON.stringify(next) !== JSON.stringify(curr)) hasNewData = true;
+            return next;
+        };
+        state.weeklies = mergeResource(state.weeklies, idbWeeklies);
+        state.notesDatabase = mergeResource(state.notesDatabase, idbNotes);
+        state.bookmarksDatabase = mergeResource(state.bookmarksDatabase, idbBookmarks);
+        state.promptsDatabase = mergeResource(state.promptsDatabase, idbPrompts);
+        state.feedsDatabase = mergeResource(state.feedsDatabase, idbFeeds);
         if (Array.isArray(idbEchoCards) && idbEchoCards.length > 0) {
             if (!state.echoCardsDatabase || state.echoCardsDatabase.length < idbEchoCards.length) {
                 state.echoCardsDatabase = idbEchoCards;
@@ -1580,21 +1566,27 @@ export async function syncFromApi() {
     }
 }
 
+const safeLocal = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 export function saveDatabase() {
     idbSet(getLocalKey('gardenWeeklies'), state.weeklies);
+    safeLocal(getLocalKey('gardenWeeklies'), state.weeklies);
 }
 export const saveWeekliesDatabase = saveDatabase;
 export function saveNotesDatabase() {
     idbSet(getLocalKey('gardenNotes'), state.notesDatabase);
+    safeLocal(getLocalKey('gardenNotes'), state.notesDatabase);
 }
 export function saveBookmarksDatabase() {
     idbSet(getLocalKey('gardenBookmarks'), state.bookmarksDatabase);
+    safeLocal(getLocalKey('gardenBookmarks'), state.bookmarksDatabase);
 }
 export function savePromptsDatabase() {
     idbSet(getLocalKey('gardenPrompts'), state.promptsDatabase);
+    safeLocal(getLocalKey('gardenPrompts'), state.promptsDatabase);
 }
 export function saveFeedsDatabase() {
     idbSet(getLocalKey('gardenFeeds'), state.feedsDatabase);
+    safeLocal(getLocalKey('gardenFeeds'), state.feedsDatabase);
 }
 
 function markSyncedItem(item, pushedUpdatedAt) {

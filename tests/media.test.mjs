@@ -172,16 +172,19 @@ test('Media - 全局隐藏上传 input 杜绝 pointer-events: none 并符合无�
     assert.ok(!uploaderTag.includes('pointer-events: none'), '移动端 WebKit 会丢弃 pointer-events: none 的 click()，绝不能包含该样式');
     assert.ok(uploaderTag.includes('clip: rect(0, 0, 0, 0)') || uploaderTag.includes('clip:rect(0,0,0,0)'), '应使用标准 clip 隐形');
     assert.ok(uploaderTag.includes('opacity: 0') || uploaderTag.includes('opacity:0'));
+    assert.match(uploaderTag, /accept="image\/\*"/, '移动端文件选择器应使用标准 accept="image/*"');
+    assert.match(uploaderTag, /position:\s*fixed/, '文件选择器应固定在视口内避免滚动偏离视口被拦截');
 });
 
-test('Media - upload.js 导出 clearPendingRetry 并在重试与清空时重置按钮状态', async () => {
+test('Media - upload.js 导出 clearPendingRetry 与 triggerImageUpload 并在初始化时注册到 actions', async () => {
     if (typeof globalThis.localStorage === 'undefined') {
         globalThis.localStorage = { getItem: () => null, setItem: () => {}, removeItem: () => {} };
     }
     if (typeof globalThis.window === 'undefined') globalThis.window = globalThis;
     if (typeof globalThis.location === 'undefined') globalThis.location = { hostname: 'localhost' };
-    const { clearPendingRetry } = await import('../public/js/upload.js');
+    const { clearPendingRetry, triggerImageUpload, initUpload } = await import('../public/js/upload.js');
     assert.equal(typeof clearPendingRetry, 'function', 'clearPendingRetry 应当被导出');
+    assert.equal(typeof triggerImageUpload, 'function', 'triggerImageUpload 应当被导出');
 
     const fakeBtn = {
         innerHTML: '<span>↻ 重试上传</span>',
@@ -192,7 +195,7 @@ test('Media - upload.js 导出 clearPendingRetry 并在重试与清空时重置�
     assert.equal(fakeBtn.innerHTML, '<span>上传</span>', '按钮应恢复 originalHtml');
 
     const { actions } = await import('../public/js/actions.js');
-    const { initUpload } = await import('../public/js/upload.js');
     initUpload();
     assert.equal(typeof actions.clearPendingRetry, 'function', 'actions.clearPendingRetry 应当被初始化注册');
+    assert.equal(typeof actions.triggerImageUpload, 'function', 'actions.triggerImageUpload 应当被初始化注册');
 });

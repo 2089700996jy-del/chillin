@@ -99,6 +99,8 @@ test('Timeline - 年/月过滤只认合法日期，且月份必须依附年份',
     assert.equal(decodeCssEscapedId('abc'), 'abc');
     assert.deepEqual(parseYearMonth('2026-10-27 09:00:00'), { year: '2026', month: '10' });
     assert.deepEqual(parseYearMonth('2026-01-01'), { year: '2026', month: '01' });
+    assert.deepEqual(parseYearMonth('2026年11月19日'), { year: '2026', month: '11' });
+    assert.deepEqual(parseYearMonth('2026年3月5日'), { year: '2026', month: '03' });
     assert.equal(parseYearMonth('2026-13-01'), null, '13 月必须判非法');
     assert.equal(parseYearMonth('not-a-date'), null);
     assert.equal(parseYearMonth(''), null);

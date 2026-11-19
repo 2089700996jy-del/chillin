@@ -1,8 +1,12 @@
 import { setHtml } from './trusted-types.js';
 /** Shared pure helpers for Chillin (no app state). */
 
+let lastGeneratedId = 0;
 export function generateUniqueId() {
-    return Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    let id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+    if (id <= lastGeneratedId) id = lastGeneratedId + 1;
+    lastGeneratedId = id;
+    return id;
 }
 
 /**
@@ -305,7 +309,7 @@ export function isSyncingNow() {
 // ── 时间轴筛选：周记 / 随手记共用的年、月过滤 ──
 // 纯前端过滤，断网时仍然可用；不改变同步口径，也不把本地数据裁成服务器第一页。
 export function parseYearMonth(value) {
-    const match = /^(\d{4})-(\d{2})/.exec(String(value || '').trim());
+    const match = /^(\d{4})[-年/.]\s*(\d{1,2})/.exec(String(value || '').trim());
     if (!match) return null;
     const year = Number(match[1]);
     const month = Number(match[2]);

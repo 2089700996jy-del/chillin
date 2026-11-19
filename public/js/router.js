@@ -160,6 +160,7 @@ const switchView = (targetViewId, opts = {}) => {
         } else if (targetViewId === 'feeds') {
             actions.renderFeeds();
         } else if (targetViewId === 'home') {
+            actions.renderCards?.();
             actions.renderHeatmap();
         } else if (targetViewId === 'agent') {
             loadFeature('agent-goals')
