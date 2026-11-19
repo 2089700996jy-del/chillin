@@ -381,5 +381,28 @@ test('Sync Keepalive - W3C 64KB 规范防御：大于 60KB/64KB 自动关闭 kee
     assert.equal(isKeepalivePayloadSafe(null), true);
 });
 
+test('Sync - upgradeLocalMockItems 自动升级修改过的占位模版并清理冲突', async () => {
+    const { upgradeLocalMockItems, processApiSyncResult, getSyncConflicts } = await import('../public/js/sync.js');
+    const { state } = await import('../public/js/state.js');
+    localStorage.clear();
+
+    // 模拟用户将模版周记 id:1 改为了真实周记
+    state.weeklies = [{ id: 1, title: '💰 转正', date: '2026年11月16日', _dirty: true }];
+    const upgraded = upgradeLocalMockItems();
+    assert.equal(upgraded, true, '应当检测并完成升级');
+    assert.notEqual(state.weeklies[0].id, 1, '周记 ID 应当升级为全新唯一时间戳');
+    assert.ok(state.weeklies[0].id > 1000, 'ID 应当为安全时间戳');
+    assert.equal(state.weeklies[0]._dirty, true, '升级后应当保持 _dirty 为 true 以便批量同步上报');
+
+    localStorage.clear();
+    // 验证防误判：当云端仍为初始模版时，processApiSyncResult 绝不触发冲突
+    const local = [{ id: 1, title: '💰 转正', _dirty: true, updated_at: '2026-11-16 12:00:00' }];
+    const cloud = [{ id: 1, title: '2023-W42: 记忆切片', updated_at: '2023-10-22 10:00:00' }];
+    const result = processApiSyncResult(local, cloud, false, 'weeklies');
+    assert.equal(result.conflicts, 0, '云端初始模版绝不能与用户本地改动判定为冲突');
+    assert.equal(result.needsUpload, true, '本地改动应当允许正常上传');
+    localStorage.clear();
+});
+
 
 

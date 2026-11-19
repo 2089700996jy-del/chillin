@@ -420,6 +420,13 @@ export function processApiSyncResult(localList, apiData, isIncremental = false, 
             if (!local._dirty) continue;
             const cloud = allCloudMap.get(key);
             if (!cloud) continue;
+            // 初始占位模版保护：云端仍是未修改的默认模版时，本地的任何编辑属于用户创作，绝非并发冲突
+            if (resource === 'weeklies' && Number(key) === 1 && (cloud.title === '2023-W42: 记忆切片' || !cloud.title)) {
+                continue;
+            }
+            if (resource === 'notes' && (Number(key) === 101 || Number(key) === 102) && (cloud.title === '下周购物清单' || cloud.title === '零碎灵感')) {
+                continue;
+            }
             if (cloud.is_deleted) {
                 removeDeletedId(local.id);
                 protectKeys.add(key);
@@ -884,8 +891,98 @@ export function loadLocalData() {
     ]);
 
     hydrateFromIndexedDb().catch((err) => console.warn('[IDB] hydrate error:', err));
-
+    upgradeLocalMockItems();
     refresh('all');
+}
+
+/**
+ * 自动升级本地具有模版特征或被编辑过的预置 Mock 数据（如 id:1 周记、id:101/102 笔记等）
+ * 将其赋予独一无二的全新客户端时间戳 ID，并清除误判的虚假同步冲突，杜绝与云端预置种子冲突
+ */
+export function upgradeLocalMockItems() {
+    let changed = false;
+    // 1. 周记：升级所有 id === 1 且被编辑过或处于 dirty 状态的记录
+    if (Array.isArray(state.weeklies)) {
+        for (const item of state.weeklies) {
+            if (item && Number(item.id) === 1) {
+                const isModified = item._dirty || (item.title && item.title !== '2023-W42: 记忆切片');
+                if (isModified) {
+                    const oldId = item.id;
+                    item.id = generateUniqueId();
+                    item._dirty = true;
+                    changed = true;
+                    removeSyncConflict('weeklies', oldId);
+                    addDeletedId(oldId);
+                    if (state.authToken || state.cookieSession) {
+                        apiRequest(`/api/weeklies/${oldId}`, { method: 'DELETE' }).catch(() => {});
+                    }
+                }
+            }
+        }
+        if (changed) saveDatabase();
+    }
+    // 2. 笔记：ID 101/102
+    let notesChanged = false;
+    if (Array.isArray(state.notesDatabase)) {
+        for (const item of state.notesDatabase) {
+            const numId = Number(item.id);
+            if (numId === 101 || numId === 102) {
+                const isModified = item._dirty ||
+                    (numId === 101 && item.title !== '下周购物清单') ||
+                    (numId === 102 && item.title !== '零碎灵感');
+                if (isModified) {
+                    const oldId = item.id;
+                    item.id = generateUniqueId();
+                    item._dirty = true;
+                    notesChanged = true;
+                    removeSyncConflict('notes', oldId);
+                    addDeletedId(oldId);
+                    if (state.authToken || state.cookieSession) {
+                        apiRequest(`/api/notes/${oldId}`, { method: 'DELETE' }).catch(() => {});
+                    }
+                }
+            }
+        }
+        if (notesChanged) saveNotesDatabase();
+    }
+    // 3. 收藏：ID 201/202/203
+    let bookmarksChanged = false;
+    if (Array.isArray(state.bookmarksDatabase)) {
+        for (const item of state.bookmarksDatabase) {
+            const numId = Number(item.id);
+            if ((numId === 201 || numId === 202 || numId === 203) && item._dirty) {
+                const oldId = item.id;
+                item.id = generateUniqueId();
+                item._dirty = true;
+                bookmarksChanged = true;
+                removeSyncConflict('bookmarks', oldId);
+                addDeletedId(oldId);
+                if (state.authToken || state.cookieSession) {
+                    apiRequest(`/api/bookmarks/${oldId}`, { method: 'DELETE' }).catch(() => {});
+                }
+            }
+        }
+        if (bookmarksChanged) saveBookmarksDatabase();
+    }
+    // 4. 随手记：ID 1
+    let feedsChanged = false;
+    if (Array.isArray(state.feedsDatabase)) {
+        for (const item of state.feedsDatabase) {
+            if (Number(item.id) === 1 && item._dirty) {
+                const oldId = item.id;
+                item.id = generateUniqueId();
+                item._dirty = true;
+                feedsChanged = true;
+                removeSyncConflict('feeds', oldId);
+                addDeletedId(oldId);
+                if (state.authToken || state.cookieSession) {
+                    apiRequest(`/api/feeds/${oldId}`, { method: 'DELETE' }).catch(() => {});
+                }
+            }
+        }
+        if (feedsChanged) saveFeedsDatabase();
+    }
+    return changed || notesChanged || bookmarksChanged || feedsChanged;
 }
 
 /**
@@ -954,6 +1051,7 @@ export async function hydrateFromIndexedDb() {
         }
 
         if (hasNewData && !isProtectingLocalEdits()) {
+            upgradeLocalMockItems();
             refresh('all');
         }
     } catch (err) {
@@ -1028,6 +1126,7 @@ function showSkeletonsForEmptyLists() {
 
 export async function syncFromApi() {
     if ((!state.authToken && !state.cookieSession) || isSyncingInBg) return;
+    upgradeLocalMockItems();
     isSyncingInBg = true;
     let needsBatchUpload = false;
     let hadError = false;
