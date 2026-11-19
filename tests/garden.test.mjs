@@ -346,12 +346,68 @@ integration('Sync batch - 超过单种资源条数上限时拒绝（防超大请
     assert.equal(res.status, 413);
 });
 
-integration('Sync batch - 单条记录体积过大时拒绝', async () => {
+integration('Sync batch - 单条记录体积过大时拒绝（500KB 上限防御）', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
-    const huge = { id: 'w1', title: 'big', content: 'x'.repeat(201 * 1024) };
+    // 超过 500KB 的超大记录应被 413 拒绝
+    const huge = { id: 10001, title: 'big', content: 'x'.repeat(501 * 1024) };
     const res = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [huge] }), db, 1);
     assert.equal(res.status, 413);
+
+    // 250KB 的记录应顺利通过（旧 200KB 上限已扩容至 500KB）
+    const comfortable = { id: 10002, title: 'comfortable', content: 'x'.repeat(250 * 1024) };
+    const res2 = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [comfortable] }), db, 1);
+    assert.equal(res2.status, 200);
+});
+
+integration('Sync batch - 缺省字段容错与默认参数绑定防御', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    // 缺失 category, summary, date, cover, content 等非核心或可选字段
+    const incomplete = { id: 10003, title: '只有标题的周记' };
+    const res = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [incomplete] }), db, 1);
+    assert.equal(res.status, 200);
+
+    const row = await db.prepare('SELECT * FROM weeklies WHERE id = 10003').first();
+    assert.ok(row, '应成功写入数据库');
+    assert.equal(row.category, '🌸', '缺省时应用安全默认分类');
+    assert.equal(row.summary, '', '缺省时应用空摘要');
+    assert.equal(row.title, '只有标题的周记');
+
+    // 验证 weekly_data 字符串与 annotations 字段的安全落库保留
+    const completeData = {
+        id: 10004,
+        title: '带完整小组件与批注的周记',
+        weekly_data: JSON.stringify({ life: { image: '/api/file/img1', caption: '烟火' } }),
+        annotations: [{ id: 1, text: '批注测试' }]
+    };
+    const res2 = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [completeData] }), db, 1);
+    assert.equal(res2.status, 200);
+    const row2 = await db.prepare('SELECT * FROM weeklies WHERE id = 10004').first();
+    assert.ok(row2);
+    assert.ok(row2.weekly_data && row2.weekly_data.includes('/api/file/img1'), 'weekly_data 字符串必须完整保留');
+    assert.ok(row2.annotations && row2.annotations.includes('批注测试'), 'annotations 必须正确序列化落库');
+});
+
+integration('Sync batch - mock ID 1 归属防御与安全时间戳重分配', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    // 用户 1 占有 ID 1
+    await db.prepare("INSERT INTO weeklies (id, category, title, summary, date, user_id) VALUES (1, '🌸', '初始周记', '摘要', '2023-10-22', 1)").run();
+
+    // 用户 2 尝试推送 ID 1 时，服务端自动重分配唯一时间戳，杜绝静默吞掉
+    const user2MockWeekly = { id: 1, title: '💰 转正', content: '转正内容' };
+    const res = await handleSyncBatch(jsonRequest('https://x/api/sync/batch', { weeklies: [user2MockWeekly] }), db, 2);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.updated && body.updated.length > 0);
+    assert.notEqual(body.updated[0].id, 1, 'ID 应被重分配为新时间戳');
+
+    const user2Row = await db.prepare('SELECT * FROM weeklies WHERE user_id = 2').first();
+    assert.ok(user2Row);
+    assert.equal(user2Row.title, '💰 转正');
 });
 
 integration('Sync batch - 非法 JSON 与非对象载荷返回 400', async () => {

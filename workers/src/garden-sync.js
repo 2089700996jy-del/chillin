@@ -158,7 +158,7 @@ export async function handleSyncPull(url, db, userId) {
 // 批量推送的防护上限：正常一份周记/笔记的增量远小于这些值
 const MAX_SYNC_BODY_BYTES = 4 * 1024 * 1024;   // 单次请求体 4MB
 const MAX_SYNC_RECORDS = 200;                  // 每种资源单次最多 200 条
-const MAX_SYNC_RECORD_CHARS = 200 * 1024;      // 单条记录序列化后 200KB
+const MAX_SYNC_RECORD_CHARS = 500 * 1024;      // 单条记录序列化后 500KB
 
 export async function handleSyncBatch(request, db, userId) {
     // 先限长读取再解析：避免把超大 JSON 整个读进内存后再遍历
@@ -187,8 +187,11 @@ export async function handleSyncBatch(request, db, userId) {
             return jsonResponse({ error: name + ' 单次最多 ' + MAX_SYNC_RECORDS + ' 条，请分批推送' }, 413);
         }
         for (const item of items) {
-            if (item && JSON.stringify(item).length > MAX_SYNC_RECORD_CHARS) {
-                return jsonResponse({ error: name + ' 中存在单条记录体积过大（上限 200KB）' }, 413);
+            if (!item) continue;
+            const itemLen = JSON.stringify(item).length;
+            if (itemLen > MAX_SYNC_RECORD_CHARS) {
+                console.warn(`[sync-batch] record too large: resource=${name}, id=${item?.id}, size=${Math.round(itemLen / 1024)}KB, limit=500KB`);
+                return jsonResponse({ error: name + ' 中存在单条记录体积过大（上限 500KB）' }, 413);
             }
         }
     }
@@ -240,18 +243,26 @@ export async function handleSyncBatch(request, db, userId) {
 
     for (const item of weeklies) {
         if (item.id != null && !isValidRecordId(item.id)) continue;
-        if (item.id != null && !allowedWeeklies.has(item.id)) continue;
+        if (item.id != null && !allowedWeeklies.has(item.id)) {
+            // Defense for mock ID 1: if user is not user 1, reassign a unique timestamp id
+            if (Number(item.id) === 1) {
+                item.id = Date.now() * 1000 + Math.floor(Math.random() * 1000);
+                allowedWeeklies.add(item.id);
+            } else {
+                continue;
+            }
+        }
         if (item.id != null && deletedWeeklies.has(Number(item.id))) continue;
         if (await checkConflict('weeklies', item, ownedWeeklies.current, formatWeekly, 'weeklies')) continue;
         pushedIds.weeklies.push(item.id);
-        const weeklyData = item.weeklyData ? JSON.stringify(item.weeklyData) : null;
-        const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
+        const weeklyData = item.weekly_data || (item.weeklyData ? JSON.stringify(item.weeklyData) : null);
+        const annotations = Array.isArray(item.annotations) ? JSON.stringify(item.annotations) : (typeof item.annotations === 'string' ? item.annotations : '[]');
         statements.push(
             db.prepare(
                 `INSERT INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
                  ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, summary=excluded.summary, date=excluded.date, cover=excluded.cover, weekly_data=excluded.weekly_data, content=excluded.content, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
-            ).bind(item.id, item.category, item.title, item.summary, item.date, item.cover || '', weeklyData, item.content || '', annotations, userId)
+            ).bind(item.id ?? null, item.category || '🌸', item.title || '', item.summary || '', item.date || '', item.cover || item.cover_image || '', weeklyData, item.content || '', annotations, userId)
         );
     }
 
@@ -261,13 +272,13 @@ export async function handleSyncBatch(request, db, userId) {
         if (item.id != null && deletedNotes.has(Number(item.id))) continue;
         if (await checkConflict('notes', item, ownedNotes.current, formatNote, 'notes')) continue;
         pushedIds.notes.push(item.id);
-        const annotations = item.annotations ? JSON.stringify(item.annotations) : '[]';
+        const annotations = Array.isArray(item.annotations) ? JSON.stringify(item.annotations) : (typeof item.annotations === 'string' ? item.annotations : '[]');
         statements.push(
             db.prepare(
                 `INSERT INTO notes (id, title, content, date, annotations, user_id, created_at, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
                  ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, date=excluded.date, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
-            ).bind(item.id, item.title, item.content || '', item.date, annotations, userId)
+            ).bind(item.id ?? null, item.title || '', item.content || '', item.date || '', annotations, userId)
         );
     }
 
@@ -284,7 +295,7 @@ export async function handleSyncBatch(request, db, userId) {
                 `INSERT INTO bookmarks (id, type, title, url, description, image, user_id, created_at, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
                  ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, url=excluded.url, description=excluded.description, image=excluded.image, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
-            ).bind(item.id, item.type, item.title, item.url, description, image, userId)
+            ).bind(item.id ?? null, item.type || '🌐 网站', item.title || '', item.url || '', description, image, userId)
         );
     }
 

@@ -19,6 +19,7 @@ if (typeof globalThis.localStorage === 'undefined') {
 }
 if (typeof globalThis.document === 'undefined') {
     globalThis.document = {
+        body: { classList: { toggle: () => {}, remove: () => {}, add: () => {} } },
         getElementById: () => null,
         querySelector: () => null,
         querySelectorAll: () => []
@@ -402,6 +403,173 @@ test('Sync - upgradeLocalMockItems 自动升级修改过的占位模版并清理
     assert.equal(result.conflicts, 0, '云端初始模版绝不能与用户本地改动判定为冲突');
     assert.equal(result.needsUpload, true, '本地改动应当允许正常上传');
     localStorage.clear();
+});
+
+test('Sync - dataUriToBlob converts data URIs to Blobs', async () => {
+    const { dataUriToBlob } = await import('../public/js/sync.js');
+    const b64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+    const blob = dataUriToBlob(b64);
+    assert.ok(blob);
+    assert.equal(blob.type, 'image/png');
+    assert.ok(blob.size > 0);
+
+    // Mismatched declared mime vs magic bytes (JPEG magic bytes declared as png) -> should sniff to image/jpeg
+    const jpegB64 = 'data:image/png;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+    const sniffedBlob = dataUriToBlob(jpegB64);
+    assert.ok(sniffedBlob);
+    assert.equal(sniffedBlob.type, 'image/jpeg');
+
+    // Invalid base64 characters or malformed strings should safely return null and not throw
+    assert.equal(dataUriToBlob('invalid-uri'), null);
+    assert.equal(dataUriToBlob(null), null);
+    assert.equal(dataUriToBlob('data:image/png;base64,invalid!!!character'), null);
+});
+
+test('Sync - processWeeklyBase64Images extracts Base64 images and replaces with uploaded URLs', async () => {
+    const { processWeeklyBase64Images } = await import('../public/js/sync.js');
+    const { state } = await import('../public/js/state.js');
+
+    const sampleB64 = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    // Mock global fetch for /api/upload
+    const originalFetch = globalThis.fetch;
+    let uploadCallCount = 0;
+    globalThis.fetch = async (url, opts) => {
+        if (String(url).includes('/api/upload')) {
+            uploadCallCount++;
+            return new Response(JSON.stringify([{ src: `/api/file/img-${uploadCallCount}?t=token123` }]), {
+                status: 201,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        return new Response('Not Found', { status: 404 });
+    };
+
+    try {
+        const weekly = {
+            id: 9999,
+            title: '💰 转正',
+            date: '2026年11月16日',
+            cover: sampleB64,
+            content: `最近感觉思考的还挺多大脑有点累\n\n![THE WORLD BENEATH MY SUN](${sampleB64})\n\n<img src="${sampleB64}" alt="map" />`,
+            weeklyData: {
+                life: {
+                    image: sampleB64,
+                    caption: '古地图插画'
+                }
+            }
+        };
+
+        const modified = await processWeeklyBase64Images(weekly);
+        assert.equal(modified, true, 'Base64 图片应被处理并替换');
+        assert.ok(!weekly.cover.startsWith('data:image/'), 'Cover 中的 Base64 应已被替换');
+        assert.ok(weekly.cover.startsWith('/api/file/'), 'Cover 应为 /api/file/ 地址');
+        assert.ok(!weekly.content.includes('data:image/'), 'Content 中的 Base64 应已被替换');
+        assert.ok(weekly.content.includes('/api/file/'), 'Content 应引用 /api/file/ 地址');
+        assert.ok(!weekly.weeklyData.life.image.startsWith('data:image/'), 'WeeklyData 中的 Base64 应已被替换');
+
+        // Test multiline base64 in content (RFC 2045 line-wrapped base64)
+        const multilineB64 = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk\n+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==`;
+        const weeklyMultiline = {
+            id: 9998,
+            title: '多行 Base64 周记',
+            content: `![map](${multilineB64})`
+        };
+        const modified2 = await processWeeklyBase64Images(weeklyMultiline);
+        assert.equal(modified2, true);
+        assert.ok(!weeklyMultiline.content.includes('data:image/'));
+        assert.ok(weeklyMultiline.content.includes('/api/file/'));
+        assert.ok(!weeklyMultiline.content.includes('+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=='), '不应留下未清理的截断 Base64 尾部');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('Sync - hydrateFromIndexedDb unconditionally runs upgradeLocalMockItems even with identical lengths', async () => {
+    const { hydrateFromIndexedDb, upgradeLocalMockItems } = await import('../public/js/sync.js');
+    const { state } = await import('../public/js/state.js');
+    const { getLocalKey } = await import('../public/js/auth.js');
+    const { idbSet } = await import('../public/js/db.js');
+
+    // 内存中周记为 1 条初始占位
+    state.weeklies = [{ id: 1, title: '2023-W42: 记忆切片', date: '2023年10月22日', _dirty: false }];
+
+    // IndexedDB 同样仅有 1 条，但已被用户在本地修改为「💰 转正」
+    await idbSet(getLocalKey('gardenWeeklies'), [{ id: 1, title: '💰 转正', date: '2026年11月16日', _dirty: true }]);
+
+    // 执行注水，长度保持为 1（beforeLen === afterLen），验证 upgradeLocalMockItems 仍必须无条件执行
+    await hydrateFromIndexedDb();
+
+    assert.equal(state.weeklies.length, 1);
+    assert.equal(state.weeklies[0].title, '💰 转正');
+    assert.notEqual(state.weeklies[0].id, 1, '即使长度未变，修改过的模版 ID 也必须完成升级为唯一时间戳');
+    assert.ok(state.weeklies[0].id > 1000);
+    assert.equal(state.weeklies[0]._dirty, true);
+});
+
+test('Sync - apiSyncWeekly accepts numeric/string ID and syncs item from state', async () => {
+    const { apiSyncWeekly } = await import('../public/js/sync.js');
+    const { state } = await import('../public/js/state.js');
+
+    const testId = 888888;
+    state.weeklies = [{
+        id: testId,
+        title: '测试周记',
+        category: '🌸',
+        summary: '摘要',
+        date: '2026年11月16日',
+        _dirty: true
+    }];
+
+    const originalFetch = globalThis.fetch;
+    let batchPushed = false;
+    globalThis.fetch = async (url, opts) => {
+        if (String(url).includes('/api/sync/batch')) {
+            batchPushed = true;
+            return new Response(JSON.stringify({
+                updated: [{ resource: 'weeklies', id: testId, updated_at: '2026-11-19 12:00:00' }],
+                conflicts: []
+            }), {
+                status: 200,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    try {
+        const res = await apiSyncWeekly(testId);
+        assert.ok(batchPushed, '通过 ID 触发应顺利找到对象并向云端推送 batch');
+        assert.equal(state.weeklies[0]._dirty, false, '同步成功后 _dirty 应被清理');
+
+        // 测试直接对 mock ID 1 调用 apiSyncWeekly，应完成自愈升级并清理冲突/旧ID
+        state.weeklies = [{
+            id: 1,
+            title: '💰 转正',
+            category: '🌸',
+            summary: '转正摘要',
+            date: '2026年11月16日',
+            _dirty: true
+        }];
+        let pushedWeeklyId = null;
+        globalThis.fetch = async (url, opts) => {
+            if (String(url).includes('/api/sync/batch')) {
+                const body = JSON.parse(opts.body);
+                pushedWeeklyId = body.weeklies[0].id;
+                return new Response(JSON.stringify({
+                    updated: [{ resource: 'weeklies', id: pushedWeeklyId, updated_at: '2026-11-19 12:00:00' }],
+                    conflicts: []
+                }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+            }
+            return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+        };
+        await apiSyncWeekly(1);
+        assert.notEqual(pushedWeeklyId, 1, '推送的 ID 应已自动升级为时间戳 ID');
+        assert.ok(pushedWeeklyId > 1000);
+        assert.equal(state.weeklies[0]._dirty, false);
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });
 
 

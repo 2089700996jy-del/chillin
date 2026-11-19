@@ -13,6 +13,7 @@ import {
     skeletonListHtml,
     isSyncingNow,
     confirmDialog,
+    showToast,
     mountDateFilter,
     filterItemsByYearMonth,
     decodeCssEscapedId,
@@ -28,6 +29,8 @@ import {
     apiSyncWeekly,
     stampLocalUpdate,
     addDeletedId,
+    processWeeklyBase64Images,
+    upgradeLocalMockItems,
 } from './api.js';
 import { setHtml } from './trusted-types.js';
 
@@ -112,6 +115,7 @@ const renderWeeklyAnnotationsList = () => {
 };
 
 const renderCards = (filter = weeklyCategoryFilter) => {
+    upgradeLocalMockItems();
     if (filter !== weeklyCategoryFilter) weeklyVisibleCount = WEEKLY_PAGE_SIZE;
     weeklyCategoryFilter = filter;
     setHtml(galleryContainer, '');
@@ -136,9 +140,37 @@ const renderCards = (filter = weeklyCategoryFilter) => {
         
         const annCount = item.annotations && item.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${item.annotations.length}</span>` : '';
         
-        const dirtyDot = item._dirty ? ' <span class="sync-dirty-dot" title="本地暂存，待同步到云端" aria-label="本地暂存"></span>' : '';
+        const dirtyDot = item._dirty ? ' <span class="sync-dirty-dot" title="点击立即重试同步该周记" aria-label="本地暂存，点击重试同步" role="button" tabindex="0" style="cursor:pointer;"></span>' : '';
         setHtml(card, `${coverHtml}<div class="notion-collection-card__content"><div class="card-title">${escapeHtml(item.title)}${annCount}</div><div class="card-summary">${escapeHtml(item.summary)}</div><div class="card-date">${escapeHtml(item.date)}${dirtyDot}</div></div>`);
         card.addEventListener('click', () => openArticle(item));
+
+        if (item._dirty) {
+            const dotEl = card.querySelector('.sync-dirty-dot');
+            if (dotEl) {
+                const triggerSync = (e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    showToast('正在尝试同步该周记...', 'info');
+                    apiSyncWeekly(item).then((res) => {
+                        if (res && !item._dirty) {
+                            showToast('周记同步成功！', 'success');
+                            renderCards();
+                        } else if (res && item._dirty) {
+                            showToast('周记同步未完成，存在冲突待处理', 'warn');
+                        }
+                    }).catch((err) => {
+                        showToast('周记同步失败：' + (err && err.message ? err.message : '网络异常'), 'error');
+                    });
+                };
+                dotEl.addEventListener('click', triggerSync);
+                dotEl.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        triggerSync(e);
+                    }
+                });
+            }
+        }
+
         galleryContainer.appendChild(card);
         rendered += 1;
     });
@@ -552,15 +584,18 @@ btnCancelEdit.addEventListener('click', () => {
     });
 });
 
-editorForm.addEventListener('submit', (e) => {
+editorForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const idStr = document.getElementById('edit-id').value;
     const isEdit = !!idStr;
     const existingWeekly = isEdit ? state.weeklies.find(d => String(d.id) === String(idStr)) : null;
     const pickedDateVal = document.getElementById('edit-date')?.value || '';
     const finalDate = pickedDateVal ? formatChineseDate(pickedDateVal) : (existingWeekly ? existingWeekly.date : getChineseDate());
-    const rawId = isEdit ? parseInt(idStr) : generateUniqueId();
-    const finalId = (rawId === 1) ? generateUniqueId() : rawId;
+    const rawId = isEdit ? (/^\d+$/.test(idStr) ? Number(idStr) : idStr) : generateUniqueId();
+    const finalId = (Number(rawId) === 1) ? generateUniqueId() : rawId;
+    if (Number(rawId) === 1) {
+        addDeletedId(1);
+    }
     const newData = {
         id: finalId, 
         category: document.getElementById('edit-category').value, 
@@ -579,6 +614,7 @@ editorForm.addEventListener('submit', (e) => {
         }
     };
     if(!newData.weeklyData.music.title) delete newData.weeklyData.music; if(!newData.weeklyData.media[0].title) delete newData.weeklyData.media; if(!newData.weeklyData.life.image) delete newData.weeklyData.life; if(!newData.weeklyData.podcast) delete newData.weeklyData.podcast; if(!newData.weeklyData.work.title) delete newData.weeklyData.work; if(Object.keys(newData.weeklyData).length === 0) delete newData.weeklyData;
+    await processWeeklyBase64Images(newData);
     stampLocalUpdate(newData);
     if (isEdit) {
         const index = state.weeklies.findIndex(d => d.id === rawId || String(d.id) === String(rawId));

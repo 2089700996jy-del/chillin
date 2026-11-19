@@ -51,13 +51,13 @@ export async function handlePostWeekly(request, db, userId) {
             `INSERT INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
              ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, summary=excluded.summary, date=excluded.date, cover=excluded.cover, weekly_data=excluded.weekly_data, content=excluded.content, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
-        ).bind(body.id, body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).run();
+        ).bind(body.id, body.category || '🌸', body.title || '', body.summary || '', body.date || '', body.cover || body.cover_image || '', weeklyData, body.content || '', annotations, userId).run();
         row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(body.id, userId).first();
     } else {
         row = await db.prepare(
             `INSERT INTO weeklies (category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0) RETURNING *`
-        ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, userId).first();
+        ).bind(body.category || '🌸', body.title || '', body.summary || '', body.date || '', body.cover || body.cover_image || '', weeklyData, body.content || '', annotations, userId).first();
     }
     return jsonResponse(formatWeekly(row), 201);
 }
@@ -71,7 +71,7 @@ export async function handlePutWeekly(id, request, db, userId) {
     await db.prepare(
         `UPDATE weeklies SET category=?1, title=?2, summary=?3, date=?4, cover=?5, weekly_data=?6, content=?7, annotations=?8, updated_at=datetime('now', '+8 hours')
          WHERE id=?9 AND user_id=?10 AND IFNULL(is_deleted, 0) = 0`
-    ).bind(body.category, body.title, body.summary, body.date, body.cover || '', weeklyData, body.content || '', annotations, id, userId).run();
+    ).bind(body.category || '🌸', body.title || '', body.summary || '', body.date || '', body.cover || body.cover_image || '', weeklyData, body.content || '', annotations, id, userId).run();
     const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
     if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     return jsonResponse(formatWeekly(row), 200);

@@ -36,6 +36,10 @@ export {
     apiSyncFeed,
     checkAndMergeGuestData,
     startAutoSyncEngine,
+    upgradeLocalMockItems,
+    dataUriToBlob,
+    uploadBase64Image,
+    processWeeklyBase64Images,
 } from './sync.js';
 
 export {

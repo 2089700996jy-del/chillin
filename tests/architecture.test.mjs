@@ -156,7 +156,7 @@ test('Architecture - 前端首屏体积守住预算（防无声膨胀）', async
     const gzipSize = async (p) => zlib.gzipSync(await fs.readFile(p)).length;
 
     const BUDGET = {
-        jsTotalGzip: 195 * 1024,   // 实测 187.2 KB（留出 7.8 KB 余量）；新增 Web 桌面工作台边栏、三栏 Agent 驾驶舱与双栏笔记工作台
+        jsTotalGzip: 200 * 1024,   // 实测 195.5 KB（留出余量）；新增周记 Base64 图片自动提取上传 R2、Mock 模板安全升级与橙色圆点直击同步重试
         cssTotalGzip: 58 * 1024,   // 实测 54.9 KB（留出 3.1 KB 余量）；在完成关键帧与冗余选择器剪裁后，为后续桌面端留出稳健开发空间
         singleFileGzip: 20 * 1024  // 严守单文件 20 KB 红线，当前最大是 public/js/agent-goals.js 15.9 KB
     };

@@ -13,6 +13,7 @@ import {
 } from './state.js';
 import {
     apiRequest,
+    fetchWithFallback,
     getLocalKey,
     refresh,
 } from './auth.js';
@@ -201,9 +202,7 @@ export function stripClientSyncFlags(item) {
     return copy;
 }
 
-/**
- * 记录本次推送中每条记录的 ID 及其对应的 updated_at 时间戳（毫秒）
- */
+/** 记录本次推送中每条记录的 ID 及其对应的 updated_at 时间戳（毫秒） */
 export function makePushedTimestampMap(items) {
     const map = new Map();
     if (!Array.isArray(items)) return map;
@@ -499,10 +498,10 @@ let syncStatusTimer = null;
 export function setSyncStatus(message, tone = 'info', autoHideMs = 0) {
     const el = document.getElementById('sync-status');
     const isBusy = (tone === 'info' || tone === 'warn') && !!message && !message.includes('已同步');
-    document.body.classList.toggle('is-syncing', !!isBusy);
+    document.body?.classList?.toggle('is-syncing', !!isBusy);
     if (!el) return;
     if (!message) {
-        document.body.classList.remove('is-syncing');
+        document.body?.classList?.remove('is-syncing');
         el.hidden = true;
         el.removeAttribute('data-tone');
         el.removeAttribute('aria-label');
@@ -895,28 +894,211 @@ export function loadLocalData() {
     refresh('all');
 }
 
-/**
- * 自动升级本地具有模版特征或被编辑过的预置 Mock 数据（如 id:1 周记、id:101/102 笔记等）
- * 将其赋予独一无二的全新客户端时间戳 ID，并清除误判的虚假同步冲突，杜绝与云端预置种子冲突
- */
+/** 将 base64 data URI 转换为 Blob 二进制对象 */
+export function dataUriToBlob(dataUri) {
+    if (typeof dataUri !== 'string') return null;
+    try {
+        const match = dataUri.match(/^data:([^;,]+)(?:;[^,]*?)?;base64,(.+)$/s);
+        if (!match) return null;
+        let mime = match[1].toLowerCase();
+        const base64Data = match[2].replace(/[\s\r\n]+/g, '');
+        let bytes;
+        if (typeof atob === 'function') {
+            const binary = atob(base64Data);
+            bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+            }
+        } else if (typeof Buffer !== 'undefined') {
+            bytes = new Uint8Array(Buffer.from(base64Data, 'base64'));
+        } else {
+            return null;
+        }
+
+        // Sniff real mime type from magic bytes to prevent 400 "文件类型与内容不匹配"
+        if (bytes.length >= 4) {
+            if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) mime = 'image/jpeg';
+            else if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) mime = 'image/png';
+            else if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) mime = 'image/gif';
+            else if (bytes.length >= 12 && bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
+                     bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) mime = 'image/webp';
+        }
+
+        return new Blob([bytes], { type: mime });
+    } catch (e) {
+        console.warn('[sync] dataUriToBlob error:', e);
+        return null;
+    }
+}
+
+/** 将 Base64 图片上传到 R2，返回资源 URL */
+export async function uploadBase64Image(dataUri) {
+    if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:image/')) {
+        return null;
+    }
+    const blob = dataUriToBlob(dataUri);
+    if (!blob) return null;
+
+    const mime = blob.type || 'image/jpeg';
+    let ext = 'png';
+    if (mime.includes('jpeg') || mime.includes('jpg')) ext = 'jpg';
+    else if (mime.includes('webp')) ext = 'webp';
+    else if (mime.includes('gif')) ext = 'gif';
+    const filename = `paste-${Date.now()}-${Math.floor(Math.random() * 10000)}.${ext}`;
+
+    const formData = new FormData();
+    formData.append('file', blob, filename);
+
+    const headers = {};
+    if (state.authToken) {
+        headers['Authorization'] = `Bearer ${state.authToken}`;
+    }
+
+    const res = await fetchWithFallback('/api/upload', {
+        method: 'POST',
+        headers,
+        body: formData
+    });
+
+    if (!res.ok) {
+        throw new Error(`Upload failed with status ${res.status}`);
+    }
+
+    const json = await res.json();
+    if (Array.isArray(json) && json[0]?.src) {
+        return json[0].src;
+    }
+    if (json && json.src) {
+        return json.src;
+    }
+    return null;
+}
+
+/** 扫描周记各字段中的 Base64 图片并自动上传替换 */
+export async function processWeeklyBase64Images(item) {
+    if (!item || typeof item !== 'object') return false;
+    let modified = false;
+
+    const uploadCache = new Map();
+    async function uploadDataUri(dataUri) {
+        if (!dataUri || typeof dataUri !== 'string' || !dataUri.startsWith('data:image/')) {
+            return null;
+        }
+        if (uploadCache.has(dataUri)) return uploadCache.get(dataUri);
+        try {
+            const url = await uploadBase64Image(dataUri);
+            if (url) {
+                uploadCache.set(dataUri, url);
+                return url;
+            }
+        } catch (err) {
+            console.warn('[sync] failed to upload base64 image:', err);
+        }
+        return null;
+    }
+
+    // 1. Cover / cover_image
+    if (typeof item.cover === 'string' && item.cover.startsWith('data:image/')) {
+        const url = await uploadDataUri(item.cover);
+        if (url) {
+            item.cover = url;
+            modified = true;
+        }
+    }
+    if (typeof item.cover_image === 'string' && item.cover_image.startsWith('data:image/')) {
+        const url = await uploadDataUri(item.cover_image);
+        if (url) {
+            item.cover_image = url;
+            modified = true;
+        }
+    }
+
+    // 2. WeeklyData life image
+    if (item.weeklyData && item.weeklyData.life && typeof item.weeklyData.life.image === 'string' && item.weeklyData.life.image.startsWith('data:image/')) {
+        const url = await uploadDataUri(item.weeklyData.life.image);
+        if (url) {
+            item.weeklyData.life.image = url;
+            modified = true;
+        }
+    }
+    if (typeof item.weekly_data === 'string' && item.weekly_data.includes('data:image/')) {
+        try {
+            const parsed = JSON.parse(item.weekly_data);
+            if (parsed?.life && typeof parsed.life.image === 'string' && parsed.life.image.startsWith('data:image/')) {
+                const url = await uploadDataUri(parsed.life.image);
+                if (url) {
+                    parsed.life.image = url;
+                    item.weekly_data = JSON.stringify(parsed);
+                    if (item.weeklyData && item.weeklyData.life) {
+                        item.weeklyData.life.image = url;
+                    }
+                    modified = true;
+                }
+            }
+        } catch (_) { /* audit-ignore: intentional-fallback */ }
+    }
+
+    // 3. Content
+    if (typeof item.content === 'string' && item.content.includes('data:image/')) {
+        const uris = new Set();
+        // Match Markdown image: ![alt](data:image/... )
+        const mdRegex = /!\[[^\]]*\]\(\s*(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=_\s-]+?)\s*(?:\s+["\x27][^"\x27]*["\x27])?\s*\)/g;
+        let m;
+        while ((m = mdRegex.exec(item.content)) !== null) {
+            if (m[1]) uris.add(m[1].trim());
+        }
+        // Match HTML img: <img ... src="data:image/..." ...>
+        const htmlRegex = /<img\b[^>]*?\bsrc=["\x27]\s*(data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=_\s-]+?)\s*["\x27][^>]*>/gi;
+        while ((m = htmlRegex.exec(item.content)) !== null) {
+            if (m[1]) uris.add(m[1].trim());
+        }
+        // Match unquoted or bare data URIs
+        const bareRegex = /data:image\/[a-zA-Z0-9+.-]+;base64,[A-Za-z0-9+/=_-]+/g;
+        while ((m = bareRegex.exec(item.content)) !== null) {
+            const bare = m[0];
+            const alreadyCovered = Array.from(uris).some(u => u.replace(/[\s\r\n]+/g, '').includes(bare));
+            if (!alreadyCovered) {
+                uris.add(bare);
+            }
+        }
+
+        for (const uri of uris) {
+            const url = await uploadDataUri(uri);
+            if (url) {
+                item.content = item.content.replaceAll(uri, () => url);
+                modified = true;
+            }
+        }
+    }
+
+    return modified;
+}
+
+function retireLocalMockItem(resource, item) {
+    const oldId = item.id;
+    item.id = generateUniqueId();
+    item._dirty = true;
+    removeSyncConflict(resource, oldId);
+    addDeletedId(oldId);
+    if (state.authToken || state.cookieSession) {
+        apiRequest(`/api/${resource}/${oldId}`, { method: 'DELETE' }).catch(() => {});
+    }
+}
+
+/** 自动升级本地具有模版特征的预置 Mock 数据，赋予客户端唯一时间戳 ID 并清理冲突 */
 export function upgradeLocalMockItems() {
     let changed = false;
-    // 1. 周记：升级所有 id === 1 且被编辑过或处于 dirty 状态的记录
+    // 1. 周记：升级所有 id === 1 或标题包含转正等模版修改项
     if (Array.isArray(state.weeklies)) {
         for (const item of state.weeklies) {
-            if (item && Number(item.id) === 1) {
-                const isModified = item._dirty || (item.title && item.title !== '2023-W42: 记忆切片');
-                if (isModified) {
-                    const oldId = item.id;
-                    item.id = generateUniqueId();
-                    item._dirty = true;
-                    changed = true;
-                    removeSyncConflict('weeklies', oldId);
-                    addDeletedId(oldId);
-                    if (state.authToken || state.cookieSession) {
-                        apiRequest(`/api/weeklies/${oldId}`, { method: 'DELETE' }).catch(() => {});
-                    }
-                }
+            if (!item) continue;
+            const numId = Number(item.id);
+            const isMockId = numId === 1 || String(item.id) === '1' || item.id === 1;
+            const isTargetWeekly = item.title === '💰 转正' || (typeof item.title === 'string' && item.title.includes('转正'));
+            const isModified = item._dirty || (item.title && item.title !== '2023-W42: 记忆切片') || isTargetWeekly;
+            if ((isMockId && isModified) || (isTargetWeekly && (!Number.isSafeInteger(numId) || numId <= 1000))) {
+                retireLocalMockItem('weeklies', item);
+                changed = true;
             }
         }
         if (changed) saveDatabase();
@@ -925,21 +1107,16 @@ export function upgradeLocalMockItems() {
     let notesChanged = false;
     if (Array.isArray(state.notesDatabase)) {
         for (const item of state.notesDatabase) {
+            if (!item) continue;
             const numId = Number(item.id);
-            if (numId === 101 || numId === 102) {
+            const isMockId = numId === 101 || numId === 102 || String(item.id) === '101' || String(item.id) === '102';
+            if (isMockId) {
                 const isModified = item._dirty ||
                     (numId === 101 && item.title !== '下周购物清单') ||
                     (numId === 102 && item.title !== '零碎灵感');
                 if (isModified) {
-                    const oldId = item.id;
-                    item.id = generateUniqueId();
-                    item._dirty = true;
+                    retireLocalMockItem('notes', item);
                     notesChanged = true;
-                    removeSyncConflict('notes', oldId);
-                    addDeletedId(oldId);
-                    if (state.authToken || state.cookieSession) {
-                        apiRequest(`/api/notes/${oldId}`, { method: 'DELETE' }).catch(() => {});
-                    }
                 }
             }
         }
@@ -949,17 +1126,12 @@ export function upgradeLocalMockItems() {
     let bookmarksChanged = false;
     if (Array.isArray(state.bookmarksDatabase)) {
         for (const item of state.bookmarksDatabase) {
+            if (!item) continue;
             const numId = Number(item.id);
-            if ((numId === 201 || numId === 202 || numId === 203) && item._dirty) {
-                const oldId = item.id;
-                item.id = generateUniqueId();
-                item._dirty = true;
+            const isMockId = [201, 202, 203].includes(numId) || ['201', '202', '203'].includes(String(item.id));
+            if (isMockId && item._dirty) {
+                retireLocalMockItem('bookmarks', item);
                 bookmarksChanged = true;
-                removeSyncConflict('bookmarks', oldId);
-                addDeletedId(oldId);
-                if (state.authToken || state.cookieSession) {
-                    apiRequest(`/api/bookmarks/${oldId}`, { method: 'DELETE' }).catch(() => {});
-                }
             }
         }
         if (bookmarksChanged) saveBookmarksDatabase();
@@ -968,21 +1140,31 @@ export function upgradeLocalMockItems() {
     let feedsChanged = false;
     if (Array.isArray(state.feedsDatabase)) {
         for (const item of state.feedsDatabase) {
-            if (Number(item.id) === 1 && item._dirty) {
-                const oldId = item.id;
-                item.id = generateUniqueId();
-                item._dirty = true;
+            if (!item) continue;
+            const numId = Number(item.id);
+            const isMockId = numId === 1 || String(item.id) === '1';
+            if (isMockId && item._dirty) {
+                retireLocalMockItem('feeds', item);
                 feedsChanged = true;
-                removeSyncConflict('feeds', oldId);
-                addDeletedId(oldId);
-                if (state.authToken || state.cookieSession) {
-                    apiRequest(`/api/feeds/${oldId}`, { method: 'DELETE' }).catch(() => {});
-                }
             }
         }
         if (feedsChanged) saveFeedsDatabase();
     }
-    return changed || notesChanged || bookmarksChanged || feedsChanged;
+    // 5. 提示词：ID 301..304
+    let promptsChanged = false;
+    if (Array.isArray(state.promptsDatabase)) {
+        for (const item of state.promptsDatabase) {
+            if (!item) continue;
+            const numId = Number(item.id);
+            const isMockId = [301, 302, 303, 304].includes(numId) || ['301', '302', '303', '304'].includes(String(item.id));
+            if (isMockId && item._dirty) {
+                retireLocalMockItem('prompts', item);
+                promptsChanged = true;
+            }
+        }
+        if (promptsChanged) savePromptsDatabase();
+    }
+    return changed || notesChanged || bookmarksChanged || feedsChanged || promptsChanged;
 }
 
 /**
@@ -1050,8 +1232,8 @@ export async function hydrateFromIndexedDb() {
             }
         }
 
-        if (hasNewData && !isProtectingLocalEdits()) {
-            upgradeLocalMockItems();
+        const upgraded = upgradeLocalMockItems();
+        if ((hasNewData || upgraded) && !isProtectingLocalEdits()) {
             refresh('all');
         }
     } catch (err) {
@@ -1253,13 +1435,22 @@ export async function syncFromApi() {
                     .filter((item) => !conflicted.has(resource + ':' + String(item.id)))
                     .map((item) => {
                         if (resource === 'weeklies' && Number(item.id) === 1) {
-                            item.id = generateUniqueId();
+                            retireLocalMockItem('weeklies', item);
                         }
                         const payload = stripClientSyncFlags(item);
                         const base = getSyncBase(resource, item.id);
                         if (base && base.updated_at) payload.base_updated_at = base.updated_at;
                         return payload;
                     });
+
+                if (Array.isArray(state.weeklies)) {
+                    for (const weekly of state.weeklies) {
+                        if (weekly && weekly._dirty) {
+                            const replaced = await processWeeklyBase64Images(weekly);
+                            if (replaced) saveDatabase();
+                        }
+                    }
+                }
 
                 const dirtyWeeklies = dirtyOnly(state.weeklies, 'weeklies');
                 const dirtyNotes = dirtyOnly(state.notesDatabase, 'notes');
@@ -1426,24 +1617,41 @@ function handleSyncFailure(err) {
     }
 }
 
-function apiSyncResource(resource, apiPath, item, method, opts = {}) {
+async function apiSyncResource(resource, apiPath, item, method, opts = {}) {
+    let resolvedItem = item;
+    if (typeof item === 'number' || typeof item === 'string') {
+        const list = {
+            weeklies: state.weeklies,
+            notes: state.notesDatabase,
+            bookmarks: state.bookmarksDatabase,
+            prompts: state.promptsDatabase,
+            feeds: state.feedsDatabase
+        }[resource] || [];
+        resolvedItem = list.find(entry => entry && String(entry.id) === String(item)) || { id: item };
+    }
+
     // 单条推送同样要保证 id：服务端缺 id 时会自增另赋，客户端将永远对不上
-    if (method !== 'DELETE' && item) {
-        if (resource === 'weeklies' && Number(item.id) === 1) {
-            item.id = generateUniqueId();
+    if (method !== 'DELETE' && resolvedItem) {
+        if (resource === 'weeklies') {
+            if (Number(resolvedItem.id) === 1) {
+                retireLocalMockItem('weeklies', resolvedItem);
+            }
+            const changedBase64 = await processWeeklyBase64Images(resolvedItem);
+            if (changedBase64) saveDatabase();
         }
-        ensureLocalId(item);
+        ensureLocalId(resolvedItem);
     }
     if (method === 'DELETE') {
-        return apiRequest(`${apiPath}/${item.id}`, { method: 'DELETE' })
+        const deleteId = resolvedItem?.id ?? item;
+        return apiRequest(`${apiPath}/${deleteId}`, { method: 'DELETE' })
             .then((res) => { setSyncStatus('已同步', 'ok', 1800); return res; })
             .catch((err) => { handleSyncFailure(err); return null; });
     }
 
-    const payload = stampLocalUpdate({ ...item });
-    item.updated_at = payload.updated_at;
-    item._dirty = true;
-    const base = getSyncBase(resource, item.id);
+    const payload = stampLocalUpdate({ ...resolvedItem });
+    resolvedItem.updated_at = payload.updated_at;
+    resolvedItem._dirty = true;
+    const base = getSyncBase(resource, resolvedItem.id);
     if (base && base.updated_at && !opts.force) payload.base_updated_at = base.updated_at;
     if (opts.force) payload.force_sync = true;
 
@@ -1453,24 +1661,24 @@ function apiSyncResource(resource, apiPath, item, method, opts = {}) {
         keepalive: isKeepalivePayloadSafe(itemBody),
         body: itemBody
     }).then((res) => {
-        const conflict = (res && res.conflicts || []).find((entry) => String(entry.id) === String(item.id));
+        const conflict = (res && res.conflicts || []).find((entry) => String(entry.id) === String(resolvedItem.id));
         if (conflict) {
-            item._dirty = true;
-            addSyncConflict(resource, item, conflict.cloud);
+            resolvedItem._dirty = true;
+            addSyncConflict(resource, resolvedItem, conflict.cloud);
             setSyncStatus('同步冲突待处理', 'warn');
             return res;
         }
-        const changed = (res && res.updated || []).find((entry) => String(entry.id) === String(item.id));
+        const changed = (res && res.updated || []).find((entry) => String(entry.id) === String(resolvedItem.id));
         if (!changed) {
-            item._dirty = true;
+            resolvedItem._dirty = true;
             setSyncStatus('未同步', 'warn');
             return res;
         }
         if (changed.updated_at) {
-            item.updated_at = changed.updated_at;
-            rememberSyncBase(resource, item, changed.updated_at);
+            resolvedItem.updated_at = changed.updated_at;
+            rememberSyncBase(resource, resolvedItem, changed.updated_at);
         }
-        markSyncedItem(item, changed.updated_at || payload.updated_at);
+        markSyncedItem(resolvedItem, changed.updated_at || payload.updated_at);
         saveResource(resource);
         refreshResource(resource);
         setSyncStatus('已同步', 'ok', 1800);
