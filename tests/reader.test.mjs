@@ -298,8 +298,18 @@ test('Reader Progress Sync - 状态栏 #reader-sync-status-text 诊断工具绑�
                                             return r;
                                         },
                                         getAll: () => {
+                                            const r = { onsuccess: null, onerror: null, result: undefined, error: null };
+                                            if (storeRecord._failGetAll) {
+                                                const err = new Error(`Failed to getAll books from old reader db: simulated error in ${sName}`);
+                                                r.error = err;
+                                                setTimeout(() => {
+                                                    if (r.onerror) r.onerror({ target: r, error: err });
+                                                    if (tx.onerror) tx.onerror({ target: tx, error: err });
+                                                }, 0);
+                                                return r;
+                                            }
                                             const res = Array.from(storeRecord.data.values());
-                                            const r = { onsuccess: null, onerror: null, result: res };
+                                            r.result = res;
                                             setTimeout(() => { if (r.onsuccess) r.onsuccess({ target: r }); }, 0);
                                             return r;
                                         },
@@ -393,6 +403,48 @@ test('Reader Progress Sync - 状态栏 #reader-sync-status-text 诊断工具绑�
 
         // 验证旧库被清理
         assert.equal(freshMock._databases.has('chillin_reader_db'), false, '迁移后历史旧库 chillin_reader_db 应被安全清理');
+
+        // 5. 关键安全防线：旧库读取失败时中止迁移、保留旧库并拒绝写入已完成标记
+        dbModule._resetDbPromiseForTest();
+        const failMock = createMockIndexedDB();
+        globalThis.indexedDB = failMock;
+
+        const failBooksStore = {
+            keyPath: 'id',
+            data: new Map([['legacy_fail_1', { id: 'legacy_fail_1', title: '重要历史孤本' }]]),
+            _failGetAll: true // 模拟旧库读取失败
+        };
+        const failChaptersStore = {
+            keyPath: 'id',
+            data: new Map([['legacy_fail_1_0', { id: 'legacy_fail_1_0', bookId: 'legacy_fail_1', title: '绝版第一章' }]])
+        };
+        failMock._databases.set('chillin_reader_db', {
+            version: 1,
+            stores: new Map([
+                ['books', failBooksStore],
+                ['chapters', failChaptersStore]
+            ])
+        });
+        if (typeof localStorage !== 'undefined') localStorage.removeItem('_reader_db_migrated');
+
+        // 打开目标库
+        const targetDbForFailTest = await dbModule.openDatabase();
+        assert.ok(targetDbForFailTest);
+
+        // 直接触发迁移，必须抛出拒绝异常
+        await assert.rejects(
+            dbModule.migrateOldReaderDb(targetDbForFailTest),
+            /Failed to getAll books/,
+            '旧库读取失败时 migrateOldReaderDb 必须抛出异常拒绝迁移'
+        );
+
+        // 验证旧数据库完全保留，未被误删
+        assert.equal(failMock._databases.has('chillin_reader_db'), true, '旧库读取失败时，chillin_reader_db 必须被完整保留，严禁删除');
+        assert.equal(localStorage.getItem('_reader_db_migrated'), null, '旧库读取失败时，绝对不可在 localStorage 标记迁移完成');
+
+        // 验证目标库中未误写入迁移标记
+        const migratedFlagInStore = await dbModule.idbGet('_reader_db_migrated');
+        assert.ok(!migratedFlagInStore, '旧库读取失败时，目标 store 中绝对不可写入迁移完成标记');
     } finally {
         delete globalThis.indexedDB;
         dbModule._resetDbPromiseForTest();

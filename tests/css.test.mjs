@@ -30,7 +30,7 @@ test('CSS - theme-color / manifest 与页面底色一致（iOS 状态栏不出�
     assert.equal(manifest.theme_color.toUpperCase(), bg.toUpperCase(), 'manifest.theme_color 必须等于 --ios-bg');
     assert.equal(manifest.background_color.toUpperCase(), bg.toUpperCase(), 'manifest.background_color 必须等于 --ios-bg');
     assert.match(indexHtml, /dark \? '#0f1115' : '#F8F9FA'/, 'head 内联脚本的浅色 theme-color 也要同步');
-  });
+});
 
 test('CSS - 每个 @keyframes 都被 animation 引用（无死动画）', () => {
     const defs = [...css.matchAll(/@keyframes\s+([\w-]+)/g)].map((m) => m[1]);
