@@ -28,13 +28,13 @@
 
 ### 2.1 网关调度入口严格瘦身
 * **入口仅限调度**：[`workers/api.js`](../../workers/api.js) 仅作为路由网关、CORS 预检、鉴权闸门和定时 Cron 调度触发器；
-* **代码行数约束**：`workers/api.js` 代码行数**严禁超过 300 行**，杜绝重新膨胀为两千行的单体巨石。
+* **薄路由软约束**：`workers/api.js` 代码行数**严格保持在 300 行软约束内**，杜绝重新膨胀为单体巨石，网关内严禁直接编写业务 SQL 与外部模型调用。
 
-### 2.2 业务功能领域高内聚组织
+### 2.2 业务功能领域高内聚组织（软约束与就地闭环）
 所有业务逻辑按功能领域（如 Reader、Bot、Garden、Auth、Agent 等）高内聚归入 `workers/src/` 相应模块。
-* **内聚优先原则**：废除单模块 800 行硬性死线，严防因死卡行数将同一业务强行碎片化拆散；同一领域的逻辑优先就地闭环。
+* **高内聚优先原则**：彻底废除单模块行数硬性死线与固定模块数量锁，严防因死卡行数将同一业务强行碎片化拆散；同一领域的逻辑优先就地闭环。行数与模块数量均为架构健康度软约束。
 
-（`workers/src/` 共 **46 个模块**：3 个安全原语、1 个鉴权、8 个花园业务域、16 个智能与记忆模块（含 Agent 工具层、Agent 扩展工具、Agent 循环、目标存储/执行/生命周期/后台调度/规划/受控审批/检查点/只读联网与长期线索）、1 个审计、16 个 Bot 模块（对话编排与微信格式化 / 管家写入 / 目标 Agent CLI / 管家管理 / 交流偏好 / 私人记忆 / 主动关怀 / 定点提醒 / 健康打卡 / 联网检索 / 天气服务与晨报关怀 / 图片接入 / 多图编排 / 看图 / 链接速览 / 微信通信接入）、1 个定时任务编排。新增模块必须同步补进本表，[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 会校验覆盖完整性。）
+（`workers/src/` 核心领域架构划分：涵盖安全原语、鉴权、花园业务域、智能与记忆 Agent、审计、微信伴侣 Bot 独立服务组、定时维护调度等核心领域模块。）
 
 | 模块文件 | 领域职责 | 约束说明 |
 | :--- | :--- | :--- |
@@ -52,7 +52,7 @@
 | [`workers/src/garden-echo.js`](../../workers/src/garden-echo.js) | 回响、通知与审计入口 | AI 回响卡片、周期回顾、Web Push 通知派发、UGC 审计入口。 |
 | [`workers/src/insights.js`](../../workers/src/insights.js) | 长期线索与行动转化 | 从最近 180 天的随手记/笔记/周记里做确定性主题聚类：显式 `#标签`/`[[双链]]` 优先，中文 2–4 字词组与英文词兜底；同一主题至少跨 2 个自然月、跨度 ≥14 天才成为线索，证据只回短句与日期，不导出全文。`GET /api/insights/threads` 供首页「正在生长的线索」；`buildThreadCandidates` 把多记录线索交给主动关怀，让 Bot 能说「你之前也想过这个」；`POST /api/reminders` 复用 `createReminderAt` 把线索落成明晚微信提醒。不调用模型、不新增迁移，关闭的线索只在客户端本地 30 天。 |
 | [`workers/src/rag.js`](../../workers/src/rag.js) | 记忆回响 RAG 引擎 | 自然语言时间范围解析、停用词过滤、分词、多轮上下文继承、全资产多特征加权打分与兜底回复。 |
-| [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持 `rag.js` 不越过 800 行红线。 |
+| [`workers/src/rag-index.js`](../../workers/src/rag-index.js) | 长期记忆候选层 | 五类花园内容的 D1 候选查询、FTS5 命中回表、LIKE 短词兜底、wikilink 关联加载；不负责排序，保持记忆检索层职责清晰高内聚。 |
 | [`workers/src/llm.js`](../../workers/src/llm.js) | 大模型网关集成 | DeepSeek 与 Workers AI 边缘调用、流式与非流式包装、敏感词合规审查。 |
 | [`workers/src/ai.js`](../../workers/src/ai.js) | AI 问答编排 | `/api/ai/chat` 编排层：优先走只读 Agent 工具循环；模型不可用，或记录类问题没有触发任何工具时，退回 RAG 以确保基于真实数据；SSE 额外推送 `tool` 轨迹事件。 |
 | [`workers/src/ai-tools.js`](../../workers/src/ai-tools.js) | Agent 只读工具层 | 四个基础只读工具（花园概览 / 最近记录 / 关键词检索 / 读取单条）与 Tool Gateway：JSON Schema 参数校验、用户隔离、软删过滤、时间窗、引用返回；硬拒绝任何非 `read` 工具。 |
@@ -76,7 +76,7 @@
 | [`workers/src/bot-memory.js`](../../workers/src/bot-memory.js) | Bot 私人记忆 | 三层记忆读写：截断上下文记忆、「关于我」事实档案增删查（全软删、参数化绑定、上限约束），并提供 `/api/bot/profile` 应用内编辑接口；维护 `bot_pending_media`（每人一张、60 分钟过期）承接图片确认。 |
 | [`workers/src/bot-outreach.js`](../../workers/src/bot-outreach.js) | Bot 主动关怀（朋友口吻，不煽情） | Bot 主动关怀子域：历史旧记录与长期线索素材挖掘、东八区时窗与随机时刻判定、模型 SKIP 否决权与概率闸门、主动开口与对话记忆沉淀完整闭环。 |
 | [`workers/src/bot-reminders.js`](../../workers/src/bot-reminders.js) | Bot 定点提醒 | 提醒时刻智能解析（中文数字、相对时间，无法解析则反问）；每分钟 cron 到点主动开口；30 分钟后追问一次，超 2 小时标记 missed 不补发；回「完成」沉淀为随手记；独立开关控制。 |
-| [`workers/src/bot-health.js`](../../workers/src/bot-health.js) | Bot 健康打卡 | 健康数据结构化沉淀：将步数、睡眠等一句话记入 `health_daily`（一天一行、UPSERT 幂等、旧值保留）；斤单位折半为公斤；日期统一东八区；「健康」指令回显最近 7 天统计；仅只读回显、不写回三方；保持模块在 800 行以内。 |
+| [`workers/src/bot-health.js`](../../workers/src/bot-health.js) | Bot 健康打卡 | 健康数据结构化沉淀：将步数、睡眠等一句话记入 `health_daily`（一天一行、UPSERT 幂等、旧值保留）；斤单位折半为公斤；日期统一东八区；「健康」指令回显最近 7 天统计；仅只读回显、不写回三方；保持独立健康生活服务子模块职责高内聚。 |
 | [`workers/src/bot-web.js`](../../workers/src/bot-web.js) | Bot 联网检索 | Bot 联网检索子域：出站意图闸门、DeepSeek / Jina 检索上游适配、多词并行检索、相对时间东八区锚定、模型回答合成与 6 小时缓存完整闭环。 |
 | [`workers/src/bot-weather.js`](../../workers/src/bot-weather.js) | 和风天气与晨报关怀 | Ed25519 JWT 与 API Key 双模认证，高精度 24h 逐小时极温与降水区间提取、昨日温差与昼夜温差计算；8:00 晨间关怀「无事不扰」静默门禁；白天随手查秒回（30 分钟缓存）。 |
 | [`workers/src/bot-claw.js`](../../workers/src/bot-claw.js) | 微信通信接入（ClawBot / iLink 协议） | 微信接入通信子域：扫码绑定生命周期状态机与配置 API、长轮询拉取与游标排重、回发文本、状态维护完整闭环。 |

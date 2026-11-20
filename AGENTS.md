@@ -12,19 +12,19 @@
 
 | 领域模块 | 规约文件 | 核心管控要点 |
 | :--- | :--- | :--- |
-| 🏗️ **系统架构与技术栈** | [`architecture.md`](.agents/rules/architecture.md) | **Zero-Build 原生铁律**（HTML5+CSS+ESM，严禁打包器与视图框架）；后端 Worker 网关 **300 行红线** 与 **44 个领域模块**职责分工；D1 迁移版本控制与 R2 对象存储边界。 |
+| 🏗️ **系统架构与技术栈** | [`architecture.md`](.agents/rules/architecture.md) | **Zero-Build 原生铁律**（HTML5+CSS+ESM，严禁打包器与视图框架）；后端 Worker 网关 **薄路由软约束（300行以内）** 与 **领域高内聚架构**（按领域自治，行数与模块数均为软约束，杜绝因死卡数字碎化业务）；D1 迁移版本控制与 R2 对象存储边界。 |
 | 🎨 **UI 美学与交互标准** | [`ui-style.md`](.agents/rules/ui-style.md) | **Apple HIG Inset Grouped** 视觉标准；Apple Spring 弹性阻尼触感反馈；**Cmd+K 现代命令面板**（快捷指令优先、关键词高亮、全键盘导航）；移动端软键盘智能躲避；外链媒体兜底。 |
 | 📶 **PWA 离线与增量同步** | [`pwa-offline-sync.md`](.agents/rules/pwa-offline-sync.md) | **Service Worker 离线防崩白屏生命线**（严禁 JS 降级为 HTML）；全部核心模块全量预缓存；单次 RTT 聚合拉取；**Delta Push 脏数据差异推送**；LWW 冲突裁决；断网感知与重连自动同步。 |
 | 🛡️ **数据安全与防御式编程** | [`security.md`](.agents/rules/security.md) | **PBKDF2 强哈希**（10万次+动态盐，Cloudflare Workers 硬上限；旧哈希登录时就地升级）；`timingSafeEqualStr` 恒定时间防时序攻击；图片二进制魔数严格嗅探；DOMPurify XSS 白名单清洗与 Trusted Types 强制收口（服务端出站抓取与 SSRF 校验已于 v2.5.97 随外链解析功能移除）。 |
-| 🧪 **工程质量与交付工作流** | [`engineering-workflow.md`](.agents/rules/engineering-workflow.md) | **Node 22.5+ 原生零依赖单测套件**（`npm test` 100% 通过卡点）；Wrangler 边缘预打包演练卡点；`npm run bump` **8 点版本号联动对齐（含 PROGRESS 与架构报告，由 `tests/docs.test.mjs` 校验）**；**文档同步硬性要求**（改代码必须同批更新 README / PROGRESS / 架构报告 / 规约，由 `tests/docs.test.mjs` 机器校验，见 §5）；Conventional Commits 语义化提交。 |
+| 🧪 **工程质量与交付工作流** | [`engineering-workflow.md`](.agents/rules/engineering-workflow.md) | **Node 22.5+ 原生零依赖单测套件**（`npm test` 100% 通过卡点）；Wrangler 边缘预打包演练卡点；`npm run bump` **8 点版本号联动对齐**；**文档同步按影响范围分级**（L1 局部微调免改大文档 / L2 领域演进记账 PROGRESS / L3 重大变更全流程对齐，详见 §5）；Conventional Commits 语义化提交。 |
 
 ---
 
 ## 六大不可逾越的核心底线 (Golden Rules)
 
 1. **零构建黑盒底线**：严禁私自为前端引入任何编译打包黑盒（Vite, Webpack, Tailwind 等）或全家桶框架（React, Vue 等），保持原生 ES Modules 毫秒级极速直开。
-2. **Worker 防膨胀底线**：[`workers/api.js`](workers/api.js) 必须保持在 300 行以内纯净路由网关，任何业务逻辑必须严格归入 `workers/src/` 子领域。
+2. **Worker 防膨胀与高内聚底线**：[`workers/api.js`](workers/api.js) 必须保持在 300 行软约束以内纯净路由网关，业务逻辑按功能领域高内聚就地闭环，严禁为了凑行数将业务硬拆为碎片。
 3. **离线白屏零容忍底线**：修改 `public/sw.js` 严禁将 JS 脚本请求错误降级回退至 `/index.html`（URL），维护好全部核心模块的离线缓存。
 4. **脏数据精准推送底线**：批量同步必须基于 `_dirty: true` 进行精准差异推送，禁止无脑推送全量数据污染数据库全局修改时间戳。
 5. **双 100% 验证卡点底线**：代码提交前必须在终端通过 `npm test`（零失败通过）与 `npx wrangler deploy --dry-run`（Exit Code 0 构建成功）。
-6. **变更闭环与文档记账底线**：任何业务代码修改，交付前必须同步更新 [`PROGRESS.md`](PROGRESS.md)（功能健康度矩阵评级与变更要点）与 [`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](docs/Chillin数字花园_产品全景与工程架构分析报告.md)，并通过 `npm test` 自动化门禁检验，严禁只改代码不记账。
+6. **按影响范围分级交付底线**：根据任务影响范围（L1 局部微调 / L2 领域演进 / L3 重大变更）决定检查深度与记账范畴，保持相关单测 100% 通过（`npm test` 零失败通过），杜绝形式主义与机械改写多份文档。

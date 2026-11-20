@@ -83,35 +83,38 @@ npx wrangler deploy --dry-run
 
 ---
 
-## 5. 文档同步硬性要求 (Docs Stay In Sync)
+## 5. 规约分级与影响范围检查机制 (Blast Radius-Driven Docs & Checks)
 
-**任何一次代码改动，必须在同一个提交里同步受影响的文档。** 文档漂移等同缺陷：README 曾长期写着「外链自动抓取标题 / 封面」「D1 是唯一的数据源」「19 个迁移」，而这些在代码里早已不存在——这种漂移只能靠机器守住。
+项目倡导**“软约束指引方向，按任务影响范围决定检查与记账深度”**。彻底摒弃过去微观死卡行数、死板统计文件数量与“改一行代码必须同步多份长篇文档”的形式主义。
 
-### 5.1 改动 ↔ 文档对照表
+### 5.1 核心软约束原则 (Soft Constraints Guidelines)
 
-| 你改了什么 | 必须同批更新 |
-| :--- | :--- |
-| 新增 / 删除 / 重命名 `workers/src/*.js`、`public/js/*.js` 模块 | [`README.md`](../../README.md)（目录结构与模块数）、[`architecture.md`](architecture.md) 领域模块表、[`PROGRESS.md`](../../PROGRESS.md) 健康度矩阵、本文件 §1.1 覆盖矩阵 |
-| 新增数据库迁移 | [`README.md`](../../README.md)（迁移范围 0001–00XX）、[`architecture.md`](architecture.md) §3 迁移一致性、[`PROGRESS.md`](../../PROGRESS.md) 矩阵 |
-| 新增 / 删除测试套件 | [`README.md`](../../README.md) 测试布局表、架构报告里的套件与用例数、[`PROGRESS.md`](../../PROGRESS.md) 矩阵 |
-| 新增 / 移除用户可见功能、接口或存储方案 | [`README.md`](../../README.md) 功能一览与技术栈、[`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](../../docs/Chillin数字花园_产品全景与工程架构分析报告.md)、[`PROGRESS.md`](../../PROGRESS.md) 功能健康度矩阵与近期变更 |
-| 涉及已有功能的重构或风险调整 | [`PROGRESS.md`](../../PROGRESS.md) 功能健康度矩阵的等级（🟢/🟡/🔴）与风险标注、[`docs/Chillin数字花园_产品全景与工程架构分析报告.md`](../../docs/Chillin数字花园_产品全景与工程架构分析报告.md) |
-| 版本号变化（每次发布） | [`PROGRESS.md`](../../PROGRESS.md) 版本头与进展记录、架构报告的报告版本与在线基准（8 处锚点由 `npm run bump` 自动联动，**严禁手改单个文件**；`tests/docs.test.mjs` 会实跑 `--dry-run patch` 校验覆盖范围） |
-| 安全边界变化（CSP / 限流 / 口令策略 / 令牌） | [`security.md`](security.md)、[`public/_headers`](../../public/_headers) 注释、[`README.md`](../../README.md) 安全要点 |
+1. **代码行数与文件体积为健康度软约束**：
+   - 鼓励高内聚与就地闭环，严禁为了盲目将单个文件压在固定行数内而把原本一体的业务强拆成充满循环引用的碎片文件；
+   - 行数上限为架构健康度的警示线而非阻断线；唯一硬性底座保留 `workers/api.js` 作为轻量薄路由（严禁在网关内写业务 SQL 与大模型直调）。
+2. **模块数量为领域划分软约束**：
+   - 关注核心领域的职责清晰与高内聚，废除磁盘文件数量必须与文档数字分毫不差相等的死板门禁；
+   - 文档与规约提供核心业务领域全景，内部子模块的自然收敛、提取辅助类无需因为一个文件增删而反复被文档卡死。
 
-### 5.2 机器校验（不靠自觉）
+### 5.2 影响范围与检查深度分级矩阵 (Inspection Depth Matrix)
 
-[`tests/docs.test.mjs`](../../tests/docs.test.mjs) 把「数字类事实」与「全域映射」钉死，`npm test` 会直接卡住漂移：
+根据任务的影响范围（Blast Radius），动态决定需要执行的验证门禁与文档同步深度：
 
-* `README.md` 里的 `js/` 模块数、`workers/src/` 模块数、迁移范围 `0001–00XX`、测试布局表行数，**必须等于磁盘上的真实数量**；
-* `architecture.md` 的模块表**必须覆盖 `workers/src/` 下的每一个文件**；
-* `PROGRESS.md` 的全项目功能健康度矩阵**必须 100% 映射 `public/js/*.js` 与 `workers/src/*.js` 全部模块**，且每项评级（🟢/🟡/🔴）必须合法；
-* `package.json` / `PROGRESS.md` / `public/js/version.js` / `public/sw.js` / 架构报告的版本号**必须完全一致**；
+| 变更等级 | 适用影响范围 (Blast Radius) | 检查与验证深度 | 文档同步要求 |
+| :--- | :--- | :--- | :--- |
+| **L1 局部微调**<br>(Local Fix) | 单个函数内部缺陷修复、边界保护、性能调优、样式微调、局部内存释放等；**不改变对外 API、不改动数据表、不调整跨模块依赖**。 | **定向单元测试通过**<br>执行 `npm test` 相关套件且 100% 通过（0 Fail）。 | **免除宏观文档更新**<br>无需修改 README、无需更新长篇架构报告与规约，快速交付。 |
+| **L2 领域演进**<br>(Domain Evolution) | 领域内部模块自然重构（如愈合孪生碎片）、新增非破坏性内部辅助能力、性能基底优化。 | **全站测试 + 静态契约审计**<br>执行 `npm test` 全绿，并通过 `npm run audit:system` 验证契约。 | **单一事实源记账**<br>在 [`PROGRESS.md`](../../PROGRESS.md) 记录进展与健康度；无需强行逐一改写其余多份历史长文。 |
+| **L3 重大演进**<br>(Major & Schema) | 新增 D1 数据库迁移（`migrations/`）、修改全局安全与鉴权防线、跨领域重大架构重构、正式发版（`npm run bump`）。 | **全链路端到端闭环**<br>`npm test` + `wrangler deploy --dry-run` + 远端迁移演练。 | **全景同步**<br>更新 [`README.md`](../../README.md) 技术栈与迁移索引、版本联动锚点对齐。 |
+
+### 5.3 机器校验边界 (Guardrail Boundaries)
+
+自动化测试守住核心底线，而非制造微观阻碍：
+
+* `PROGRESS.md` 作为单一事实源，记录套件与用例数、迁移范围与版本锚点，由 [`tests/docs.test.mjs`](../../tests/docs.test.mjs) 校验；
+* 核心业务领域架构与路径引用有效性保持健康；
 * 每次大版本或疑难暗病排查前，建议执行 `npm run audit:system`（调用 [`scripts/system-audit.mjs`](../../scripts/system-audit.mjs)）进行静态契约健康体检。
 
-报错时请**按失败信息更新文档**，而不是去改断言里的数字。
-
-### 5.3 例外
+### 5.4 例外说明
 
 * `CHANGELOG.md` 由 `npm run changelog` 从 git 历史生成，**不要手改**；历史条目里的旧功能名（如 Microlink、小宇宙）是当时的事实，保持原样；
 * `.agents/skills/` 下的第三方技能包自带文档，不纳入本要求。

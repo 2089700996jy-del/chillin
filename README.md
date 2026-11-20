@@ -157,7 +157,7 @@ npx wrangler deploy --dry-run   # 边缘预打包演练，必须 Exit Code 0
 npm run ship -- --message "fix(x): ..." --push   # 一键：门禁 → 迁移校验 → 版本联动 → 校验提交信息 → 提交推送
 ```
 
-> **文档同步是硬性要求**：改代码必须在同一提交里更新受影响的 README / `PROGRESS.md` / 架构报告 / `.agents/rules/`，其中的「数字类事实」由 [`tests/docs.test.mjs`](tests/docs.test.mjs) 机器校验（对不上直接红灯），详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md) §5。
+> **文档同步按影响范围分级（软约束）**：改代码根据影响范围（L1 局部微调 / L2 领域演进 / L3 重大变更）分级决定检查与同步深度（杜绝无意义改写），核心测试与单一事实源由 [`tests/docs.test.mjs`](tests/docs.test.mjs) 自动化校验，详见 [`.agents/rules/engineering-workflow.md`](.agents/rules/engineering-workflow.md) §5。
 
 > `npm run ship` 还会**校验远端 D1 迁移**：只要 `migrations/` 里存在未应用的迁移就直接中断发布。这一步必须有，因为本地测试会用 `fake-d1` 执行**全部**迁移，永远测不出「迁移没应用」这种漂移（`0019_reader_progress.sql` 曾因此漏应用 12 天，线上接口一直报 `no such table`）。离线或缺少凭据时仅告警放行，不会卡死发布。
 
