@@ -226,6 +226,13 @@ test('IDB - fallback to localStorage and batch reads', async () => {
     const updated = await idbGet(weekliesKey);
     assert.equal(updated.find(w => w.id === 9902)?.title, '新周记');
 
+    // 验证高性能变更检测 hasResourceListChanged（取代全量 JSON.stringify）
+    const { hasResourceListChanged } = await import('../public/js/sync.js');
+    assert.equal(hasResourceListChanged([{ id: 1, updated_at: 't1' }], [{ id: 1, updated_at: 't1' }]), false);
+    assert.equal(hasResourceListChanged([{ id: 1, updated_at: 't1' }], [{ id: 1, updated_at: 't2' }]), true);
+    assert.equal(hasResourceListChanged([{ id: 1, updated_at: 't1' }], [{ id: 1, updated_at: 't1' }, { id: 2, updated_at: 't2' }]), true);
+    assert.equal(hasResourceListChanged([{ id: 1, updated_at: 't1', _dirty: false }], [{ id: 1, updated_at: 't1', _dirty: true }]), true);
+
     await idbDel(dataKey);
     await idbDel(weekliesKey);
 });

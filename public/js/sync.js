@@ -1162,6 +1162,22 @@ export function upgradeLocalMockItems() {
     return changed || notesChanged || bookmarksChanged || feedsChanged || promptsChanged;
 }
 
+/** 高性能列表变更比对：避免大数组全量 JSON.stringify 阻塞主线程 */
+export function hasResourceListChanged(curr, next) {
+    if (curr === next) return false;
+    if (!Array.isArray(curr) || !Array.isArray(next)) return true;
+    if (curr.length !== next.length) return true;
+    for (let i = 0; i < curr.length; i++) {
+        const a = curr[i];
+        const b = next[i];
+        if (!a || !b) return true;
+        if (a.id !== b.id) return true;
+        if ((a.updated_at || a.updatedAt) !== (b.updated_at || b.updatedAt)) return true;
+        if (!!a._dirty !== !!b._dirty) return true;
+    }
+    return false;
+}
+
 /** 阶段二异步注水：从 IndexedDB 批量拉取全量数据 */
 export async function hydrateFromIndexedDb() {
     try {
@@ -1195,7 +1211,7 @@ export async function hydrateFromIndexedDb() {
         const mergeResource = (curr, idb) => {
             if (!Array.isArray(idb) || idb.length === 0) return curr;
             const next = mergeDataLists(curr, idb);
-            if (next.length !== curr.length || JSON.stringify(next) !== JSON.stringify(curr)) hasNewData = true;
+            if (hasResourceListChanged(curr, next)) hasNewData = true;
             return next;
         };
         state.weeklies = mergeResource(state.weeklies, idbWeeklies);
@@ -1362,7 +1378,7 @@ export async function syncFromApi() {
                 const { merged, needsUpload, conflicts } = processApiSyncResult(spec.getList(), apiData, !!lastSync, spec.resource);
                 conflictTotal += conflicts || 0;
                 if (needsUpload) needsBatchUpload = true;
-                if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
+                if (hasResourceListChanged(spec.getList(), merged)) {
                     spec.setList(merged);
                     spec.save();
                     if (spec.shouldRefresh()) spec.refresh();
@@ -1383,7 +1399,7 @@ export async function syncFromApi() {
                     const { merged, needsUpload, conflicts } = processApiSyncResult(spec.getList(), apiData, !!lastSync, spec.resource);
                     conflictTotal += conflicts || 0;
                     if (needsUpload) needsBatchUpload = true;
-                    if (JSON.stringify(spec.getList()) !== JSON.stringify(merged)) {
+                    if (hasResourceListChanged(spec.getList(), merged)) {
                         spec.setList(merged);
                         spec.save();
                         if (spec.shouldRefresh()) spec.refresh();
@@ -1566,27 +1582,21 @@ export async function syncFromApi() {
     }
 }
 
-const safeLocal = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (_) {} };
 export function saveDatabase() {
     idbSet(getLocalKey('gardenWeeklies'), state.weeklies);
-    safeLocal(getLocalKey('gardenWeeklies'), state.weeklies);
 }
 export const saveWeekliesDatabase = saveDatabase;
 export function saveNotesDatabase() {
     idbSet(getLocalKey('gardenNotes'), state.notesDatabase);
-    safeLocal(getLocalKey('gardenNotes'), state.notesDatabase);
 }
 export function saveBookmarksDatabase() {
     idbSet(getLocalKey('gardenBookmarks'), state.bookmarksDatabase);
-    safeLocal(getLocalKey('gardenBookmarks'), state.bookmarksDatabase);
 }
 export function savePromptsDatabase() {
     idbSet(getLocalKey('gardenPrompts'), state.promptsDatabase);
-    safeLocal(getLocalKey('gardenPrompts'), state.promptsDatabase);
 }
 export function saveFeedsDatabase() {
     idbSet(getLocalKey('gardenFeeds'), state.feedsDatabase);
-    safeLocal(getLocalKey('gardenFeeds'), state.feedsDatabase);
 }
 
 function markSyncedItem(item, pushedUpdatedAt) {

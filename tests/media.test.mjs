@@ -214,4 +214,44 @@ test('Media - upload.js 导出 clearPendingRetry 与 triggerImageUpload 并在�
     initUpload();
     assert.equal(typeof actions.clearPendingRetry, 'function', 'actions.clearPendingRetry 应当被初始化注册');
     assert.equal(typeof actions.triggerImageUpload, 'function', 'actions.triggerImageUpload 应当被初始化注册');
+
+    // ── 即时预览生命周期与格式兼容性安全测试 ──
+    const { uploadSingleImage } = await import('../public/js/upload.js');
+    assert.equal(typeof uploadSingleImage, 'function');
+
+    const revokedUrls = [];
+    const origCreateObjectURL = globalThis.URL.createObjectURL;
+    const origRevokeObjectURL = globalThis.URL.revokeObjectURL;
+    const origDoc = globalThis.document;
+
+    try {
+        globalThis.URL.createObjectURL = (f) => `blob:mock-${f.name}`;
+        globalThis.URL.revokeObjectURL = (url) => revokedUrls.push(url);
+
+        const mockImg = { src: 'https://chillin.test/old-cover.jpg' };
+        const mockWrap = { style: { display: 'block' } };
+        const mockInput = { id: 'edit-cover', value: 'https://chillin.test/old-cover.jpg', tagName: 'INPUT' };
+
+        globalThis.document = {
+            getElementById: (id) => {
+                if (id === 'edit-cover-preview') return mockWrap;
+                if (id === 'edit-cover-preview-img') return mockImg;
+                if (id === 'edit-cover') return mockInput;
+                return null;
+            },
+            querySelectorAll: () => [],
+            addEventListener: () => {}
+        };
+
+        // 传入浏览器无法解码且后端不直接支持的格式（如 HEIC），验证即时拦截与安全回退
+        const unsupportedFile = new File(['fake-heic'], 'photo.heic', { type: 'image/heic' });
+        await uploadSingleImage(unsupportedFile, { targetInput: mockInput });
+
+        assert.equal(mockImg.src, 'https://chillin.test/old-cover.jpg', '不支持格式失败时必须恢复先前的旧封面图片');
+        assert.ok(revokedUrls.includes('blob:mock-photo.heic'), '临时预览使用的 ObjectURL 必须被主动 revoke 释放');
+    } finally {
+        globalThis.URL.createObjectURL = origCreateObjectURL;
+        globalThis.URL.revokeObjectURL = origRevokeObjectURL;
+        globalThis.document = origDoc;
+    }
 });
