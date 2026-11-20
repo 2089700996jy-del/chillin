@@ -65,7 +65,8 @@ function webEnv() {
     };
 }
 
-test('联网 - 三档分类：显式检索、时效性问句、闲聊与花园线索', () => {
+test('联网 - 意图闸门与检索词清洗（时效/显式/花园线索/噪声剥除）', () => {
+    // 1. 意图分类
     assert.equal(wantsWebSearch('帮我查一下今天NBA76人有比赛吗'), true);
     assert.equal(wantsWebSearch('今天有比赛吗'), true);
     assert.equal(wantsWebSearch('最近有什么新电影上映吗'), true);
@@ -76,13 +77,11 @@ test('联网 - 三档分类：显式检索、时效性问句、闲聊与花园�
     assert.equal(wantsWebSearch('我上周记的那个想法是什么'), false, '花园线索一出现就强制走本地');
     assert.equal(wantsWebSearch('花园里我写过关于咖啡的吗'), false);
     assert.equal(wantsWebSearch('搜 咖啡'), false, '「搜」是花园检索指令，不是上网');
-    // 2026-10-24 线上：这句落在闸门外，走聊天路径复述了上一轮的旧来源，看着像检索结果
     assert.equal(wantsWebSearch('查看一下76人下次比赛是什么时间'), true, '「查看一下」+「下次/比赛」+「什么时间」必须放行');
     assert.equal(wantsWebSearch('查看一下今天天气怎么样'), true);
     assert.equal(wantsWebSearch(''), false);
-});
 
-test('联网 - 检索词清洗去掉「帮我查一下」噪声', () => {
+    // 2. 检索词提取与噪声剥除
     assert.equal(extractWebQuery('帮我查一下今天NBA76人有比赛吗'), '今天NBA76人有比赛吗');
     assert.equal(extractWebQuery('今天有比赛吗'), '今天有比赛吗');
     assert.equal(extractWebQuery('今天有比赛吗 帮我查一下'), '今天有比赛吗');
@@ -90,7 +89,8 @@ test('联网 - 检索词清洗去掉「帮我查一下」噪声', () => {
     assert.equal(extractWebQuery('查看一下76人下次比赛是什么时间'), '76人下次比赛是什么时间');
 });
 
-test('联网 - 解析上游应答：JSON 与 markdown 两种形态、去重、只留 http(s)', () => {
+test('联网 - 上游响应解析（JSON/Markdown/截断半包容错/去重与清洗）', () => {
+    // 1. JSON 与 Markdown 解析
     const json = parseSearchPayload(JSON.stringify({
         data: [
             { title: 'A', url: 'https://a.example/1', description: '<b>你好</b>' },
@@ -111,11 +111,8 @@ test('联网 - 解析上游应答：JSON 与 markdown 两种形态、去重、�
 
     assert.deepEqual(parseSearchPayload(''), []);
     assert.deepEqual(parseSearchPayload('{ 坏掉的 json'), [], '解析不了就当没有来源，绝不编');
-});
 
-test('联网 - 回包被截断（半截 JSON）时必须当没有来源，绝不把 JSON 片段当标题摘要', () => {
-    // 2026-10-24 线上实测：全文模式回包 618–728 KB，被 512 KB 上限拦腰截断 → JSON.parse 失败
-    // → 旧逻辑掉进 markdown 兜底 → 只解析出 1 条「来源」，title/snippet 就是整段 JSON 碎片。
+    // 2. 半截 JSON 截断容错
     const full = JSON.stringify({
         code: 200,
         data: [{
@@ -149,60 +146,53 @@ test('联网 - 上游失败分类：无密钥 / 无结果 / HTTP 错误 / 超时
     assert.equal(ok.sources.length, 2);
 });
 
-test('联网 - 检索走 GET 且带令牌，链接复用只做拼接', async () => {
-    const st = searchStub();
-    await runWebSearch({ SEARCH_API_KEY: 'k', SEARCH_API_URL: 'https://s.jina.ai' }, '今天 76 人有比赛吗', st.impl);
-    assert.equal(st.calls.length, 1);
-    assert.ok(st.calls[0].startsWith('https://s.jina.ai/'), st.calls[0]);
-    assert.ok(st.calls[0].includes(encodeURIComponent('今天 76 人有比赛吗')));
-});
+test('联网 - 上游适配与请求构造（DeepSeek/Jina、端点补全、参数截断与摘要模式）', async () => {
+    // 1. Jina GET 构造与摘要模式请求头
+    const stJina = searchStub();
+    await runWebSearch({ SEARCH_API_KEY: 'k', SEARCH_API_URL: 'https://s.jina.ai' }, '今天 76 人有比赛吗', stJina.impl);
+    assert.equal(stJina.calls.length, 1);
+    assert.ok(stJina.calls[0].startsWith('https://s.jina.ai/'));
+    assert.ok(stJina.calls[0].includes(encodeURIComponent('今天 76 人有比赛吗')));
+    const jinaHeaders = stJina.inits[0].headers;
+    assert.equal(jinaHeaders['X-Respond-With'], 'no-content');
+    assert.equal(jinaHeaders['X-Timeout'], '10');
+    assert.equal(jinaHeaders.Authorization, 'Bearer k');
+    assert.equal(jinaHeaders['x-api-key'], 'k');
 
-test('联网 - 上游请求要摘要模式（no-content）并交给上游设超时，避免全文渲染拖到整条超时', async () => {
-    const st = searchStub();
-    await runWebSearch({ SEARCH_API_KEY: 'k', SEARCH_API_URL: 'https://s.jina.ai' }, '今天 76 人有比赛吗', st.impl);
-    const headers = st.inits[0].headers;
-    assert.equal(headers['X-Respond-With'], 'no-content', '全文模式实测 618-728 KB / 2-15s 抖动；摘要模式约 3 KB / 2.5s 且已含事实');
-    assert.equal(headers['X-Timeout'], '10', '上游自己也要设服务端死线');
-    assert.equal(headers.Authorization, 'Bearer k');
-    assert.equal(headers['x-api-key'], 'k');
-});
-
-test('联网 - 默认上游是 DeepSeek 官方 Search：POST + JSON 体 + 复用 LLM_API_KEY', async () => {
-    const st = searchStub();
-    await runWebSearch({ LLM_API_KEY: 'sk-1' }, '今天 76 人有比赛吗', st.impl, '帮我查一下今天 76 人有比赛吗');
-    assert.equal(st.calls.length, 1);
-    assert.equal(st.calls[0], 'https://api.deepseek.com/v1/tools/search');
-    const init = st.inits[0];
-    assert.equal(init.method, 'POST');
-    assert.equal(init.headers['Content-Type'], 'application/json');
-    assert.equal(init.headers.Authorization, 'Bearer sk-1', '复用同一把 LLM_API_KEY，零新增密钥');
-    const body = JSON.parse(init.body);
+    // 2. 默认 DeepSeek 官方 Search POST 与日期拼接
+    const stDs = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'sk-1' }, '今天 76 人有比赛吗', stDs.impl, '帮我查一下今天 76 人有比赛吗');
+    assert.equal(stDs.calls.length, 1);
+    assert.equal(stDs.calls[0], 'https://api.deepseek.com/v1/tools/search');
+    const dsInit = stDs.inits[0];
+    assert.equal(dsInit.method, 'POST');
+    assert.equal(dsInit.headers['Content-Type'], 'application/json');
+    assert.equal(dsInit.headers.Authorization, 'Bearer sk-1');
+    const body = JSON.parse(dsInit.body);
     const today = new Date(Date.now() + 8 * 3600 * 1000).toISOString().slice(0, 10);
-    assert.ok(body.query.startsWith('今天 76 人有比赛吗'), body.query);
-    assert.ok(body.query.includes(today), '「今天」要并成具体日期再发：检索端没有「现在」是哪天的语境');
-    assert.equal(body.count, 8, '取 8 条候选，展示仍只给 3 条');
-    assert.equal(body.need_content, true, '要正文：赛程表、比分这类事实只在 content 里，光给 summary 会退化成「只有标题」');
-    assert.equal(body.ori_question, '帮我查一下今天 76 人有比赛吗', 'ori_question 给用户原话，帮上游理解「这周六」这类指代');
-});
+    assert.ok(body.query.startsWith('今天 76 人有比赛吗'));
+    assert.ok(body.query.includes(today));
+    assert.equal(body.count, 8);
+    assert.equal(body.need_content, true);
+    assert.equal(body.ori_question, '帮我查一下今天 76 人有比赛吗');
 
-test('联网 - DeepSeek 端点：LLM_API_BASE 缺 /v1 时补上，显式 SEARCH_API_URL 优先且尾斜杠不双拼', async () => {
+    // 3. DeepSeek 端点补全与尾斜杠容错
     const a = searchStub();
     await runWebSearch({ LLM_API_KEY: 'k', LLM_API_BASE: 'https://api.deepseek.com' }, '今天有比赛吗', a.impl);
     assert.equal(a.calls[0], 'https://api.deepseek.com/v1/tools/search');
     const b = searchStub();
     await runWebSearch({ LLM_API_KEY: 'k', LLM_API_BASE: 'https://proxy.example/v1/' }, '今天有比赛吗', b.impl);
-    assert.equal(b.calls[0], 'https://proxy.example/v1/tools/search', '尾斜杠不能拼成双斜杠');
+    assert.equal(b.calls[0], 'https://proxy.example/v1/tools/search');
     const c = searchStub();
     await runWebSearch({ LLM_API_KEY: 'k', SEARCH_API_URL: 'https://search.example/v1/tools/search' }, '今天有比赛吗', c.impl);
     assert.equal(c.calls[0], 'https://search.example/v1/tools/search');
-});
 
-test('联网 - query / ori_question 超过文档上限 128 字符先截断再发', async () => {
-    const st = searchStub();
-    await runWebSearch({ LLM_API_KEY: 'k' }, 'x'.repeat(200), st.impl, 'y'.repeat(200));
-    const body = JSON.parse(st.inits[0].body);
-    assert.equal(body.query.length, 128, '文档规定 query 1–128 字符');
-    assert.equal(body.ori_question.length, 128);
+    // 4. 超限 128 字符截断
+    const stTrunc = searchStub();
+    await runWebSearch({ LLM_API_KEY: 'k' }, 'x'.repeat(200), stTrunc.impl, 'y'.repeat(200));
+    const truncBody = JSON.parse(stTrunc.inits[0].body);
+    assert.equal(truncBody.query.length, 128);
+    assert.equal(truncBody.ori_question.length, 128);
 });
 
 test('联网 - 相对时间问句并进具体日期（东八区）：今天 / 明天 / 这周六周日 / 周末', () => {

@@ -36,14 +36,14 @@ function assertRecentCst(value, label) {
     assert.ok(Math.abs(Date.now() - ms) < 120000, label + ' 应是此刻（东八区）：' + value);
 }
 
-test('健康 - 解析：一句话里能同时认出睡眠、步数、运动、心率、体重', () => {
+test('健康 - 输入解析与值域边界（多字段识别、单位折算、越界拦截）', () => {
+    // 1. 结构化多字段解析
     const entry = parseHealthEntry('昨晚睡了 6 小时 20 分，走了 12,000 步，中高强度 45 分钟，静息心率 62，体重 68.5 公斤', NOW);
     assert.equal(entry.date, '2026-10-22', '「昨晚」归到昨天（东八区）');
     assert.deepEqual(entry.fields, { sleepMin: 380, steps: 12000, activeMin: 45, restingHr: 62, weightKg: 68.5 });
     assert.deepEqual(entry.rejected, [], '全都在合理范围内');
-});
 
-test('健康 - 解析：单位与写法边界（斤折半、只有分钟、小时带小数）', () => {
+    // 2. 单位折算与写法边界
     assert.deepEqual(parseHealthEntry('体重 130 斤', NOW).fields, { weightKg: 65 }, '1 斤 = 0.5 公斤');
     assert.deepEqual(parseHealthEntry('睡了 45 分钟', NOW).fields, { sleepMin: 45 });
     assert.deepEqual(parseHealthEntry('运动 1.5 小时', NOW).fields, { activeMin: 90 }, '小时要换算成分钟');
@@ -51,14 +51,13 @@ test('健康 - 解析：单位与写法边界（斤折半、只有分钟、小�
     assert.deepEqual(parseHealthEntry('62 次/分', NOW).fields, { restingHr: 62 });
     assert.equal(parseHealthEntry('今天天气不错', NOW), null, '一个数值都没有就不是打卡');
     assert.equal(parseHealthEntry('我睡了一觉', NOW), null, '「睡了一觉」没有时长，不猜');
-});
 
-test('健康 - 越界值不落库，但要在回执里点名', () => {
-    const entry = parseHealthEntry('走了 999999 步，心率 300', NOW);
-    assert.deepEqual(entry.fields, {}, '越界的一个都不记');
-    assert.equal(entry.rejected.length, 2);
-    assert.match(entry.rejected.join('、'), /步数/);
-    assert.match(entry.rejected.join('、'), /心率/);
+    // 3. 越界值拦截与有效值保留
+    const invalidEntry = parseHealthEntry('走了 999999 步，心率 300', NOW);
+    assert.deepEqual(invalidEntry.fields, {}, '越界的一个都不记');
+    assert.equal(invalidEntry.rejected.length, 2);
+    assert.match(invalidEntry.rejected.join('、'), /步数/);
+    assert.match(invalidEntry.rejected.join('、'), /心率/);
 
     const mixed = parseHealthEntry('走了 9000 步，心率 300', NOW);
     assert.deepEqual(mixed.fields, { steps: 9000 }, '好的照记');
@@ -67,7 +66,8 @@ test('健康 - 越界值不落库，但要在回执里点名', () => {
     assert.deepEqual(HEALTH_RANGES.sleepMin, [0, 1440], '一天最多 1440 分钟，再多就是打错了');
 });
 
-test('健康 - 指令识别：显式才认，普通聊天不被劫持', () => {
+test('健康 - 指令识别与东八区日期解析', () => {
+    // 1. 指令短语分流
     assert.equal(parseHealthCommand('健康', NOW).kind, 'report');
     assert.equal(parseHealthCommand('我的健康', NOW).kind, 'report');
     assert.equal(parseHealthCommand('健康数据', NOW).kind, 'report');
@@ -88,9 +88,8 @@ test('健康 - 指令识别：显式才认，普通聊天不被劫持', () => {
     const explicit = parseHealthCommand('健康打卡 早上好', NOW);
     assert.equal(explicit.matched, true, '显式指令词即使没有数值也要认领，好把格式告诉他');
     assert.match(explicit.error, /健康数值/);
-});
 
-test('健康 - 日期一律东八区：默认今天，昨天/前天各归其位', () => {
+    // 2. 东八区日期解析
     assert.equal(east8Ymd(NOW), '2026-10-23');
     assert.equal(resolveHealthDate('没提日期的', NOW), '2026-10-23');
     assert.equal(resolveHealthDate('昨晚睡了 6 小时', NOW), '2026-10-22');

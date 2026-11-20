@@ -77,16 +77,16 @@ function aiEnv(reply) {
     return { env, captured };
 }
 
-test('时窗判定只认东八区 10:00–22:30', () => {
+test('主动关怀时间判定 - 东八区时窗、随机开口时刻与时间解析容忍', () => {
+    // 1. 东八区时窗 10:00–22:30
     const day = todayYmd(Date.now());
     assert.equal(isOutreachWindow(cstMs(day, 9, 59)), false);
     assert.equal(isOutreachWindow(cstMs(day, 10, 0)), true);
     assert.equal(isOutreachWindow(cstMs(day, 22, 29)), true);
     assert.equal(isOutreachWindow(cstMs(day, 22, 30)), false);
     assert.equal(isOutreachWindow(cstMs(day, 3, 0)), false);
-});
 
-test('聊完之后的开口时刻由对话哈希决定，落在 30–120 分钟内', () => {
+    // 2. 聊完追问延迟
     const a = pickFollowUpDelayMs(1, 5);
     assert.equal(a, pickFollowUpDelayMs(1, 5));
     assert.ok(a >= OUTREACH_FOLLOWUP_MIN_MS && a < OUTREACH_FOLLOWUP_MAX_MS);
@@ -97,21 +97,19 @@ test('聊完之后的开口时刻由对话哈希决定，落在 30–120 分钟�
         many.add(d);
     }
     assert.ok(many.size > 1);
-});
 
-test('当天的开口时刻稳定、随机且落在时窗内', () => {
+    // 3. 当天随机开口时刻落在时窗内且日内稳定
     const now = cstMs(todayYmd(Date.now()), 12, 0);
-    const a = pickOutreachInstantMs(1, now);
-    const b = pickOutreachInstantMs(1, now + 3600 * 1000);
-    assert.equal(a, b);
+    const instA = pickOutreachInstantMs(1, now);
+    const instB = pickOutreachInstantMs(1, now + 3600 * 1000);
+    assert.equal(instA, instB);
     const start = cstMs(todayYmd(now), 10, 0);
     const end = cstMs(todayYmd(now), 22, 30);
-    assert.ok(a >= start && a < end);
+    assert.ok(instA >= start && instA < end);
     const other = pickOutreachInstantMs(2, now);
     assert.ok(other >= start && other < end);
-});
 
-test('记录时间同时容忍东八区文本与 epoch 毫秒', () => {
+    // 4. 记录时间解析容忍
     assert.equal(parseRecordTimeMs('2026-10-20 08:00:00'), Date.UTC(2026, 9, 20, 0, 0, 0));
     assert.equal(parseRecordTimeMs(1792000000000), 1792000000000);
     assert.equal(parseRecordTimeMs(''), 0);

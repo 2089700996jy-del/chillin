@@ -438,8 +438,8 @@ export async function runWebTool(env, name, args = {}, deps = {}) {
                                 code: msg.startsWith('BODY_TOO_LARGE') ? 'BODY_TOO_LARGE' : 'INVALID_URL',
                                 message: msg.startsWith('DNS_REBINDING_') ? '域名解析为私有地址，已被安全拦截' :
                                     msg.startsWith('REDIRECT_BLOCKED') ? '重定向目标地址不安全，已被安全拦截' :
-                                    msg.startsWith('BODY_TOO_LARGE') ? '页面内容过大，超出处理上限' :
-                                    '抓取安全检查失败：' + msg
+                                        msg.startsWith('BODY_TOO_LARGE') ? '页面内容过大，超出处理上限' :
+                                            '抓取安全检查失败：' + msg
                             },
                             citations: []
                         };

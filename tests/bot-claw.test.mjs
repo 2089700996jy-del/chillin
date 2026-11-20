@@ -125,7 +125,8 @@ function stubFetch(routes) {
     return { impl, calls };
 }
 
-test('ClawBot - 请求头带官方要求的四项标识，登录前不发令牌', () => {
+test('ClawBot - 协议原语（官方请求头、随机 UIN、安全 baseurl 与消息排重键）', () => {
+    // 1. 请求头带四项标识，登录前不发令牌
     const headers = ilinkHeaders('tok-123');
     assert.equal(headers['Content-Type'], 'application/json');
     assert.equal(headers['AuthorizationType'], 'ilink_bot_token');
@@ -134,17 +135,15 @@ test('ClawBot - 请求头带官方要求的四项标识，登录前不发令牌'
     assert.equal(headers.Authorization, 'Bearer tok-123');
     assert.match(headers['X-WECHAT-UIN'], /^[A-Za-z0-9+/]+={0,2}$/, 'X-WECHAT-UIN 应是 base64');
     assert.ok(!('Authorization' in ilinkHeaders('')), '取二维码时还没令牌');
-});
 
-test('ClawBot - X-WECHAT-UIN 是随机 uint32 的 base64，两次不同', () => {
+    // 2. 随机 uint32 UIN
     const first = ilinkUin();
     assert.ok(first.length > 0);
     const decoded = Number(Buffer.from(first, 'base64').toString('utf8'));
     assert.ok(Number.isInteger(decoded) && decoded >= 0 && decoded < 4294967296);
     assert.notEqual(first, ilinkUin());
-});
 
-test('ClawBot - baseurl 只接受 https 主机，非法值一律退回官方域名', () => {
+    // 3. 安全 baseurl 校验与回退
     assert.equal(ilinkBase(OFFICIAL + '/'), OFFICIAL);
     assert.equal(ilinkBase('https://bot.example:8443'), 'https://bot.example:8443');
     assert.equal(ilinkBase('http://ilinkai.weixin.qq.com'), OFFICIAL);
@@ -152,16 +151,15 @@ test('ClawBot - baseurl 只接受 https 主机，非法值一律退回官方域�
     assert.equal(ilinkBase('https://ilinkai.weixin.qq.com/path'), OFFICIAL);
     assert.equal(ilinkBase(''), OFFICIAL);
     assert.equal(ilinkBase(undefined), OFFICIAL);
-});
 
-test('ClawBot - extractClawText 只取 type=1 的文本项，clawDedupKey 叠三段标识', () => {
+    // 4. extractClawText 与 clawDedupKey
     assert.equal(extractClawText({
         item_list: [
             { type: 1, text_item: { text: ' 第一段 ' } },
             { type: 2, image_item: { url: 'https://x/y.png' } },
             { type: 1, text_item: { text: '第二段' } }
         ]
-    }), '第一段 \n第二段'); // 单个文本项内部的空白保留，只对整体结果 trim
+    }), '第一段 \n第二段');
     assert.equal(extractClawText({ item_list: [{ type: 2 }] }), '');
     assert.equal(extractClawText(null), '');
 
@@ -2062,7 +2060,8 @@ const LZ_HTML = '<!doctype html><html><head>'
     + '<meta property="og:image" content="https://image.xyzcdn.net/cover-abc">'
     + '</head><body><script>window.__DATA__ = {"duration":6592,"pid":"5eae66d1418a84a046472b4d"};</script></body></html>';
 
-test('Bot - 小宇宙链接只认白名单域名，标题与播客名从 og 与页面标题里取', () => {
+test('Bot 播客链接解析 - 白名单过滤、OG 提取、__NEXT_DATA__ 结构化优先与容错', () => {
+    // 1. 链接提取与白名单过滤
     assert.equal(extractFirstUrl('看这个 ' + LZ_EPISODE + '。'), LZ_EPISODE, '中文句号不该被当成链接的一部分');
     assert.equal(extractFirstUrl('没有链接'), '');
     const parsed = parseXiaoyuzhouPage(LZ_HTML);
@@ -2080,9 +2079,8 @@ test('Bot - 小宇宙链接只认白名单域名，标题与播客名从 og 与�
     assert.equal(isAllowedOutboundUrl('https://127.0.0.1/episode/6a76ebabc4079d62c57f3b74'), false, 'IP 字面量拒绝');
     assert.equal(isAllowedOutboundUrl('https://image.xyzcdn.net/a.jpg', { image: true }), true, '图床只对图片通道开放');
     assert.equal(isAllowedOutboundUrl('https://image.xyzcdn.net/a.jpg'), false);
-});
 
-test('Bot - 播客页取简介、不抠单集时长；站点模板尾巴不冒充播客名', () => {
+    // 2. 播客页取简介、不抠单集时长
     const podcastHtml = '<!doctype html><html><head>'
         + '<meta property="og:title" content="基本无害 Mostly Harmless">'
         + '<meta name="description" property="og:description" content="基本无害是一档没有固定主题和形式，\n用不客观不中立甚至也不坚定的眼光进行人间观察的播客节目。">'
@@ -2100,9 +2098,8 @@ test('Bot - 播客页取简介、不抠单集时长；站点模板尾巴不冒�
     assert.equal(xiaoyuzhouHostOf('https://evil.example/episode/6a76ebabc4079d62c57f3b74'), '');
     const template = parseXiaoyuzhouPage(LZ_HTML.replace('基本无害 Mostly Harmless | 小宇宙', '小宇宙 | 小宇宙'));
     assert.equal(template.description, '', '站点模板文案不能冒充播客名，详情与播客名都没有就留空');
-});
 
-test('Bot - 页面自带 __NEXT_DATA__ 时优先用结构化字段，坏 JSON 不炸', () => {
+    // 3. __NEXT_DATA__ 结构化优先与容错
     const episodeData = { props: { pageProps: { episode: {
         title: 'Ep204 结构化标题',
         duration: 6592,
@@ -2123,21 +2120,20 @@ test('Bot - 页面自带 __NEXT_DATA__ 时优先用结构化字段，坏 JSON �
         title: '结构化播客名', description: '结构化播客简介',
         image: { picUrl: 'https://image.xyzcdn.net/next-pod.jpg' }
     } } } };
-    const podcastHtml = '<html><head><title>模板 | 小宇宙</title>'
+    const podcastHtml2 = '<html><head><title>模板 | 小宇宙</title>'
         + '<meta property="og:description" content="og 简介"></head>'
         + '<body><script id="__NEXT_DATA__">' + JSON.stringify(podcastData) + '</script></body></html>';
-    const pod = parseXiaoyuzhouPage(podcastHtml, { kind: 'podcast' });
-    assert.equal(pod.title, '结构化播客名');
-    assert.equal(pod.description, '结构化播客简介');
-    assert.equal(pod.cover, 'https://image.xyzcdn.net/next-pod.jpg');
+    const pod2 = parseXiaoyuzhouPage(podcastHtml2, { kind: 'podcast' });
+    assert.equal(pod2.title, '结构化播客名');
+    assert.equal(pod2.description, '结构化播客简介');
+    assert.equal(pod2.cover, 'https://image.xyzcdn.net/next-pod.jpg');
 
     const broken = parseXiaoyuzhouPage(LZ_HTML.replace('</head>', '<script id="__NEXT_DATA__">{ 坏掉的 JSON</script></head>'));
     assert.equal(broken.ok, true, '坏 JSON 不能炸，要回落 og');
     assert.equal(broken.title, 'Ep204 未来生活指南｜刘德华给我发微信');
     assert.equal(broken.description, '基本无害 Mostly Harmless');
-});
 
-test('Bot - 单集卡片给的是详情，不是时长（v2.5.140）', () => {
+    // 4. 单集卡片给详情，不是时长
     const withDetail = { props: { pageProps: { episode: {
         title: 'vol.611 真·菜刀达人｜害！我和中华小当家，就差这把刀！',
         duration: 5397,
@@ -2145,9 +2141,9 @@ test('Bot - 单集卡片给的是详情，不是时长（v2.5.140）', () => {
         image: { picUrl: 'https://image.xyzcdn.net/ep.jpg' },
         podcast: { title: '无聊斋' }
     } } } };
-    const html = '<html><head><title>vol.611 - 无聊斋 | 小宇宙</title></head><body>'
+    const htmlWithDetail = '<html><head><title>vol.611 - 无聊斋 | 小宇宙</title></head><body>'
         + '<script id="__NEXT_DATA__">' + JSON.stringify(withDetail) + '</script></body></html>';
-    const card = parseXiaoyuzhouPage(html);
+    const card = parseXiaoyuzhouPage(htmlWithDetail);
     assert.equal(card.title, 'vol.611 真·菜刀达人｜害！我和中华小当家，就差这把刀！');
     assert.match(card.description, /^本期主播：六兽、阿铖/, '详情用 episode.description');
     assert.ok(!/1:29:57/.test(card.description), '详情里不能混进时长');

@@ -42,7 +42,8 @@ function mockFetch(responses) {
     return { impl, calls };
 }
 
-test('base64UrlEncode 与 pemToDer 编码转换正确', () => {
+test('天气鉴权 - 编码、Ed25519 JWT 签名与 API Key 降级', async () => {
+    // 1. base64UrlEncode 与 pemToDer
     const raw = 'Hello World?&=+';
     const b64 = base64UrlEncode(raw);
     assert.ok(!b64.includes('+'));
@@ -52,9 +53,8 @@ test('base64UrlEncode 与 pemToDer 编码转换正确', () => {
     const der = pemToDer(testPrivateKeyPem);
     assert.ok(der instanceof Uint8Array);
     assert.ok(der.length > 30);
-});
 
-test('Ed25519 JWT 生成并支持内存缓存', async () => {
+    // 2. Ed25519 JWT 生成与缓存
     const env = mockWeatherEnv();
     const tokenObj = await getQWeatherToken(env);
     assert.equal(tokenObj.type, 'bearer');
@@ -62,23 +62,19 @@ test('Ed25519 JWT 生成并支持内存缓存', async () => {
     const parts = tokenObj.token.split('.');
     assert.equal(parts.length, 3);
 
-    // 验证 header 包含 EdDSA 和 kid
     const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
     assert.equal(header.alg, 'EdDSA');
     assert.equal(header.kid, 'test-kid-123');
 
-    // 验证 payload 包含 sub
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
     assert.equal(payload.sub, 'test-project-456');
 
-    // 二次获取走缓存
     const cached = await getQWeatherToken(env);
     assert.equal(cached.token, tokenObj.token);
-});
 
-test('支持传统 API Key 降级认证', async () => {
-    const env = { QWEATHER_KEY: 'legacy-api-key-32chars' };
-    const auth = await getQWeatherToken(env);
+    // 3. 传统 API Key 降级
+    const legacyEnv = { QWEATHER_KEY: 'legacy-api-key-32chars' };
+    const auth = await getQWeatherToken(legacyEnv);
     assert.equal(auth.type, 'key');
     assert.equal(auth.token, 'legacy-api-key-32chars');
 });

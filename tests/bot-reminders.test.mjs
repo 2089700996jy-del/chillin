@@ -66,7 +66,8 @@ function assertRecentCst(value, label) {
     assert.ok(Math.abs(Date.now() - ms) < 120000, label + ' 应是此刻（东八区）：' + value);
 }
 
-test('提醒 - 中文数字只认时/分范围里的写法', () => {
+test('提醒 - 时间解析与内容清洗（中文数字/相对时间/绝对时刻/越界边界/展示格式）', () => {
+    // 1. 中文数字
     assert.equal(cnNumber('8'), 8);
     assert.equal(cnNumber('十'), 10);
     assert.equal(cnNumber('十一'), 11);
@@ -75,46 +76,41 @@ test('提醒 - 中文数字只认时/分范围里的写法', () => {
     assert.equal(cnNumber('abc'), null);
     assert.equal(cnNumber('二十三点'), null, '带「点」的整句不是数字');
     assert.equal(cnNumber(''), null);
-});
 
-test('提醒 - 相对时间：半小时后 / N 小时后 / N 分钟后', () => {
+    // 2. 相对时间
     assert.equal(parseReminderTime('半小时后提醒我', NOW), NOW + 30 * 60 * 1000);
     assert.equal(parseReminderTime('2小时后', NOW), NOW + 2 * 3600 * 1000);
     assert.equal(parseReminderTime('45分钟后', NOW), NOW + 45 * 60 * 1000);
     assert.equal(parseReminderTime('一小时后', NOW), NOW + 3600 * 1000, '中文数字同样识别');
-});
 
-test('提醒 - 绝对时刻：今天/明天/早上/晚上/18:00/裸时刻顺延到明天', () => {
+    // 3. 绝对时刻与顺延
     assert.equal(parseReminderTime('今天 21:00', NOW), cst('2026-10-23T21:00:00+08:00'));
     assert.equal(parseReminderTime('明天早上8点', NOW), cst('2026-10-24T08:00:00+08:00'));
     assert.equal(parseReminderTime('晚上9点', NOW), cst('2026-10-23T21:00:00+08:00'), '晚上 9 点 = 21:00');
     assert.equal(parseReminderTime('下午3点', NOW), cst('2026-10-24T15:00:00+08:00'), '今天这个点已经过去，顺延到明天，不许回到过去');
     assert.equal(parseReminderTime('8点30', NOW), cst('2026-10-24T08:30:00+08:00'), '今天已过的裸时刻顺延到明天');
     assert.equal(parseReminderTime('20:00', NOW), cst('2026-10-24T20:00:00+08:00'));
-});
 
-test('提醒 - 解析不了或越界一律 null，不猜', () => {
+    // 4. 解析越界或非法返回 null
     assert.equal(parseReminderTime('今天 20:00', NOW), null, '今天这个点已经过去了：宁可反问');
     assert.equal(parseReminderTime('25点', NOW), null);
     assert.equal(parseReminderTime('13点70', NOW), null);
     assert.equal(parseReminderTime('交电费', NOW), null);
     assert.equal(parseReminderTime('', NOW), null);
-});
 
-test('提醒 - 展示格式：今天 / 明天 / 具体日期', () => {
+    // 5. 展示格式
     assert.equal(formatReminderTime(NOW + 3600 * 1000, NOW), '今天 21:19');
     assert.equal(formatReminderTime(cst('2026-10-24T08:00:00+08:00'), NOW), '明天 08:00');
     assert.equal(formatReminderTime(cst('2026-11-02T09:00:00+08:00'), NOW), '11月2日 09:00');
-});
 
-test('提醒 - 内容清洗剥掉时间词与触发词，不误伤正文', () => {
+    // 6. 内容清洗
     assert.equal(cleanReminderText('等会6点30记得提醒我给电动牙刷充电'), '给电动牙刷充电');
     assert.equal(cleanReminderText('提醒我20:00给电动牙刷充电'), '给电动牙刷充电');
     assert.equal(cleanReminderText('明天早上8点提醒我交电费'), '交电费');
     assert.equal(cleanReminderText('提醒我拿快递'), '拿快递', '没有时间词也要留下正文');
 });
 
-test('提醒 - 指令识别：三条命中路径与三条拒绝路径', () => {
+test('提醒 - 指令与短语识别（命中/拒绝/反问/短语分流）', () => {
     const direct = parseRemindCommand('提醒我 6:30 充电', NOW);
     assert.equal(direct.matched, true);
     assert.equal(direct.ok, true);
@@ -142,9 +138,7 @@ test('提醒 - 指令识别：三条命中路径与三条拒绝路径', () => {
     const noBody = parseRemindCommand('提醒我', NOW);
     assert.equal(noBody.ok, false);
     assert.match(noBody.reply, /做什么/);
-});
 
-test('提醒 - 列表/取消/完成/还没 的短语识别', () => {
     assert.equal(isReminderList('我的提醒'), true);
     assert.equal(isReminderList('待办'), true);
     assert.equal(isReminderList('提醒我 6:30 充电'), false);
