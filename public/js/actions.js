@@ -11,6 +11,7 @@ export const actions = {
     openNoteEditor: null,
     openBookmarkEditor: null,
     handleExitWeeklyEditor: null,
+    handleExitNoteEditor: null,
     hasUnsavedChanges: null,
     hasUnsavedNoteChanges: null,
     saveNoteDraft: null,

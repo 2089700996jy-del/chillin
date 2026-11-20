@@ -439,3 +439,72 @@ sqliteTest('提醒 - 重复创建相同待提醒防重拦截（幂等不生成�
     const count = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = 1 AND is_deleted = 0").first();
     assert.equal(count.n, 1, '防重拦截下只允许入库一条记录');
 });
+
+// ── 7处混沌缺陷修复回归验证 ──
+
+sqliteTest('提醒 - [V-03] 主提醒发送失败按指数退避让出队头，后续到期提醒正常发送不被阻塞', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+
+    // 插入 6 条都已到期的提醒（T1~T6），默认每次 batch LIMIT 5
+    // 其中前 5 条发送全部失败（网络中断），第 6 条正常
+    for (let i = 1; i <= 6; i++) {
+        await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (1, 1, ?1, ?2, 'pending', 0)")
+            .bind('事项' + i, NOW - (10 - i) * 1000).run();
+    }
+
+    let failT1to5 = true;
+    const flaky = {
+        fetch: async (url, init) => {
+            const body = JSON.parse(init.body);
+            if (failT1to5 && !body.text.includes('事项6')) {
+                throw new Error('Upstream failed');
+            }
+            return new Response(JSON.stringify({ ret: 0 }));
+        }
+    };
+
+    // 第一轮检查：前 5 条（T1~T5）发送失败并退避
+    const r1 = await runReminderChecks({}, db, flaky.fetch, { nowMs: NOW, limit: 5 });
+    assert.equal(r1.due, 5);
+    assert.equal(r1.failed, 5);
+    assert.equal(r1.sent, 0);
+
+    // 检查失败项已记录重试次数与退避时间戳
+    const t1 = await db.prepare("SELECT follow_up_attempts, follow_up_retry_at_ms FROM bot_reminders WHERE text = '事项1'").first();
+    assert.equal(t1.follow_up_attempts, 1);
+    assert.ok(t1.follow_up_retry_at_ms > NOW, '失败后已设置未来的退避重试时间');
+
+    // 第二轮检查（就在几秒后）：T1~T5 退避中让出队头，原本排在第 6 位的 T6 成功发出！
+    failT1to5 = false;
+    const r2 = await runReminderChecks({}, db, flaky.fetch, { nowMs: NOW + 5000, limit: 5 });
+    assert.equal(r2.due, 1, '拉取到了让出队头后的 T6');
+    assert.equal(r2.sent, 1, 'T6 成功送达');
+    const t6 = await db.prepare("SELECT status FROM bot_reminders WHERE text = '事项6'").first();
+    assert.equal(t6.status, 'fired');
+});
+
+sqliteTest('提醒 - [V-05] 提醒支持直接按稳固 #ID 取消，不受数组切片前移错位影响', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+
+    await db.prepare("INSERT INTO bot_reminders (id, user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (10, 1, 1, '洗衣服', ?1, 'pending', 0)").bind(NOW + 100000).run();
+    await db.prepare("INSERT INTO bot_reminders (id, user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (20, 1, 1, '买牛奶', ?1, 'pending', 0)").bind(NOW + 200000).run();
+
+    const list = await listReminders(db, 1, NOW);
+    assert.match(list, /1\. .* — 洗衣服 \(#10\)/);
+    assert.match(list, /2\. .* — 买牛奶 \(#20\)/);
+
+    // 先取消第 1 条，使得第 2 条在切片中滑动到第 1 位
+    await cancelReminder(db, 1, '1', NOW);
+
+    // 用户如果按先前屏幕上看到的稳固 ID 取消「#20」
+    const cancelRes = await cancelReminder(db, 1, '#20', NOW);
+    assert.match(cancelRes, /取消了：.*买牛奶/);
+
+    const r20 = await db.prepare("SELECT status, is_deleted FROM bot_reminders WHERE id = 20").first();
+    assert.equal(r20.status, 'cancelled');
+    assert.equal(r20.is_deleted, 1);
+});

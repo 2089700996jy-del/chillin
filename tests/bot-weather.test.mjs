@@ -362,3 +362,69 @@ integration('城市解析 - resolveUserCity 遇到通用词回退至常住城市
     assert.equal(await resolveUserCity(db, 2, '看看闽侯县天气'), '闽侯');
 });
 
+// ── 7处混沌缺陷修复回归验证 ──
+
+test('天气 - [V-04] 明天/后天自然语言天气准确提取对应日期预报，超期提问放行给检索', async () => {
+    const { parseWeatherDateTarget, maybeWeatherAnswer } = await import('../workers/src/bot-weather.js');
+
+    assert.deepEqual(parseWeatherDateTarget('今天福州会下雨吗'), { index: 0, label: '今天' });
+    assert.deepEqual(parseWeatherDateTarget('明天福州会下雨吗'), { index: 1, label: '明天' });
+    assert.deepEqual(parseWeatherDateTarget('后天福州会下雨吗'), { index: 2, label: '后天' });
+    assert.deepEqual(parseWeatherDateTarget('明日福州气温'), { index: 1, label: '明天' });
+    assert.equal(parseWeatherDateTarget('大后天福州会下雨吗'), null, '超出3天放行');
+    assert.equal(parseWeatherDateTarget('下周福州冷不冷'), null, '周维度放行');
+    assert.equal(parseWeatherDateTarget('昨天福州下雨了吗'), null, '历史放行');
+    assert.equal(parseWeatherDateTarget('未来三天福州天气怎么样'), null, '跨多日范围放行');
+    assert.equal(parseWeatherDateTarget('明后天福州会下雨吗'), null, '明后多日放行');
+    assert.equal(parseWeatherDateTarget('今明两天福州有雨吗'), null, '今明多日放行');
+    assert.equal(parseWeatherDateTarget('近三天福州天气'), null, '近三天放行');
+    assert.equal(parseWeatherDateTarget('周末福州天气'), null, '周末放行');
+
+    const env = {
+        QWEATHER_KEY: 'test-key',
+        QWEATHER_API_HOST: 'devapi.qweather.com'
+    };
+
+    const mockFetch = async (url) => {
+        const u = String(url);
+        if (u.includes('/weather/3d')) {
+            return new Response(JSON.stringify({
+                code: '200',
+                daily: [
+                    { fxDate: '2026-11-20', tempMax: '20', tempMin: '15', textDay: '晴', textNight: '晴', uvIndex: '1' },
+                    { fxDate: '2026-11-21', tempMax: '25', tempMin: '18', textDay: '大暴雨', textNight: '大暴雨', uvIndex: '1' },
+                    { fxDate: '2026-11-22', tempMax: '28', tempMin: '21', textDay: '多云', textNight: '雷阵雨', uvIndex: '2' }
+                ]
+            }));
+        }
+        if (u.includes('/weather/24h')) {
+            return new Response(JSON.stringify({ code: '200', hourly: [] }));
+        }
+        if (u.includes('/weather/warning')) {
+            return new Response(JSON.stringify({ code: '200', warning: [] }));
+        }
+        if (u.includes('/indices/1d')) {
+            return new Response(JSON.stringify({ code: '200', daily: [] }));
+        }
+        return new Response(JSON.stringify({ code: '200', location: [{ id: '101230101', name: '福州' }] }));
+    };
+
+    const replyToday = await maybeWeatherAnswer(env, null, 1, '今天厦门天气', mockFetch);
+    assert.match(replyToday, /【厦门天气】今天晴/);
+    assert.match(replyToday, /全天无雨/);
+
+    const replyTomorrow = await maybeWeatherAnswer(env, null, 1, '明天厦门会下雨吗', mockFetch);
+    assert.match(replyTomorrow, /【厦门天气】明天大暴雨/);
+    assert.match(replyTomorrow, /降雨提醒：预计\s*大暴雨/);
+
+    const replyDayAfter = await maybeWeatherAnswer(env, null, 1, '后天厦门会下雨吗', mockFetch);
+    assert.match(replyDayAfter, /【厦门天气】后天多云/);
+    assert.match(replyDayAfter, /降雨提醒：预计\s*雷阵雨/, '夜间降水准确识别并告警，不能误报全天无雨');
+
+    const replyFar = await maybeWeatherAnswer(env, null, 1, '大后天厦门会下雨吗', mockFetch);
+    assert.equal(replyFar, null, '无法回答的更远日期返回 null 放行给联网检索');
+
+    const replyMulti = await maybeWeatherAnswer(env, null, 1, '未来三天厦门天气', mockFetch);
+    assert.equal(replyMulti, null, '跨多天预报返回 null 放行给联网检索');
+});
+

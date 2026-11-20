@@ -206,9 +206,12 @@ async function stagePreference(db, userId, pref) {
     const content = clip(pref.content, PREF_ITEM_MAX_CHARS);
     if (!content) return '这条偏好没有内容，再说一次？';
     const label = preferenceLabel(pref.key, pref.label);
-    await savePendingAction(db, userId, 'set_preference', 'preference', 0, {
+    const saved = await savePendingAction(db, userId, 'set_preference', 'preference', 0, {
         key: pref.key, label, content, source: pref.source || 'explicit'
     });
+    if (saved === false) {
+        return null;
+    }
     return '我理解成一条「' + label + '」偏好：\n\n> ' + content
         + '\n\n要记下来就回「确认」；不想改就回「取消」。';
 }

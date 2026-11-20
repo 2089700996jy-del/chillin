@@ -547,14 +547,16 @@ export async function maybeWebAnswer(env, db, userId, text, fetchImpl = fetch, n
     // 两道闸都在缓存之后：只有真要出站的动作才扣额度（同一句话问第二遍免费）
     const cached = await readWebCache(db, userId, key, now);
     if (cached) return cached;
+    // 先检查突发闸：若短时间内问得太急被拦截，严禁虚扣每日额度
+    const burstLimit = envLimit(env && env.WEB_BURST_LIMIT, WEB_BURST_LIMIT.limit);
+    const burstWait = await gateLimit(db, 'bot-web-burst:' + userId, burstLimit, WEB_BURST_LIMIT.windowMs);
+    if (burstWait) return '你问得有点急，' + burstWait + ' 秒后再问我一次？花园里的记录我随时能翻——发「搜 关键词」。';
     const dailyMax = envLimit(env && env.WEB_DAILY_LIMIT, WEB_DAILY_LIMIT.limit);
     const dailyWait = await gateLimit(db, 'bot-web:' + userId, dailyMax, WEB_DAILY_LIMIT.windowMs);
     if (dailyWait) {
         const mins = Math.max(1, Math.ceil(dailyWait / 60));
         return '今天查得有点多（上限 ' + dailyMax + ' 次），约 ' + mins + ' 分钟后再问我吧。花园里的记录我随时能翻——发「搜 关键词」。';
     }
-    const burstWait = await gateLimit(db, 'bot-web-burst:' + userId, envLimit(env && env.WEB_BURST_LIMIT, WEB_BURST_LIMIT.limit), WEB_BURST_LIMIT.windowMs);
-    if (burstWait) return '你问得有点急，' + burstWait + ' 秒后再问我一次？花园里的记录我随时能翻——发「搜 关键词」。';
     // 一条查询打不中就没有第二次机会：先用规划出来的 1–3 条检索词并行搜，再按相关性合并去重（v2.5.150）
     const queries = await planWebQueries(env, text, query, chatFn);
     const search = await runWebSearchMulti(env, queries, fetchImpl, text);

@@ -119,7 +119,7 @@ const renderBookmarks = () => {
             e.stopPropagation();
             if(await confirmDialog(`确定要移除对 "${bm.title}" 的收藏吗？`)) {
                 const deletedId = bm.id;
-                addDeletedId(deletedId);
+                addDeletedId(deletedId, 'bookmarks');
                 state.bookmarksDatabase = state.bookmarksDatabase.filter(b => b.id !== bm.id);
                 saveBookmarksDatabase();
                 apiSyncBookmark({id: deletedId}, 'DELETE');

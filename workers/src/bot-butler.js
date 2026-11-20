@@ -375,6 +375,7 @@ async function confirmPending(db, userId, pending, text) {
     }
     if (pending.action === 'set_profile') {
         if (/^确认删除/i.test(text)) return '这次待确认的是保存档案，不是删除。回「确认」保存，或回「取消」放弃。';
+        if (/^确认修改/i.test(text)) return '这次待确认的是保存档案，不是修改。回「确认」保存，或回「取消」放弃。';
         return confirmProfilePending(db, userId, pending);
     }
     if (/^确认修改/i.test(text) && !String(pending.action).startsWith('update_')) {

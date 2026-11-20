@@ -470,24 +470,33 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
         return;
     }
     if (msg.context_token) await db.prepare("UPDATE bot_claw_accounts SET last_context_token = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(account.id, String(msg.context_token).slice(0, 500)).run();
+    let reply = null;
     try {
-        const reply = hasImage
+        reply = hasImage
             ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)
             : await buildBotReply(env, db, userId, text);
-        if (!reply) return;
-        try {
-            await sendClawText({
-                token: String(account.bot_token || ''),
-                baseurl: account.baseurl,
-                botId: account.ilink_bot_id,
-                toUserId: from,
-                contextToken: msg.context_token || account.last_context_token || '',
-                text: reply,
-                fetchImpl
-            });
-        } catch (sendErr) {
-            if (account.last_context_token && account.last_context_token !== msg.context_token) {
-                console.error('[bot-claw] 首次回复发送失败，重试 last_context_token: ' + (sendErr && sendErr.message));
+    } catch (genErr) {
+        // 回复生成阶段发生异常（尚未产生稳定回复）：回滚排重锁以便重试，并向外抛出
+        try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) { /* audit-ignore: intentional-fallback 回滚消息去重锁失败继续向外抛出主异常 */ }
+        throw genErr;
+    }
+    if (!reply) return;
+
+    // 回信发送阶段：业务副作用已持久化，严禁删除 rate_limits 排重锁
+    try {
+        await sendClawText({
+            token: String(account.bot_token || ''),
+            baseurl: account.baseurl,
+            botId: account.ilink_bot_id,
+            toUserId: from,
+            contextToken: msg.context_token || account.last_context_token || '',
+            text: reply,
+            fetchImpl
+        });
+    } catch (sendErr) {
+        if (account.last_context_token && account.last_context_token !== msg.context_token) {
+            console.error('[bot-claw] 首次回复发送失败，重试 last_context_token: ' + (sendErr && sendErr.message));
+            try {
                 await sendClawText({
                     token: String(account.bot_token || ''),
                     baseurl: account.baseurl,
@@ -497,13 +506,16 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
                     text: reply,
                     fetchImpl
                 });
-            } else {
-                throw sendErr;
+            } catch (retryErr) {
+                console.error('[bot-claw] 回复重试发送失败 id=' + account.id + ': ' + (retryErr && retryErr.message));
+                // 保留排重锁（绝不回滚 rate_limits），抛出异常让上层记录错误并阻止本轮提前推移游标
+                throw retryErr;
             }
+        } else {
+            console.error('[bot-claw] 回复发送失败 id=' + account.id + ': ' + (sendErr && sendErr.message));
+            // 保留排重锁（绝不回滚 rate_limits），抛出异常让上层记录错误并阻止本轮提前推移游标
+            throw sendErr;
         }
-    } catch (err) {
-        try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) { /* audit-ignore: intentional-fallback 回滚消息去重锁失败继续向外抛出主异常 */ }
-        throw err;
     }
 }
 

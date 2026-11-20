@@ -571,7 +571,7 @@ export function initPrompts() {
     async function deletePrompt(id, title) {
         if (!(await confirmDialog('确定要删除提示词「' + title + '」吗？'))) return;
         
-        addDeletedId(id);
+        addDeletedId(id, 'prompts');
         state.promptsDatabase = (state.promptsDatabase || []).filter(p => String(p.id) !== String(id));
         savePromptsDatabase();
         apiSyncPrompt({ id }, 'DELETE');

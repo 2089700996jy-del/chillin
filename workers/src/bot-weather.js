@@ -141,33 +141,37 @@ export async function fetchFullWeatherData(env, locationId, fetchImpl = fetch, n
 }
 
 /** 智能气象与温差数学分析器 */
-export function analyzeWeatherData(data, yesterday) {
+export function analyzeWeatherData(data, yesterday, targetDayIndex = 0) {
     const hourly = data.hourly || [];
     const daily = data.daily || [];
-    const today = daily[0] || {};
+    const idx = Math.max(0, Number(targetDayIndex) || 0);
+    const targetDay = daily[idx] || daily[0] || {};
+    const isToday = idx === 0;
 
     let maxTemp = -999, maxTime = '', minTemp = 999, minTime = '';
     const rainHours = [];
 
-    for (const h of hourly) {
-        const t = Number(h.temp);
-        const hourStr = String(h.fxTime || '').slice(11, 16);
-        if (Number.isFinite(t)) {
-            if (t > maxTemp) { maxTemp = t; maxTime = hourStr; }
-            if (t < minTemp) { minTemp = t; minTime = hourStr; }
-        }
-        const p = Number(h.precip || 0);
-        if ((Number.isFinite(p) && p > 0) || /雨|雪/.test(h.text || '')) {
-            rainHours.push({ hour: hourStr, precip: Number.isFinite(p) ? p : 0, text: h.text || '降水' });
+    if (isToday) {
+        for (const h of hourly) {
+            const t = Number(h.temp);
+            const hourStr = String(h.fxTime || '').slice(11, 16);
+            if (Number.isFinite(t)) {
+                if (t > maxTemp) { maxTemp = t; maxTime = hourStr; }
+                if (t < minTemp) { minTemp = t; minTime = hourStr; }
+            }
+            const p = Number(h.precip || 0);
+            if ((Number.isFinite(p) && p > 0) || /雨|雪/.test(h.text || '')) {
+                rainHours.push({ hour: hourStr, precip: Number.isFinite(p) ? p : 0, text: h.text || '降水' });
+            }
         }
     }
 
-    if (today.tempMax != null && (maxTemp === -999 || Number(today.tempMax) > maxTemp)) {
-        maxTemp = Number(today.tempMax);
+    if (targetDay.tempMax != null && (maxTemp === -999 || Number(targetDay.tempMax) > maxTemp)) {
+        maxTemp = Number(targetDay.tempMax);
         if (!maxTime) maxTime = '白天';
     }
-    if (today.tempMin != null && (minTemp === 999 || Number(today.tempMin) < minTemp)) {
-        minTemp = Number(today.tempMin);
+    if (targetDay.tempMin != null && (minTemp === 999 || Number(targetDay.tempMin) < minTemp)) {
+        minTemp = Number(targetDay.tempMin);
         if (!minTime) minTime = '夜间';
     }
     if (maxTemp === -999) { maxTemp = 20; maxTime = '白天'; }
@@ -175,13 +179,31 @@ export function analyzeWeatherData(data, yesterday) {
 
     let rainSummary = '';
     let rainIntensity = '小雨';
-    if (rainHours.length > 0) {
-        const start = rainHours[0].hour;
-        const end = rainHours[rainHours.length - 1].hour;
-        const maxPrecip = Math.max(...rainHours.map(r => r.precip));
-        if (maxPrecip >= 10 || rainHours.some(r => /大雨|暴雨/.test(r.text))) rainIntensity = '大到暴雨';
-        else if (maxPrecip >= 3 || rainHours.some(r => /中雨/.test(r.text))) rainIntensity = '中雨';
-        rainSummary = (start === end ? `${start} 前后` : `${start}～${end}`) + `有${rainIntensity}`;
+    let hasRain = false;
+
+    if (isToday) {
+        if (rainHours.length > 0) {
+            hasRain = true;
+            const start = rainHours[0].hour;
+            const end = rainHours[rainHours.length - 1].hour;
+            const maxPrecip = Math.max(...rainHours.map(r => r.precip));
+            if (maxPrecip >= 10 || rainHours.some(r => /大雨|暴雨/.test(r.text))) rainIntensity = '大到暴雨';
+            else if (maxPrecip >= 3 || rainHours.some(r => /中雨/.test(r.text))) rainIntensity = '中雨';
+            rainSummary = (start === end ? `${start} 前后` : `${start}～${end}`) + `有${rainIntensity}`;
+        }
+    } else {
+        const textDay = targetDay.textDay || targetDay.text || '';
+        const textNight = targetDay.textNight || '';
+        const rainCondition = /雨|雪/.test(textDay) ? textDay : (/雨|雪/.test(textNight) ? textNight : '');
+        const precip = Number(targetDay.precip || 0);
+        if (rainCondition || (Number.isFinite(precip) && precip > 0)) {
+            hasRain = true;
+            const fullDesc = rainCondition || (textDay + (textNight ? '转' + textNight : ''));
+            if (/大雨|暴雨/.test(fullDesc) || precip >= 10) rainIntensity = '大到暴雨';
+            else if (/中雨/.test(fullDesc) || precip >= 3) rainIntensity = '中雨';
+            else rainIntensity = '小雨';
+            rainSummary = fullDesc || rainIntensity;
+        }
     }
 
     const warnings = (data.warning || []).map(w => ({
@@ -191,7 +213,7 @@ export function analyzeWeatherData(data, yesterday) {
         text: w.text || ''
     }));
 
-    let uvIndex = Number(today.uvIndex || 0);
+    let uvIndex = Number(targetDay.uvIndex || 0);
     let uvCategory = '';
     for (const ind of data.indices || []) {
         if (ind.type === '5') {
@@ -201,11 +223,11 @@ export function analyzeWeatherData(data, yesterday) {
     }
 
     const diurnalRange = (maxTemp > -900 && minTemp < 900) ? (maxTemp - minTemp) : 0;
-    const diffMax = yesterday ? (maxTemp - Number(yesterday.temp_max)) : 0;
-    const diffMin = yesterday ? (minTemp - Number(yesterday.temp_min)) : 0;
-    const hasRain = rainHours.length > 0, hasWarning = warnings.length > 0;
-    const hasBigChange = Math.abs(diffMax) >= 3 || Math.abs(diffMin) >= 3;
-    const hasHugeChange = Math.abs(diffMax) >= 5 || Math.abs(diffMin) >= 5;
+    const diffMax = (isToday && yesterday) ? (maxTemp - Number(yesterday.temp_max)) : 0;
+    const diffMin = (isToday && yesterday) ? (minTemp - Number(yesterday.temp_min)) : 0;
+    const hasWarning = warnings.length > 0;
+    const hasBigChange = isToday && (Math.abs(diffMax) >= 3 || Math.abs(diffMin) >= 3);
+    const hasHugeChange = isToday && (Math.abs(diffMax) >= 5 || Math.abs(diffMin) >= 5);
     const hasBigDiurnal = diurnalRange >= 8, hasStrongUv = uvIndex >= 3;
 
     // 8:00 晨报门禁判定：有雨、有气象预警、较昨日温差≥3℃、昼夜温差≥8℃、紫外线强才触发
@@ -213,7 +235,7 @@ export function analyzeWeatherData(data, yesterday) {
 
     return {
         maxTemp, maxTime, minTemp, minTime,
-        textDay: today.textDay || (hourly[0] && hourly[0].text) || '多云',
+        textDay: targetDay.textDay || (isToday && hourly[0] && hourly[0].text) || '多云',
         rainSummary, rainIntensity, hasRain,
         warnings, hasWarning,
         uvIndex, uvCategory, hasStrongUv,
@@ -224,8 +246,9 @@ export function analyzeWeatherData(data, yesterday) {
 }
 
 /** 格式化老友口吻的天气关怀晨报 */
-export function formatWeatherMessage(cityName, a, isMorning = false) {
-    const lines = [isMorning ? `早！${cityName}今天${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：` : `【${cityName}天气】今天${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：`];
+export function formatWeatherMessage(cityName, a, isMorning = false, dateLabel = '今天') {
+    const dLabel = (a && a.dateLabel) || dateLabel || '今天';
+    const lines = [isMorning ? `早！${cityName}${dLabel}${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：` : `【${cityName}天气】${dLabel}${a.textDay}，气温 ${a.minTemp}～${a.maxTemp}℃：`];
     lines.push(`- 最高温 ${a.maxTemp}℃ 预计出现在 ${a.maxTime}，最低温 ${a.minTemp}℃ 预计出现在 ${a.minTime}；`);
 
     if (a.hasHugeChange) {
@@ -235,8 +258,8 @@ export function formatWeatherMessage(cityName, a, isMorning = false) {
     }
 
     if (a.hasBigDiurnal) lines.push(`- 昼夜温差达 ${a.diurnalRange}℃，早晚偏凉中午较热，建议洋葱式穿搭；`);
-    if (a.hasRain) lines.push(`- 降雨提醒：预计 ${a.rainSummary}，出门记得备好雨具！`);
-    else lines.push(`- 今天全天无雨，适合出行；`);
+    if (a.hasRain) lines.push(`- 降雨提醒：预计 ${a.rainSummary ? (a.rainSummary.includes('有') ? a.rainSummary : (a.rainSummary.includes('雨') || a.rainSummary.includes('雪') ? a.rainSummary : `有${a.rainSummary}`)) : '有降雨'}，出门记得备好雨具！`);
+    else lines.push(`- ${dLabel}全天无雨，适合出行；`);
     if (a.hasWarning) lines.push(`- ⚠️ 气象预警生效中：${a.warnings.map(w => w.title || (w.type + w.level)).join('、')}，注意出行安全。`);
     if (a.hasStrongUv) lines.push(`- 紫外线偏强（${a.uvIndex}级 ${a.uvCategory}），户外活动注意防晒防紫外线。`);
     return lines.join('\n');
@@ -387,31 +410,61 @@ export function isWeatherQuery(text) {
     return WEATHER_QUERY_RE.test(s);
 }
 
+export function parseWeatherDateTarget(text) {
+    const s = String(text || '');
+    if (/(?:明后|今明|[两三四五六七八九十][天日]|大后天|前天|昨天|昨儿|下周|上周|这周|本周|周末|星期|礼拜|周[一二三四五六日天]|几[天日]|多[天日]|未来|近期|近来|一周)/.test(s)) {
+        return null; // 超出 3 天预报或跨多日范围预报的，放行给联网检索或对话大模型
+    }
+    if (/后天/.test(s)) {
+        return { index: 2, label: '后天' };
+    }
+    if (/(?:明天|明日|次日)/.test(s)) {
+        return { index: 1, label: '明天' };
+    }
+    if (/(?:今天|今日)/.test(s)) {
+        return { index: 0, label: '今天' };
+    }
+    // 默认当日
+    return { index: 0, label: '今天' };
+}
+
+export function east8DateForOffset(nowMs = Date.now(), offsetDays = 0) {
+    const shifted = Number(nowMs) + 8 * 3600 * 1000 + Number(offsetDays) * 86400000;
+    return new Date(shifted).toISOString().slice(0, 10);
+}
+
 /** 白天用户主动询问天气时的秒级回答 */
 export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetch, nowMs = Date.now()) {
     if (!isWeatherQuery(text)) return null;
+    const dateTarget = parseWeatherDateTarget(text);
+    if (!dateTarget) return null; // 无法确定或超出 3 天跨度，放行给联网检索或大模型
+
     const auth = await getQWeatherToken(env, nowMs);
     if (!auth) return null;
 
     const city = await resolveUserCity(db, userId, text);
-    const cacheKey = `${city}:${east8Dates(nowMs).today}`;
+    const targetDateStr = east8DateForOffset(nowMs, dateTarget.index);
+    const cacheKey = `${city}:${targetDateStr}:${dateTarget.index}`;
     const cached = weatherCache.get(cacheKey);
     if (cached && nowMs < cached.exp) return cached.reply;
 
     const cityInfo = await lookupCity(env, city, fetchImpl, nowMs);
     if (!cityInfo) return null;
 
-    const { yesterday } = east8Dates(nowMs);
+    const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
+    if (!raw.daily || raw.daily.length <= dateTarget.index) return null;
+
     let yRow = null;
-    if (db && userId) {
+    if (dateTarget.index === 0 && db && userId) {
+        const { yesterday } = east8Dates(nowMs);
         try {
             yRow = await db.prepare('SELECT temp_max, temp_min FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(userId, yesterday).first();
         } catch (_) { /* audit-ignore: intentional-fallback 读取昨日温度对比基准异常降级跳过 */ }
     }
 
-    const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
-    const a = analyzeWeatherData(raw, yRow);
-    const reply = formatWeatherMessage(city, a, false);
+    const a = analyzeWeatherData(raw, yRow, dateTarget.index);
+    a.dateLabel = dateTarget.label;
+    const reply = formatWeatherMessage(city, a, false, dateTarget.label);
 
     if (weatherCache.size > 30) weatherCache.clear();
     weatherCache.set(cacheKey, { reply, exp: nowMs + 30 * 60 * 1000 });

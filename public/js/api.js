@@ -40,6 +40,7 @@ export {
     dataUriToBlob,
     uploadBase64Image,
     processWeeklyBase64Images,
+    processNoteBase64Images,
 } from './sync.js';
 
 export {

@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createTestDb, seedUser, sqliteTest } from './fake-d1.mjs';
+import { handleSyncBatch } from '../workers/src/garden-sync.js';
+const integration = sqliteTest;
 
 // Node.js test environment mock for browser globals
 if (typeof globalThis.window === 'undefined') {
@@ -19,14 +22,31 @@ if (typeof globalThis.localStorage === 'undefined') {
 }
 if (typeof globalThis.document === 'undefined') {
     globalThis.document = {
-        body: { classList: { toggle: () => {}, remove: () => {}, add: () => {} } },
+        body: { classList: { toggle: () => { }, remove: () => { }, add: () => { } } },
         getElementById: () => null,
         querySelector: () => null,
         querySelectorAll: () => []
     };
 }
 
-const { mergeDataLists, toUpdatedTs, getIncrementalSyncCursor, makePushedTimestampMap, clearPushedDirtyFlags, syncSignature, processApiSyncResult, getSyncConflicts } = await import('../public/js/sync.js');
+const {
+    mergeDataLists,
+    toUpdatedTs,
+    getIncrementalSyncCursor,
+    makePushedTimestampMap,
+    clearPushedDirtyFlags,
+    syncSignature,
+    processApiSyncResult,
+    getSyncConflicts,
+    loadLocalData,
+    stampLocalUpdate,
+    processNoteBase64Images,
+    getPendingDeletedItems,
+    addPendingDeletedItem,
+    removePendingDeletedItem
+} = await import('../public/js/sync.js');
+const { getLocalKey } = await import('../public/js/auth.js');
+const { getEast8Time } = await import('../public/js/utils.js');
 
 test('Sync - toUpdatedTs converts various date formats accurately', () => {
     const tsIso = toUpdatedTs('2026-09-23T10:00:00+08:00');
@@ -653,6 +673,261 @@ test('Sync - apiSyncWeekly accepts server ID remapping even with multiple update
     } finally {
         globalThis.fetch = originalFetch;
     }
+});
+
+// ── 7处混沌缺陷修复回归验证 ──
+
+test('Sync - [P0] loadLocalData does not overwrite full IndexedDB data before hydrateFromIndexedDb', async () => {
+    const { state } = await import('../public/js/state.js');
+    state.authUser = { id: 1, username: 'testuser' };
+    const weekliesKey = getLocalKey('gardenWeeklies');
+
+    const truncated = [
+        { id: 1001, title: '周记1', date: '2026-11-01' },
+        { id: 1002, title: '周记2', date: '2026-11-02' }
+    ];
+    localStorage.setItem(weekliesKey, JSON.stringify(truncated));
+
+    let saveCalledDuringLoad = false;
+    const origSetItem = localStorage.setItem;
+    localStorage.setItem = (k, v) => {
+        if (k === weekliesKey) {
+            saveCalledDuringLoad = true;
+        }
+        return origSetItem(k, v);
+    };
+
+    try {
+        loadLocalData();
+        assert.equal(saveCalledDuringLoad, false, 'loadLocalData must NOT synchronously trigger saveDatabase before hydration');
+    } finally {
+        localStorage.setItem = origSetItem;
+    }
+});
+
+test('Sync - [P0] getEast8Time has sub-second precision and clears _dirty safely using revisions', async () => {
+    const t1 = getEast8Time();
+    assert.match(t1, /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}$/, 'getEast8Time should have millisecond precision');
+
+    const item1 = { id: 2001, title: '初版', content: '内容1' };
+    stampLocalUpdate(item1);
+    assert.equal(item1._rev, 1);
+    assert.equal(item1._dirty, true);
+
+    const pushedMap = makePushedTimestampMap([item1]);
+
+    stampLocalUpdate(item1);
+    assert.equal(item1._rev, 2);
+    assert.equal(item1._dirty, true);
+
+    const changed = clearPushedDirtyFlags([item1], pushedMap);
+    assert.equal(item1._dirty, true, 'in-flight secondary modification must keep _dirty=true');
+    assert.equal(changed, false);
+
+    const item2 = { id: 2002, title: '未改动', content: '内容2' };
+    stampLocalUpdate(item2);
+    const pushedMap2 = makePushedTimestampMap([item2]);
+    const changed2 = clearPushedDirtyFlags([item2], pushedMap2);
+    assert.equal(item2._dirty, false, 'unmodified item should clear _dirty');
+    assert.equal(changed2, true);
+});
+
+integration('Sync - [P1] /api/sync/batch applies deleted tombstones to database', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await db.prepare("INSERT INTO notes (id, user_id, title, content, date, is_deleted, created_at, updated_at) VALUES (3001, 1, '待删笔记', '正文', '2026-11-20', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))").run();
+
+    const batchBody = {
+        weeklies: [],
+        notes: [],
+        bookmarks: [],
+        feeds: [],
+        prompts: [],
+        deleted: [{ resource: 'notes', id: 3001 }]
+    };
+
+    const req = new Request('https://x/api/sync/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(batchBody)
+    });
+
+    const res = await handleSyncBatch(req, db, 1);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    assert.ok(Array.isArray(data.deleted));
+    assert.equal(data.deleted.length, 1);
+    assert.equal(data.deleted[0].id, 3001);
+
+    const row = await db.prepare('SELECT is_deleted FROM notes WHERE id = 3001').first();
+    assert.equal(row.is_deleted, 1, 'note 3001 must be soft-deleted in database');
+
+    addPendingDeletedItem('notes', 3001);
+    assert.ok(getPendingDeletedItems().some(d => d.resource === 'notes' && String(d.id) === '3001'));
+    removePendingDeletedItem('notes', 3001);
+    assert.ok(!getPendingDeletedItems().some(d => d.resource === 'notes' && String(d.id) === '3001'));
+});
+
+test('Sync - [P1] processNoteBase64Images extracts Base64 markdown/html images and replaces with URLs', async () => {
+    const originalFetch = globalThis.fetch;
+    const testDataUri = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+
+    globalThis.fetch = async (url) => {
+        if (String(url).includes('/api/upload')) {
+            return new Response(JSON.stringify([{ src: 'https://example.com/uploaded-note-img.png' }]), {
+                status: 201,
+                headers: { 'Content-Type': 'application/json' }
+            });
+        }
+        return new Response('{}', { status: 200 });
+    };
+
+    try {
+        const note = {
+            id: 4001,
+            title: '带大图的笔记',
+            content: `一段文字\n![截图](${testDataUri})\n<img src="${testDataUri}">\n结尾`
+        };
+
+        const modified = await processNoteBase64Images(note);
+        assert.equal(modified, true);
+        assert.ok(!note.content.includes('data:image/png;base64'));
+        assert.ok(note.content.includes('https://example.com/uploaded-note-img.png'));
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
+});
+
+test('Sync - [P1] Note drafts are isolated by note ID and retain annotations', async () => {
+    const { initNotes } = await import('../public/js/notes.js');
+
+    const elMap = new Map();
+    const mockElement = (id) => {
+        if (!elMap.has(id)) {
+            elMap.set(id, {
+                id,
+                value: '',
+                innerText: '',
+                style: {},
+                dataset: {},
+                addEventListener: () => { },
+                classList: { add: () => { }, remove: () => { }, toggle: () => { } },
+                querySelector: () => null,
+                querySelectorAll: () => []
+            });
+        }
+        return elMap.get(id);
+    };
+
+    const origGetElementById = globalThis.document.getElementById;
+    globalThis.document.getElementById = (id) => mockElement(id);
+
+    try {
+        const noteApis = initNotes();
+        assert.ok(noteApis.hasUnsavedNoteChanges);
+        assert.ok(noteApis.saveNoteDraft);
+
+        const editId = mockElement('edit-note-id');
+        const editTitle = mockElement('edit-note-title');
+        const editContent = mockElement('edit-note-content');
+
+        editId.value = '101';
+        editTitle.value = '笔记101标题';
+        editContent.value = '笔记101草稿正文';
+        noteApis.saveNoteDraft();
+
+        const draft101Key = getLocalKey('noteDraft_101');
+        const draft101Raw = localStorage.getItem(draft101Key);
+        assert.ok(draft101Raw, 'draft for 101 must exist under noteDraft_101');
+        const draft101 = JSON.parse(draft101Raw);
+        assert.equal(draft101.title, '笔记101标题');
+
+        editId.value = '102';
+        editTitle.value = '笔记102标题';
+        editContent.value = '笔记102正文';
+        noteApis.saveNoteDraft();
+
+        const draft101Check = JSON.parse(localStorage.getItem(draft101Key));
+        assert.equal(draft101Check.title, '笔记101标题', 'draft 101 must not be trampled by draft 102');
+    } finally {
+        globalThis.document.getElementById = origGetElementById;
+    }
+});
+
+integration('Sync - [P2] ON CONFLICT strictly preserves existing user_id and blocks ownership hijack', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1, 'alice');
+    await seedUser(db, 2, 'bob');
+
+    await db.prepare("INSERT INTO notes (id, user_id, title, content, date, is_deleted, created_at, updated_at) VALUES (6001, 1, 'Alice 私密笔记', '机密正文', '2026-11-20', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))").run();
+
+    const hijackReq = new Request('https://x/api/sync/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            weeklies: [],
+            notes: [{ id: 6001, title: '被 Bob 篡改后的标题', content: '篡改内容', date: '2026-11-20' }],
+            bookmarks: [],
+            feeds: [],
+            prompts: []
+        })
+    });
+
+    await handleSyncBatch(hijackReq, db, 2);
+
+    const row = await db.prepare('SELECT user_id, title FROM notes WHERE id = 6001').first();
+    assert.equal(row.user_id, 1, 'Ownership must NOT be hijacked to user 2');
+    assert.equal(row.title, 'Alice 私密笔记', 'Content must NOT be overwritten by another user');
+});
+
+integration('Sync - [P2] Repeated push with identical content does not report false conflict', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    await db.prepare("INSERT INTO notes (id, user_id, title, content, date, is_deleted, created_at, updated_at) VALUES (7001, 1, '已写入笔记', '正文完全一致', '2026-11-20', 0, datetime('now', '+8 hours'), '2026-11-20 12:30:00')").run();
+
+    const retryReq = new Request('https://x/api/sync/batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            weeklies: [],
+            notes: [{
+                id: 7001,
+                title: '已写入笔记',
+                content: '正文完全一致',
+                date: '2026-11-20',
+                base_updated_at: '2026-11-20 12:00:00'
+            }],
+            bookmarks: [],
+            feeds: [],
+            prompts: []
+        })
+    });
+
+    const res = await handleSyncBatch(retryReq, db, 1);
+    assert.equal(res.status, 200);
+    const data = await res.json();
+
+    assert.equal(data.conflicts.length, 0, 'Must NOT trigger false conflict on idempotent retry');
+    assert.ok(data.updated.some(u => u.resource === 'notes' && u.id === 7001), 'Item should be acknowledged in updated list');
+});
+
+test('Sync - Router Guard intercepts view-note-editor on goBackOrHome and popstate', async () => {
+    const fs = await import('fs');
+    const routerSource = fs.readFileSync('public/js/router.js', 'utf8');
+
+    assert.match(
+        routerSource,
+        /activeView\.id\s*===\s*['"]view-note-editor['"][\s\S]*?actions\.handleExitNoteEditor/,
+        'goBackOrHome must delegate to actions.handleExitNoteEditor when activeView is view-note-editor'
+    );
+
+    assert.match(
+        routerSource,
+        /activeView\.id\s*===\s*['"]view-note-editor['"][\s\S]*?hasUnsavedNoteChanges/,
+        'popstate must check hasUnsavedNoteChanges for view-note-editor and restore hash on cancel'
+    );
 });
 
 

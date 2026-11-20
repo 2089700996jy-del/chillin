@@ -587,7 +587,7 @@ if (todayTodosWidget) {
 
 window.deleteFeed = async function(id) {
     if (!(await confirmDialog('确定要删除这条随手记吗？'))) return;
-    addDeletedId(id);
+    addDeletedId(id, 'feeds');
     state.feedsDatabase = state.feedsDatabase.filter(f => String(f.id) !== String(id));
     saveFeedsDatabase();
     renderFeeds();

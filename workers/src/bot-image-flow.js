@@ -11,7 +11,10 @@
  */
 
 import { extractClawImageItems, downloadClawImage, storeClawImage, sniffImageMagic } from './bot-media.js';
-import { analyzeClawImages, describeClawImageContent, isDeepVisionQuestion } from './bot-vision.js';
+import {
+    analyzeClawImages, describeClawImageContent, isDeepVisionQuestion,
+    MAX_TOTAL_IMAGE_BYTES, MAX_SINGLE_IMAGE_BYTES
+} from './bot-vision.js';
 import {
     saveChatTurn, savePendingMedia, readPendingMedia, parsePendingImageBatch,
     PENDING_CONFIRM_HINT, PENDING_IMAGE_BATCH_MAX_ITEMS
@@ -152,12 +155,24 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
         if (loaded.length) analysisImages = [...loaded, ...analysisImages].slice(-MAX_IMAGES);
     }
 
+    // 多图总视觉内存预算门禁（防 Worker 128MB 物理上限 OOM）：超过 10MB 或单图 >5MB 截断看图描述
+    let totalVisionBytes = 0;
+    const visionEligible = usable.map(entry => {
+        const size = (entry.download && entry.download.bytes && (entry.download.bytes.byteLength || entry.download.bytes.length)) || 0;
+        if (size > MAX_SINGLE_IMAGE_BYTES) return false;
+        if (totalVisionBytes + size > MAX_TOTAL_IMAGE_BYTES) return false;
+        totalVisionBytes += size;
+        return true;
+    });
+
     // 存图与看图并行：回信只等较慢的那个；看图失败只是没有描述，绝不阻塞暂存。
     const [stored, analysis] = await Promise.all([
         Promise.all(usable.map(entry => storeClawImage(env, db, userId, entry.download.bytes, entry.download.mime))),
         deep
             ? analyzeClawImages(env, analysisImages, { mode: 'deep', question: text, fetchImpl })
-            : Promise.all(usable.map(entry => describeClawImageContent(env, entry.download.bytes, entry.download.mime, fetchImpl)))
+            : Promise.all(usable.map((entry, idx) => visionEligible[idx]
+                ? describeClawImageContent(env, entry.download.bytes, entry.download.mime, fetchImpl)
+                : Promise.resolve('')))
     ]);
     const unread = imageItems.length - usable.length;
     const current = [];

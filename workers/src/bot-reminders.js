@@ -286,10 +286,11 @@ export async function listReminders(db, userId, nowMs) {
     if (!list.length) return '现在没有待提醒的事。发「提醒我 20:00 给电动牙刷充电」这种格式我就记下——到点真的会在微信里叫你。';
     const lines = ['**我的提醒**（' + list.length + ' 条）'];
     list.forEach((r, i) => {
-        lines.push((i + 1) + '. ' + formatReminderTime(r.fire_at_ms, now) + ' — ' + r.text + (r.status === 'fired' ? '（刚提醒过）' : ''));
+        const tag = r.status === 'fired' ? '（刚提醒过）' : '';
+        lines.push((i + 1) + '. ' + formatReminderTime(r.fire_at_ms, now) + ' — ' + r.text + tag + ' (#' + r.id + ')');
     });
     lines.push('');
-    lines.push('取消哪条就发「取消提醒 <编号>」；做完了回「完成」。');
+    lines.push('取消哪条就发「取消提醒 <编号>」（支持序号或 #ID）；做完了回「完成」。');
     return lines.join('\n');
 }
 
@@ -297,14 +298,28 @@ export async function listReminders(db, userId, nowMs) {
 export async function cancelReminder(db, userId, arg, nowMs) {
     const now = Number(nowMs) || Date.now();
     const key = String(arg == null ? '' : arg).trim();
-    if (!key) return '取消哪条？先发「我的提醒」看编号，再发「取消提醒 1」。';
+    if (!key) return '取消哪条？先发「我的提醒」看编号，再发「取消提醒 1」或「取消提醒 #12」。';
     let target = null;
-    if (/^\d{1,2}$/.test(key)) {
+    const hashMatch = key.match(/^#(\d+)$/);
+    if (hashMatch) {
+        const id = Number(hashMatch[1]);
+        target = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE id = ?1 AND user_id = ?2 AND is_deleted = 0 AND status IN ('pending', 'fired')")
+            .bind(id, userId).first() || null;
+        if (!target) return '没找到编号为 #' + id + ' 的待提醒，发「我的提醒」看看。';
+    } else if (/^\d{1,2}$/.test(key)) {
         const res = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status IN ('pending', 'fired') ORDER BY fire_at_ms ASC, id ASC LIMIT 20")
             .bind(userId).all();
         const list = (res && res.results) || [];
         target = list[Number(key) - 1] || null;
-        if (!target) return '没有第 ' + key + ' 条待提醒，发「我的提醒」看看现在的编号。';
+        if (!target) {
+            target = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE id = ?1 AND user_id = ?2 AND is_deleted = 0 AND status IN ('pending', 'fired')")
+                .bind(Number(key), userId).first() || null;
+            if (!target) return '没有第 ' + key + ' 条待提醒，发「我的提醒」看看现在的编号。';
+        }
+    } else if (/^\d+$/.test(key)) {
+        target = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE id = ?1 AND user_id = ?2 AND is_deleted = 0 AND status IN ('pending', 'fired')")
+            .bind(Number(key), userId).first() || null;
+        if (!target) return '没找到编号为 #' + key + ' 的待提醒，发「我的提醒」看看。';
     } else {
         target = await db.prepare("SELECT id, text, fire_at_ms, status FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status IN ('pending', 'fired') AND text LIKE '%' || ?2 || '%' ORDER BY fire_at_ms ASC, id ASC LIMIT 1")
             .bind(userId, key).first() || null;
@@ -384,7 +399,7 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
         return sender;
     };
 
-    const dueRes = await db.prepare("SELECT id, user_id, text, fire_at_ms, follow_up_ms FROM bot_reminders WHERE is_deleted = 0 AND status = 'pending' AND fire_at_ms <= ?1 ORDER BY fire_at_ms ASC, id ASC LIMIT ?2")
+    const dueRes = await db.prepare("SELECT id, user_id, text, fire_at_ms, follow_up_ms, follow_up_attempts FROM bot_reminders WHERE is_deleted = 0 AND status = 'pending' AND fire_at_ms <= ?1 AND (follow_up_retry_at_ms = 0 OR follow_up_retry_at_ms <= ?1) ORDER BY fire_at_ms ASC, id ASC LIMIT ?2")
         .bind(now, limit).all();
     const due = (dueRes && dueRes.results) || [];
     summary.due = due.length;
@@ -424,10 +439,12 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
             await saveTurnSafe(db, row.user_id, firedText);
             console.log('[reminder] 已送达 id=' + row.id + ' user=' + row.user_id);
         } catch (err) {
-            await db.prepare("UPDATE bot_reminders SET status = 'pending', fired_at_ms = 0, follow_up_at_ms = 0, follow_up_status = 'none', follow_up_attempts = 0, follow_up_retry_at_ms = 0, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'fired'")
-                .bind(row.id).run();
+            const nextAttempt = Number(row.follow_up_attempts || 0) + 1;
+            const retryAt = now + followUpBackoffMs(nextAttempt);
+            await db.prepare("UPDATE bot_reminders SET status = 'pending', fired_at_ms = 0, follow_up_at_ms = 0, follow_up_status = 'none', follow_up_attempts = ?1, follow_up_retry_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND status = 'fired'")
+                .bind(nextAttempt, retryAt, row.id).run();
             summary.failed++;
-            console.error('[reminder] 发送失败 id=' + row.id + ': ' + (err && err.message));
+            console.error('[reminder] 发送失败 id=' + row.id + ' attempt=' + nextAttempt + ': ' + (err && err.message));
         }
     }
 

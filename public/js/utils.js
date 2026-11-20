@@ -240,7 +240,8 @@ export function getEast8Time() {
     const utc = d.getTime() + (d.getTimezoneOffset() * 60000);
     const east8 = new Date(utc + (3600000 * 8));
     const pad = n => String(n).padStart(2, '0');
-    return `${east8.getFullYear()}-${pad(east8.getMonth()+1)}-${pad(east8.getDate())} ${pad(east8.getHours())}:${pad(east8.getMinutes())}:${pad(east8.getSeconds())}`;
+    const padMs = n => String(n).padStart(3, '0');
+    return `${east8.getFullYear()}-${pad(east8.getMonth()+1)}-${pad(east8.getDate())} ${pad(east8.getHours())}:${pad(east8.getMinutes())}:${pad(east8.getSeconds())}.${padMs(east8.getMilliseconds())}`;
 }
 /**
  * 首屏同步中的骨架屏占位 HTML。

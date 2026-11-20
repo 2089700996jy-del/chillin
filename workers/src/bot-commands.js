@@ -384,8 +384,10 @@ async function runChat(env, db, userId, text, history, options = {}) {
         const tag = proposal.label || '';
         const isDupe = existing.some(it => String(it.content) === proposal.content && (!tag || String(it.label || '') === tag));
         if (!isDupe) {
-            await savePendingAction(db, userId, 'set_profile', 'bot_profile', 0, proposal);
-            output += '\n\n💡 记下你的新档案「' + (tag ? tag + '：' : '') + proposal.content + '」？回复【确认】保存，回复【取消】忽略。';
+            const saved = await savePendingAction(db, userId, 'set_profile', 'bot_profile', 0, proposal);
+            if (saved !== false) {
+                output += '\n\n💡 记下你的新档案「' + (tag ? tag + '：' : '') + proposal.content + '」？回复【确认】保存，回复【取消】忽略。';
+            }
         }
     }
     if (!sources.length || !wantsEvidence(queryText)) return output;

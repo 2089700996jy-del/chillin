@@ -255,6 +255,12 @@ const goBackOrHome = () => {
     const activeView = document.querySelector('.view-section.active');
     if (activeView && activeView.id === 'view-editor') {
         actions.handleExitWeeklyEditor(finish);
+    } else if (activeView && activeView.id === 'view-note-editor') {
+        if (actions.handleExitNoteEditor) {
+            actions.handleExitNoteEditor(finish);
+        } else {
+            finish();
+        }
     } else {
         finish();
     }
@@ -306,6 +312,15 @@ window.addEventListener('popstate', (e) => {
         // 先顶回编辑页 hash，避免取消确认后 URL 已离开编辑器
         history.pushState({ view: 'editor', articleId: ui.currentArticleId }, '', buildHashForView('editor'));
         actions.handleExitWeeklyEditor(applyIntended);
+        return;
+    }
+    if (activeView && activeView.id === 'view-note-editor' && actions.hasUnsavedNoteChanges && actions.hasUnsavedNoteChanges()) {
+        history.pushState({ view: 'note-editor', noteId: ui.currentNoteId }, '', buildHashForView('note-editor'));
+        if (actions.handleExitNoteEditor) {
+            actions.handleExitNoteEditor(applyIntended);
+        } else {
+            applyIntended();
+        }
         return;
     }
     applyIntended();

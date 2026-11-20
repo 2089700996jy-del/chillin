@@ -26,12 +26,40 @@ const MAX_FAST_MULTI_CHARS = 600;
 const MAX_DEEP_CHARS = 1200;
 const MAX_IMAGES = 6;
 
+export const MAX_TOTAL_IMAGE_BYTES = 10 * 1024 * 1024; // 10MB 多图总上限（防 Worker 128MB OOM）
+export const MAX_SINGLE_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB 单图视觉上限
+
+/** 多图总尺寸上限预算过滤：防多图转 Base64 内存膨胀突破 Worker 128MB 物理上限 */
+export function filterImagesWithinBudget(images) {
+    const list = (Array.isArray(images) ? images : [])
+        .filter(image => image && image.bytes && image.mime)
+        .slice(0, MAX_IMAGES);
+    let totalBytes = 0;
+    const kept = [];
+    for (const img of list) {
+        const size = img.bytes.byteLength || img.bytes.length || 0;
+        if (size > MAX_SINGLE_IMAGE_BYTES) {
+            console.warn(`[bot-vision] 单图过大 (${size} 字节 > ${MAX_SINGLE_IMAGE_BYTES})，跳过该图视觉转换`);
+            continue;
+        }
+        if (totalBytes + size > MAX_TOTAL_IMAGE_BYTES) {
+            console.warn(`[bot-vision] 多图总尺寸达到上限 (${totalBytes + size} 字节 > ${MAX_TOTAL_IMAGE_BYTES})，截断后续图片视觉分析`);
+            break;
+        }
+        totalBytes += size;
+        kept.push(img);
+    }
+    return kept;
+}
+
 /** 字节 → base64（分块 fromCharCode，避免大图撑爆调用栈） */
 function bytesToBase64(bytes) {
+    if (!bytes) return '';
+    const u8 = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
     let bin = '';
     const CHUNK = 8192;
-    for (let i = 0; i < bytes.length; i += CHUNK) {
-        bin += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    for (let i = 0; i < u8.length; i += CHUNK) {
+        bin += String.fromCharCode.apply(null, u8.subarray(i, i + CHUNK));
     }
     return btoa(bin);
 }
@@ -50,9 +78,10 @@ export function isDeepVisionQuestion(text) {
 }
 
 function buildContent(images, prompt) {
+    const budgeted = filterImagesWithinBudget(images);
     const content = [{ type: 'text', text: prompt }];
-    images.forEach((image, i) => {
-        if (images.length > 1) content.push({ type: 'text', text: '第' + (i + 1) + '张：' });
+    budgeted.forEach((image, i) => {
+        if (budgeted.length > 1) content.push({ type: 'text', text: '第' + (i + 1) + '张：' });
         content.push({
             type: 'image_url',
             image_url: { url: 'data:' + image.mime + ';base64,' + bytesToBase64(image.bytes) }
@@ -69,9 +98,7 @@ function buildContent(images, prompt) {
  * @returns {Promise<string>} 失败一律空串
  */
 export async function analyzeClawImages(env, images, options = {}) {
-    const list = (Array.isArray(images) ? images : [])
-        .filter(image => image && image.bytes && image.mime)
-        .slice(0, MAX_IMAGES);
+    const list = filterImagesWithinBudget(images);
     if (!list.length) return '';
     const apiKey = (env && (env.VISION_API_KEY || env.LLM_API_KEY)) || '';
     if (!apiKey) return '';
@@ -131,5 +158,6 @@ export async function analyzeClawImages(env, images, options = {}) {
 
 /** 看一眼图片，给一句中文描述；拿不到描述就返回空串（调用方照常存图）。 */
 export async function describeClawImageContent(env, bytes, mime, fetchImpl = fetch) {
+    if (!bytes || (bytes.byteLength || bytes.length || 0) > MAX_SINGLE_IMAGE_BYTES) return '';
     return analyzeClawImages(env, [{ bytes, mime }], { mode: 'fast', fetchImpl });
 }

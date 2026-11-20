@@ -511,3 +511,31 @@ sqliteTest('联网 - 模型合成卡住时按死线退化为只给来源，不�
     assert.match(reply, /没能整理出结论/);
     assert.equal(Math.max(0, elapsed - 3000), 0, '死线必须生效，实测 ' + elapsed + 'ms');
 });
+
+// ── 7处混沌缺陷修复回归验证 ──
+
+sqliteTest('联网 - [V-07] 突发闸限流拦截时绝不虚扣用户的每日检索配额', async () => {
+    const db = createTestDb();
+    await seedUser(db, 999);
+    const st = searchStub();
+    const { env } = webEnv();
+    // 日上限设为 2，突发闸设为 1
+    const e = { ...env, WEB_DAILY_LIMIT: 2, WEB_BURST_LIMIT: 1 };
+
+    // 第一次调用：成功出站，消耗 1 次日额度
+    const r1 = await maybeWebAnswer(e, db, 999, '查一下今天76人有比赛吗', st.impl, NOW);
+    assert.match(r1, /来源：/);
+    assert.equal(st.calls.length, 1);
+
+    const dailyRow1 = await db.prepare("SELECT count FROM rate_limits WHERE bucket_key = 'bot-web:999'").first();
+    assert.equal(dailyRow1.count, 1, '首次真实出站扣除 1 次日配额');
+
+    // 紧接着发第二次：被突发闸拦截（1秒内）
+    const r2 = await maybeWebAnswer(e, db, 999, '查一下明天天气怎么样', st.impl, NOW + 1000);
+    assert.match(r2, /有点急/);
+    assert.equal(st.calls.length, 1, '被拦截请求不出站');
+
+    // 核心契约验证：被突发闸拦截后，日配额绝对没有被消耗（计数仍为 1，没有变成 2）
+    const dailyRow2 = await db.prepare("SELECT count FROM rate_limits WHERE bucket_key = 'bot-web:999'").first();
+    assert.equal(dailyRow2.count, 1, '突发闸拦截时绝不虚扣用户的每日配额');
+});

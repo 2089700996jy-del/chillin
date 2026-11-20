@@ -160,6 +160,66 @@ const MAX_SYNC_BODY_BYTES = 4 * 1024 * 1024;   // 单次请求体 4MB
 const MAX_SYNC_RECORDS = 200;                  // 每种资源单次最多 200 条
 const MAX_SYNC_RECORD_CHARS = 500 * 1024;      // 单条记录序列化后 500KB
 
+function safeJsonEqual(a, b) {
+    if (a === b) return true;
+    const isBlank = (val) => val == null || val === '' || val === '[]' || (Array.isArray(val) && val.length === 0);
+    if (isBlank(a) && isBlank(b)) return true;
+    try {
+        const objA = typeof a === 'string' ? JSON.parse(a) : a;
+        const objB = typeof b === 'string' ? JSON.parse(b) : b;
+        if (isBlank(objA) && isBlank(objB)) return true;
+        return JSON.stringify(objA) === JSON.stringify(objB);
+    } catch (_) {
+        return String(a || '').trim() === String(b || '').trim();
+    }
+}
+
+export function isRecordContentIdentical(resource, item, dbRow) {
+    if (!item || !dbRow) return false;
+    if (resource === 'weeklies') {
+        return (item.category || '🌸') === (dbRow.category || '🌸') &&
+            (item.title || '') === (dbRow.title || '') &&
+            (item.summary || '') === (dbRow.summary || '') &&
+            (item.date || '') === (dbRow.date || '') &&
+            (item.cover || item.cover_image || '') === (dbRow.cover || '') &&
+            (item.content || '') === (dbRow.content || '') &&
+            safeJsonEqual(item.weeklyData || item.weekly_data, dbRow.weekly_data) &&
+            safeJsonEqual(item.annotations, dbRow.annotations);
+    }
+    if (resource === 'notes') {
+        return (item.title || '').trim() === (dbRow.title || '').trim() &&
+            (item.content || '').trim() === (dbRow.content || '').trim() &&
+            (item.date || '') === (dbRow.date || '') &&
+            safeJsonEqual(item.annotations, dbRow.annotations);
+    }
+    if (resource === 'bookmarks') {
+        const itemDesc = item.desc || item.description || '';
+        const rowDesc = dbRow.description || dbRow.desc || '';
+        return (item.type || '🌐 网站') === (dbRow.type || '🌐 网站') &&
+            (item.title || '') === (dbRow.title || '') &&
+            (item.url || '') === (dbRow.url || '') &&
+            itemDesc === rowDesc &&
+            (item.image || item.img || '') === (dbRow.image || '');
+    }
+    if (resource === 'feeds') {
+        return (item.content || '').trim() === (dbRow.content || '').trim() &&
+            (item.type || '') === (dbRow.type || '') &&
+            (item.media_url || item.mediaUrl || '') === (dbRow.media_url || '') &&
+            (item.summary || '') === (dbRow.summary || '') &&
+            safeJsonEqual(item.tags, dbRow.tags);
+    }
+    if (resource === 'prompts') {
+        return (item.title || '').trim() === (dbRow.title || '').trim() &&
+            (item.content || '').trim() === (dbRow.content || '').trim() &&
+            (item.project || '通用').trim() === (dbRow.project || '通用').trim() &&
+            (item.scene || '开发').trim() === (dbRow.scene || '开发').trim() &&
+            (item.description || item.desc || '').trim() === (dbRow.description || '').trim() &&
+            (item.tags || '').trim() === (dbRow.tags || '').trim() &&
+            (item.is_pinned ? 1 : 0) === (dbRow.is_pinned ? 1 : 0);
+    }
+    return false;
+}
+
 export async function handleSyncBatch(request, db, userId) {
     // 先限长读取再解析：避免把超大 JSON 整个读进内存后再遍历
     const raw = await readTextCapped(request, MAX_SYNC_BODY_BYTES);
@@ -201,6 +261,42 @@ export async function handleSyncBatch(request, db, userId) {
     const conflictSeen = new Set();
     const pushedIds = { weeklies: [], notes: [], bookmarks: [], feeds: [], prompts: [] };
 
+    // 处理离线软删除墓碑批量同步上报
+    const deletedEntries = [];
+    if (Array.isArray(body.deleted)) {
+        for (const d of body.deleted) {
+            if (d && d.resource && d.id != null) {
+                deletedEntries.push({ resource: d.resource, id: d.id });
+            }
+        }
+    } else if (body.deleted && typeof body.deleted === 'object') {
+        for (const [res, ids] of Object.entries(body.deleted)) {
+            if (Array.isArray(ids)) {
+                for (const id of ids) {
+                    if (id != null) deletedEntries.push({ resource: res, id });
+                }
+            }
+        }
+    }
+
+    const confirmedDeleted = [];
+    for (const entry of deletedEntries) {
+        const table = {
+            weeklies: 'weeklies',
+            notes: 'notes',
+            bookmarks: 'bookmarks',
+            prompts: 'prompts',
+            feeds: 'quick_feeds'
+        }[entry.resource];
+        if (table && isValidRecordId(entry.id)) {
+            statements.push(
+                db.prepare(`UPDATE ${table} SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2`)
+                    .bind(entry.id, userId)
+            );
+            confirmedDeleted.push({ resource: entry.resource, id: entry.id });
+        }
+    }
+
     // 归属校验、当前 updated_at 与墓碑校验并发执行；currentRows 用于乐观锁：
     // 客户端带上 base_updated_at，服务端发现云端已变则拒绝覆盖。
     const [ownedWeeklies, ownedNotes, ownedBookmarks, ownedFeeds, ownedPrompts] = await Promise.all([
@@ -221,14 +317,21 @@ export async function handleSyncBatch(request, db, userId) {
         const current = currentRows.get(Number(item.id));
         if (!current || Number(current.is_deleted) === 1 || !item.base_updated_at) return false;
         if (String(current.updated_at) === String(item.base_updated_at)) return false;
+
+        // 回读完整快照，检测是否为切片重试或网络抖动导致的幂等重推（内容指纹一致）
+        let full = current;
+        try {
+            full = await db.prepare('SELECT * FROM ' + tableName + ' WHERE id = ?1').bind(item.id).first() || current;
+        } catch (_) { /* audit-ignore: intentional-fallback 回读完整冲突快照异常使用已有的轻量行 */ }
+
+        if (isRecordContentIdentical(resource, item, full)) {
+            // 库中关键内容与客户端待推数据完全一致（上一切片写入后的幂等重推），平滑放行，避免误报假冲突
+            return false;
+        }
+
         const key = resource + ":" + item.id;
         if (!conflictSeen.has(key)) {
             conflictSeen.add(key);
-            // 时间戳查询只取轻量列；真正冲突时才回读完整正文，避免每次推送都搬运大字段。
-            let full = current;
-            try {
-                full = await db.prepare('SELECT * FROM ' + tableName + ' WHERE id = ?1').bind(item.id).first() || current;
-            } catch (_) { /* audit-ignore: intentional-fallback 回读完整冲突快照异常使用已有的轻量行 */ }
             conflicts.push({ resource, id: item.id, cloud: formatter(full) });
         }
         return true;
@@ -271,7 +374,7 @@ export async function handleSyncBatch(request, db, userId) {
             db.prepare(
                 `INSERT INTO weeklies (id, category, title, summary, date, cover, weekly_data, content, annotations, user_id, created_at, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
-                 ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, summary=excluded.summary, date=excluded.date, cover=excluded.cover, weekly_data=excluded.weekly_data, content=excluded.content, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
+                 ON CONFLICT(id) DO UPDATE SET category=excluded.category, title=excluded.title, summary=excluded.summary, date=excluded.date, cover=excluded.cover, weekly_data=excluded.weekly_data, content=excluded.content, annotations=excluded.annotations, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted WHERE user_id = excluded.user_id`
             ).bind(item.id ?? null, item.category || '🌸', item.title || '', item.summary || '', item.date || '', item.cover || item.cover_image || '', weeklyData, item.content || '', annotations, userId)
         );
     }
@@ -287,7 +390,7 @@ export async function handleSyncBatch(request, db, userId) {
             db.prepare(
                 `INSERT INTO notes (id, title, content, date, annotations, user_id, created_at, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
-                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, date=excluded.date, annotations=excluded.annotations, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
+                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, content=excluded.content, date=excluded.date, annotations=excluded.annotations, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted WHERE user_id = excluded.user_id`
             ).bind(item.id ?? null, item.title || '', item.content || '', item.date || '', annotations, userId)
         );
     }
@@ -304,7 +407,7 @@ export async function handleSyncBatch(request, db, userId) {
             db.prepare(
                 `INSERT INTO bookmarks (id, type, title, url, description, image, user_id, created_at, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now', '+8 hours'), datetime('now', '+8 hours'), 0)
-                 ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, url=excluded.url, description=excluded.description, image=excluded.image, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
+                 ON CONFLICT(id) DO UPDATE SET type=excluded.type, title=excluded.title, url=excluded.url, description=excluded.description, image=excluded.image, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted WHERE user_id = excluded.user_id`
             ).bind(item.id ?? null, item.type || '🌐 网站', item.title || '', item.url || '', description, image, userId)
         );
     }
@@ -328,7 +431,7 @@ export async function handleSyncBatch(request, db, userId) {
                 db.prepare(
                     `INSERT INTO quick_feeds (id, user_id, content, type, media_url, summary, tags, created_at, updated_at, is_deleted)
                      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, COALESCE(?8, datetime('now', '+8 hours')), datetime('now', '+8 hours'), 0)
-                     ON CONFLICT(id) DO UPDATE SET user_id=excluded.user_id, content=excluded.content, type=excluded.type, media_url=excluded.media_url, summary=excluded.summary, tags=excluded.tags, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
+                     ON CONFLICT(id) DO UPDATE SET content=excluded.content, type=excluded.type, media_url=excluded.media_url, summary=excluded.summary, tags=excluded.tags, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted WHERE user_id = excluded.user_id`
                 ).bind(item.id, userId, content, type, mediaUrl, summary, tagsJson, item.created_at || null)
             );
         } else {
@@ -359,7 +462,7 @@ export async function handleSyncBatch(request, db, userId) {
             db.prepare(
                 `INSERT INTO prompts (id, title, project, scene, content, description, tags, is_pinned, user_id, updated_at, is_deleted)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, datetime('now', '+8 hours'), 0)
-                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, project=excluded.project, scene=excluded.scene, content=excluded.content, description=excluded.description, tags=excluded.tags, is_pinned=excluded.is_pinned, user_id=excluded.user_id, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted`
+                 ON CONFLICT(id) DO UPDATE SET title=excluded.title, project=excluded.project, scene=excluded.scene, content=excluded.content, description=excluded.description, tags=excluded.tags, is_pinned=excluded.is_pinned, updated_at=excluded.updated_at, is_deleted=excluded.is_deleted WHERE user_id = excluded.user_id`
             ).bind(item.id, title, project, scene, content, description, tags, isPinned, userId)
         );
     }
@@ -380,6 +483,7 @@ export async function handleSyncBatch(request, db, userId) {
         success: true,
         count: statements.length,
         updated,
+        deleted: confirmedDeleted,
         conflicts: conflicts.slice(0, 10),
         conflictCount: conflicts.length
     }, 200);

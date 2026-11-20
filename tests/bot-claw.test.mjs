@@ -2693,3 +2693,135 @@ test('Bot 对话智能 - 记忆置信度与时间衰减标记：档案沉淀时�
     assert.match(promptText, /- 饮食禁忌：不喝咖啡（3个月前确认 · 2026-08-11）/);
 });
 
+// ── 7处混沌缺陷修复回归验证 ──
+
+integration('ClawBot - [V-01] 微信回发网络失败绝不删除去重锁，再次长轮询拒绝重放并安全推进游标', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const msg = clawMessage({
+        item_list: [{ type: 1, msg_id: 'ITEM-TEST-DEDUP', text_item: { text: '随手记 记录一下测试' } }]
+    });
+
+    let sendFailed = true;
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-ADVANCED', msgs: [msg] } }),
+        '/ilink/bot/sendmessage': () => {
+            if (sendFailed) throw new Error('Network timeout');
+            return { json: { ret: 0 } };
+        }
+    });
+
+    // 第一轮：生成了随手记，但发送失败
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
+
+    // 验证随手记已持久化落库（1条）
+    const feeds1 = await db.prepare('SELECT COUNT(*) AS count FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feeds1.count, 1, '随手记已写入数据库');
+
+    // 验证排重锁并未被删除！
+    const dedup = await db.prepare("SELECT COUNT(*) AS count FROM rate_limits WHERE bucket_key LIKE 'bot-msg:%'").first();
+    assert.equal(dedup.count, 1, '排重锁必须完好保留在 rate_limits 中');
+
+    // 验证本轮失败时游标不提前推移（避免消息在外部完全静默丢失）
+    const row1 = await db.prepare('SELECT cursor FROM bot_claw_accounts WHERE id = 1').first();
+    assert.equal(row1.cursor, 'CURSOR-0', '回复发送失败时不应提前推移游标');
+
+    // 第二轮：长轮询重发同一条消息，排重锁起效，不重复写入
+    sendFailed = false;
+    await pollClawAccounts({ DB: db }, db, st.impl, { budgetMs: 0 });
+
+    const feeds2 = await db.prepare('SELECT COUNT(*) AS count FROM quick_feeds WHERE user_id = 1').first();
+    assert.equal(feeds2.count, 1, '重复消息绝不二次插入脏随手记');
+
+    const row2 = await db.prepare('SELECT cursor FROM bot_claw_accounts WHERE id = 1').first();
+    assert.equal(row2.cursor, 'CURSOR-ADVANCED', '重复消息跳过执行后安全推进游标，打破死循环');
+});
+
+integration('ClawBot - [V-02] 高优先级待确认指令（删收藏）绝不被 AI 自发提议静默覆盖', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare("INSERT INTO bookmarks (id, user_id, title, url, type, is_deleted, created_at, updated_at) VALUES (1, 1, '机密文档', 'https://example.com', '🌐 网站', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours'))").run();
+
+    // 1. 用户显式发起高危删除
+    const stageReply = await buildBotReply({}, db, 1, '删收藏 1');
+    assert.match(stageReply, /找到收藏 #1「机密文档」[\s\S]*确认删除/);
+
+    const pendingBefore = await db.prepare("SELECT action, target_id FROM bot_pending_actions WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.equal(pendingBefore.action, 'delete_bookmark');
+    assert.equal(pendingBefore.target_id, 1);
+
+    // 2. 随后的普通闲聊触发大模型提议记忆
+    const fakeLlmEnv = {
+        AI: {
+            run: async () => ({
+                response: '今天确实是个好天气。<propose_memory label="饮食" content="爱喝美式咖啡"/>'
+            })
+        }
+    };
+    const chatReply = await buildBotReply(fakeLlmEnv, db, 1, '今天天气真舒服，喝了杯美式');
+    assert.ok(!chatReply.includes('💡 记下你的新档案'), '高优先级指令等待确认时，AI提议绝不能展示或覆写');
+
+    const pendingAfter = await db.prepare("SELECT action, target_id FROM bot_pending_actions WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.equal(pendingAfter.action, 'delete_bookmark', '高优先级删除动作保持不动，未被 AI 提议覆盖');
+
+    // 3. 用户回复「确认」：执行的依然是删收藏，而不是档案写入
+    const confirmReply = await buildBotReply({}, db, 1, '确认');
+    assert.match(confirmReply, /已删除收藏 #1「机密文档」/);
+
+    const bm = await db.prepare("SELECT is_deleted FROM bookmarks WHERE id = 1").first();
+    assert.equal(bm.is_deleted, 1, '收藏确实被正确软删');
+
+    const profileCount = await db.prepare("SELECT COUNT(*) AS n FROM bot_profile WHERE user_id = 1").first();
+    assert.equal(profileCount.n, 0, '未被提议污染写入档案');
+});
+
+integration('ClawBot - [V-06] 超过 10MB 的多图或大图在视觉分析前安全预算截断防 Worker 128MB OOM', async () => {
+    const { MAX_TOTAL_IMAGE_BYTES, MAX_SINGLE_IMAGE_BYTES, filterImagesWithinBudget } = await import('../workers/src/bot-vision.js');
+    assert.equal(MAX_TOTAL_IMAGE_BYTES, 10 * 1024 * 1024);
+    assert.equal(MAX_SINGLE_IMAGE_BYTES, 5 * 1024 * 1024);
+
+    // 单张 6MB 大图：超过 5MB 限制被跳过
+    const hugeImage = { bytes: new Uint8Array(6 * 1024 * 1024), mime: 'image/jpeg' };
+    const normalImage = { bytes: new Uint8Array(2 * 1024 * 1024), mime: 'image/jpeg' };
+    const filtered1 = filterImagesWithinBudget([hugeImage, normalImage]);
+    assert.equal(filtered1.length, 1);
+    assert.equal(filtered1[0].bytes.byteLength, 2 * 1024 * 1024);
+
+    // 4 张 3MB 图片（总计 12MB）：超过 10MB 预算截断为前 3 张 (9MB)
+    const images4 = [
+        { bytes: new Uint8Array(3 * 1024 * 1024), mime: 'image/png' },
+        { bytes: new Uint8Array(3 * 1024 * 1024), mime: 'image/png' },
+        { bytes: new Uint8Array(3 * 1024 * 1024), mime: 'image/png' },
+        { bytes: new Uint8Array(3 * 1024 * 1024), mime: 'image/png' }
+    ];
+    const filtered2 = filterImagesWithinBudget(images4);
+    assert.equal(filtered2.length, 3, '超出 10MB 上限安全截断，防止 Worker 128MB 堆溢出');
+
+    // 3. 在真实 ClawBot 消息流中验证：单次发 3 张 4MB 图片（总计 12MB），第 3 张不走 Base64 视觉转码
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const msg3 = imageMessage();
+    msg3.item_list = [
+        { type: 2, msg_id: 'IMG-1', image_item: { aeskey: '', media: 'https://cdn.example/p1.png' } },
+        { type: 2, msg_id: 'IMG-2', image_item: { aeskey: '', media: 'https://cdn.example/p2.png' } },
+        { type: 2, msg_id: 'IMG-3', image_item: { aeskey: '', media: 'https://cdn.example/p3.png' } }
+    ];
+    const bigPng = new Uint8Array(4 * 1024 * 1024);
+    bigPng.set(PNG_BYTES);
+    const puts = [];
+    const st3 = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-3', msgs: [msg3] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/p1.png': () => ({ bytes: bigPng }),
+        'cdn.example/p2.png': () => ({ bytes: bigPng }),
+        'cdn.example/p3.png': () => ({ bytes: bigPng }),
+        [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '风景照片' } }] } })
+    });
+    await pollClawAccounts(visionEnv(db, puts), db, st3.impl, { budgetMs: 0 });
+    assert.equal(puts.length, 3, '3 张图片都正常存入 R2');
+    const visionCalls = st3.calls.filter(c => c.url.includes(VISION_ROUTE));
+    assert.equal(visionCalls.length, 2, '第 3 张图片因超过 10MB 总视觉预算，被安全截断不出站调用视觉模型，防止 128MB OOM');
+});
+

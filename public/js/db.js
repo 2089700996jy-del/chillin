@@ -367,9 +367,12 @@ export async function migrateFromLocalStorage(keys) {
         if (migrated) return;
         for (const k of keys) {
             try {
-                const raw = localStorage.getItem(k);
-                if (raw) {
-                    await idbSet(k, JSON.parse(raw));
+                const existing = await idbGet(k);
+                if (!existing || (Array.isArray(existing) && existing.length === 0)) {
+                    const raw = localStorage.getItem(k);
+                    if (raw) {
+                        await idbSet(k, JSON.parse(raw));
+                    }
                 }
             } catch (e) { /* audit-ignore: intentional-fallback 损坏的历史键解析失败跳过 */ }
         }

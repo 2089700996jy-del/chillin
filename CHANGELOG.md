@@ -1,16 +1,40 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-19T09:01:15.925Z · 提交数：540
+> 生成时间：2026-11-20T07:28:43.381Z · 提交数：547
+
+## 2026-11-20
+
+### 🐛 缺陷修复
+
+- **upload,sync**: release preview objectURL on failure, align image format fallback, eliminate duplicate local writes, and optimize startup hydration comparison
+- **reader**: ensure old reader db migration fails safely on read error and preserves legacy db
+
+### ♻️ 重构
+
+- **tests**: slim test suite by removing brittle baselines and consolidating fragmented assertions
+
+### 📝 文档
+
+- **rules**: convert line count and module count into soft constraints, and establish blast-radius-driven inspection depth
+
+### 🎨 样式
+
+- **tests**: format bot-claw test fixtures
 
 ## 2026-11-19
 
 ### 🐛 缺陷修复
 
+- **media**: 提升图片上传上限至15MB并支持即时乐观封面预览
 - **weeklies**: 修复移动端封面直传瞬态激活丢失与跨端周记同步渲染
 - **weeklies**: 彻底修复移动端封面图上传点击无效与周记无图同步死锁 (v2.5.259)
 - **sync**: 深度根治周记大图与ID注水死锁，支持Base64直传R2与黄点直点同步 (v2.5.257)
 - **sync**: 自动升级周记模版ID并清除虚假冲突，彻底解开同步死锁 (v2.5.255)
+
+### ♻️ 重构
+
+- **bot**: heal fragmented twin modules and de-escalate architecture gates
 
 ## 2026-11-18
 

@@ -103,13 +103,40 @@ export async function readPendingAction(db, userId, now) {
     return { ...row, payload };
 }
 
-/** 同一用户只保留一条待确认动作：新动作会软删旧的，避免两句「确认」改错目标 */
+/** 判断待确认动作是否为用户显式发起的高优先级指令（防止被模型自发提议或反馈静默冲刷） */
+export function isHighPriorityPendingAction(action, payload) {
+    if (!action) return false;
+    const highPriorityActions = [
+        'update_bookmark',
+        'delete_bookmark',
+        'update_prompt',
+        'delete_prompt',
+        'delete_preference',
+        'clear_preferences'
+    ];
+    if (highPriorityActions.includes(action)) return true;
+    if (action === 'set_preference' && payload && payload.source !== 'feedback') {
+        return true;
+    }
+    return false;
+}
+
+/** 同一用户只保留一条待确认动作：新动作会软删旧的，但高优先级显式指令绝不被低优先级 AI 提议抹除 */
 export async function savePendingAction(db, userId, action, targetTable, targetId, payload) {
+    const isIncomingLowPriority = (action === 'set_profile') || (action === 'set_preference' && payload && payload.source === 'feedback');
+    if (isIncomingLowPriority) {
+        const existing = await readPendingAction(db, userId);
+        if (existing && !existing.expired && isHighPriorityPendingAction(existing.action, existing.payload)) {
+            console.log('[bot-memory] 保留高优先级待确认动作 ' + existing.action + '，拒绝被低优先级 ' + action + ' 抹除');
+            return false;
+        }
+    }
     await db.prepare('UPDATE bot_pending_actions SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0')
         .bind(Number(userId)).run();
     await db.prepare(
         'INSERT INTO bot_pending_actions (user_id, action, target_table, target_id, payload, created_at_ms, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)'
     ).bind(Number(userId), action, targetTable, Number(targetId) || 0, JSON.stringify(payload || {}), Date.now()).run();
+    return true;
 }
 
 /** 作废当前待确认动作（软删，绝不物理删除） */

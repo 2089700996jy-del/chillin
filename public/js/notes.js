@@ -20,6 +20,7 @@ import {
     apiSyncNote,
     stampLocalUpdate,
     addDeletedId,
+    processNoteBase64Images,
 } from './api.js';
 import { setHtml } from './trusted-types.js';
 
@@ -90,296 +91,357 @@ export function initNotes() {
         updateNoteContentImagePreview();
     });
 
-let currentNoteAnnotations = [];
+    let currentNoteAnnotations = [];
 
-const renderAnnotationsList = () => {
-    const timeline = document.getElementById('annotations-timeline');
-    setHtml(timeline, '');
-    if (!currentNoteAnnotations || currentNoteAnnotations.length === 0) {
-        setHtml(timeline, '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无批注，在下方写下第一条吧</div>');
-        return;
-    }
-    currentNoteAnnotations.forEach(ann => {
-        const item = document.createElement('div');
-        item.className = 'annotation-item';
-        setHtml(item, annotationItemHtml(ann));
-        
-        item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
-            if (await confirmDialog("确定要删除这条批注吗？")) {
-                currentNoteAnnotations = currentNoteAnnotations.filter(a => a.id !== ann.id);
-                const note = state.notesDatabase.find(n => n.id === ui.currentNoteId);
-                if (note) {
-                    note.annotations = currentNoteAnnotations;
-                    saveNotesDatabase();
-                    apiSyncNote(note, 'PUT');
-                    renderNotes();
-                }
-                renderAnnotationsList();
-            }
-        });
-        
-        timeline.appendChild(item);
-    });
-};
-
-const NOTES_PAGE_SIZE = 60;
-let notesVisibleCount = NOTES_PAGE_SIZE;
-let notesLoadMoreObserver = null;
-
-const loadMoreNotes = () => {
-    if (notesLoadMoreObserver) {
-        notesLoadMoreObserver.disconnect();
-        notesLoadMoreObserver = null;
-    }
-    if (notesVisibleCount >= state.notesDatabase.length) return;
-    notesVisibleCount += NOTES_PAGE_SIZE;
-    renderNotes();
-};
-
-const observeNotesLoadMore = (el) => {
-    if (typeof IntersectionObserver !== 'function') return;
-    el.classList.add('list-load-more--auto');
-    notesLoadMoreObserver = new IntersectionObserver((entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) loadMoreNotes();
-    }, { rootMargin: '600px 0px' });
-    notesLoadMoreObserver.observe(el);
-};
-
-// 搜索跳转用：目标笔记可能落在分页窗口之外，先把所在批纳入渲染窗口再查询。
-const ensureNoteRendered = (selector) => {
-    const matched = /data-note-id="([^"]+)"/.exec(String(selector || ''));
-    if (!matched) return false;
-    const targetId = matched[1];
-    const sorted = [...state.notesDatabase].sort((a, b) => b.id - a.id);
-    const index = sorted.findIndex((note) => String(note.id) === targetId);
-    if (index === -1 || index < notesVisibleCount) return false;
-    notesVisibleCount = Math.ceil((index + 1) / NOTES_PAGE_SIZE) * NOTES_PAGE_SIZE;
-    renderNotes();
-    return true;
-};
-
-const renderNotes = () => {
-    if (notesLoadMoreObserver) {
-        notesLoadMoreObserver.disconnect();
-        notesLoadMoreObserver = null;
-    }
-    setHtml(notesListContainer, '');
-    const allNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
-    if (allNotes.length === 0) {
-        if (isSyncingNow()) {
-            setHtml(notesListContainer, skeletonListHtml(3));
+    const renderAnnotationsList = () => {
+        const timeline = document.getElementById('annotations-timeline');
+        setHtml(timeline, '');
+        if (!currentNoteAnnotations || currentNoteAnnotations.length === 0) {
+            setHtml(timeline, '<div style="font-size: 13px; color: var(--text-color-light); text-align: center; padding: 20px 0;">暂无批注，在下方写下第一条吧</div>');
             return;
         }
-        setHtml(notesListContainer, `
+        currentNoteAnnotations.forEach(ann => {
+            const item = document.createElement('div');
+            item.className = 'annotation-item';
+            setHtml(item, annotationItemHtml(ann));
+
+            item.querySelector('.btn-delete-annotation').addEventListener('click', async () => {
+                if (await confirmDialog("确定要删除这条批注吗？")) {
+                    currentNoteAnnotations = currentNoteAnnotations.filter(a => a.id !== ann.id);
+                    const note = state.notesDatabase.find(n => n.id === ui.currentNoteId);
+                    if (note) {
+                        note.annotations = currentNoteAnnotations;
+                        saveNotesDatabase();
+                        apiSyncNote(note, 'PUT');
+                        renderNotes();
+                    } else {
+                        persistNoteDraftIfNeeded();
+                    }
+                    renderAnnotationsList();
+                }
+            });
+
+            timeline.appendChild(item);
+        });
+    };
+
+    const NOTES_PAGE_SIZE = 60;
+    let notesVisibleCount = NOTES_PAGE_SIZE;
+    let notesLoadMoreObserver = null;
+
+    const loadMoreNotes = () => {
+        if (notesLoadMoreObserver) {
+            notesLoadMoreObserver.disconnect();
+            notesLoadMoreObserver = null;
+        }
+        if (notesVisibleCount >= state.notesDatabase.length) return;
+        notesVisibleCount += NOTES_PAGE_SIZE;
+        renderNotes();
+    };
+
+    const observeNotesLoadMore = (el) => {
+        if (typeof IntersectionObserver !== 'function') return;
+        el.classList.add('list-load-more--auto');
+        notesLoadMoreObserver = new IntersectionObserver((entries) => {
+            if (entries.some((entry) => entry.isIntersecting)) loadMoreNotes();
+        }, { rootMargin: '600px 0px' });
+        notesLoadMoreObserver.observe(el);
+    };
+
+    // 搜索跳转用：目标笔记可能落在分页窗口之外，先把所在批纳入渲染窗口再查询。
+    const ensureNoteRendered = (selector) => {
+        const matched = /data-note-id="([^"]+)"/.exec(String(selector || ''));
+        if (!matched) return false;
+        const targetId = matched[1];
+        const sorted = [...state.notesDatabase].sort((a, b) => b.id - a.id);
+        const index = sorted.findIndex((note) => String(note.id) === targetId);
+        if (index === -1 || index < notesVisibleCount) return false;
+        notesVisibleCount = Math.ceil((index + 1) / NOTES_PAGE_SIZE) * NOTES_PAGE_SIZE;
+        renderNotes();
+        return true;
+    };
+
+    const renderNotes = () => {
+        if (notesLoadMoreObserver) {
+            notesLoadMoreObserver.disconnect();
+            notesLoadMoreObserver = null;
+        }
+        setHtml(notesListContainer, '');
+        const allNotes = [...state.notesDatabase].sort((a, b) => b.id - a.id);
+        if (allNotes.length === 0) {
+            if (isSyncingNow()) {
+                setHtml(notesListContainer, skeletonListHtml(3));
+                return;
+            }
+            setHtml(notesListContainer, `
             <div class="list-empty">
                 <div class="list-empty-icon">📝</div>
                 <div class="list-empty-title">还没有笔记</div>
                 <div class="list-empty-sub">点右下角「+」捕捉一闪而过的想法</div>
             </div>
         `);
-        return;
-    }
-    const sortedNotes = allNotes.slice(0, notesVisibleCount);
-    sortedNotes.forEach(note => {
-        const el = document.createElement('div');
-        el.className = 'note-item';
-        el.setAttribute('data-note-id', String(note.id));
-        const cleanContent = (note.content || '').replace(/\\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-        const previewText = cleanContent ? escapeHtml(cleanContent.substring(0, 36)) + (cleanContent.length > 36 ? '...' : '') : '无正文内容';
-        
-        // 如果笔记有批注，显示批注数量气泡
-        const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
-        
-        const dirtyDot = note._dirty ? ' <span class="sync-dirty-dot" title="本地暂存，待同步到云端" aria-label="本地暂存"></span>' : '';
-        setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-meta"><span class="note-item-date">${escapeHtml(note.date)}${dirtyDot}</span><span class="note-item-arrow" aria-hidden="true">›</span></div>`);
-        el.addEventListener('click', () => openNoteEditor(note.id));
-        notesListContainer.appendChild(el);
-    });
+            return;
+        }
+        const sortedNotes = allNotes.slice(0, notesVisibleCount);
+        sortedNotes.forEach(note => {
+            const el = document.createElement('div');
+            el.className = 'note-item';
+            el.setAttribute('data-note-id', String(note.id));
+            const cleanContent = (note.content || '').replace(/\\n/g, ' ').replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+            const previewText = cleanContent ? escapeHtml(cleanContent.substring(0, 36)) + (cleanContent.length > 36 ? '...' : '') : '无正文内容';
 
-    if (allNotes.length > sortedNotes.length) {
-        const more = document.createElement('button');
-        more.type = 'button';
-        more.className = 'list-load-more';
-        more.textContent = `加载更多（还有 ${allNotes.length - sortedNotes.length} 条）`;
-        more.addEventListener('click', loadMoreNotes);
-        notesListContainer.appendChild(more);
-        observeNotesLoadMore(more);
-    }
-};
+            // 如果笔记有批注，显示批注数量气泡
+            const annCount = note.annotations && note.annotations.length > 0 ? ` <span class="note-ann-badge">💬 ${note.annotations.length}</span>` : '';
 
-const hasUnsavedNoteChanges = () => {
-    const titleVal = (editNoteTitle.value || '').trim();
-    const contentVal = (editNoteContent.value || '').trim();
-    const idStr = editNoteId.value;
-    if (idStr) {
-        const note = state.notesDatabase.find(n => String(n.id) === String(idStr));
-        if (!note) return titleVal !== '' || contentVal !== '';
-        return titleVal !== (note.title || '').trim() || contentVal !== (note.content || '').trim();
-    }
-    return titleVal !== '' || contentVal !== '';
-};
+            const dirtyDot = note._dirty ? ' <span class="sync-dirty-dot" title="本地暂存，待同步到云端" aria-label="本地暂存"></span>' : '';
+            setHtml(el, `<div class="note-item-content"><div class="note-item-title">${escapeHtml(note.title || '无标题笔记')}${annCount}</div><div class="note-item-preview">${previewText}</div></div><div class="note-item-meta"><span class="note-item-date">${escapeHtml(note.date)}${dirtyDot}</span><span class="note-item-arrow" aria-hidden="true">›</span></div>`);
+            el.addEventListener('click', () => openNoteEditor(note.id));
+            notesListContainer.appendChild(el);
+        });
 
-const saveNoteDraft = () => {
-    const draft = {
-        id: editNoteId.value || '',
-        title: editNoteTitle.value || '',
-        content: editNoteContent.value || '',
-        timestamp: Date.now()
+        if (allNotes.length > sortedNotes.length) {
+            const more = document.createElement('button');
+            more.type = 'button';
+            more.className = 'list-load-more';
+            more.textContent = `加载更多（还有 ${allNotes.length - sortedNotes.length} 条）`;
+            more.addEventListener('click', loadMoreNotes);
+            notesListContainer.appendChild(more);
+            observeNotesLoadMore(more);
+        }
     };
-    localStorage.setItem(getLocalKey('noteDraft'), JSON.stringify(draft));
-};
 
-const restoreNoteDraft = () => {
-    const draftStr = localStorage.getItem(getLocalKey('noteDraft'));
-    if (!draftStr) return;
-    try {
-        const draft = JSON.parse(draftStr);
-        editNoteTitle.value = draft.title || '';
-        editNoteContent.value = draft.content || '';
-        autoResizeTextarea(editNoteContent);
-        updateNoteContentImagePreview();
-        document.getElementById('note-draft-tip').style.display = 'none';
-    } catch (e) {
-        console.error('Failed to restore note draft', e);
-    }
-};
+    const getNoteDraftKey = (id) => {
+        const suffix = (id != null && String(id).trim() !== '') ? String(id).trim() : 'new';
+        return getLocalKey(`noteDraft_${suffix}`);
+    };
 
-const discardNoteDraft = () => {
-    localStorage.removeItem(getLocalKey('noteDraft'));
-    const tip = document.getElementById('note-draft-tip');
-    if (tip) tip.style.display = 'none';
-};
+    const hasUnsavedNoteChanges = () => {
+        const titleVal = (editNoteTitle.value || '').trim();
+        const contentVal = (editNoteContent.value || '').trim();
+        const idStr = editNoteId.value;
+        if (idStr) {
+            const note = state.notesDatabase.find(n => String(n.id) === String(idStr));
+            if (!note) return titleVal !== '' || contentVal !== '';
+            return titleVal !== (note.title || '').trim() || contentVal !== (note.content || '').trim();
+        }
+        return titleVal !== '' || contentVal !== '' || currentNoteAnnotations.length > 0;
+    };
 
-const checkAndShowNoteDraftTip = (noteId) => {
-    const tipBanner = document.getElementById('note-draft-tip');
-    if (!tipBanner) return;
-    const draftStr = localStorage.getItem(getLocalKey('noteDraft'));
-    if (!draftStr) {
-        tipBanner.style.display = 'none';
-        return;
-    }
-    try {
-        const draft = JSON.parse(draftStr);
-        const currentIdStr = noteId != null && noteId !== '' ? String(noteId) : '';
-        const draftIdStr = draft.id ? String(draft.id) : '';
-        if (currentIdStr !== draftIdStr) {
+    const saveNoteDraft = () => {
+        const noteId = editNoteId.value || '';
+        const draft = {
+            id: noteId,
+            title: editNoteTitle.value || '',
+            content: editNoteContent.value || '',
+            annotations: Array.isArray(currentNoteAnnotations) ? [...currentNoteAnnotations] : [],
+            timestamp: Date.now()
+        };
+        localStorage.setItem(getNoteDraftKey(noteId), JSON.stringify(draft));
+    };
+
+    const restoreNoteDraft = () => {
+        const noteId = editNoteId.value || '';
+        const draftStr = localStorage.getItem(getNoteDraftKey(noteId)) || localStorage.getItem(getLocalKey('noteDraft'));
+        if (!draftStr) return;
+        try {
+            const draft = JSON.parse(draftStr);
+            editNoteTitle.value = draft.title || '';
+            editNoteContent.value = draft.content || '';
+            if (Array.isArray(draft.annotations)) {
+                currentNoteAnnotations = [...draft.annotations];
+                renderAnnotationsList();
+            }
+            autoResizeTextarea(editNoteContent);
+            updateNoteContentImagePreview();
+            const tip = document.getElementById('note-draft-tip');
+            if (tip) tip.style.display = 'none';
+        } catch (e) {
+            console.error('Failed to restore note draft', e);
+        }
+    };
+
+    const discardNoteDraft = (targetId = null) => {
+        const id = targetId ?? (editNoteId ? editNoteId.value : '');
+        localStorage.removeItem(getNoteDraftKey(id));
+        localStorage.removeItem(getLocalKey('noteDraft'));
+        const tip = document.getElementById('note-draft-tip');
+        if (tip) tip.style.display = 'none';
+    };
+
+    const checkAndShowNoteDraftTip = (noteId) => {
+        const tipBanner = document.getElementById('note-draft-tip');
+        if (!tipBanner) return;
+        const key = getNoteDraftKey(noteId);
+        let draftStr = localStorage.getItem(key);
+        if (!draftStr && (!noteId || String(noteId) === 'new')) {
+            draftStr = localStorage.getItem(getLocalKey('noteDraft'));
+        }
+        if (!draftStr) {
             tipBanner.style.display = 'none';
             return;
         }
-        const timeEl = document.getElementById('note-draft-time');
-        if (timeEl && draft.timestamp) {
-            timeEl.innerText = new Date(draft.timestamp).toLocaleString();
+        try {
+            const draft = JSON.parse(draftStr);
+            const currentIdStr = noteId != null && noteId !== '' ? String(noteId) : '';
+            const draftIdStr = draft.id ? String(draft.id) : '';
+            if (currentIdStr !== draftIdStr && !(currentIdStr === '' && draftIdStr === 'new')) {
+                tipBanner.style.display = 'none';
+                return;
+            }
+            const timeEl = document.getElementById('note-draft-time');
+            if (timeEl && draft.timestamp) {
+                timeEl.innerText = new Date(draft.timestamp).toLocaleString();
+            }
+            tipBanner.style.display = 'flex';
+        } catch (e) {
+            tipBanner.style.display = 'none';
         }
-        tipBanner.style.display = 'flex';
-    } catch (e) {
-        tipBanner.style.display = 'none';
-    }
-};
+    };
 
-const openNoteEditor = (noteId = null, opts = {}) => {
-    document.getElementById('new-annotation-content').value = '';
-    if (noteId) {
-        ui.currentNoteId = noteId; const note = state.notesDatabase.find(n => n.id === noteId || String(n.id) === String(noteId));
-        if (note) { 
-            editNoteId.value = note.id; 
-            editNoteTitle.value = note.title; 
-            editNoteContent.value = note.content; 
-            noteEditorDate.innerText = note.date; 
-            btnDeleteNote.style.display = 'inline-block'; 
-            currentNoteAnnotations = note.annotations || [];
+    const handleExitNoteEditor = async (onConfirm) => {
+        if (hasUnsavedNoteChanges()) {
+            if (await confirmDialog('确定要退出笔记编辑吗？当前未保存的内容将作为草稿保存在本地，下次进入时可以恢复。')) {
+                saveNoteDraft();
+                onConfirm();
+            }
+        } else {
+            discardNoteDraft(editNoteId.value);
+            onConfirm();
+        }
+    };
+
+    const openNoteEditor = (noteId = null, opts = {}) => {
+        document.getElementById('new-annotation-content').value = '';
+        if (noteId) {
+            ui.currentNoteId = noteId; const note = state.notesDatabase.find(n => n.id === noteId || String(n.id) === String(noteId));
+            if (note) {
+                editNoteId.value = note.id;
+                editNoteTitle.value = note.title;
+                editNoteContent.value = note.content;
+                noteEditorDate.innerText = note.date;
+                btnDeleteNote.style.display = 'inline-block';
+                currentNoteAnnotations = note.annotations || [];
+                renderAnnotationsList();
+                document.getElementById('note-annotations-section').style.display = 'block';
+                actions.renderBacklinksSection?.(document.getElementById('note-backlinks-section'), note.title, note.id, 'note');
+                actions.renderOutgoingLinksStrip?.(document.getElementById('note-outgoing-links-strip'), note.content);
+            }
+        } else {
+            ui.currentNoteId = null; editNoteId.value = ''; editNoteTitle.value = ''; editNoteContent.value = ''; noteEditorDate.innerText = getChineseDate(); btnDeleteNote.style.display = 'none';
+            if (opts && opts.prefill) {
+                editNoteTitle.value = String(opts.prefill.title || '');
+                editNoteContent.value = String(opts.prefill.content || '');
+            }
+            currentNoteAnnotations = [];
             renderAnnotationsList();
             document.getElementById('note-annotations-section').style.display = 'block';
-            actions.renderBacklinksSection?.(document.getElementById('note-backlinks-section'), note.title, note.id, 'note');
-            actions.renderOutgoingLinksStrip?.(document.getElementById('note-outgoing-links-strip'), note.content);
+            const blSec = document.getElementById('note-backlinks-section');
+            if (blSec) blSec.style.display = 'none';
+            const ogStrip = document.getElementById('note-outgoing-links-strip');
+            if (ogStrip) ogStrip.style.display = 'none';
         }
-    } else {
-        ui.currentNoteId = null; editNoteId.value = ''; editNoteTitle.value = ''; editNoteContent.value = ''; noteEditorDate.innerText = getChineseDate(); btnDeleteNote.style.display = 'none';
-        if (opts && opts.prefill) {
-            editNoteTitle.value = String(opts.prefill.title || '');
-            editNoteContent.value = String(opts.prefill.content || '');
+        checkAndShowNoteDraftTip(noteId);
+        actions.switchView('note-editor', opts);
+        autoResizeTextarea(editNoteContent);
+        updateNoteContentImagePreview();
+    };
+
+    let isSavingNote = false;
+
+    btnSaveNote.addEventListener('click', async () => {
+        if (isSavingNote) return;
+        const idStr = editNoteId.value;
+        const isEdit = !!idStr;
+        const titleVal = editNoteTitle.value.trim();
+        const contentVal = editNoteContent.value.trim();
+        if (!titleVal && !contentVal && currentNoteAnnotations.length === 0) {
+            discardNoteDraft(idStr);
+            actions.switchView('notes');
+            return;
         }
-        currentNoteAnnotations = [];
-        document.getElementById('note-annotations-section').style.display = 'none';
-        const blSec = document.getElementById('note-backlinks-section');
-        if (blSec) blSec.style.display = 'none';
-        const ogStrip = document.getElementById('note-outgoing-links-strip');
-        if (ogStrip) ogStrip.style.display = 'none';
-    }
-    checkAndShowNoteDraftTip(noteId);
-    actions.switchView('note-editor', opts);
-    autoResizeTextarea(editNoteContent);
-    updateNoteContentImagePreview();
-};
+        isSavingNote = true;
+        btnSaveNote.disabled = true;
+        try {
+            const existingNote = isEdit ? state.notesDatabase.find(n => String(n.id) === String(idStr)) : null;
+            const newNote = {
+                id: isEdit ? parseInt(idStr) : Date.now(),
+                title: titleVal || '无标题笔记',
+                content: contentVal,
+                date: existingNote ? existingNote.date : getChineseDate(),
+                annotations: currentNoteAnnotations
+            };
+            await processNoteBase64Images(newNote);
+            stampLocalUpdate(newNote);
+            if (isEdit) {
+                const index = state.notesDatabase.findIndex(n => String(n.id) === String(idStr));
+                if (index !== -1) state.notesDatabase[index] = newNote;
+            } else {
+                state.notesDatabase.push(newNote);
+            }
+            discardNoteDraft(idStr);
+            saveNotesDatabase();
+            await apiSyncNote(newNote, isEdit ? 'PUT' : 'POST');
+            renderNotes();
+            actions.switchView('notes');
+        } finally {
+            isSavingNote = false;
+            btnSaveNote.disabled = false;
+        }
+    });
 
-btnSaveNote.addEventListener('click', () => {
-    const idStr = editNoteId.value; const isEdit = !!idStr; const titleVal = editNoteTitle.value.trim(); const contentVal = editNoteContent.value.trim();
-    if (!titleVal && !contentVal) { discardNoteDraft(); actions.switchView('notes'); return; }
-    const existingNote = isEdit ? state.notesDatabase.find(n => String(n.id) === String(idStr)) : null;
-    const newNote = { 
-        id: isEdit ? parseInt(idStr) : Date.now(), 
-        title: titleVal || '无标题笔记', 
-        content: contentVal, 
-        date: existingNote ? existingNote.date : getChineseDate(),
-        annotations: currentNoteAnnotations
+    const persistNoteDraftIfNeeded = () => {
+        if (hasUnsavedNoteChanges()) saveNoteDraft();
+        else discardNoteDraft(editNoteId.value);
     };
-    stampLocalUpdate(newNote);
-    if (isEdit) { const index = state.notesDatabase.findIndex(n => String(n.id) === String(idStr)); if(index !== -1) state.notesDatabase[index] = newNote; } else { state.notesDatabase.push(newNote); }
-    discardNoteDraft();
-    saveNotesDatabase(); apiSyncNote(newNote, isEdit ? 'PUT' : 'POST'); renderNotes(); actions.switchView('notes');
-});
+    editNoteTitle.addEventListener('input', persistNoteDraftIfNeeded);
+    editNoteContent.addEventListener('input', persistNoteDraftIfNeeded);
+    document.getElementById('btn-restore-note-draft')?.addEventListener('click', restoreNoteDraft);
+    document.getElementById('btn-discard-note-draft')?.addEventListener('click', () => discardNoteDraft(editNoteId.value));
 
-const persistNoteDraftIfNeeded = () => {
-    if (hasUnsavedNoteChanges()) saveNoteDraft();
-    else discardNoteDraft();
-};
-editNoteTitle.addEventListener('input', persistNoteDraftIfNeeded);
-editNoteContent.addEventListener('input', persistNoteDraftIfNeeded);
-document.getElementById('btn-restore-note-draft')?.addEventListener('click', restoreNoteDraft);
-document.getElementById('btn-discard-note-draft')?.addEventListener('click', discardNoteDraft);
+    btnDeleteNote.addEventListener('click', async () => {
+        if (await confirmDialog("确定删除这条笔记吗？")) {
+            const deletedId = ui.currentNoteId;
+            addDeletedId(deletedId, 'notes');
+            state.notesDatabase = state.notesDatabase.filter(n => n.id !== ui.currentNoteId);
+            saveNotesDatabase();
+            discardNoteDraft(deletedId);
+            apiSyncNote({ id: deletedId }, 'DELETE');
+            renderNotes();
+            actions.switchView('notes');
+        }
+    });
 
-btnDeleteNote.addEventListener('click', async () => {
-    if(await confirmDialog("确定删除这条笔记吗？")) { 
-        const deletedId = ui.currentNoteId; 
-        addDeletedId(deletedId);
-        state.notesDatabase = state.notesDatabase.filter(n => n.id !== ui.currentNoteId); 
-        saveNotesDatabase(); 
-        discardNoteDraft();
-        apiSyncNote({id: deletedId}, 'DELETE'); 
-        renderNotes(); 
-        actions.switchView('notes'); 
-    }
-});
+    document.getElementById('btn-add-annotation').addEventListener('click', () => {
+        const inputEl = document.getElementById('new-annotation-content');
+        const text = inputEl.value.trim();
+        if (!text) return;
+        const newAnn = {
+            id: Date.now(),
+            content: text,
+            date: getChineseDateTime()
+        };
+        currentNoteAnnotations.push(newAnn);
+        inputEl.value = '';
 
-document.getElementById('btn-add-annotation').addEventListener('click', () => {
-    const inputEl = document.getElementById('new-annotation-content');
-    const text = inputEl.value.trim();
-    if (!text) return;
-    const newAnn = {
-        id: Date.now(),
-        content: text,
-        date: getChineseDateTime()
-    };
-    currentNoteAnnotations.push(newAnn);
-    inputEl.value = '';
-    
-    // 如果是已存笔记，立刻保存到数据库
-    const note = state.notesDatabase.find(n => n.id === ui.currentNoteId);
-    if (note) {
-        note.annotations = currentNoteAnnotations;
-        saveNotesDatabase();
-        apiSyncNote(note, 'PUT');
-        renderNotes();
-    }
-    renderAnnotationsList();
-});
-
-
+        // 如果是已存笔记，立刻保存到数据库
+        const note = state.notesDatabase.find(n => n.id === ui.currentNoteId);
+        if (note) {
+            note.annotations = currentNoteAnnotations;
+            saveNotesDatabase();
+            apiSyncNote(note, 'PUT');
+            renderNotes();
+        } else {
+            persistNoteDraftIfNeeded();
+        }
+        renderAnnotationsList();
+    });
 
     actions.renderNotes = renderNotes;
     actions.ensureNoteRendered = ensureNoteRendered;
     actions.openNoteEditor = openNoteEditor;
     actions.hasUnsavedNoteChanges = hasUnsavedNoteChanges;
     actions.saveNoteDraft = saveNoteDraft;
+    actions.handleExitNoteEditor = handleExitNoteEditor;
 
-    return { renderNotes, openNoteEditor, hasUnsavedNoteChanges, saveNoteDraft };
+    return { renderNotes, openNoteEditor, hasUnsavedNoteChanges, saveNoteDraft, handleExitNoteEditor };
 }
