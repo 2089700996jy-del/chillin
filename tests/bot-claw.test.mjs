@@ -102,7 +102,7 @@ import {
  */
 const integration = sqliteTest;
 const OFFICIAL = 'https://ilinkai.weixin.qq.com';
-const ctx = { waitUntil() {}, passThroughOnException() {} };
+const ctx = { waitUntil() { }, passThroughOnException() { } };
 
 /** 按 URL 片段分发的 fetch 替身：记录每次调用，并返回路由脚本给出的 JSON */
 function stubFetch(routes) {
@@ -2100,13 +2100,19 @@ test('Bot 播客链接解析 - 白名单过滤、OG 提取、__NEXT_DATA__ 结�
     assert.equal(template.description, '', '站点模板文案不能冒充播客名，详情与播客名都没有就留空');
 
     // 3. __NEXT_DATA__ 结构化优先与容错
-    const episodeData = { props: { pageProps: { episode: {
-        title: 'Ep204 结构化标题',
-        duration: 6592,
-        image: { picUrl: 'https://image.xyzcdn.net/next-ep.jpg' },
-        podcast: { title: '基本无害 Mostly Harmless' },
-        description: '节目简介'
-    } } } };
+    const episodeData = {
+        props: {
+            pageProps: {
+                episode: {
+                    title: 'Ep204 结构化标题',
+                    duration: 6592,
+                    image: { picUrl: 'https://image.xyzcdn.net/next-ep.jpg' },
+                    podcast: { title: '基本无害 Mostly Harmless' },
+                    description: '节目简介'
+                }
+            }
+        }
+    };
     const episodeHtml = '<html><head><title>Ep999 og 标题 - 模板 | 小宇宙</title>'
         + '<meta property="og:title" content="og 标题">'
         + '<meta property="og:image" content="https://image.xyzcdn.net/og.jpg"></head>'
@@ -2116,10 +2122,16 @@ test('Bot 播客链接解析 - 白名单过滤、OG 提取、__NEXT_DATA__ 结�
     assert.equal(ep.description, '节目简介', '单集详情取结构化 description，不再拼时长');
     assert.equal(ep.cover, 'https://image.xyzcdn.net/next-ep.jpg', '封面同样优先用结构化字段');
 
-    const podcastData = { props: { pageProps: { podcast: {
-        title: '结构化播客名', description: '结构化播客简介',
-        image: { picUrl: 'https://image.xyzcdn.net/next-pod.jpg' }
-    } } } };
+    const podcastData = {
+        props: {
+            pageProps: {
+                podcast: {
+                    title: '结构化播客名', description: '结构化播客简介',
+                    image: { picUrl: 'https://image.xyzcdn.net/next-pod.jpg' }
+                }
+            }
+        }
+    };
     const podcastHtml2 = '<html><head><title>模板 | 小宇宙</title>'
         + '<meta property="og:description" content="og 简介"></head>'
         + '<body><script id="__NEXT_DATA__">' + JSON.stringify(podcastData) + '</script></body></html>';
@@ -2134,13 +2146,19 @@ test('Bot 播客链接解析 - 白名单过滤、OG 提取、__NEXT_DATA__ 结�
     assert.equal(broken.description, '基本无害 Mostly Harmless');
 
     // 4. 单集卡片给详情，不是时长
-    const withDetail = { props: { pageProps: { episode: {
-        title: 'vol.611 真·菜刀达人｜害！我和中华小当家，就差这把刀！',
-        duration: 5397,
-        description: '本期主播：六兽、阿铖 00:38 这期阿铖痛失原名？？？ 03:06 刀匠学徒老张的师傅竟然是新国作的老师？',
-        image: { picUrl: 'https://image.xyzcdn.net/ep.jpg' },
-        podcast: { title: '无聊斋' }
-    } } } };
+    const withDetail = {
+        props: {
+            pageProps: {
+                episode: {
+                    title: 'vol.611 真·菜刀达人｜害！我和中华小当家，就差这把刀！',
+                    duration: 5397,
+                    description: '本期主播：六兽、阿铖 00:38 这期阿铖痛失原名？？？ 03:06 刀匠学徒老张的师傅竟然是新国作的老师？',
+                    image: { picUrl: 'https://image.xyzcdn.net/ep.jpg' },
+                    podcast: { title: '无聊斋' }
+                }
+            }
+        }
+    };
     const htmlWithDetail = '<html><head><title>vol.611 - 无聊斋 | 小宇宙</title></head><body>'
         + '<script id="__NEXT_DATA__">' + JSON.stringify(withDetail) + '</script></body></html>';
     const card = parseXiaoyuzhouPage(htmlWithDetail);
@@ -2149,11 +2167,17 @@ test('Bot 播客链接解析 - 白名单过滤、OG 提取、__NEXT_DATA__ 结�
     assert.ok(!/1:29:57/.test(card.description), '详情里不能混进时长');
     assert.equal(card.cover, 'https://image.xyzcdn.net/ep.jpg');
 
-    const shownotesOnly = { props: { pageProps: { episode: {
-        title: '只有 shownotes 的单集',
-        shownotes: '<p><span>第一段</span></p><p><a class="timestamp">00:38</a> <span>&amp; 第二段</span></p>',
-        podcast: { title: '无聊斋' }
-    } } } };
+    const shownotesOnly = {
+        props: {
+            pageProps: {
+                episode: {
+                    title: '只有 shownotes 的单集',
+                    shownotes: '<p><span>第一段</span></p><p><a class="timestamp">00:38</a> <span>&amp; 第二段</span></p>',
+                    podcast: { title: '无聊斋' }
+                }
+            }
+        }
+    };
     const html2 = '<html><head><title>只有 shownotes - 无聊斋 | 小宇宙</title></head><body>'
         + '<script id="__NEXT_DATA__">' + JSON.stringify(shownotesOnly) + '</script></body></html>';
     assert.equal(parseXiaoyuzhouPage(html2).description, '第一段 00:38 & 第二段', 'shownotes 详情要去标签、解实体');
