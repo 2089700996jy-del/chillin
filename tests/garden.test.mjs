@@ -501,6 +501,15 @@ integration('Audit - 违规内容改软删墓碑，重复扫描不重复隔离�
     pullUrl.searchParams.set('since', '2026-09-30 00:00:00');
     const pull = await (await handleSyncPull(pullUrl, db, 1)).json();
     assert.ok(pull.notes.some((n) => n.id === 9001 && n.is_deleted === true), '增量拉取应下发墓碑');
+
+    // 正常商业复盘笔记（含“引流”、“代购”等合法用词）绝不可被误判隔离
+    await db.prepare(
+        "INSERT INTO weeklies (id, category, title, summary, content, date, user_id, updated_at, is_deleted) VALUES (9002, '🌸', '💰 转正', '摘要', '热点抓引流获得经验 朋友帮忙代购相机', '2026-11-21', 1, '2026-11-21 12:00:00', 0)"
+    ).run();
+    const cleanScan = await scanAndAudit(db, 1);
+    assert.equal(cleanScan.quarantined, 0, '正常商业与生活词汇不应被误判隔离');
+    const weeklyRow = await db.prepare('SELECT is_deleted FROM weeklies WHERE id = 9002').first();
+    assert.equal(Number(weeklyRow.is_deleted), 0, '正常周记必须保留 is_deleted=0');
 });
 
 test('TestInfra - 缺 node:sqlite 时集成用例带可读原因跳过（不静默消失）', async () => {

@@ -1181,15 +1181,14 @@ function retireLocalMockItem(resource, item) {
 /** 自动升级本地具有模版特征的预置 Mock 数据，赋予客户端唯一时间戳 ID 并清理冲突 */
 export function upgradeLocalMockItems() {
     let changed = false;
-    // 1. 周记：升级所有 id === 1 或标题包含转正等模版修改项
+    // 1. 周记：升级所有 id === 1 的模版修改项
     if (Array.isArray(state.weeklies)) {
         for (const item of state.weeklies) {
             if (!item) continue;
             const numId = Number(item.id);
             const isMockId = numId === 1 || String(item.id) === '1' || item.id === 1;
-            const isTargetWeekly = item.title === '💰 转正' || (typeof item.title === 'string' && item.title.includes('转正'));
-            const isModified = item._dirty || (item.title && item.title !== '2023-W42: 记忆切片') || isTargetWeekly;
-            if ((isMockId && isModified) || (isTargetWeekly && (!Number.isSafeInteger(numId) || numId <= 1000))) {
+            const isModified = item._dirty || (item.title && item.title !== '2023-W42: 记忆切片');
+            if (isMockId && isModified) {
                 retireLocalMockItem('weeklies', item);
                 changed = true;
             }

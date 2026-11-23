@@ -3,7 +3,7 @@
  * Scans user generated content for violations, backups to ugc_quarantine, and logs actions.
  */
 
-export const UGC_VIOLATION_RE = /加微|加微信|微信号|扫码加|刷单|代发|代购|网赚|兼职日结|返利|引流|微商|传销|贷款办卡|代开发票|博彩|赌博|色情|裸聊|黄播|外围/i;
+export const UGC_VIOLATION_RE = /加微|加微信|微信号|扫码加|刷单|代发|网赚|兼职日结|微商|传销|贷款办卡|代开发票|博彩|赌博|色情|裸聊|黄播|外围/i;
 
 export function ugcHasViolation(row, cols) {
     for (const col of cols) {

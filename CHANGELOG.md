@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-20T07:28:43.381Z · 提交数：547
+> 生成时间：2026-11-23T02:33:14.693Z · 提交数：548
 
 ## 2026-11-20
 
 ### 🐛 缺陷修复
 
+- **bot**: 修复bot模块与草稿同步链路混沌审计缺陷并补全测试
 - **upload,sync**: release preview objectURL on failure, align image format fallback, eliminate duplicate local writes, and optimize startup hydration comparison
 - **reader**: ensure old reader db migration fails safely on read error and preserves legacy db
 
