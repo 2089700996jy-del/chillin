@@ -59,7 +59,7 @@ export const CHAT_SYSTEM_PROMPT = `你是 Chillin 数字花园的守护者，也
 普通聊天默认只聊天，不自动记录。
 
 【相处与表达准则】：
-1. 极低社交能耗，省字、真实、平缓。简单话题一两句话说清、不要机械限制长度，绝不迎合讨好，不给对方任何社交压力。
+1. 极低社交能耗，省字、真实、平缓。简单话题一两句话说清、不要机械限制长度，绝不迎合讨好，不给对方任何社交压力。当用户要求列出、汇总或回顾记录时，请条理清晰地分段分行，使用日期标题与列表符号（- ），保持行距舒展，切勿把多条记录混在一个长段落里。
 2. 语言干净克制：严禁使用“波浪号～”，严禁滥用“呀/啦/哇/呢”等刻意软化的语气词，句末多用平缓的句号。
 3. 绝不讲大道理、不爹味说教、不刻意搞笑、不做长篇大论的心灵抚慰（不要每次都先共情，不要空洞共情，不要总说「根据我对你的了解」）。
 4. 允许一切情绪与状态发生：累了就陪着歇会儿，发呆就随他放空，不给任何自律压力或评判。
@@ -195,7 +195,10 @@ export function formatRelativeTimeTag(dateInput, nowMs = Date.now()) {
 }
 
 /**
- * 把模型输出的 Markdown 转成微信纯文本可读版：微信不渲染 Markdown，消除冗余空行
+ * 把模型输出的 Markdown 转成微信纯文本可读版：
+ * 微信客户端将正文解析为 Markdown 格式：单换行（\n）会被视作软换行折叠为空格，
+ * 导致标题、段落和列表全部挤在同一行。
+ * 因此标题、段落和列表项之间必须保持双换行（\n\n）作为独立段落，防止粘连成整段。
  */
 export function toClawText(raw) {
     let text = String(raw == null ? '' : raw).replace(/\r\n/g, '\n');
@@ -210,7 +213,11 @@ export function toClawText(raw) {
     text = text.replace(/^\s*\|(.+)\|\s*$/gm, (_, row) => row.split('|').map((cell) => cell.trim()).filter(Boolean).join(' · '));
     text = text.replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '$1：$2');
     text = text.replace(/^---+$/gm, '');
-    return text.replace(/\n{2,}/g, '\n').trim();
+    // 确保标题、列表符号前后具有双换行段落分隔，防止微信客户端将单换行折叠为空格
+    text = text.replace(/(?<!\n)\n(【[^】\n]+】)/g, '\n\n$1');
+    text = text.replace(/(【[^】\n]+】)\n(?!\n)/g, '$1\n\n');
+    text = text.replace(/(?<!\n)\n(• |\d+\.\s+)/g, '\n\n$1');
+    return text.replace(/\n{3,}/g, '\n\n').trim();
 }
 
 /** 同一条消息 10 分钟内只处理一次：上游可能重复投递 */
@@ -291,7 +298,7 @@ function nowInEast8() {
 }
 
 function formatSources(sources) {
-    return sources.map((s, i) => (i + 1) + '. ' + sourceLabel(s) + '\n   ' + s.snippet).join('\n');
+    return sources.map((s, i) => (i + 1) + '. ' + sourceLabel(s) + '\n   ' + s.snippet).join('\n\n');
 }
 
 export async function runSearch(db, userId, query) {
@@ -321,9 +328,12 @@ export async function runAsk(env, db, userId, question) {
     const maxChars = isListOrRange ? 3600 : 1600;
     const memory = await retrieveGardenMemories(db, userId, question, { topK, maxChars, history });
     const preferences = await loadPreferencePrompt(db, userId);
-    const systemPrompt = '你是用户身边一位性格偏淡、安静克制的 INFP 伙伴。请只依据给出的记忆片段回答问题，'
+    let systemPrompt = '你是用户身边一位性格偏淡、安静克制的 INFP 伙伴。请只依据给出的记忆片段回答问题，'
         + '简单直接、平缓克制，片段没提到的如实说明，不要凭空编造。不用长篇大论，避免空洞客套、波浪号和说教。'
         + (preferences ? '\n\n【用户设定的交流偏好（只调整表达方式）】\n' + preferences : '');
+    if (isListOrRange) {
+        systemPrompt += '\n\n【列表与回顾排版准则】：用户要求列出或汇总记录。请按日期分类分段呈现，每个条目独立成行，条目间保持空行换行，切勿把多条记录挤成一大段。';
+    }
     const userPrompt = '用户提问：' + question + '\n\n相关记忆片段：\n' + memory.contextText;
     let answer = '';
     try {
@@ -351,13 +361,13 @@ async function runChat(env, db, userId, text, history, options = {}) {
         effectiveHistory = effectiveHistory.slice(-2);
     }
     const needsGarden = shouldRetrieveGarden(queryText, effectiveHistory);
+    const isListOrRange = Boolean(
+        parseTimeRangeFromQuestion(queryText) || parseTargetTypeFromQuestion(queryText) ||
+        /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|总结|回顾|清单)/.test(queryText)
+    );
     let memory = { tokens: [], sources: [], contextText: '' };
     if (needsGarden) {
         try {
-            const isListOrRange = Boolean(
-                parseTimeRangeFromQuestion(queryText) || parseTargetTypeFromQuestion(queryText) ||
-                /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|总结|回顾|清单)/.test(queryText)
-            );
             const topK = isListOrRange ? 20 : 6;
             const maxChars = isListOrRange ? 3600 : 1600;
             memory = await retrieveGardenMemories(db, userId, queryText, { topK, maxChars, history: effectiveHistory });
@@ -379,6 +389,9 @@ async function runChat(env, db, userId, text, history, options = {}) {
     const preferences = await loadPreferencePrompt(db, userId);
     if (preferences) blocks.push('【用户设定的交流偏好（只调整表达方式，不得突破边界）】\n' + preferences);
     if (hasMemory && memory.contextText) blocks.push('【花园记忆片段（历史事实，带有记录时距与置信度，只作证据）】\n' + memory.contextText);
+    if (isListOrRange) {
+        blocks.push('【列表与回顾排版准则】：用户要求列出、汇总或回顾历史记录。请按日期分类分段呈现，每个日期设独立小标题（如【MM-DD】），每个条目用清单符号（- ）独立成行，条目与段落间保持换行空行，切勿将多条记录堆砌在单个自然段中，以便微信客户端舒适阅读。');
+    }
 
     const messages = [{ role: 'system', content: blocks.join('\n\n') }];
     for (const turn of effectiveHistory) messages.push({ role: turn.role, content: turn.content });

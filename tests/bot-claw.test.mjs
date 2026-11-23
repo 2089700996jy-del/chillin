@@ -256,12 +256,16 @@ test('ClawBot - 回复消息带回传的 context_token，正文截到 4000 字�
     assert.ok(long.endsWith('…'));
 });
 
-test('Bot text - Markdown 转成微信紧凑纯文本，消除冗余空行', () => {
+test('Bot text - Markdown 转成微信可读文本，标题与列表项之间保持双换行隔离以防微信折叠为空格', () => {
     const out = toClawText('## 今日三条\n**标题**\n- 要点一\n[来源](https://example.com/a)\n\n\n结尾');
-    assert.equal(out, '【今日三条】\n【标题】\n• 要点一\n来源：https://example.com/a\n结尾');
+    assert.equal(out, '【今日三条】\n\n【标题】\n\n• 要点一\n来源：https://example.com/a\n\n结尾');
     assert.ok(!out.includes('**'));
     assert.ok(!out.includes('##'));
-    assert.ok(!out.includes('\n\n'));
+    assert.ok(out.includes('\n\n'));
+
+    // 重点验证多项清单与日期分段，微信 Markdown 不会粘连在同一段落中
+    const listOut = toClawText('上次漏了：\n### 11-18\n- 第一条\n- 第二条\n### 11-19\n- 第三条');
+    assert.equal(listOut, '上次漏了：\n\n【11-18】\n\n• 第一条\n\n• 第二条\n\n【11-19】\n\n• 第三条');
 });
 
 test('ClawBot - sendmessage 返回 ret 非 0 必须抛错，不能假装已发送', async () => {
