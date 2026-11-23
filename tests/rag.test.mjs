@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
     tokenizeQuery,
     parseTimeRangeFromQuestion,
+    parseTargetTypeFromQuestion,
     parseDateToYmd,
     extractItemDate,
     scoreMemoryChunk,
@@ -296,4 +297,74 @@ integration('RAG - 常青主题跨模块关联召回：相同 #tag 跨随手记�
     assert.equal(relatedHit.related, true);
     assert.match(relatedHit.relation, /同主题 #投资哲学/);
     assert.match(result.contextText, /同主题 #投资哲学/);
+});
+
+test('RAG - parseTargetTypeFromQuestion recognizes garden container types', () => {
+    assert.equal(parseTargetTypeFromQuestion('上周发的随手记给我都列出来'), '随手记');
+    assert.equal(parseTargetTypeFromQuestion('上个星期的周记'), '周记');
+    assert.equal(parseTargetTypeFromQuestion('查看我的笔记'), '笔记');
+    assert.equal(parseTargetTypeFromQuestion('我的收藏里有没有关于React的内容'), '收藏');
+    assert.equal(parseTargetTypeFromQuestion('有什么好的提示词'), '提示词');
+    assert.equal(parseTargetTypeFromQuestion('我在读什么书'), '书籍');
+    assert.equal(parseTargetTypeFromQuestion('我上周对chillin有什么思路吗'), null);
+});
+
+integration('RAG - 自然语言时段查询全量召回且无一遗漏（修复上周随手记漏查）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const feeds = [
+        { id: 1795099123707, content: '今天学习了第一性原则和对抗性审查', created_at: '2026-11-20 11:00:52', updated_at: '2026-11-20 11:00:52' },
+        { id: 1795099123706, content: 'DSH插件1.dsh-context 2.dsh-cost-meter 3.billion-context 4.dsh-mnemon', created_at: '2026-11-20 09:45:47', updated_at: '2026-11-20 09:45:47' },
+        { id: 1795099123705, content: '🌧️ 疲惫 · 今日心绪打卡 (允许停歇) · 22:38', created_at: '2026-11-19 22:38:00', updated_at: '2026-11-19 22:38:44' },
+        { id: 1794406563316, content: 'chillin开发进度 1.许愿式vibe coding 2.整体项目结构优化 瘦身 3.给chillin项目解脱 解除不必要的限制 4 5 6......', created_at: '2026-11-19 17:17:38', updated_at: '2026-11-19 17:17:38' },
+        { id: 1794406563315, content: '读林k的工作号的时候有点小触动 觉得遵从自己的内心过自己想要的生活就很好', created_at: '2026-11-19 16:32:10', updated_at: '2026-11-19 16:32:10' },
+        { id: 1794406563314, content: 'chillin可以加一个这个功能', created_at: '2026-11-19 16:02:32', updated_at: '2026-11-19 16:02:32' },
+        { id: 1794406563313, content: '一张食物蛋白质含量统计表，列了卤猪肝、牛仔骨、豆奶这些食材的重量和总蛋白质。', created_at: '2026-11-19 16:02:15', updated_at: '2026-11-19 16:02:15' },
+        { id: 1794406563312, content: '工作之后感觉时间过的好快 今天是gta6发布的日子 感觉也算是站在历史节点上看历史了', created_at: '2026-11-18 17:59:55', updated_at: '2026-11-18 17:59:55' },
+        { id: 1794406563311, content: '弄了那么久的chillin 今天终于把网址给背了哈哈哈', created_at: '2026-11-18 14:26:55', updated_at: '2026-11-18 14:26:55' },
+        { id: 1794406563310, content: 'web端功能 1.agent流程可视化审查工作台 2.个人知识库集群', created_at: '2026-11-18 11:32:37', updated_at: '2026-11-18 11:32:37' },
+        { id: 1794406563309, content: '更早之前的记录', created_at: '2026-11-13 10:04:09', updated_at: '2026-11-13 10:04:09' }
+    ];
+
+    for (const f of feeds) {
+        await db.prepare('INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?, 1, ?, ?, ?, 0)')
+            .bind(f.id, f.content, f.created_at, f.updated_at).run();
+    }
+
+    const res = await retrieveGardenMemories(db, 1, '上周发的随手记给我都列出来');
+    assert.equal(res.sources.length, 10, '上周的全部 10 条随手记必须全量召回，不可因 LIKE 或 topK 硬截断而漏查');
+    const returnedIds = res.sources.map(s => s.id);
+    assert.ok(returnedIds.includes(1795099123707));
+    assert.ok(returnedIds.includes(1794406563316));
+    assert.ok(returnedIds.includes(1794406563311));
+    assert.ok(returnedIds.includes(1794406563310));
+    assert.ok(!returnedIds.includes(1794406563309), '更早周的记录不应混入');
+});
+
+integration('RAG - 时段内主题实体提问精准命中（修复我上周对chillin有什么思路漏查）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const feeds = [
+        { id: 1795099123707, content: '今天学习了第一性原则和对抗性审查', created_at: '2026-11-20 11:00:52', updated_at: '2026-11-20 11:00:52' },
+        { id: 1794406563316, content: 'chillin开发进度 1.许愿式vibe coding 2.整体项目结构优化 瘦身 3.给chillin项目解脱 解除不必要的限制 4 5 6......', created_at: '2026-11-19 17:17:38', updated_at: '2026-11-19 17:17:38' },
+        { id: 1794406563314, content: 'chillin可以加一个这个功能', created_at: '2026-11-19 16:02:32', updated_at: '2026-11-19 16:02:32' },
+        { id: 1794406563312, content: '工作之后感觉时间过的好快 今天是gta6发布的日子', created_at: '2026-11-18 17:59:55', updated_at: '2026-11-18 17:59:55' },
+        { id: 1794406563311, content: '弄了那么久的chillin 今天终于把网址给背了哈哈哈', created_at: '2026-11-18 14:26:55', updated_at: '2026-11-18 14:26:55' }
+    ];
+
+    for (const f of feeds) {
+        await db.prepare('INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?, 1, ?, ?, ?, 0)')
+            .bind(f.id, f.content, f.created_at, f.updated_at).run();
+    }
+
+    const res = await retrieveGardenMemories(db, 1, '我上周对chillin有什么思路吗');
+    assert.equal(res.sources.length, 3, '必须精准召回上周涉及 chillin 的 3 条记录');
+    const returnedIds = res.sources.map(s => s.id);
+    assert.ok(returnedIds.includes(1794406563316));
+    assert.ok(returnedIds.includes(1794406563314));
+    assert.ok(returnedIds.includes(1794406563311));
+    assert.ok(!returnedIds.includes(1795099123707), '非 chillin 记录不应被误召回');
+    assert.ok(!returnedIds.includes(1794406563312), '非 chillin 记录不应被误召回');
 });

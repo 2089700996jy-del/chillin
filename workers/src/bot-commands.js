@@ -13,7 +13,7 @@ import { maybeRunAgentCommand } from './bot-agent-commands.js';
 export { parseBookmarkCommand, parsePromptCommand };
 import { maybeManageGarden } from './bot-butler.js';
 import { maybePreferenceCommand, loadPreferencePrompt } from './bot-preferences.js';
-import { retrieveGardenMemories, generateFallbackReply } from './rag.js';
+import { retrieveGardenMemories, generateFallbackReply, parseDateToYmd, parseTimeRangeFromQuestion, parseTargetTypeFromQuestion } from './rag.js';
 import { callCustomLlm, callCustomLlmWithMessages, moderateText } from './llm.js';
 import { checkRateLimitShared } from './security.js';
 import {
@@ -32,7 +32,6 @@ import {
     parseReminderTime, cleanReminderText, formatReminderTime, createReminderAt
 } from './bot-reminders.js';
 import { maybeRunHealthCommand } from './bot-health.js';
-import { parseDateToYmd } from './rag.js';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -144,7 +143,7 @@ export const INTENT_CHITCHAT = 'chitchat';
 
 export const PROFILE_QA_RE = /(?:你记得我|你记住了我|你了解我|你眼中的我|我是一个怎样的人|我是个什么样的人|我是一个什么样的人|我的画像|我的档案|我的个人信息|我叫什么|我常住|我住在|我的家在哪|我的职业|我做什么工作|我的工作|我的岗位|我喜欢吃|我喜欢喝|我平时喜欢|我的爱好|我的作息|我几点睡|我一般几点|我对什么过敏|我有什么忌口|我喝咖啡)/;
 export const PURE_CHITCHAT_RE = /^(?:你好|您好|哈喽|hello|hi|hey|早|早安|早上好|午安|中午好|晚上好|晚安|在吗|在不在|有人吗|呼叫|滴滴|好的|收到|行|可以|好吧|原来如此|这样啊|明白|知道了|多谢|谢谢|感谢|哈哈+|呵呵+|嘻嘻+|喵|嗯嗯?|哦哦?|对|确实|是的|今天好累|好累啊|有点困|困死了|肚子好饿|下班了|下雨了|无聊|太难了|好开心|你是谁|你叫什么|你能做什么|你多大了|你会什么|讲个笑话|陪我聊聊天)[\s!！?？~～.。]*$/i;
-export const GARDEN_TRIGGER_RE = /(?:我(?:还在|最近|上次|以前|过去|当时|曾经|到底|有没有|何时|什么时候|之前|写过|读过|看过|记过|提过|去过|买过|学过|在读|在看|在学)|记过|提过|提到|笔记|周记|随手记|收藏|提示词|记录|花园|历史|回忆|回顾|查一下|翻一下|找一下|帮我找|帮我搜|看下我|有没有记|有没有写|书架|阅读进度|读到哪|在看什么书|有哪些书|看过什么书|常青主题|所有主题|哪些主题|还有吗|详细说说|展开说说)/;
+export const GARDEN_TRIGGER_RE = /(?:我(?:还在|最近|上次|以前|过去|当时|曾经|到底|有没有|何时|什么时候|之前|写过|读过|看过|记过|提过|去过|买过|学过|在读|在看|在学|上周|本周|这周|昨天|前天)|(?:上周|本周|这周|昨天|前天|前几天|上个月|近一周|近7天|今年|去年|之前|当时).*(?:思路|想法|灵感|计划|进展|规划|做过|写了|说了|发了|发过|干了|干过|聊了|聊过|有什么|干嘛了|怎样|如何|哪些|记录|列出|汇总|盘点|总结|回顾|随手记|笔记|周记|清单)|记过|提过|提到|笔记|周记|随手记|收藏|提示词|记录|花园|历史|回忆|回顾|查一下|翻一下|找一下|帮我找|帮我搜|看下我|有没有记|有没有写|书架|阅读进度|读到哪|在看什么书|有哪些书|看过什么书|常青主题|所有主题|哪些主题|还有吗|详细说说|展开说说)/;
 
 export function classifyUserIntent(text, history = []) {
     const raw = String(text || '').trim();
@@ -163,6 +162,10 @@ export function shouldRetrieveGarden(text, history = []) {
     if (/^(?:为什么|为何).*(?:不读|不看|不去|不做|拖延)/.test(raw)) return false;
     if (wantsEvidence(raw)) return true;
     if (GARDEN_TRIGGER_RE.test(raw)) return true;
+    const tr = parseTimeRangeFromQuestion(raw);
+    if (tr && /(?:思路|想法|计划|灵感|记录|内容|笔记|进展|东西|随手记|周记|清单|汇总|盘点|总结|回顾|关于|发了|发过|写了|写过|记了|记过|做过|干过|聊过|说过|列出|列一下|看下|查下|搜下|查一下|翻一下|找一下|有什么|有哪些|有啥|对.*有)/.test(raw)) {
+        return true;
+    }
     if (Array.isArray(history) && history.length > 0) {
         const last = history[history.length - 1];
         if (last && last.role === 'assistant' && (String(last.content).includes('依据：') || String(last.content).includes('记录'))) {
@@ -293,7 +296,13 @@ function formatSources(sources) {
 
 export async function runSearch(db, userId, query) {
     const history = await loadChatContext(db, userId);
-    const memory = await retrieveGardenMemories(db, userId, query, { topK: 6, maxChars: 1400, history });
+    const isListOrRange = Boolean(
+        parseTimeRangeFromQuestion(query) || parseTargetTypeFromQuestion(query) ||
+        /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|总结|回顾|清单)/.test(query)
+    );
+    const topK = isListOrRange ? 20 : 8;
+    const maxChars = isListOrRange ? 3600 : 1400;
+    const memory = await retrieveGardenMemories(db, userId, query, { topK, maxChars, history });
     const sources = memory.sources || [];
     if (!sources.length) return '没有检索到与「' + query + '」相关的记录。';
     return '**检索「' + query + '」** · 命中 ' + sources.length + ' 条\n\n' + formatSources(sources);
@@ -304,7 +313,13 @@ export async function runAsk(env, db, userId, question) {
     if (!limit.ok) return '提问太频繁了，请 ' + (limit.retryAfter || 60) + ' 秒后再试。';
 
     const history = await loadChatContext(db, userId);
-    const memory = await retrieveGardenMemories(db, userId, question, { topK: 6, maxChars: 1600, history });
+    const isListOrRange = Boolean(
+        parseTimeRangeFromQuestion(question) || parseTargetTypeFromQuestion(question) ||
+        /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|总结|回顾|清单)/.test(question)
+    );
+    const topK = isListOrRange ? 20 : 6;
+    const maxChars = isListOrRange ? 3600 : 1600;
+    const memory = await retrieveGardenMemories(db, userId, question, { topK, maxChars, history });
     const preferences = await loadPreferencePrompt(db, userId);
     const systemPrompt = '你是用户身边一位性格偏淡、安静克制的 INFP 伙伴。请只依据给出的记忆片段回答问题，'
         + '简单直接、平缓克制，片段没提到的如实说明，不要凭空编造。不用长篇大论，避免空洞客套、波浪号和说教。'
@@ -339,15 +354,21 @@ async function runChat(env, db, userId, text, history, options = {}) {
     let memory = { tokens: [], sources: [], contextText: '' };
     if (needsGarden) {
         try {
-            memory = await retrieveGardenMemories(db, userId, queryText, { topK: 4, maxChars: 1200, history: effectiveHistory });
+            const isListOrRange = Boolean(
+                parseTimeRangeFromQuestion(queryText) || parseTargetTypeFromQuestion(queryText) ||
+                /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|总结|回顾|清单)/.test(queryText)
+            );
+            const topK = isListOrRange ? 20 : 6;
+            const maxChars = isListOrRange ? 3600 : 1600;
+            memory = await retrieveGardenMemories(db, userId, queryText, { topK, maxChars, history: effectiveHistory });
         } catch (err) {
             console.error('[bot] 花园记忆检索异常，降级无记忆对话: ' + (err && err.message));
             memory = { tokens: [], sources: [], contextText: '' };
         }
     }
     const sources = memory.sources || [];
-    // 没有主题词时不拿「最近几条」硬凑记忆：那会让「在吗」突然翻旧账；有主题词但没命中也不注入检索失败指令。
-    const hasTopic = Array.isArray(memory.tokens) && memory.tokens.length > 0;
+    // 没有主题词时不拿「最近几条」硬凑记忆：那会让「在吗」突然翻旧账；但若有时段范围或明确容器查询，则属于有效检索。
+    const hasTopic = (Array.isArray(memory.tokens) && memory.tokens.length > 0) || Boolean(memory.timeRange) || Boolean(memory.targetType);
     const hasMemory = hasTopic && sources.length > 0;
     const blocks = [CHAT_SYSTEM_PROMPT, '现在是 ' + nowInEast8() + '（东八区）。'];
     if (isSoftShift) {

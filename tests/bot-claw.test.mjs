@@ -2594,8 +2594,12 @@ test('Bot 对话智能 - 意图动态分流：区分闲聊、长文知识检索�
     assert.equal(classifyUserIntent('翻一下我上周的随手记').intent, INTENT_KNOWLEDGE_RAG);
     assert.equal(classifyUserIntent('我写过的周记里有提到微服务吗').intent, INTENT_KNOWLEDGE_RAG);
     assert.equal(classifyUserIntent('我还在读《人类简史》吗').intent, INTENT_KNOWLEDGE_RAG);
+    assert.equal(classifyUserIntent('我上周对chillin有什么思路吗').intent, INTENT_KNOWLEDGE_RAG);
+    assert.equal(classifyUserIntent('上周发的随手记给我都列出来').intent, INTENT_KNOWLEDGE_RAG);
     assert.equal(shouldRetrieveGarden('我之前记过哪家牛肉面好吃'), true);
     assert.equal(shouldRetrieveGarden('我写过的周记里有提到微服务吗'), true);
+    assert.equal(shouldRetrieveGarden('我上周对chillin有什么思路吗'), true);
+    assert.equal(shouldRetrieveGarden('上周发的随手记给我都列出来'), true);
 
     // 4. 多轮连续追问记忆出处
     const mockHistory = [{ role: 'assistant', content: '你之前在随手记里记录过这件事。\n\n---\n依据：[随手记] 2026-11-01' }];

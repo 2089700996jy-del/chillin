@@ -17,13 +17,45 @@ import {
 
 export { extractWikiLinks };
 
+export const TIME_STOPWORDS = [
+    '上一个星期', '上个星期', '上一周', '上个周', '上星期', '上礼拜', '上周',
+    '这一个星期', '这个星期', '这一周', '这个周', '这星期', '这礼拜', '本周', '这周',
+    '上一个月', '上个月', '这一个月', '这个月', '上月', '本月',
+    '过去一周', '最近一周', '近一周', '过去7天', '近7天', '七天',
+    '大前天', '前天', '昨天', '昨日', '今天', '今日', '今年', '去年'
+];
+
+export const RESOURCE_TYPE_WORDS = [
+    '随手记', '碎碎念', '提示词', '书架', '书籍', '书单', '书签', '周记', '笔记', '收藏'
+];
+
+export const META_ACTION_WORDS = [
+    '列出来', '列出', '全部', '所有', '都有', '给我', '帮我',
+    '发了', '发的', '发过', '写了', '写的', '写过', '记了', '记的', '记过',
+    '汇总', '盘点', '梳理', '回顾', '看看', '查查', '翻翻', '找找',
+    '有哪些', '有什么', '有没有', '说说', '讲讲', '总结', '最近'
+];
+
+export const SINGLE_CHAR_STOPS = new Set([
+    '的', '了', '呢', '吗', '啊', '呀', '么', '吧', '就', '都', '也', '和', '与', '或',
+    '在', '是', '有', '我', '你', '他', '她', '它', '这', '那', '被', '把', '让', '给',
+    '对', '为', '到', '从', '着', '过', '及', '等', '于'
+]);
+
+export const INQUIRY_CONCEPT_WORDS = new Set([
+    '思路', '想法', '灵感', '计划', '规划', '进展', '进度', '动态', '记录', '内容', '事情', '工作', '收获', '体会', '感悟'
+]);
+
 export const RAG_STOPWORDS = new Set([
     '的', '了', '呢', '吗', '啊', '呀', '么', '吧', '就', '都', '也', '和', '与', '或',
     '在', '是', '有', '我', '你', '他', '她', '它', '们', '这', '那', '什么', '怎么',
     '为什么', '如何', '关于', '一下', '一些', '还是', '但是', '如果', '因为', '所以',
     '可以', '会', '能', '要', '到', '从', '上', '中', '下', '内', '被', '把', '让',
     '给', '对', '为', '及', '等', '着', '过', '嘛', '嗯', '哈', '请问', '帮我',
-    '看看', '说说', '讲讲', '总结', '最近', '有没有', '哪些', '哪个', '这些', '那些'
+    '看看', '说说', '讲讲', '总结', '最近', '有没有', '哪些', '哪个', '这些', '那些',
+    ...TIME_STOPWORDS,
+    ...RESOURCE_TYPE_WORDS,
+    ...META_ACTION_WORDS
 ]);
 
 export function east8NowParts(base = new Date()) {
@@ -144,11 +176,55 @@ export function parseTimeRangeFromQuestion(question) {
     return null;
 }
 
-export function tokenizeQuery(question) {
-    const text = String(question || '').toLowerCase();
+export function parseTargetTypeFromQuestion(question) {
+    const q = String(question || '');
+    if (/随手记|碎碎念|feed/i.test(q)) return '随手记';
+    if (/周记|weekly/i.test(q)) return '周记';
+    if (/笔记|note/i.test(q)) return '笔记';
+    if (/收藏|书签|bookmark/i.test(q)) return '收藏';
+    if (/提示词|prompt/i.test(q)) return '提示词';
+    if (/书籍|书架|在读|阅读|读书|看书/i.test(q)) return '书籍';
+    return null;
+}
+
+export function tokenizeQuery(question, options = {}) {
+    let text = String(question || '').toLowerCase();
+    const timeRange = options.timeRange !== undefined ? options.timeRange : parseTimeRangeFromQuestion(text);
+    const targetType = options.targetType !== undefined ? options.targetType : parseTargetTypeFromQuestion(text);
+
+    if (timeRange) {
+        for (const tw of TIME_STOPWORDS) text = text.replaceAll(tw, ' ');
+    }
+    if (targetType) {
+        for (const rw of RESOURCE_TYPE_WORDS) text = text.replaceAll(rw, ' ');
+    }
+    for (const mw of META_ACTION_WORDS) {
+        text = text.replaceAll(mw, ' ');
+    }
+    for (const sw of RAG_STOPWORDS) {
+        if (sw.length >= 2 && text.includes(sw)) {
+            text = text.replaceAll(sw, ' ');
+        }
+    }
+
     const tokens = new Set();
     for (const m of text.matchAll(/[a-z0-9_]{2,}/g)) tokens.add(m[0]);
-    const cjkRuns = text.match(/[\u4e00-\u9fff]+/g) || [];
+
+    let currentRun = '';
+    const cjkRuns = [];
+    for (const char of text) {
+        if (/[\u4e00-\u9fff]/.test(char)) {
+            if (SINGLE_CHAR_STOPS.has(char)) {
+                if (currentRun) { cjkRuns.push(currentRun); currentRun = ''; }
+            } else {
+                currentRun += char;
+            }
+        } else {
+            if (currentRun) { cjkRuns.push(currentRun); currentRun = ''; }
+        }
+    }
+    if (currentRun) cjkRuns.push(currentRun);
+
     for (const run of cjkRuns) {
         if (run.length >= 2 && !RAG_STOPWORDS.has(run)) tokens.add(run);
         for (let i = 0; i < run.length - 1; i++) {
@@ -156,7 +232,8 @@ export function tokenizeQuery(question) {
             if (!RAG_STOPWORDS.has(bi)) tokens.add(bi);
         }
         for (let i = 0; i < run.length - 2; i++) {
-            tokens.add(run.slice(i, i + 3));
+            const tri = run.slice(i, i + 3);
+            if (!RAG_STOPWORDS.has(tri)) tokens.add(tri);
         }
     }
     return [...tokens].filter(t => t && t.length >= 2);
@@ -233,6 +310,10 @@ export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
         if (!dateStr) return -1;
         if (dateStr < timeRange.start || dateStr > timeRange.end) return -1;
     }
+    const targetType = options.targetType;
+    if (targetType && item.type !== targetType) {
+        return -1; // 明确指定随手记/周记等容器时，排除其他容器
+    }
     const title = String(item.title || '');
     const body = String(item.body || '');
     const tags = Array.isArray(item.tags) ? item.tags.join(' ') : String(item.tags || '');
@@ -246,8 +327,12 @@ export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
         if (hayBody.includes(t)) { score += 3; matched.add(t); }
         if (hayTags.includes(t)) { score += 4; matched.add(t); }
     }
-    if (tokens.length > 0 && matched.size === 0) {
-        return -1; // 有主题词时必须命中，避免不相关日记被灌进上下文
+    const hasConcreteTopic = tokens.some(t => !INQUIRY_CONCEPT_WORDS.has(t));
+    if (hasConcreteTopic && matched.size === 0) {
+        return -1; // 有具体实体主题词（如 chillin、代码重构）时必须命中
+    }
+    if (!hasConcreteTopic && tokens.length > 0 && !timeRange && !targetType && matched.size === 0) {
+        return -1; // 既无实体词也无时段/容器范围且全未命中时，避免泛灌
     }
     // 覆盖越多主题词越可信，避免只命中一个泛词就排到前面
     if (matched.size > 0) score += (matched.size / tokens.length) * 4;
@@ -256,6 +341,7 @@ export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
         score += 5;
     }
     score *= TYPE_WEIGHT[item.type] || 1;
+    if (targetType && item.type === targetType) score += 4;
     if (timeRange) score += 3;
     // 轻微偏好更新近的内容；旧但高度相关的记忆仍然能排在前面
     if (dateStr) {
@@ -267,10 +353,15 @@ export function scoreMemoryChunk(item, tokens, timeRange, options = {}) {
 }
 
 export async function retrieveGardenMemories(db, userId, question, opts = {}) {
-    const topK = opts.topK || 8;
-    const maxChars = opts.maxChars || 1600;
-    let tokens = tokenizeQuery(question).slice(0, 12);
     const timeRange = parseTimeRangeFromQuestion(question);
+    const targetType = opts.targetType || parseTargetTypeFromQuestion(question);
+    const isListOrRange = Boolean(
+        timeRange || targetType ||
+        /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|总结|回顾|清单)/.test(String(question || ''))
+    );
+    const topK = opts.topK || (isListOrRange ? 20 : 8);
+    const maxChars = opts.maxChars || (isListOrRange ? 3600 : 1600);
+    let tokens = tokenizeQuery(question, { timeRange, targetType }).slice(0, 12);
 
     // 多轮对话主题继承：短问（如“还有吗”“详细说说”）没有独立主题时，从历史追问。
     if (tokens.length < 2 && Array.isArray(opts.history) && opts.history.length > 0) {
@@ -282,10 +373,11 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     }
 
     const ftsMatch = buildFtsMatch(tokens);
-    const candidateLimit = opts.candidateLimit || (tokens.length ? 240 : (timeRange ? 1000 : 300));
+    const candidateLimit = opts.candidateLimit || (tokens.length ? 240 : (timeRange || targetType ? 1000 : 300));
+    const targetTables = targetType ? MEMORY_TABLES.filter(cfg => cfg.type === targetType) : MEMORY_TABLES;
     const [ftsHits, ...rowSets] = await Promise.all([
-        fetchFtsHits(db, userId, ftsMatch),
-        ...MEMORY_TABLES.map(cfg => fetchMemoryRows(db, cfg, userId, tokens, candidateLimit))
+        tokens.length >= 1 ? fetchFtsHits(db, userId, ftsMatch) : Promise.resolve([]),
+        ...targetTables.map(cfg => fetchMemoryRows(db, cfg, userId, tokens, candidateLimit))
     ]);
 
     const corpus = new Map();
@@ -294,7 +386,7 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
         if (item && !corpus.has(item.key)) corpus.set(item.key, item);
     };
     rowSets.forEach((rows, i) => {
-        const cfg = MEMORY_TABLES[i];
+        const cfg = targetTables[i];
         for (const row of rows) add(cfg, row);
     });
 
@@ -307,7 +399,7 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
         if (!ftsGroups.has(type)) ftsGroups.set(type, new Set());
         ftsGroups.get(type).add(id);
     }
-    await Promise.all(MEMORY_TABLES.map(async cfg => {
+    await Promise.all(targetTables.map(async cfg => {
         const ids = [...(ftsGroups.get(cfg.type) || [])].slice(0, 300);
         if (!ids.length) return;
         const rows = await fetchRowsByIds(db, cfg, userId, ids);
@@ -316,12 +408,12 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
 
     const allItems = [...corpus.values()];
     const ranked = allItems
-        .map(item => ({ ...item, score: scoreMemoryChunk(item, tokens, timeRange, { phrase: String(question || '').trim() }) }))
+        .map(item => ({ ...item, score: scoreMemoryChunk(item, tokens, timeRange, { phrase: String(question || '').trim(), targetType }) }))
         .filter(item => item.score >= 0)
         .sort((a, b) => b.score - a.score || Number(b.id || 0) - Number(a.id || 0));
 
     // 无关键词且无时间：不要倾倒全文，只取少量最近片段并标明
-    if (tokens.length === 0 && !timeRange) {
+    if (tokens.length === 0 && !timeRange && !targetType) {
         const recent = allItems
             .slice()
             .sort((a, b) => String(extractItemDate(b)).localeCompare(String(extractItemDate(a))))
@@ -329,7 +421,8 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
             .map(item => ({ ...item, score: 0 }));
         return buildRetrievalResult(recent, tokens, timeRange, maxChars, {
             candidateCount: allItems.length,
-            relatedCount: 0
+            relatedCount: 0,
+            targetType
         });
     }
 
@@ -337,6 +430,7 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
         return {
             tokens,
             timeRange,
+            targetType,
             sources: [],
             candidateCount: allItems.length,
             relatedCount: 0,
@@ -391,7 +485,8 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
 
     return buildRetrievalResult(selected, tokens, timeRange, maxChars, {
         candidateCount: allItems.length,
-        relatedCount: relatedLimit
+        relatedCount: relatedLimit,
+        targetType
     });
 }
 
@@ -442,6 +537,7 @@ function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {})
         return {
             tokens,
             timeRange,
+            targetType: extra.targetType || null,
             sources: [],
             candidateCount: extra.candidateCount || 0,
             relatedCount: 0,
@@ -477,6 +573,7 @@ function buildRetrievalResult(selected, tokens, timeRange, maxChars, extra = {})
     return {
         tokens,
         timeRange,
+        targetType: extra.targetType || null,
         sources,
         candidateCount: extra.candidateCount || 0,
         relatedCount: extra.relatedCount || 0,
