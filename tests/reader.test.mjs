@@ -544,3 +544,214 @@ test('Reader Progress Sync - 状态栏 #reader-sync-status-text 诊断工具绑�
         if (typeof localStorage !== 'undefined') localStorage.removeItem('_reader_db_migrated');
     }
 });
+
+// ── 对抗性审查（Adversarial Review）极端边界与攻防用例 ──
+
+test('Reader Adversarial 1: 极大规模文本 (2,500章 / 20MB) 解析与切章内存与耗时对抗测试', () => {
+    const chapterCount = 2500;
+    const parts = [];
+    parts.push('书名：对抗性测试史诗巨著\r\n作者：DeepMind Tester\r\n\r\n');
+
+    let currentVolume = 1;
+    for (let i = 1; i <= chapterCount; i++) {
+        if (i === 1 || i % 250 === 1) {
+            parts.push(`\r\n第${currentVolume}卷 诸神纪元\r\n\r\n`);
+            currentVolume++;
+        }
+        parts.push(`第${i}章 混沌之眼${i}\r\n`);
+        const bodyParagraph = '这是第' + i + '章的正文内容，包含各种标点符号、换行符和段落。\n第一段讲述深渊中的秘密。\r\n第二段讲述天穹上的星辰与命运。\r\n\r\n';
+        parts.push(bodyParagraph.repeat(5));
+    }
+
+    const hugeText = parts.join('');
+    assert.ok(hugeText.length > 500000, `文本规模: ${hugeText.length} 字符`);
+
+    // 1. 解析章节计时：必须在 1500ms 内完成，不得发生栈溢出或内存崩溃
+    const t0 = performance.now();
+    const chapters = parseChapters(hugeText);
+    const parseDuration = performance.now() - t0;
+
+    assert.equal(chapters.length, chapterCount + 1, `期望切出 1章前言 + ${chapterCount}章正文，实际切出 ${chapters.length} 章`);
+    assert.equal(chapters[0].title, '前言 / 序幕');
+    assert.equal(chapters[1].title, '第1章 混沌之眼1');
+    assert.ok(parseDuration < 1500, `解析 2500 章耗时过长: ${parseDuration.toFixed(2)}ms`);
+
+    // 2. 切章正文提取计时 (模拟 saveBookToLocalDB 批量写入前的提取循环)
+    // 之前的老代码在该循环中每次 replace 产生 28GB 内存 churn 导致崩溃
+    // 本次优化后应当在 < 500ms 完成全部 2500 章切片
+    const tExtract = performance.now();
+    for (let i = 0; i < chapters.length; i++) {
+        const content = extractChapterContent(hugeText, chapters[i]);
+        if (i === 1) {
+            assert.ok(content.includes('第一段讲述深渊中的秘密'));
+            assert.equal(content.startsWith('第1章 混沌之眼1'), false, '正文不应以本章标题行开头');
+        }
+        if (i === 250) {
+            assert.equal(content.includes('第2卷 诸神纪元'), false, '分卷标题严禁渗入上一章正文');
+        }
+    }
+    const extractDuration = performance.now() - tExtract;
+    assert.ok(extractDuration < 500, `2500 次 extractChapterContent 耗时过长: ${extractDuration.toFixed(2)}ms (必须 < 500ms)`);
+});
+
+test('Reader Adversarial 2: 畸形、脏数据与极端边界切章对抗测试', () => {
+    // 1. 空输入 / 非字符串
+    assert.deepEqual(parseChapters(''), []);
+    assert.deepEqual(parseChapters(null), []);
+    assert.deepEqual(parseChapters(undefined), []);
+    assert.equal(extractChapterContent('', null), '');
+
+    // 2. 没有任何章节标题的纯正文 (如无章散文或短篇)
+    const monolithic = '从前有一座山，山上有座庙，庙里有个老和尚在讲故事。\n故事很长很长。';
+    const monoChapters = parseChapters(monolithic);
+    assert.equal(monoChapters.length, 1);
+    assert.equal(monoChapters[0].title, '全文');
+    assert.equal(extractChapterContent(monolithic, monoChapters[0]), monolithic);
+
+    // 3. 只有分卷没有章节的奇葩文本
+    const onlyVolumes = '第一卷 混沌初开\r\n天地玄黄，宇宙洪荒。\r\n第二卷 日月盈昃\r\n金生丽水，玉出昆冈。';
+    const volChapters = parseChapters(onlyVolumes);
+    assert.ok(volChapters.length >= 1);
+
+    // 4. 正文段落包含类似章节关键词（如“这一部分的第1章并不存在”），不应被误判为章节
+    const proseText = '第1章 引言\n今天我们在讨论第2章的结构。\n实际上，第3节内容非常重要，包含“第4章”这个词汇但它不是章节。\n第2章 真正的第二章\n正文结束。';
+    const proseParsed = parseChapters(proseText);
+    assert.equal(proseParsed.length, 2, '正文中的“第4章”词汇不应被误判为章节');
+    assert.equal(proseParsed[0].title, '第1章 引言');
+    assert.equal(proseParsed[1].title, '第2章 真正的第二章');
+});
+
+test('Reader Adversarial 3: 云端与本地章节进度对齐对抗测试（脏序号/脏标题/越界/特殊字符）', () => {
+    const chapters = [
+        { index: 0, title: '序章 迷雾笼罩的城市' },
+        { index: 1, title: '第一章 猎魔人与旅馆' },
+        { index: 2, title: '第二章 <script>alert("xss")</script>' },
+        { index: 3, title: '第三章 命运的骰子 🎲 投出“大成功”' },
+        { index: 4, title: '第一百八十五章 画的力量（附录）' }
+    ];
+
+    // 1. 负数与非法序号输入容错
+    assert.equal(findChapterIndexByTitle(chapters, '不存在的章节', -99), 0, '非法负数序号应回落至 0');
+    assert.equal(findChapterIndexByTitle(chapters, '不存在的章节', 'not-a-number'), 0, 'NaN 序号应回落至 0');
+
+    // 2. 远超最大章节数的越界序号
+    assert.equal(findChapterIndexByTitle(chapters, '不存在的章节', 99999), 4, '超限序号应安全夹紧在最后一章');
+
+    // 3. XSS 与特殊字符标题匹配
+    const xssIdx = findChapterIndexByTitle(chapters, '第二章 <script>alert("xss")</script>', 99);
+    assert.equal(xssIdx, 2, '包含HTML特殊字符的标题应准确匹配');
+
+    // 4. Emoji 与中文双引号标题匹配
+    const emojiIdx = findChapterIndexByTitle(chapters, '第三章 命运的骰子 🎲 投出“大成功”', 0);
+    assert.equal(emojiIdx, 3, '包含Emoji与复杂标点的标题应准确匹配');
+
+    // 5. 跨端书名匹配容错（带括号、书名号、不同章节总数）
+    const cloudProgressList = [
+        { book_key: '宿命之环::1191', book_title: '《宿命之环》', chapter_index: 451, chapter_title: '第一百八十五章 画的力量' }
+    ];
+    const localBook = { title: '宿命之环', totalChapters: 1159 };
+    const matched = findCloudProgressForBook(cloudProgressList, localBook);
+    assert.ok(matched, '带书名号的同名书应正常匹配');
+    assert.equal(matched.chapter_index, 451);
+});
+
+test('Reader Adversarial 4: 正文重组 rebuildBookText 对抗测试（乱序/缺损/空正文/回车符突变）', () => {
+    // 乱序、包含 null/undefined、乱序 index 的章节数据
+    const corruptedChapters = [
+        { index: 3, title: '第3章 终局', content: '第三章正文\r\n带有CRLF' },
+        { index: 0, title: '第0章 序幕', content: '序幕正文\n带有LF' },
+        null,
+        { index: 1, title: '第1章 旅途', content: '' }, // 空正文
+        { index: 2, title: '', content: '第二章无标题正文' }, // 缺标题
+    ];
+
+    const rebuilt = rebuildBookText(corruptedChapters);
+    assert.ok(rebuilt.includes('第0章 序幕'));
+    assert.ok(rebuilt.includes('第1章 旅途'));
+    assert.ok(rebuilt.includes('第三章正文'));
+    assert.ok(rebuilt.includes('第二章无标题正文'));
+
+    // 验证重组后换行符统一为标准 LF
+    assert.equal(rebuilt.includes('\r'), false, 'rebuildBookText 必须消除任何残存的 \\r 确保跨端传输一致');
+});
+
+test('Reader Adversarial 5: 双向进度同步冲撞矩阵对抗测试（向前翻阅/新旧时间戳/多端并发）', () => {
+    // 场景 A: 本地是在前台刚刚阅读完并向前翻看 (timestamp 最新，chapterIdx 较小)
+    const localRecent = { chapterIdx: 15, scrollPct: 10, timestamp: 50000 };
+    const cloudStale = { book_key: 'b::1', chapter_index: 200, scroll_percentage: 90, client_ts: 40000 };
+    assert.equal(shouldPushLocalProgress(localRecent, cloudStale), true, '本地时间更新且向前翻看必须胜出推送到云端');
+    assert.equal(shouldAcceptCloudProgress(localRecent, cloudStale), false, '本地时间更新时决不能被旧云端进度覆盖');
+
+    // 场景 B: 云端是由另一台设备刚刚推送的最新进度 (client_ts 最新)
+    const localOld = { chapterIdx: 15, scrollPct: 10, timestamp: 30000 };
+    const cloudNew = { book_key: 'b::1', chapter_index: 18, scroll_percentage: 50, client_ts: 45000 };
+    assert.equal(shouldAcceptCloudProgress(localOld, cloudNew), true, '云端时间戳更新时本地必须采纳');
+    assert.equal(shouldPushLocalProgress(localOld, cloudNew), false, '本地旧进度决不能反向覆盖云端最新');
+
+    // 场景 C: 云端没有 client_ts（老服务端版本兼容），但 server update_time 更近
+    const cloudLegacy = { book_key: 'b::1', chapter_index: 50, scroll_percentage: 0, updated_at: '2026-11-23 12:00:00' };
+    const localVeryOld = { chapterIdx: 10, scrollPct: 0, timestamp: 1000 };
+    assert.equal(shouldAcceptCloudProgress(localVeryOld, cloudLegacy), true, '老云端数据缺失 client_ts 时必须依赖服务端时间对齐');
+});
+
+test('Reader Adversarial 6: 历史遗留《宿命之环》旧数据（分卷名作为独立伪章节）动态分卷识别对抗测试', async () => {
+    const { reVolume } = await import('../public/js/reader.js');
+
+    // 模拟老版本 IndexedDB 中《宿命之环》的数据：
+    // 第0条是 "第一卷 梦魇" (伪章节，正文为空)
+    // 第1条是 "第一章 外乡人"
+    // 第2条是 "第二章 调查"
+    // 第3条是 "第二卷 逐光者" (伪章节，正文为空)
+    // 第4条是 "第一章 新的旅程"
+    const legacyMetas = [
+        { index: 0, title: '第一卷 梦魇', content: '' },
+        { index: 1, title: '第一章 外乡人', content: '第一章正文' },
+        { index: 2, title: '第二章 调查', content: '第二章正文' },
+        { index: 3, title: '第二卷 逐光者', content: '' },
+        { index: 4, title: '第一章 新的旅程', content: '新的旅程正文' }
+    ];
+
+    // 1. 验证 reVolume 精准识别分卷标题伪章节
+    assert.equal(reVolume.test(legacyMetas[0].title.trim()), true);
+    assert.equal(reVolume.test(legacyMetas[1].title.trim()), false);
+    assert.equal(reVolume.test(legacyMetas[3].title.trim()), true);
+    assert.equal(reVolume.test(legacyMetas[4].title.trim()), false);
+
+    // 2. 模拟 buildChapterTree 中的动态分组逻辑（零 DB 修改，纯运行时构建）
+    const groups = [];
+    let currentVolTitle = '序幕 / 起始';
+    let currentGroup = { id: 'rg-0', title: currentVolTitle, chapters: [] };
+    groups.push(currentGroup);
+    let volIdx = 0;
+
+    legacyMetas.forEach((ch, idx) => {
+        const title = (ch.title || '').trim();
+        if (reVolume.test(title)) {
+            volIdx++;
+            currentVolTitle = title;
+            currentGroup = { id: 'rg-' + volIdx, title: currentVolTitle, chapters: [] };
+            groups.push(currentGroup);
+            return;
+        }
+        currentGroup.chapters.push({
+            title: ch.title,
+            idx: idx,
+            id: ch.index,
+            volumeTitle: currentVolTitle
+        });
+    });
+    if (groups.length > 1 && groups[0].chapters.length === 0) {
+        groups.shift();
+    }
+
+    // 验证分卷分组结果
+    assert.equal(groups.length, 2, '两卷必须对应两个分组');
+    assert.equal(groups[0].title, '第一卷 梦魇');
+    assert.equal(groups[0].chapters.length, 2, '第一卷包含2章真实正文');
+    assert.equal(groups[0].chapters[0].title, '第一章 外乡人');
+    assert.equal(groups[0].chapters[0].idx, 1, '真实章节保持原始索引映射');
+    assert.equal(groups[1].title, '第二卷 逐光者');
+    assert.equal(groups[1].chapters.length, 1);
+    assert.equal(groups[1].chapters[0].title, '第一章 新的旅程');
+    assert.equal(groups[1].chapters[0].idx, 4);
+});

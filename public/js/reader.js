@@ -32,9 +32,9 @@ export function rebuildBookText(chapters) {
     const sorted = chapters
         .slice()
         .sort((a, b) => ((a && a.index) || 0) - ((b && b.index) || 0));
-    return sorted
+    const result = sorted
         .map((ch, idx, arr) => {
-            const title = ch && ch.title ? String(ch.title) : '';
+            const title = ch && ch.title ? String(ch.title).trim() : '';
             const body = ch && ch.content ? String(ch.content) : '';
             let prefix = '';
             if (ch && ch.volumeTitle) {
@@ -46,6 +46,7 @@ export function rebuildBookText(chapters) {
             return prefix + (title ? title + '\n' + body : body);
         })
         .join('\n');
+    return result.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
 }
 
 /** 云端进度行的写入时间（毫秒）：新行用 client_ts，历史行退化解析东八区的 updated_at */
@@ -114,30 +115,32 @@ export function shouldPushLocalProgress(local, cloud) {
 
 /** 根据章节标题与保底索引，智能对齐章节索引（防止不同分卷/版本章节号偏移几页） */
 export function findChapterIndexByTitle(chapterMetas, cloudChapterTitle, fallbackIndex) {
-    if (!chapterMetas || !chapterMetas.length) return fallbackIndex || 0;
+    if (!chapterMetas || !chapterMetas.length) return 0;
+    const numFallback = Number(fallbackIndex);
+    const validFallback = (!isNaN(numFallback) && numFallback >= 0)
+        ? Math.min(Math.floor(numFallback), chapterMetas.length - 1)
+        : 0;
+
     if (!cloudChapterTitle || typeof cloudChapterTitle !== 'string') {
-        return (fallbackIndex >= 0 && fallbackIndex < chapterMetas.length) ? fallbackIndex : 0;
+        return validFallback;
     }
     const cleanCloudTitle = cloudChapterTitle.trim();
-    if (!cleanCloudTitle) return (fallbackIndex >= 0 && fallbackIndex < chapterMetas.length) ? fallbackIndex : 0;
+    if (!cleanCloudTitle) return validFallback;
 
     // 1. 严格全名匹配
     const exact = chapterMetas.findIndex(ch => ch && ch.title && ch.title.trim() === cleanCloudTitle);
     if (exact !== -1) return exact;
 
     // 2. 忽略空白与常见中括号/符号匹配
-    const simplify = (str) => (str || '').replace(/[\s【】\[\]（）()第章节回卷部集篇：:·-]/g, '');
+    const simplify = (str) => (str || '').replace(/[\s《》【】\[\]（）()第章节回卷部集篇：:·-]/g, '');
     const simpleCloud = simplify(cleanCloudTitle);
     if (simpleCloud.length >= 2) {
         const simpleMatch = chapterMetas.findIndex(ch => simplify(ch && ch.title) === simpleCloud);
         if (simpleMatch !== -1) return simpleMatch;
     }
 
-    // 3. 保底使用索引
-    if (fallbackIndex >= 0 && fallbackIndex < chapterMetas.length) {
-        return fallbackIndex;
-    }
-    return 0;
+    // 3. 保底使用有效索引（安全夹紧在 0 ~ chapterMetas.length - 1 之间）
+    return validFallback;
 }
 
 /** 根据书籍信息在云端进度列表中匹配对应记录（支持精确 bookKey 与书名模糊对齐） */
@@ -315,10 +318,26 @@ export function parseChapters(text) {
     return chapters;
 }
 
+let lastRawText = null;
+let lastNormalizedText = null;
+
 export function extractChapterContent(text, ch) {
     if (!text || !ch) return '';
-    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    let content = normalized.slice(ch.charStart, ch.charEnd);
+    let src = text;
+    if (text === lastRawText) {
+        src = lastNormalizedText;
+    } else if (text === lastNormalizedText) {
+        src = text;
+    } else if (text.indexOf('\r') !== -1) {
+        lastRawText = text;
+        lastNormalizedText = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        src = lastNormalizedText;
+    } else {
+        lastNormalizedText = text;
+        src = text;
+    }
+
+    let content = src.slice(ch.charStart, ch.charEnd);
     content = content.replace(/[\r\n]+$/, '');
     const firstLineEnd = content.indexOf('\n');
     if (firstLineEnd > -1) {
@@ -482,7 +501,8 @@ function scheduleCloudProgressSync() {
 // ── Import ──
 /** 把正文切章后写入本地 IndexedDB（文件导入与云端下载共用同一套落库逻辑） */
 async function saveBookToLocalDB(text, meta, onProgress) {
-    const chapters = parseChapters(text);
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const chapters = parseChapters(normalized);
     if (!chapters.length) { showToast('未检测到章节！', 'warn'); return null; }
 
     const totalChapters = chapters.length;
@@ -507,7 +527,7 @@ async function saveBookToLocalDB(text, meta, onProgress) {
                 id: bookId + '_' + (i + j),
                 bookId: bookId, index: i + j,
                 title: ch.title,
-                content: extractChapterContent(text, ch),
+                content: extractChapterContent(normalized, ch),
                 groupIndex: ch.groupIndex,
                 groupTitle: ch.groupTitle || '',
                 volumeTitle: ch.volumeTitle || ''
@@ -679,14 +699,18 @@ async function deleteBookFromCloud(bookKey) {
 
 /** 云端独有的书：点开时下载正文 → 落到本地 → 直接进入阅读 */
 async function downloadBookFromCloud(bookKey) {
-    const meta = cloudBooks.find(b => b.book_key === bookKey);
+    let meta = cloudBooks.find(b => b.book_key === bookKey);
+    if (!meta && currentBook && currentBook.title) {
+        meta = cloudBooks.find(b => b.title === currentBook.title);
+    }
     if (!meta) { showToast('云端书目已失效，请刷新后重试', 'warn'); return; }
+    const actualKey = meta.book_key || bookKey;
     const progressEl = document.getElementById('import-progress');
     const progressText = document.getElementById('import-progress-text');
-    progressEl.style.display = 'block';
-    progressText.textContent = '正在从云端下载《' + meta.title + '》...';
+    if (progressEl) progressEl.style.display = 'block';
+    if (progressText) progressText.textContent = '正在从云端下载《' + meta.title + '》...';
     try {
-        const res = await fetchWithFallback('/api/reader/books/' + encodeURIComponent(bookKey), {
+        const res = await fetchWithFallback('/api/reader/books/' + encodeURIComponent(actualKey), {
             method: 'GET',
             headers: {
                 Accept: 'text/plain',
@@ -699,15 +723,17 @@ async function downloadBookFromCloud(bookKey) {
             title: meta.title,
             author: meta.author || '未知作者',
             fileName: meta.title + '.txt',
-            bookKey: bookKey
-        }, (i, total) => { progressText.textContent = '正在保存章节 ' + (i + 1) + '/' + total + '...'; });
-        progressEl.style.display = 'none';
+            bookKey: actualKey
+        }, (i, total) => {
+            if (progressText) progressText.textContent = '正在保存章节 ' + (i + 1) + '/' + total + '...';
+        });
+        if (progressEl) progressEl.style.display = 'none';
         if (!book) return;
         await renderBookshelf();
         window.openReaderBook(book.id);
         showToast('☁️ 已下载《' + meta.title + '》', 'success');
     } catch (err) {
-        progressEl.style.display = 'none';
+        if (progressEl) progressEl.style.display = 'none';
         showToast('云端下载失败：' + err.message, 'error');
     }
 }
@@ -852,80 +878,43 @@ function restoreContentScroll(pct) {
     });
 }
 
-// 检查书籍是否为旧版解析（缺乏 groupTitle 或存在 0 字节分卷虚假章节），自动升级修复
-async function ensureBookStructureUpgraded(book, metas) {
-    if (!book || !metas || !metas.length) return metas;
-    const needsUpgrade = metas.some(ch => !ch.groupTitle || reVolume.test((ch.title || '').trim()));
-    if (!needsUpgrade) return metas;
-
-    try {
-        const fullChapters = await rdbGetAll('chapters');
-        const bookChapters = fullChapters.filter(c => c.bookId === book.id).sort((a, b) => a.index - b.index);
-        const reconstructedText = rebuildBookText(bookChapters);
-        if (!reconstructedText || !reconstructedText.trim()) return metas;
-
-        const newParsed = parseChapters(reconstructedText);
-        if (!newParsed.length) return metas;
-
-        const db = await openDatabase();
-        const tx = db.transaction(['chapters', 'books'], 'readwrite');
-        const chStore = tx.objectStore('chapters');
-        for (const oldCh of bookChapters) {
-            chStore.delete(oldCh.id);
-        }
-        for (let i = 0; i < newParsed.length; i++) {
-            const ch = newParsed[i];
-            chStore.put({
-                id: book.id + '_' + i,
-                bookId: book.id,
-                index: i,
-                title: ch.title,
-                content: extractChapterContent(reconstructedText, ch),
-                groupIndex: ch.groupIndex,
-                groupTitle: ch.groupTitle || '',
-                volumeTitle: ch.volumeTitle || ''
-            });
-        }
-        const bStore = tx.objectStore('books');
-        book.totalChapters = newParsed.length;
-        book.groupCount = Math.ceil(newParsed.length / 100);
-        bStore.put(book);
-
-        await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
-
-        const updatedChapters = await rdbGetAll('chapters');
-        return updatedChapters.filter(c => c.bookId === book.id).sort((a, b) => a.index - b.index);
-    } catch (err) {
-        console.warn('[reader] auto-upgrade book failed', err);
-        return metas;
-    }
-}
-
 window.openReaderBook = async function(bookId) {
-    const book = await rdbGet('books', bookId);
-    if (!book) return;
     currentBookId = bookId;
+    const book = await rdbGet('books', bookId);
+    if (!book || currentBookId !== bookId) return;
     currentBook = book;
     readerSessionDirty = false;
     const bookKey = book.bookKey || computeBookKey(book);
-    document.getElementById('reader-book-title').textContent = book.title;
+    const titleEl = document.getElementById('reader-book-title');
+    if (titleEl) titleEl.textContent = book.title;
     const allChapters = await rdbGetAll('chapters');
-    chapterMetas = allChapters.filter(c => c.bookId === bookId).sort((a, b) => a.index - b.index);
-    if (!chapterMetas.length) { showToast('数据异常！', 'error'); return; }
-    const prog = loadReaderProgress();
-    const saved = prog[bookId];
+    if (currentBookId !== bookId) return;
+    chapterMetas = allChapters.filter(c => c.bookId === bookId).sort((a, b) => (Number(a.index) || 0) - (Number(b.index) || 0));
 
-    // 智能升级历史图书的章节与分卷结构
-    const oldChapterTitle = (saved && chapterMetas[saved.chapterIdx]) ? chapterMetas[saved.chapterIdx].title : '';
-    chapterMetas = await ensureBookStructureUpgraded(book, chapterMetas);
-    if (oldChapterTitle) {
-        currentChapterIdx = findChapterIndexByTitle(chapterMetas, oldChapterTitle, (saved && saved.chapterIdx) || 0);
-    } else {
-        currentChapterIdx = (saved && saved.chapterIdx < chapterMetas.length) ? saved.chapterIdx : 0;
+    if (!chapterMetas.length) {
+        if (bookKey && (state.authToken || state.cookieSession)) {
+            showToast('正在从云端恢复书籍正文...', 'info');
+            try {
+                if (!cloudBooks.length) await fetchCloudBooks();
+                await downloadBookFromCloud(bookKey);
+                return;
+            } catch (dlErr) {
+                console.warn('[reader] auto-recovery from cloud failed', dlErr);
+            }
+        }
+        showToast('书籍章节数据异常，请重新从云端或本地导入', 'error');
+        return;
     }
 
+    const prog = loadReaderProgress();
+    const saved = prog[bookId];
+    currentChapterIdx = (saved && typeof saved.chapterIdx === 'number' && !isNaN(saved.chapterIdx))
+        ? Math.max(0, Math.min(chapterMetas.length - 1, Math.floor(saved.chapterIdx)))
+        : 0;
+
     actions.switchView('reader-book');
-    document.getElementById('reader-sidebar').classList.add('hidden');
+    const sidebar = document.getElementById('reader-sidebar');
+    if (sidebar) sidebar.classList.add('hidden');
     applyReaderSettings();
     buildChapterTree();
     await loadChapterContent(currentChapterIdx, { recordProgress: false });
@@ -937,8 +926,10 @@ window.openReaderBook = async function(bookId) {
         }, 200);
         restoreContentScroll(saved.scrollPct);
     }
-    area.removeEventListener('scroll', onReaderScroll);
-    area.addEventListener('scroll', onReaderScroll);
+    if (area) {
+        area.removeEventListener('scroll', onReaderScroll);
+        area.addEventListener('scroll', onReaderScroll);
+    }
 
     // 尝试拉取云端进度并自动对齐
     pullCloudProgressForCurrentBook({ isForegroundResume: false })
@@ -1095,29 +1086,86 @@ function onReaderScroll() {
 function buildChapterTree() {
     const container = document.getElementById('sidebar-chapter-list');
     if (!container) return;
-    const groups = {};
-    chapterMetas.forEach((ch, idx) => {
-        const g = ch.groupIndex !== undefined ? ch.groupIndex : Math.floor(idx / 100);
-        if (!groups[g]) groups[g] = [];
-        groups[g].push({
-            title: ch.title,
-            idx: idx,
-            id: ch.id,
-            groupTitle: ch.groupTitle,
-            volumeTitle: ch.volumeTitle
+
+    // 检查是否有章节本身包含 groupTitle，或章节标题匹配分卷标题
+    const hasExplicitGroup = chapterMetas.some(ch => ch.groupTitle);
+    const hasVolumeChapters = !hasExplicitGroup && chapterMetas.some(ch => reVolume.test((ch.title || '').trim()));
+
+    const groups = [];
+    if (hasExplicitGroup) {
+        // 新版导入：章节中已包含 groupIndex 与 groupTitle
+        const groupMap = {};
+        chapterMetas.forEach((ch, idx) => {
+            const g = ch.groupIndex !== undefined ? ch.groupIndex : Math.floor(idx / 100);
+            if (!groupMap[g]) groupMap[g] = [];
+            groupMap[g].push({
+                title: ch.title,
+                idx: idx,
+                id: ch.id,
+                groupTitle: ch.groupTitle,
+                volumeTitle: ch.volumeTitle
+            });
         });
-    });
-    const keys = Object.keys(groups).sort((a, b) => Number(a) - Number(b));
-    setHtml(container, keys.map(gk => {
-        const chs = groups[gk];
-        const gid = 'rg-' + gk;
+        const keys = Object.keys(groupMap).sort((a, b) => Number(a) - Number(b));
+        for (const k of keys) {
+            const chs = groupMap[k];
+            const headerTitle = chs[0].groupTitle || chs[0].volumeTitle || ('第 ' + (chs[0].idx + 1) + ' - ' + (chs[chs.length - 1].idx + 1) + ' 章');
+            groups.push({ id: 'rg-' + k, title: headerTitle, chapters: chs });
+        }
+    } else if (hasVolumeChapters) {
+        // 历史已导入小说（如已在本地的《宿命之环》）：分卷标记作为伪章节存留，运行时动态识别为折叠分组
+        let currentVolTitle = '序幕 / 起始';
+        let currentGroup = { id: 'rg-0', title: currentVolTitle, chapters: [] };
+        groups.push(currentGroup);
+        let volIdx = 0;
+
+        chapterMetas.forEach((ch, idx) => {
+            const title = (ch.title || '').trim();
+            if (reVolume.test(title)) {
+                volIdx++;
+                currentVolTitle = title;
+                currentGroup = { id: 'rg-' + volIdx, title: currentVolTitle, chapters: [] };
+                groups.push(currentGroup);
+                return;
+            }
+            currentGroup.chapters.push({
+                title: ch.title,
+                idx: idx,
+                id: ch.id,
+                volumeTitle: currentVolTitle
+            });
+        });
+        if (groups.length > 1 && groups[0].chapters.length === 0) {
+            groups.shift();
+        }
+    } else {
+        // 普通无分卷长篇：每 100 章折叠一组
+        const BATCH = 100;
+        for (let i = 0; i < chapterMetas.length; i += BATCH) {
+            const slice = chapterMetas.slice(i, i + BATCH).map((ch, offset) => ({
+                title: ch.title,
+                idx: i + offset,
+                id: ch.id
+            }));
+            const startNum = i + 1;
+            const endNum = Math.min(i + BATCH, chapterMetas.length);
+            groups.push({
+                id: 'rg-' + Math.floor(i / BATCH),
+                title: `第 ${startNum} - ${endNum} 章`,
+                chapters: slice
+            });
+        }
+    }
+
+    setHtml(container, groups.map(g => {
+        const chs = g.chapters;
+        const gid = g.id;
         const isCurrentGroup = chs.some(ch => ch.idx === currentChapterIdx);
         const collapsedClass = isCurrentGroup ? '' : ' collapsed';
         const arrowClass = isCurrentGroup ? '' : ' collapsed';
-        const headerTitle = chs[0].groupTitle || chs[0].volumeTitle || ('第 ' + (chs[0].idx + 1) + ' - ' + (chs[chs.length - 1].idx + 1) + ' 章');
         return '<div class="chapter-group-header' + arrowClass + '" data-chapter-toggle="' + gid + '">' +
             '<span class="group-arrow">▼</span>' +
-            escapeHtml(headerTitle) +
+            escapeHtml(g.title) +
             '<span style="margin-left:auto;font-size:0.65rem;opacity:0.5;font-weight:400;">' + chs.length + '章</span>' +
             '</div>' +
             '<div class="chapter-group-items' + collapsedClass + '" id="' + gid + '">' +
@@ -1126,6 +1174,7 @@ function buildChapterTree() {
                 escapeHtml(ch.title) + '</div>').join('') +
             '</div>';
     }).join(''));
+
     // Scroll to active chapter
     setTimeout(() => {
         const active = container.querySelector('.chapter-item.active');
@@ -1144,9 +1193,16 @@ async function loadChapterContent(idx, options = {}) {
         const fullCh = await rdbGet('chapters', ch.id);
         const content = fullCh ? fullCh.content : '（加载失败）';
 
-        const titleText = (ch.volumeTitle && !ch.title.startsWith(ch.volumeTitle))
-            ? (ch.volumeTitle + ' · ' + ch.title)
-            : ch.title;
+        // 如果该项是历史旧数据中内容为空的分卷标题虚假章节，自动跳至第一章
+        if (!content && reVolume.test((ch.title || '').trim()) && idx + 1 < chapterMetas.length) {
+            return loadChapterContent(idx + 1, options);
+        }
+
+        const rawTitle = (ch && ch.title) ? String(ch.title) : '';
+        const volTitle = (ch && ch.volumeTitle) ? String(ch.volumeTitle) : '';
+        const titleText = (volTitle && !rawTitle.startsWith(volTitle))
+            ? (volTitle + ' · ' + rawTitle)
+            : rawTitle;
         document.getElementById('chapter-title-display').textContent = titleText;
         document.getElementById('chapter-body').textContent = typeof content === 'string' ? content.trimEnd() : content;
         document.getElementById('chapter-indicator').textContent = (idx + 1) + ' / ' + chapterMetas.length;
@@ -1156,16 +1212,17 @@ async function loadChapterContent(idx, options = {}) {
         // Update sidebar highlight
         const allItems = document.querySelectorAll('.chapter-item');
         allItems.forEach(el => el.classList.remove('active'));
-        if (allItems[idx]) {
-            allItems[idx].classList.add('active');
+        const activeItem = document.querySelector('.chapter-item[data-chapter-jump="' + idx + '"]');
+        if (activeItem) {
+            activeItem.classList.add('active');
             // Expand parent group if collapsed
-            const groupItems = allItems[idx].closest('.chapter-group-items');
+            const groupItems = activeItem.closest('.chapter-group-items');
             if (groupItems && groupItems.classList.contains('collapsed')) {
                 groupItems.classList.remove('collapsed');
                 const groupHeader = groupItems.previousElementSibling;
                 if (groupHeader) groupHeader.classList.remove('collapsed');
             }
-            allItems[idx].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+            activeItem.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         }
 
         document.getElementById('reader-content-area').scrollTop = 0;
