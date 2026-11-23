@@ -418,7 +418,8 @@ export function mergeDataLists(localList, apiList, options = {}) {
     if (!Array.isArray(apiList)) apiList = [];
     const protectKeys = options.protectKeys || new Set();
 
-    const deletedIds = getDeletedIds();
+    const pendingDeletedSet = new Set(getPendingDeletedItems().map(e => String(e.id)));
+    const deletedIds = getDeletedIds().filter(id => pendingDeletedSet.has(String(id)));
     const map = new Map();
 
     for (const item of apiList) {
@@ -509,6 +510,15 @@ export function processApiSyncResult(localList, apiData, isIncremental = false, 
             addDeletedId(item.id);
         }
     }
+
+    // 云端确认存活的数据（validApiData），只要不是本地正在排队待删（pendingDeleted），必须清理本地残留的墓碑标记
+    const pendingDeletedSet = new Set(getPendingDeletedItems().filter(e => !resource || e.resource === resource).map(e => String(e.id)));
+    for (const item of validApiData) {
+        if (item && item.id != null && !pendingDeletedSet.has(String(item.id))) {
+            removeDeletedId(item.id);
+        }
+    }
+
     const deletedIdSet = new Set(getDeletedIds().map(String));
 
     const activeLocal = (localList || []).filter(item => {

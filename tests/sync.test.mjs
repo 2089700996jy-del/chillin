@@ -930,5 +930,29 @@ test('Sync - Router Guard intercepts view-note-editor on goBackOrHome and popsta
     );
 });
 
+test('Sync - 云端已复活数据自动清除本地旧墓碑并顺利合入（不再被旧软删除记录死锁）', async () => {
+    const { processApiSyncResult, mergeDataLists, addDeletedId } = await import('../public/js/sync.js');
+
+    const testId = 1795232163161557;
+    // 模拟手机端之前拉取过云端软删除墓碑，本地记录了 deletedId
+    addDeletedId(testId);
+
+    const apiData = [{
+        id: testId,
+        title: '💰 转正',
+        category: '🌸',
+        summary: '摘要',
+        content: '正文内容',
+        is_deleted: 0,
+        updated_at: '2026-11-23 10:31:19'
+    }];
+
+    const { merged } = processApiSyncResult([], apiData, true, 'weeklies');
+    assert.equal(merged.length, 1, '云端存活数据必须合入');
+    assert.equal(merged[0].id, testId);
+    assert.equal(merged[0].title, '💰 转正');
+});
+
+
 
 
