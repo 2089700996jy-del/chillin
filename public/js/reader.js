@@ -29,13 +29,21 @@ export function decodeBuffer(buf) {
  */
 export function rebuildBookText(chapters) {
     if (!Array.isArray(chapters) || !chapters.length) return '';
-    return chapters
+    const sorted = chapters
         .slice()
-        .sort((a, b) => (a.index || 0) - (b.index || 0))
-        .map((ch) => {
+        .sort((a, b) => ((a && a.index) || 0) - ((b && b.index) || 0));
+    return sorted
+        .map((ch, idx, arr) => {
             const title = ch && ch.title ? String(ch.title) : '';
             const body = ch && ch.content ? String(ch.content) : '';
-            return title ? title + '\n' + body : body;
+            let prefix = '';
+            if (ch && ch.volumeTitle) {
+                const isFirstOfVolume = !arr.slice(0, idx).some(other => other && other.volumeTitle === ch.volumeTitle);
+                if (isFirstOfVolume && !title.includes(ch.volumeTitle)) {
+                    prefix = ch.volumeTitle + '\n';
+                }
+            }
+            return prefix + (title ? title + '\n' + body : body);
         })
         .join('\n');
 }
@@ -93,12 +101,64 @@ export function shouldPushLocalProgress(local, cloud) {
     const remotePct = Number(cloud.scroll_percentage || 0);
     const remoteTs = cloudProgressTs(cloud);
 
+    // 本地时间戳严格更新：回推云端（无论是向后阅读还是向前翻看）
+    if (localTs > remoteTs) return true;
+
+    // 时间戳相等或无远端时间戳时，位置更靠前者胜
     const localAhead = localIdx > remoteIdx
         || (localIdx === remoteIdx && localPct > remotePct + 5);
-
-    if (localTs > remoteTs && localAhead) return true;
+    if (localTs >= remoteTs && localAhead) return true;
 
     return false;
+}
+
+/** 根据章节标题与保底索引，智能对齐章节索引（防止不同分卷/版本章节号偏移几页） */
+export function findChapterIndexByTitle(chapterMetas, cloudChapterTitle, fallbackIndex) {
+    if (!chapterMetas || !chapterMetas.length) return fallbackIndex || 0;
+    if (!cloudChapterTitle || typeof cloudChapterTitle !== 'string') {
+        return (fallbackIndex >= 0 && fallbackIndex < chapterMetas.length) ? fallbackIndex : 0;
+    }
+    const cleanCloudTitle = cloudChapterTitle.trim();
+    if (!cleanCloudTitle) return (fallbackIndex >= 0 && fallbackIndex < chapterMetas.length) ? fallbackIndex : 0;
+
+    // 1. 严格全名匹配
+    const exact = chapterMetas.findIndex(ch => ch && ch.title && ch.title.trim() === cleanCloudTitle);
+    if (exact !== -1) return exact;
+
+    // 2. 忽略空白与常见中括号/符号匹配
+    const simplify = (str) => (str || '').replace(/[\s【】\[\]（）()第章节回卷部集篇：:·-]/g, '');
+    const simpleCloud = simplify(cleanCloudTitle);
+    if (simpleCloud.length >= 2) {
+        const simpleMatch = chapterMetas.findIndex(ch => simplify(ch && ch.title) === simpleCloud);
+        if (simpleMatch !== -1) return simpleMatch;
+    }
+
+    // 3. 保底使用索引
+    if (fallbackIndex >= 0 && fallbackIndex < chapterMetas.length) {
+        return fallbackIndex;
+    }
+    return 0;
+}
+
+/** 根据书籍信息在云端进度列表中匹配对应记录（支持精确 bookKey 与书名模糊对齐） */
+export function findCloudProgressForBook(cloudList, book) {
+    if (!Array.isArray(cloudList) || !cloudList.length || !book) return null;
+    const exactKey = book.bookKey || `${(book.title || '').trim().toLowerCase()}::${book.totalChapters || 0}`;
+    const match = cloudList.find(p => p.book_key === exactKey);
+    if (match) return match;
+
+    const bookTitle = (book.title || '').trim().toLowerCase();
+    if (!bookTitle) return null;
+
+    return cloudList.find(p => {
+        if (p.book_title && p.book_title.trim().toLowerCase() === bookTitle) return true;
+        if (p.book_key) {
+            const idx = p.book_key.indexOf('::');
+            const pTitle = idx > -1 ? p.book_key.slice(0, idx).trim().toLowerCase() : p.book_key.trim().toLowerCase();
+            return pTitle === bookTitle;
+        }
+        return false;
+    }) || null;
 }
 
 export async function pullCloudProgressForCurrentBook(options = {}) {
@@ -118,6 +178,158 @@ export async function showReaderSyncDiagnostic() {
         if (raw) queueCount = Object.keys(JSON.parse(raw) || {}).length;
     } catch (_) { /* audit-ignore: intentional-fallback 读取排队队列失败降级为 0 */ }
     return { local: null, cloudSummary: '', queueCount };
+}
+
+// ── Parser ──
+export const reVolume = /^(?:【\s*)?(?:第[一二三四五六七八九十百千万零\d\s]+[卷部]|卷[一二三四五六七八九十\d\s]+|分卷[一二三四五六七八九十\d\s]*)(?:\s*】)?(?:\s*[:：\s]\s*([^\n]{0,40}))?$/i;
+export const reChapter = /^(?:【\s*)?(?:第[一二三四五六七八九十百千万零\d\s]+[章节回折集篇]|Chapter\s*\d+|CHAPTER\s*\d+)(?:\s*】)?(?:\s+[^\n]*)?$/i;
+export const reSpecial = /^(?:【\s*)?(?:序章|序言|引子|楔子|尾声|后记|番外\s*[^\n]*|番外篇\s*[^\n]*|终章|结语)(?:\s*】)?(?:\s+[^\n]*)?$/i;
+export const prosePunctuation = /[，。；！？、“”‘’…\(\)（）—]/;
+
+export function parseChapters(text) {
+    if (!text || typeof text !== 'string') return [];
+    // 统一换行符为 LF，避免 CRLF/LF 混合导致跨端 charPos 偏移计算不准
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    const lines = normalized.split('\n');
+
+    const markers = [];
+    let currentVolume = null;
+    let volumeIndex = -1;
+    let detectedVolumes = 0;
+    let charPos = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        const lineLen = lines[i].length + (i < lines.length - 1 ? 1 : 0);
+
+        if (!line) {
+            charPos += lineLen;
+            continue;
+        }
+
+        // 排除正文段落（含常见断句标点、包含“部分”或单行过长）
+        const isProse = prosePunctuation.test(line) || line.includes('部分') || line.length > 50;
+
+        if (!isProse) {
+            if (reVolume.test(line)) {
+                volumeIndex++;
+                detectedVolumes++;
+                currentVolume = {
+                    title: line,
+                    volumeIndex: volumeIndex,
+                    charStart: charPos
+                };
+                charPos += lineLen;
+                continue;
+            }
+
+            if (reChapter.test(line) || reSpecial.test(line)) {
+                markers.push({
+                    lineIdx: i,
+                    charStart: charPos,
+                    title: line,
+                    volumeTitle: currentVolume ? currentVolume.title : '',
+                    volumeIndex: currentVolume ? currentVolume.volumeIndex : -1,
+                    volumeStart: (currentVolume && currentVolume.volumeIndex === volumeIndex) ? currentVolume.charStart : null
+                });
+                charPos += lineLen;
+                continue;
+            }
+        }
+
+        charPos += lineLen;
+    }
+
+    if (!markers.length) {
+        return [{
+            title: '全文',
+            groupIndex: 0,
+            groupTitle: '全文',
+            volumeTitle: '',
+            charStart: 0,
+            charEnd: normalized.length
+        }];
+    }
+
+    const hasMultiVolumes = detectedVolumes >= 2;
+    const chapters = [];
+
+    // 若第一章/卷之前存在前言或作者说明，单独切为序幕章节，避免正文首段丢失
+    const firstEffectiveStart = (markers[0].volumeStart !== null && markers[0].volumeStart !== undefined)
+        ? markers[0].volumeStart
+        : markers[0].charStart;
+
+    if (firstEffectiveStart > 0) {
+        const preambleText = normalized.slice(0, firstEffectiveStart).trim();
+        if (preambleText.length > 20) {
+            chapters.push({
+                title: '前言 / 序幕',
+                volumeTitle: '',
+                groupIndex: 0,
+                groupTitle: hasMultiVolumes ? '序幕' : '第 1 - 100 章',
+                charStart: 0,
+                charEnd: firstEffectiveStart
+            });
+        }
+    }
+
+    for (let i = 0; i < markers.length; i++) {
+        const m = markers[i];
+        const nextM = markers[i + 1];
+        let charEnd;
+        if (nextM) {
+            // 如果下一章进入了新分卷，上一章在此分卷起始处结束，防止分卷标题漏进上一章末尾
+            if (nextM.volumeStart !== null && nextM.volumeStart !== undefined && nextM.volumeIndex !== m.volumeIndex) {
+                charEnd = nextM.volumeStart;
+            } else {
+                charEnd = nextM.charStart;
+            }
+        } else {
+            charEnd = normalized.length;
+        }
+
+        let groupIdx;
+        let groupTitle;
+
+        if (hasMultiVolumes && m.volumeIndex >= 0) {
+            groupIdx = m.volumeIndex;
+            groupTitle = m.volumeTitle;
+        } else {
+            const batchIdx = chapters.length;
+            groupIdx = Math.floor(batchIdx / 100);
+            const startNum = groupIdx * 100 + 1;
+            const endNum = startNum + 99;
+            groupTitle = `第 ${startNum} - ${endNum} 章`;
+        }
+
+        chapters.push({
+            title: m.title,
+            volumeTitle: m.volumeTitle,
+            groupIndex: groupIdx,
+            groupTitle: groupTitle,
+            charStart: m.charStart,
+            charEnd: charEnd
+        });
+    }
+
+    return chapters;
+}
+
+export function extractChapterContent(text, ch) {
+    if (!text || !ch) return '';
+    const normalized = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    let content = normalized.slice(ch.charStart, ch.charEnd);
+    content = content.replace(/[\r\n]+$/, '');
+    const firstLineEnd = content.indexOf('\n');
+    if (firstLineEnd > -1) {
+        let firstLine = content.slice(0, firstLineEnd);
+        if (firstLine.endsWith('\r')) firstLine = firstLine.slice(0, -1);
+        if (firstLine.trim() === ch.title) {
+            content = content.slice(firstLineEnd + 1);
+        }
+    }
+    content = content.replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, '');
+    return content;
 }
 
 export function initReader() {
@@ -267,63 +479,6 @@ function scheduleCloudProgressSync() {
     }, 2500);
 }
 
-// ── Parser ──
-function parseChapters(text) {
-    // Detect actual newline length (CRLF=2, LF=1)
-    const nlLen = text.indexOf('\r\n') > -1 ? 2 : 1;
-    const lines = text.split(/\r?\n/);
-    const reChapter = /^第[一二三四五六七八九十百千万零\d]+[章节卷部集篇]\s*[^\n]*/;
-
-    // Build markers with correct byte offsets
-    const markers = [];
-    let charPos = 0;
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (reChapter.test(line)) {
-            markers.push({ lineIdx: i, charStart: charPos, title: line });
-        }
-        charPos += lines[i].length + (i < lines.length - 1 ? nlLen : 0);
-    }
-
-    if (!markers.length) {
-        return [{ title: '全文', groupIndex: 0, charStart: 0, charEnd: text.length }];
-    }
-
-    // Build chapters: each chapter starts at its marker's charStart
-    // and ends just before the next marker's charStart
-    const chapters = [];
-    for (let i = 0; i < markers.length; i++) {
-        const m = markers[i];
-        const nextM = markers[i + 1];
-        chapters.push({
-            title: m.title,
-            charStart: m.charStart,
-            charEnd: nextM ? nextM.charStart : text.length,
-            groupIndex: Math.floor(i / 200)
-        });
-    }
-    return chapters;
-}
-
-function extractChapterContent(text, ch) {
-    // Extract raw content between chapter boundaries
-    let content = text.slice(ch.charStart, ch.charEnd);
-    // Strip trailing newlines
-    content = content.replace(/[\r\n]+$/, '');
-    // Remove the chapter title line at the start (may end with \r\n or \n)
-    const firstLineEnd = content.indexOf('\n');
-    if (firstLineEnd > -1) {
-        let firstLine = content.slice(0, firstLineEnd);
-        if (firstLine.endsWith('\r')) firstLine = firstLine.slice(0, -1);
-        if (firstLine.trim() === ch.title) {
-            content = content.slice(firstLineEnd + 1);
-        }
-    }
-    // Clean up leading/trailing whitespace but preserve paragraph structure
-    content = content.replace(/^[\r\n]+/, '').replace(/[\r\n]+$/, '');
-    return content;
-}
-
 // ── Import ──
 /** 把正文切章后写入本地 IndexedDB（文件导入与云端下载共用同一套落库逻辑） */
 async function saveBookToLocalDB(text, meta, onProgress) {
@@ -337,7 +492,7 @@ async function saveBookToLocalDB(text, meta, onProgress) {
     await rdbPut('books', {
         id: bookId, bookKey: bookKey, title: meta.title, author: meta.author,
         fileName: meta.fileName, totalChapters: totalChapters,
-        groupCount: Math.ceil(totalChapters / 200), createdAt: Date.now()
+        groupCount: Math.ceil(totalChapters / 100), createdAt: Date.now()
     });
 
     const BATCH = 80;
@@ -353,7 +508,9 @@ async function saveBookToLocalDB(text, meta, onProgress) {
                 bookId: bookId, index: i + j,
                 title: ch.title,
                 content: extractChapterContent(text, ch),
-                groupIndex: ch.groupIndex
+                groupIndex: ch.groupIndex,
+                groupTitle: ch.groupTitle || '',
+                volumeTitle: ch.volumeTitle || ''
             });
         }
         await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
@@ -493,7 +650,7 @@ async function backfillLocalBooks(localBooks) {
 async function uploadBookToCloud(book, text) {
     if (!state.authToken && !state.cookieSession) return false;
     const params = new URLSearchParams({
-        key: book.bookKey,
+        key: book.bookKey || computeBookKey(book),
         title: book.title,
         author: book.author || '',
         chapters: String(book.totalChapters || 0)
@@ -633,8 +790,7 @@ async function syncBookshelfProgress(books) {
         const progress = loadReaderProgress();
         let changed = false;
         for (const b of books) {
-            const key = b.bookKey || computeBookKey(b);
-            const cloud = list.find(p => p.book_key === key);
+            const cloud = findCloudProgressForBook(list, b);
             if (!cloud) continue;
             const local = progress[b.id] || null;
             const localTs = Number((local && local.timestamp) || 0);
@@ -676,6 +832,75 @@ async function renderBookshelf() {
 }
 
 // ── Open/Close Reader ──
+let isRestoringScroll = false;
+
+function restoreContentScroll(pct) {
+    const area = document.getElementById('reader-content-area');
+    if (!area || typeof pct !== 'number' || pct <= 0) return;
+    isRestoringScroll = true;
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            try {
+                const maxScroll = Math.max(0, area.scrollHeight - area.clientHeight);
+                if (maxScroll > 0) {
+                    area.scrollTop = Math.round((pct / 100) * maxScroll);
+                }
+            } finally {
+                setTimeout(() => { isRestoringScroll = false; }, 120);
+            }
+        });
+    });
+}
+
+// 检查书籍是否为旧版解析（缺乏 groupTitle 或存在 0 字节分卷虚假章节），自动升级修复
+async function ensureBookStructureUpgraded(book, metas) {
+    if (!book || !metas || !metas.length) return metas;
+    const needsUpgrade = metas.some(ch => !ch.groupTitle || reVolume.test((ch.title || '').trim()));
+    if (!needsUpgrade) return metas;
+
+    try {
+        const fullChapters = await rdbGetAll('chapters');
+        const bookChapters = fullChapters.filter(c => c.bookId === book.id).sort((a, b) => a.index - b.index);
+        const reconstructedText = rebuildBookText(bookChapters);
+        if (!reconstructedText || !reconstructedText.trim()) return metas;
+
+        const newParsed = parseChapters(reconstructedText);
+        if (!newParsed.length) return metas;
+
+        const db = await openDatabase();
+        const tx = db.transaction(['chapters', 'books'], 'readwrite');
+        const chStore = tx.objectStore('chapters');
+        for (const oldCh of bookChapters) {
+            chStore.delete(oldCh.id);
+        }
+        for (let i = 0; i < newParsed.length; i++) {
+            const ch = newParsed[i];
+            chStore.put({
+                id: book.id + '_' + i,
+                bookId: book.id,
+                index: i,
+                title: ch.title,
+                content: extractChapterContent(reconstructedText, ch),
+                groupIndex: ch.groupIndex,
+                groupTitle: ch.groupTitle || '',
+                volumeTitle: ch.volumeTitle || ''
+            });
+        }
+        const bStore = tx.objectStore('books');
+        book.totalChapters = newParsed.length;
+        book.groupCount = Math.ceil(newParsed.length / 100);
+        bStore.put(book);
+
+        await new Promise((resolve, reject) => { tx.oncomplete = resolve; tx.onerror = () => reject(tx.error); });
+
+        const updatedChapters = await rdbGetAll('chapters');
+        return updatedChapters.filter(c => c.bookId === book.id).sort((a, b) => a.index - b.index);
+    } catch (err) {
+        console.warn('[reader] auto-upgrade book failed', err);
+        return metas;
+    }
+}
+
 window.openReaderBook = async function(bookId) {
     const book = await rdbGet('books', bookId);
     if (!book) return;
@@ -689,7 +914,16 @@ window.openReaderBook = async function(bookId) {
     if (!chapterMetas.length) { showToast('数据异常！', 'error'); return; }
     const prog = loadReaderProgress();
     const saved = prog[bookId];
-    currentChapterIdx = (saved && saved.chapterIdx < chapterMetas.length) ? saved.chapterIdx : 0;
+
+    // 智能升级历史图书的章节与分卷结构
+    const oldChapterTitle = (saved && chapterMetas[saved.chapterIdx]) ? chapterMetas[saved.chapterIdx].title : '';
+    chapterMetas = await ensureBookStructureUpgraded(book, chapterMetas);
+    if (oldChapterTitle) {
+        currentChapterIdx = findChapterIndexByTitle(chapterMetas, oldChapterTitle, (saved && saved.chapterIdx) || 0);
+    } else {
+        currentChapterIdx = (saved && saved.chapterIdx < chapterMetas.length) ? saved.chapterIdx : 0;
+    }
+
     actions.switchView('reader-book');
     document.getElementById('reader-sidebar').classList.add('hidden');
     applyReaderSettings();
@@ -701,6 +935,7 @@ window.openReaderBook = async function(bookId) {
             const maxScroll = Math.max(0, area.scrollHeight - area.clientHeight);
             area.scrollTop = (saved.scrollPct / 100) * maxScroll;
         }, 200);
+        restoreContentScroll(saved.scrollPct);
     }
     area.removeEventListener('scroll', onReaderScroll);
     area.addEventListener('scroll', onReaderScroll);
@@ -714,53 +949,58 @@ window.openReaderBook = async function(bookId) {
 async function pullCloudProgressForCurrentBook(options = {}) {
     if (!currentBookId || !currentBook || (!state.authToken && !state.cookieSession)) return false;
     const targetBookId = currentBookId;
-    const bookKey = currentBook.bookKey || computeBookKey(currentBook);
     try {
         const list = await apiRequest('/api/reader/progress');
         if (!Array.isArray(list) || currentBookId !== targetBookId) return false;
-        const cloud = list.find(p => p.book_key === bookKey);
+        const cloud = findCloudProgressForBook(list, currentBook);
         const local = loadReaderProgress()[targetBookId] || null;
         const localTs = Number((local && local.timestamp) || 0);
 
         if (!cloud) {
             // 云端还没有这本书：把本机已有进度推上去（老设备首次联网也能补齐）
             if (local && localTs) {
-                syncReaderProgressToCloud(currentBook, local.chapterIdx || 0, local.scrollPct || 0, '', localTs);
+                const ch = chapterMetas[local.chapterIdx || 0];
+                syncReaderProgressToCloud(currentBook, local.chapterIdx || 0, local.scrollPct || 0, ch ? ch.title : '', localTs);
             }
             return false;
         }
 
         if (shouldPushLocalProgress(local, cloud)) {
-            syncReaderProgressToCloud(currentBook, local.chapterIdx, local.scrollPct || 0, '', localTs);
+            const ch = chapterMetas[local.chapterIdx || 0];
+            syncReaderProgressToCloud(currentBook, local.chapterIdx, local.scrollPct || 0, ch ? ch.title : '', localTs);
         }
 
-        if (shouldAcceptCloudProgress(local, cloud) && cloud.chapter_index < chapterMetas.length) {
-            const remoteTs = cloudProgressTs(cloud);
-            const diffChapter = currentChapterIdx !== cloud.chapter_index;
-            const diffPct = Math.abs((cloud.scroll_percentage || 0) - ((local && local.scrollPct) || 0));
+        if (shouldAcceptCloudProgress(local, cloud)) {
+            const targetIdx = findChapterIndexByTitle(chapterMetas, cloud.chapter_title, cloud.chapter_index);
+            if (targetIdx >= 0 && targetIdx < chapterMetas.length) {
+                const remoteTs = cloudProgressTs(cloud);
+                const diffChapter = currentChapterIdx !== targetIdx;
+                const diffPct = Math.abs((cloud.scroll_percentage || 0) - ((local && local.scrollPct) || 0));
 
-            saveReaderProgress(targetBookId, {
-                chapterIdx: cloud.chapter_index,
-                scrollPct: cloud.scroll_percentage || 0,
-                timestamp: remoteTs || Date.now()
-            });
+                saveReaderProgress(targetBookId, {
+                    chapterIdx: targetIdx,
+                    scrollPct: cloud.scroll_percentage || 0,
+                    timestamp: remoteTs || Date.now()
+                });
 
-            if (diffChapter || diffPct > 5) {
-                const toastMsg = options.isForegroundResume
-                    ? `已同步其他设备的最新阅读进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage || 0}%)`
-                    : `已从云端同步最新进度：第 ${cloud.chapter_index + 1} 章 (${cloud.scroll_percentage || 0}%)`;
-                showToast(toastMsg, 'info');
+                if (diffChapter || diffPct > 5) {
+                    const toastMsg = options.isForegroundResume
+                        ? `已同步其他设备的最新阅读进度：第 ${targetIdx + 1} 章 (${cloud.scroll_percentage || 0}%)`
+                        : `已从云端同步最新进度：第 ${targetIdx + 1} 章 (${cloud.scroll_percentage || 0}%)`;
+                    showToast(toastMsg, 'info');
+                }
+
+                await loadChapterContent(targetIdx, { recordProgress: false });
+                const contentEl = document.getElementById('reader-content-area');
+                if (contentEl && cloud.scroll_percentage) {
+                    setTimeout(() => {
+                        const maxScroll = Math.max(0, contentEl.scrollHeight - contentEl.clientHeight);
+                        contentEl.scrollTop = ((cloud.scroll_percentage || 0) / 100) * maxScroll;
+                    }, 200);
+                    restoreContentScroll(cloud.scroll_percentage);
+                }
+                return true;
             }
-
-            await loadChapterContent(cloud.chapter_index, { recordProgress: false });
-            const contentEl = document.getElementById('reader-content-area');
-            if (contentEl && cloud.scroll_percentage) {
-                setTimeout(() => {
-                    const maxScroll = Math.max(0, contentEl.scrollHeight - contentEl.clientHeight);
-                    contentEl.scrollTop = ((cloud.scroll_percentage || 0) / 100) * maxScroll;
-                }, 200);
-            }
-            return true;
         }
     } catch (err) {
         console.warn('[reader] pull cloud progress failed', err);
@@ -784,12 +1024,12 @@ async function showReaderSyncDiagnostic() {
         try {
             const list = await apiRequest('/api/reader/progress');
             if (Array.isArray(list) && currentBook) {
-                const bookKey = currentBook.bookKey || computeBookKey(currentBook);
-                const cloud = list.find(p => p.book_key === bookKey);
+                const cloud = findCloudProgressForBook(list, currentBook);
                 if (cloud) {
                     const cTime = cloudProgressTs(cloud);
                     const cloudTimeString = cTime ? new Date(cTime).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '未知';
-                    cloudSummary = `第 ${(cloud.chapter_index || 0) + 1} 章 (${cloud.scroll_percentage || 0}%) [${cloudTimeString}]`;
+                    const cTitle = cloud.chapter_title ? ` [${cloud.chapter_title}]` : '';
+                    cloudSummary = `第 ${(cloud.chapter_index || 0) + 1} 章${cTitle} (${cloud.scroll_percentage || 0}%) [${cloudTimeString}]`;
                 } else {
                     cloudSummary = '云端尚无此书记录';
                 }
@@ -837,10 +1077,11 @@ function clearReaderSession() {
 }
 
 function onReaderScroll() {
+    if (isRestoringScroll) return;
     readerSessionDirty = true;
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(() => {
-        if (!currentBookId || !chapterMetas.length) return;
+        if (!currentBookId || !chapterMetas.length || isRestoringScroll) return;
         const area = document.getElementById('reader-content-area');
         const maxScroll = (area && area.scrollHeight > area.clientHeight)
             ? (area.scrollHeight - area.clientHeight) : 0;
@@ -853,11 +1094,18 @@ function onReaderScroll() {
 // ── Chapter Tree ──
 function buildChapterTree() {
     const container = document.getElementById('sidebar-chapter-list');
+    if (!container) return;
     const groups = {};
     chapterMetas.forEach((ch, idx) => {
-        const g = ch.groupIndex;
+        const g = ch.groupIndex !== undefined ? ch.groupIndex : Math.floor(idx / 100);
         if (!groups[g]) groups[g] = [];
-        groups[g].push({ title: ch.title, idx: idx, id: ch.id });
+        groups[g].push({
+            title: ch.title,
+            idx: idx,
+            id: ch.id,
+            groupTitle: ch.groupTitle,
+            volumeTitle: ch.volumeTitle
+        });
     });
     const keys = Object.keys(groups).sort((a, b) => Number(a) - Number(b));
     setHtml(container, keys.map(gk => {
@@ -866,9 +1114,10 @@ function buildChapterTree() {
         const isCurrentGroup = chs.some(ch => ch.idx === currentChapterIdx);
         const collapsedClass = isCurrentGroup ? '' : ' collapsed';
         const arrowClass = isCurrentGroup ? '' : ' collapsed';
+        const headerTitle = chs[0].groupTitle || chs[0].volumeTitle || ('第 ' + (chs[0].idx + 1) + ' - ' + (chs[chs.length - 1].idx + 1) + ' 章');
         return '<div class="chapter-group-header' + arrowClass + '" data-chapter-toggle="' + gid + '">' +
             '<span class="group-arrow">▼</span>' +
-            '第 ' + (chs[0].idx + 1) + ' - ' + (chs[chs.length - 1].idx + 1) + ' 章' +
+            escapeHtml(headerTitle) +
             '<span style="margin-left:auto;font-size:0.65rem;opacity:0.5;font-weight:400;">' + chs.length + '章</span>' +
             '</div>' +
             '<div class="chapter-group-items' + collapsedClass + '" id="' + gid + '">' +
@@ -895,7 +1144,10 @@ async function loadChapterContent(idx, options = {}) {
         const fullCh = await rdbGet('chapters', ch.id);
         const content = fullCh ? fullCh.content : '（加载失败）';
 
-        document.getElementById('chapter-title-display').textContent = ch.title;
+        const titleText = (ch.volumeTitle && !ch.title.startsWith(ch.volumeTitle))
+            ? (ch.volumeTitle + ' · ' + ch.title)
+            : ch.title;
+        document.getElementById('chapter-title-display').textContent = titleText;
         document.getElementById('chapter-body').textContent = typeof content === 'string' ? content.trimEnd() : content;
         document.getElementById('chapter-indicator').textContent = (idx + 1) + ' / ' + chapterMetas.length;
         document.getElementById('btn-prev-chapter').disabled = (idx <= 0);

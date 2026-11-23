@@ -26,7 +26,19 @@ if (typeof globalThis.document === 'undefined') {
     };
 }
 
-const { decodeBuffer, rebuildBookText, cloudProgressTs, shouldAcceptCloudProgress, shouldPushLocalProgress, pullCloudProgressForCurrentBook, showReaderSyncDiagnostic } = await import('../public/js/reader.js');
+const {
+    decodeBuffer,
+    rebuildBookText,
+    cloudProgressTs,
+    shouldAcceptCloudProgress,
+    shouldPushLocalProgress,
+    pullCloudProgressForCurrentBook,
+    showReaderSyncDiagnostic,
+    parseChapters,
+    extractChapterContent,
+    findChapterIndexByTitle,
+    findCloudProgressForBook
+} = await import('../public/js/reader.js');
 
 test('Reader - decodeBuffer prioritizes UTF-8 and avoids GBK mojibake on Chinese text', () => {
     const originalText = '这是一个标准 UTF-8 编码的中文长篇小说章节测试。时间的流逝在开始工作后变得惊人的快。周一到周五仿佛被压缩成了一天。';
@@ -141,6 +153,87 @@ test('Reader - rebuildBookText 容忍缺字段、乱序与空输入', () => {
     assert.equal(rebuildBookText(null), '');
     assert.equal(rebuildBookText([{ index: 0, content: '无标题正文' }]), '无标题正文');
     assert.equal((rebuildBookText([{ title: '第1章' }, { title: '第2章' }]) || '').trim(), '第1章\n\n第2章', '正文缺失时不能抛错');
+});
+
+test('Reader Parser - 多分卷长篇（如《宿命之环》）正确按卷分组，排除正文散落词，不产生0字节虚假章节', () => {
+    const text = `
+前言 本书的前言内容，具有一定长度以测试前言识别。
+
+第一卷 梦魇
+第一章 外乡人
+这是第一章的内容。第一部分是尝试暗杀；第三部分是另一段诡异的舞蹈。
+第二天清晨，阳光明媚。
+
+第二章 调查
+这是第二章的内容。
+
+第二卷 逐光者
+第一章 新的旅程
+第二卷第一章内容。
+
+尾声
+全书完。
+`;
+    const chapters = parseChapters(text);
+    assert.equal(chapters.length, 5);
+    assert.equal(chapters[0].title, '前言 / 序幕');
+    assert.equal(chapters[1].title, '第一章 外乡人');
+    assert.equal(chapters[1].groupTitle, '第一卷 梦魇');
+    assert.equal(chapters[2].title, '第二章 调查');
+    assert.equal(chapters[2].groupTitle, '第一卷 梦魇');
+    assert.equal(chapters[3].title, '第一章 新的旅程');
+    assert.equal(chapters[3].groupTitle, '第二卷 逐光者');
+    assert.equal(chapters[4].title, '尾声');
+
+    // 验证正文不包含虚假章节或分卷标题渗漏
+    const ch2Content = extractChapterContent(text, chapters[2]);
+    assert.equal(ch2Content.includes('第二卷 逐光者'), false, '分卷标题严禁渗入上一章末尾');
+    assert.equal(ch2Content, '这是第二章的内容。');
+});
+
+test('Reader Parser - CRLF 与 LF 混合文本切章偏移绝对稳定，章节正文无分卷渗漏', () => {
+    // 混合换行符 \r\n 与 \n
+    const mixedText = '第一卷 启程\r\n第一章 出发\n第一章第一行\r\n第一章第二行\n第二章 抵达\r\n第二章内容';
+    const chapters = parseChapters(mixedText);
+    assert.ok(chapters.length >= 2);
+    const ch1Content = extractChapterContent(mixedText, chapters[0]);
+    assert.ok(ch1Content.includes('第一章第一行'));
+    assert.ok(ch1Content.includes('第一章第二行'));
+    assert.equal(ch1Content.includes('第二章 抵达'), false);
+
+    // 验证 rebuildBookText 保留分卷信息
+    const rebuilt = rebuildBookText(chapters.map((c, i) => ({ ...c, index: i, content: extractChapterContent(mixedText, c) })));
+    assert.ok(rebuilt.includes('第一卷 启程'), 'rebuildBookText 必须保留分卷信息以便云端同步');
+});
+
+test('Reader Progress Sync - 跨端章节标题智能对齐、书名模糊匹配与向前翻看同步', () => {
+    const chapters = [
+        { index: 0, title: '引子' },
+        { index: 1, title: '第一卷 梦魇·第一章 外乡人' },
+        { index: 2, title: '第一百八十五章 画的力量' },
+        { index: 3, title: '第一百八十六章 占卜' },
+    ];
+
+    // 1. 跨版本章节序号漂移对齐：旧版序号为 451，但章节名是「第一百八十五章 画的力量」，智能对齐至 2
+    const resolvedIdx = findChapterIndexByTitle(chapters, '第一百八十五章 画的力量', 451);
+    assert.equal(resolvedIdx, 2, '标题匹配成功时应修正偏移索引');
+
+    // 2. 带符号/空格的标题模糊对齐
+    assert.equal(findChapterIndexByTitle(chapters, '【第一百八十五章】画的力量', 451), 2);
+
+    // 3. 书名模糊匹配（章节总数在不同解析器版本下略有不同：1191 vs 1159）
+    const cloudList = [
+        { book_key: '宿命之环::1191', book_title: '宿命之环', chapter_index: 451, chapter_title: '第一百八十五章 画的力量' }
+    ];
+    const localBook = { title: '宿命之环', totalChapters: 1159 };
+    const matchedCloud = findCloudProgressForBook(cloudList, localBook);
+    assert.ok(matchedCloud, '不同版本章节数的同名书应能匹配云端进度');
+    assert.equal(matchedCloud.chapter_index, 451);
+
+    // 4. 往前翻看进度同步（重新阅读前序章节时，时间戳更新应能顺利推送到云端）
+    const localTurnedBack = { chapterIdx: 10, scrollPct: 20, timestamp: 2000 };
+    const cloudAhead = { book_key: 'b::1', chapter_index: 451, scroll_percentage: 80, client_ts: 1000 };
+    assert.equal(shouldPushLocalProgress(localTurnedBack, cloudAhead), true, '本地时间戳更新且用户往前翻看时必须推送到云端');
 });
 
 test('Reader - 沉浸阅读模式（Zen Mode）样式与双击切换接线', async () => {
