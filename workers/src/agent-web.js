@@ -67,6 +67,76 @@ export const WEB_AGENT_TOOLS = [
  */
 const PRIVATE_HOST_RE = /(^|\.)(0|10|127|169\.254|172\.(1[6-9]|2\d|3[01])|192\.168|100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])|192\.0\.[02]|198\.1[89]|198\.51\.100|203\.0\.113)\./;
 
+function isPrivateIpv4Parts(a, b, c, d) {
+    if (a === 0) return true; // 0.0.0.0/8
+    if (a === 10) return true; // 10.0.0.0/8
+    if (a === 127) return true; // 127.0.0.0/8
+    if (a === 169 && b === 254) return true; // 169.254.0.0/16
+    if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
+    if (a === 192 && b === 168) return true; // 192.168.0.0/16
+    if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10
+    if (a === 192 && b === 0) return true; // 192.0.0.0/24, 192.0.2.0/24
+    if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15
+    if (a === 198 && b === 51) return true; // 198.51.100.0/24
+    if (a === 203 && b === 0) return true; // 203.0.113.0/24
+    if (a >= 224) return true; // 224.0.0.0/4 多播及 240.0.0.0/4 保留
+    return false;
+}
+
+export function parseIpv6Words(ip) {
+    if (typeof ip !== 'string') return null;
+    let s = ip.trim().toLowerCase();
+    if (s.startsWith('[') && s.endsWith(']')) s = s.slice(1, -1);
+    const zoneIdx = s.indexOf('%');
+    if (zoneIdx !== -1) s = s.slice(0, zoneIdx);
+    if (!s.includes(':')) return null;
+
+    let ipv4Words = null;
+    const lastColon = s.lastIndexOf(':');
+    const tail = s.slice(lastColon + 1);
+    if (/^\d+(\.\d+){3}$/.test(tail)) {
+        const parts = tail.split('.').map(Number);
+        if (parts.some((p) => p < 0 || p > 255 || isNaN(p))) return null;
+        ipv4Words = [((parts[0] << 8) | parts[1]), ((parts[2] << 8) | parts[3])];
+        s = s.slice(0, lastColon) + ':0:0';
+    }
+
+    const doubleColon = s.indexOf('::');
+    if (doubleColon !== -1) {
+        if (s.indexOf('::', doubleColon + 2) !== -1) return null;
+        const left = doubleColon === 0 ? [] : s.slice(0, doubleColon).split(':');
+        const right = doubleColon === s.length - 2 ? [] : s.slice(doubleColon + 2).split(':');
+        const needed = 8 - (left.length + right.length);
+        if (needed < 0) return null;
+        const middle = new Array(needed).fill('0');
+        const allParts = [...left, ...middle, ...right];
+        if (allParts.length !== 8) return null;
+        const words = allParts.map((p) => {
+            if (!/^[0-9a-f]{1,4}$/i.test(p)) return -1;
+            return parseInt(p, 16);
+        });
+        if (words.some((w) => w < 0 || w > 0xffff || isNaN(w))) return null;
+        if (ipv4Words) {
+            words[6] = ipv4Words[0];
+            words[7] = ipv4Words[1];
+        }
+        return words;
+    } else {
+        const parts = s.split(':');
+        if (parts.length !== 8) return null;
+        const words = parts.map((p) => {
+            if (!/^[0-9a-f]{1,4}$/i.test(p)) return -1;
+            return parseInt(p, 16);
+        });
+        if (words.some((w) => w < 0 || w > 0xffff || isNaN(w))) return null;
+        if (ipv4Words) {
+            words[6] = ipv4Words[0];
+            words[7] = ipv4Words[1];
+        }
+        return words;
+    }
+}
+
 export function isPrivateOrReservedIp(ip) {
     if (!ip || typeof ip !== 'string') return true;
     const s = ip.trim().toLowerCase();
@@ -74,29 +144,62 @@ export function isPrivateOrReservedIp(ip) {
     if (/^\d+(\.\d+){3}$/.test(s)) {
         const parts = s.split('.').map(Number);
         if (parts.some((p) => p < 0 || p > 255 || isNaN(p))) return true;
-        const [a, b] = parts;
-        if (a === 0) return true; // 0.0.0.0/8
-        if (a === 10) return true; // 10.0.0.0/8
-        if (a === 127) return true; // 127.0.0.0/8
-        if (a === 169 && b === 254) return true; // 169.254.0.0/16
-        if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12
-        if (a === 192 && b === 168) return true; // 192.168.0.0/16
-        if (a === 100 && b >= 64 && b <= 127) return true; // 100.64.0.0/10
-        if (a === 192 && b === 0) return true; // 192.0.0.0/24, 192.0.2.0/24
-        if (a === 198 && (b === 18 || b === 19)) return true; // 198.18.0.0/15
-        if (a === 198 && b === 51) return true; // 198.51.100.0/24
-        if (a === 203 && b === 0) return true; // 203.0.113.0/24
-        if (a >= 224) return true; // 224.0.0.0/4 多播及 240.0.0.0/4 保留
-        return false;
+        return isPrivateIpv4Parts(parts[0], parts[1], parts[2], parts[3]);
     }
-    // IPv6 判定
+    // IPv6 判定（深度规范化解析 128 位，杜绝前导零/未压缩环回/混合点分等变体绕过）
     if (s.includes(':')) {
-        if (s === '::' || s === '::1') return true;
-        if (s.startsWith('fe80:') || s.startsWith('fe8') || s.startsWith('fe9') || s.startsWith('fea') || s.startsWith('feb')) return true;
-        if (s.startsWith('fc') || s.startsWith('fd')) return true;
-        if (s.startsWith('::ffff:')) {
-            return isPrivateOrReservedIp(s.slice(7));
+        const words = parseIpv6Words(s);
+        if (!words) return true; // 无法解析的畸形 IPv6 一律按危险 IP 拦截
+
+        const [w0, w1, w2, w3, w4, w5, w6, w7] = words;
+
+        // 1. 未指定地址 ::/128
+        if (words.every((w) => w === 0)) return true;
+
+        // 2. 环回地址 ::1/128 (覆盖 0:0:0:0:0:0:0:1、::0001 等全展开形态)
+        if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0 && w6 === 0 && w7 === 1) return true;
+
+        // 3. IPv4-Mapped ::ffff:0:0/96 (覆盖点分 ::ffff:127.0.0.1 与十六进制 ::ffff:7f00:1 / 全展开形态)
+        if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0xffff) {
+            return isPrivateIpv4Parts(w6 >> 8, w6 & 0xff, w7 >> 8, w7 & 0xff);
         }
+
+        // 4. IPv4-Compatible ::/96 (RFC 4291)
+        if (w0 === 0 && w1 === 0 && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0 && (w6 !== 0 || w7 > 1)) {
+            return isPrivateIpv4Parts(w6 >> 8, w6 & 0xff, w7 >> 8, w7 & 0xff);
+        }
+
+        // 5. NAT64 Well-Known Prefix 64:ff9b::/96 (RFC 6052)
+        if (w0 === 0x0064 && w1 === 0xff9b && w2 === 0 && w3 === 0 && w4 === 0 && w5 === 0) {
+            return isPrivateIpv4Parts(w6 >> 8, w6 & 0xff, w7 >> 8, w7 & 0xff);
+        }
+
+        // 6. 唯一本地地址 ULA fc00::/7 (fc00:: ~ fdff::)
+        if ((w0 & 0xfe00) === 0xfc00) return true;
+
+        // 7. 链路本地单播 Link-Local fe80::/10 (fe80:: ~ febf::)
+        if ((w0 & 0xffc0) === 0xfe80) return true;
+
+        // 8. 站点本地单播 Site-Local fec0::/10 (fec0:: ~ feff::, RFC 3879 废弃但保留)
+        if ((w0 & 0xffc0) === 0xfec0) return true;
+
+        // 9. 组播 Multicast ff00::/8
+        if ((w0 & 0xff00) === 0xff00) return true;
+
+        // 10. 丢弃前缀 Discard Prefix 100::/64 (RFC 6666)
+        if (w0 === 0x0100 && w1 === 0 && w2 === 0 && w3 === 0) return true;
+
+        // 11. 文档专用前缀 2001:db8::/32 (RFC 3849)
+        if (w0 === 0x2001 && w1 === 0x0db8) return true;
+
+        // 12. 基准测试前缀 2001:2::/48 (RFC 5180)
+        if (w0 === 0x2001 && w1 === 0x0002) return true;
+
+        // 13. 6to4 2002::/16 (RFC 3056)
+        if (w0 === 0x2002) {
+            return isPrivateIpv4Parts(w1 >> 8, w1 & 0xff, w2 >> 8, w2 & 0xff);
+        }
+
         return false;
     }
     return true;

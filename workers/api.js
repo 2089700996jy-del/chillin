@@ -65,7 +65,7 @@ import { handleBotOutreachApi } from './src/bot-outreach.js';
 import { runScheduled } from './src/maintenance.js';
 
 /** Keep in sync with js/version.js — used by PWA update probe (bypasses Pages CDN). */
-const APP_VERSION = '2.5.269';
+const APP_VERSION = '2.5.270';
 
 /** 网关兜底上限：比最大的合法请求（书籍上传 20MB）再宽一点，超了直接 413 */
 const MAX_REQUEST_BYTES = 21 * 1024 * 1024;
@@ -151,7 +151,7 @@ async function router(path, method, request, env, ctx) {
     if (gardenRes) return gardenRes;
 
     // ── 阅读器书库云同步 (Reader Books) ── 正文存 R2，D1 只存书目
-    if (path === '/api/reader/books' && method === 'GET') return handleListReaderBooks(db, userId);
+    if (path === '/api/reader/books' && method === 'GET') return handleListReaderBooks(db, userId, url);
     if (path === '/api/reader/books' && method === 'POST') return handlePutReaderBook(request, env, db, userId);
     const readerBookMatch = path.match(/^\/api\/reader\/books\/(.+)$/);
     if (readerBookMatch && method === 'GET') return handleGetReaderBook(readerBookMatch[1], env, db, userId);

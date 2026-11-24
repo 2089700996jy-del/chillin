@@ -760,7 +760,17 @@ sqliteTest('Agent web tools - 只读搜索与抓取，拒绝私网地址', async
     assert.equal(isPrivateOrReservedIp('172.20.0.1'), true);
     assert.equal(isPrivateOrReservedIp('100.80.0.1'), true);
     assert.equal(isPrivateOrReservedIp('::1'), true);
+    assert.equal(isPrivateOrReservedIp('0:0:0:0:0:0:0:1'), true, '未压缩全展开环回 IPv6 必须拦截');
+    assert.equal(isPrivateOrReservedIp('0000:0000:0000:0000:0000:0000:0000:0001'), true, '带前导零环回 IPv6 必须拦截');
+    assert.equal(isPrivateOrReservedIp('::0001'), true, '带前导零压缩环回 IPv6 必须拦截');
+    assert.equal(isPrivateOrReservedIp('::ffff:7f00:1'), true, '十六进制 IPv4-mapped 环回必须拦截');
+    assert.equal(isPrivateOrReservedIp('0:0:0:0:0:ffff:127.0.0.1'), true, '全展开 IPv4-mapped 环回必须拦截');
+    assert.equal(isPrivateOrReservedIp('::127.0.0.1'), true, 'IPv4-compatible 环回必须拦截');
+    assert.equal(isPrivateOrReservedIp('64:ff9b::127.0.0.1'), true, 'NAT64 内嵌私网 IPv4 必须拦截');
     assert.equal(isPrivateOrReservedIp('fe80::1'), true);
+    assert.equal(isPrivateOrReservedIp('fec0::1'), true, 'Site-Local 保留 IPv6 必须拦截');
+    assert.equal(isPrivateOrReservedIp('ff02::1'), true, '组播 IPv6 必须拦截');
+    assert.equal(isPrivateOrReservedIp('2606:4700:4700::1111'), false, '合法公网 IPv6 放行');
     assert.equal(isPrivateOrReservedIp('93.184.216.34'), false);
 
     // DNS 解析到私网 IP 时拦截（带 mock lookup 校验）

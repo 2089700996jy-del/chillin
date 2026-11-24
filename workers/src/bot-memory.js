@@ -121,22 +121,40 @@ export function isHighPriorityPendingAction(action, payload) {
     return false;
 }
 
+/** 格式化被覆盖待确认动作的简短提示 */
+export function formatReplacedActionHint(actionRow) {
+    if (!actionRow || actionRow.expired) return '';
+    const act = actionRow.action || '';
+    const p = actionRow.payload || {};
+    let desc = '';
+    if (act === 'delete_bookmark') desc = '删除收藏 #' + actionRow.target_id;
+    else if (act === 'update_bookmark') desc = '修改收藏 #' + actionRow.target_id;
+    else if (act === 'delete_prompt') desc = '删除提示词 #' + actionRow.target_id;
+    else if (act === 'update_prompt') desc = '修改提示词 #' + actionRow.target_id;
+    else if (act === 'delete_preference') desc = '删除偏好「' + (p.query || '') + '」';
+    else if (act === 'clear_preferences') desc = '清空所有偏好';
+    else if (act === 'set_preference') desc = '设置偏好「' + (p.key || '') + '」';
+    else if (act === 'set_profile') desc = '记录档案「' + (p.label || '') + '」';
+    return desc ? '（先前的「' + desc + '」待确认操作已自动作废）\n\n' : '';
+}
+
 /** 同一用户只保留一条待确认动作：新动作会软删旧的，但高优先级显式指令绝不被低优先级 AI 提议抹除 */
 export async function savePendingAction(db, userId, action, targetTable, targetId, payload) {
     const isIncomingLowPriority = (action === 'set_profile') || (action === 'set_preference' && payload && payload.source === 'feedback');
+    const existing = await readPendingAction(db, userId);
     if (isIncomingLowPriority) {
-        const existing = await readPendingAction(db, userId);
         if (existing && !existing.expired && isHighPriorityPendingAction(existing.action, existing.payload)) {
             console.log('[bot-memory] 保留高优先级待确认动作 ' + existing.action + '，拒绝被低优先级 ' + action + ' 抹除');
             return false;
         }
     }
+    const hint = (existing && !existing.expired) ? formatReplacedActionHint(existing) : '';
     await db.prepare('UPDATE bot_pending_actions SET is_deleted = 1 WHERE user_id = ?1 AND is_deleted = 0')
         .bind(Number(userId)).run();
     await db.prepare(
         'INSERT INTO bot_pending_actions (user_id, action, target_table, target_id, payload, created_at_ms, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0)'
     ).bind(Number(userId), action, targetTable, Number(targetId) || 0, JSON.stringify(payload || {}), Date.now()).run();
-    return true;
+    return { ok: true, hint, replaced: existing && !existing.expired ? existing : null };
 }
 
 /** 作废当前待确认动作（软删，绝不物理删除） */
@@ -169,12 +187,21 @@ export async function savePendingMedia(db, userId, mediaUrl, content, summary, i
     if (!db || !userId || !body) return false;
     const meta = summary ? clip(String(summary), PENDING_SUMMARY_MAX_CHARS) : null;
     const batch = imageBatch ? clip(JSON.stringify(imageBatch), PENDING_IMAGE_BATCH_MAX_CHARS) : null;
+    let replaced = null;
     try {
+        const existing = await readPendingMedia(db, userId);
+        if (existing && existing.content) {
+            const wasLink = Boolean(existing.summary);
+            const isLink = Boolean(meta);
+            if (wasLink && !isLink) replaced = 'link';
+            else if (!wasLink && isLink) replaced = 'image';
+            else if (wasLink && isLink && existing.content !== body) replaced = 'link';
+        }
         await db.prepare(
             'INSERT INTO bot_pending_media (user_id, media_url, content, summary, media_urls, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, 0) '
             + "ON CONFLICT(user_id) DO UPDATE SET media_url = ?2, content = ?3, summary = ?4, media_urls = ?5, is_deleted = 0, created_at = datetime('now', '+8 hours')"
         ).bind(Number(userId), url, clip(body, PENDING_MEDIA_MAX_CHARS), meta, batch).run();
-        return true;
+        return { ok: true, replaced };
     } catch (err) {
         console.error('[bot-memory] 暂存消息失败: ' + (err && err.message));
         return false;

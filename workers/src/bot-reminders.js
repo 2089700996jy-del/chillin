@@ -399,12 +399,18 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
         return sender;
     };
 
-    const dueRes = await db.prepare("SELECT id, user_id, text, fire_at_ms, follow_up_ms, follow_up_attempts FROM bot_reminders WHERE is_deleted = 0 AND status = 'pending' AND fire_at_ms <= ?1 AND (follow_up_retry_at_ms = 0 OR follow_up_retry_at_ms <= ?1) ORDER BY fire_at_ms ASC, id ASC LIMIT ?2")
-        .bind(now, limit).all();
+    const dueRes = await db.prepare("SELECT id, user_id, text, fire_at_ms, follow_up_ms, follow_up_attempts FROM bot_reminders WHERE is_deleted = 0 AND status = 'pending' AND fire_at_ms <= ?1 AND (follow_up_retry_at_ms = 0 OR follow_up_retry_at_ms <= ?1) AND follow_up_attempts < ?2 ORDER BY fire_at_ms ASC, id ASC LIMIT ?3")
+        .bind(now, REMINDER_FOLLOW_UP_MAX_ATTEMPTS, limit).all();
     const due = (dueRes && dueRes.results) || [];
     summary.due = due.length;
 
     for (const row of due) {
+        if (Number(row.follow_up_attempts || 0) >= REMINDER_FOLLOW_UP_MAX_ATTEMPTS) {
+            await db.prepare("UPDATE bot_reminders SET status = 'missed', follow_up_status = 'failed', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'pending'")
+                .bind(row.id).run();
+            summary.missed++;
+            continue;
+        }
         if (now - Number(row.fire_at_ms || 0) > stale) {
             await db.prepare("UPDATE bot_reminders SET status = 'missed', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND status = 'pending'")
                 .bind(row.id).run();
@@ -440,11 +446,17 @@ export async function runReminderChecks(env, db, fetchImpl = fetch, options = {}
             console.log('[reminder] 已送达 id=' + row.id + ' user=' + row.user_id);
         } catch (err) {
             const nextAttempt = Number(row.follow_up_attempts || 0) + 1;
-            const retryAt = now + followUpBackoffMs(nextAttempt);
-            await db.prepare("UPDATE bot_reminders SET status = 'pending', fired_at_ms = 0, follow_up_at_ms = 0, follow_up_status = 'none', follow_up_attempts = ?1, follow_up_retry_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND status = 'fired'")
-                .bind(nextAttempt, retryAt, row.id).run();
+            if (nextAttempt >= REMINDER_FOLLOW_UP_MAX_ATTEMPTS) {
+                await db.prepare("UPDATE bot_reminders SET status = 'missed', follow_up_status = 'failed', follow_up_attempts = ?1, updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND status = 'fired'")
+                    .bind(nextAttempt, row.id).run();
+                console.error('[reminder] 发送达到最大重试上限 id=' + row.id + ' attempt=' + nextAttempt + ': 标记为 missed');
+            } else {
+                const retryAt = now + followUpBackoffMs(nextAttempt);
+                await db.prepare("UPDATE bot_reminders SET status = 'pending', fired_at_ms = 0, follow_up_at_ms = 0, follow_up_status = 'none', follow_up_attempts = ?1, follow_up_retry_at_ms = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?3 AND status = 'fired'")
+                    .bind(nextAttempt, retryAt, row.id).run();
+                console.error('[reminder] 发送失败 id=' + row.id + ' attempt=' + nextAttempt + ': ' + (err && err.message));
+            }
             summary.failed++;
-            console.error('[reminder] 发送失败 id=' + row.id + ' attempt=' + nextAttempt + ': ' + (err && err.message));
         }
     }
 

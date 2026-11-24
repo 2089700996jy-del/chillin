@@ -21,10 +21,20 @@ async function bookObjectKey(userId, bookKey) {
     return `books/${userId}/${hex}.txt`;
 }
 
-export async function handleListReaderBooks(db, userId) {
-    const rows = await db.prepare(
-        'SELECT book_key, title, author, total_chapters, size, updated_at FROM reader_books WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC'
-    ).bind(userId).all();
+export async function handleListReaderBooks(db, userId, url = null) {
+    let includeDeleted = false;
+    if (url) {
+        try {
+            const u = typeof url === 'string' ? new URL(url) : url;
+            if (u.searchParams && (u.searchParams.get('include_deleted') === '1' || u.searchParams.get('deleted') === '1')) {
+                includeDeleted = true;
+            }
+        } catch (_) { /* audit-ignore: intentional-fallback url parse fail fallback */ }
+    }
+    const sql = includeDeleted
+        ? 'SELECT book_key, title, author, total_chapters, size, updated_at, is_deleted FROM reader_books WHERE user_id = ?1 ORDER BY updated_at DESC'
+        : 'SELECT book_key, title, author, total_chapters, size, updated_at FROM reader_books WHERE user_id = ?1 AND is_deleted = 0 ORDER BY updated_at DESC';
+    const rows = await db.prepare(sql).bind(userId).all();
     return jsonResponse(rows.results || []);
 }
 
@@ -37,6 +47,15 @@ export async function handlePutReaderBook(request, env, db, userId) {
     const author = (url.searchParams.get('author') || '').trim().slice(0, 100);
     const totalChapters = Math.max(0, Math.floor(Number(url.searchParams.get('chapters')) || 0));
     if (!bookKey || !title) return jsonResponse({ error: '缺少书名或书籍指纹' }, 400);
+
+    // 防多设备幽灵复活：若该书已被软删除，自动补传（非用户显式导入 force=1）必须被拦截
+    const isForce = url.searchParams.get('force') === '1';
+    const existing = await db.prepare(
+        'SELECT is_deleted FROM reader_books WHERE user_id = ?1 AND book_key = ?2'
+    ).bind(userId, bookKey).first();
+    if (existing && Number(existing.is_deleted) === 1 && !isForce) {
+        return jsonResponse({ error: '该书籍已在云端被删除', deleted: true, book_key: bookKey }, 409);
+    }
 
     // 先按声明长度快速拒绝，再在流式读取里硬性限长：不能等整本读进内存后才判断 20MB
     if (Number(request.headers.get('Content-Length') || 0) > MAX_BOOK_SIZE) {

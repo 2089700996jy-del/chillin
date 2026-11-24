@@ -199,11 +199,13 @@ export async function handleClawImageMessage(env, db, userId, msg, caption, fetc
     const saved = await savePendingMedia(db, userId, batch.items[0].url, content, null, batch);
     if (!saved) return '图片收到了，但没能暂存，稍后再发一次试试？';
 
+    const replaceNotice = (saved && saved.replaced === 'link') ? '（已替换先前待存的链接卡片）\n\n' : '';
     let reply = deep
         ? (analysis
             ? String(analysis) + PENDING_CONFIRM_HINT
             : '我仔细看了这几张，这次没能看清关键内容。' + PENDING_CONFIRM_HINT)
         : fastReply(analysis);
+    if (replaceNotice) reply = replaceNotice + reply;
     const notes = [];
     if (skipped) notes.push('一条消息最多看 ' + MAX_IMAGES + ' 张，后面 ' + skipped + ' 张没看');
     if (unread) notes.push('有 ' + unread + ' 张没拿到原图');

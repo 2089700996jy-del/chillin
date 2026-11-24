@@ -9,8 +9,9 @@ const { handleListReaderBooks, handlePutReaderBook, handleGetReaderBook, handleD
 const BOOK_KEY = '测试小说::3';
 const BOOK_TEXT = '第一章 起风了\n正文内容一\n第二章 落雨\n正文内容二\n第三章 天晴\n正文内容三';
 
-function putRequest(text, { key = BOOK_KEY, title = '测试小说', author = '某作者', chapters = 3 } = {}) {
+function putRequest(text, { key = BOOK_KEY, title = '测试小说', author = '某作者', chapters = 3, force = false } = {}) {
     const params = new URLSearchParams({ key, title, author, chapters: String(chapters) });
+    if (force) params.set('force', '1');
     return new Request('https://chillin.test/api/reader/books?' + params.toString(), { method: 'POST', body: text });
 }
 
@@ -109,4 +110,36 @@ test('Reader books - 删除书籍时一并清掉云端阅读进度（P3）', { s
 
     const left = await db.prepare('SELECT COUNT(*) AS n FROM reader_progress WHERE user_id = ?1').bind(3).first();
     assert.equal(left.n, 0, '书删了，进度不该留在库里');
+});
+
+test('Reader books - 云端删除后禁止多设备自动补传幽灵复活，带 force=1 显式导入才允许复活', { skip: sqliteSkip }, async () => {
+    const db = createTestDb();
+    await seedUser(db, 3);
+    const r2 = new FakeR2();
+    await handlePutReaderBook(putRequest(BOOK_TEXT), { MEDIA: r2 }, db, 3);
+
+    // 1. 在设备 A 删除书籍
+    const delRes = await handleDeleteReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 3);
+    assert.equal(delRes.status, 200);
+
+    // 2. 带 include_deleted 能查到墓碑
+    const listWithDeleted = await (await handleListReaderBooks(db, 3, new URL('https://chillin.test/api/reader/books?include_deleted=1'))).json();
+    assert.equal(listWithDeleted.length, 1);
+    assert.equal(listWithDeleted[0].is_deleted, 1, '墓碑行必须能够被客户端感知');
+
+    // 3. 设备 B 尝试自动补传（不带 force=1）被 409 拦截
+    const autoBackfillRes = await handlePutReaderBook(putRequest(BOOK_TEXT, { force: false }), { MEDIA: r2 }, db, 3);
+    assert.equal(autoBackfillRes.status, 409, '自动补传已被软删书籍必须拒绝');
+    const autoBackfillBody = await autoBackfillRes.json();
+    assert.equal(autoBackfillBody.deleted, true);
+
+    const checkStillDeleted = await db.prepare('SELECT is_deleted FROM reader_books WHERE book_key = ?1').bind(BOOK_KEY).first();
+    assert.equal(checkStillDeleted.is_deleted, 1, '书籍在 D1 中依然保持删除状态，未被复活');
+
+    // 4. 用户手动显式重新导入（带 force=1）允许复活
+    const manualImportRes = await handlePutReaderBook(putRequest(BOOK_TEXT, { force: true }), { MEDIA: r2 }, db, 3);
+    assert.equal(manualImportRes.status, 200, '用户手动导入允许复活');
+
+    const checkRevived = await db.prepare('SELECT is_deleted FROM reader_books WHERE book_key = ?1').bind(BOOK_KEY).first();
+    assert.equal(checkRevived.is_deleted, 0, '显式导入后书籍状态成功复活');
 });

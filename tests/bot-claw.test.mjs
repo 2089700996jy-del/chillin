@@ -642,6 +642,8 @@ integration('ClawBot - defer 交给 waitUntil 后台处理，轮询先返回再�
         defer: (task) => tasks.push(task)
     });
     assert.equal(tasks.length, 1, '一批消息必须注册一个 waitUntil 任务');
+    const sendBefore = st.calls.find(c => c.url.endsWith('/sendmessage'));
+    assert.equal(sendBefore, undefined, '轮询退出时后台任务尚未完成，绝不阻塞轮询返回');
     await Promise.all(tasks);
     const send = st.calls.find(c => c.url.endsWith('/sendmessage'));
     assert.ok(send, '后台跑完后必须用主动发送接口回推');
@@ -2841,5 +2843,124 @@ test('formatListOutput 针对列表/多条记忆聚合回答做确定性微信�
     assert.match(formatted, /\n\n【11-19】\n- 🌧 疲惫·今日情绪打卡/);
     assert.match(formatted, /\n- 蛋白质统计表/);
     assert.match(formatted, /\n\n【11-20】\n- 学习第一性原则/);
+});
+
+integration('ClawBot - [对抗性审查 1] 毒丸消息熔断（Poison Pill Circuit Breaker）防止游标永久冻结', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    const poisonMsg = clawMessage({
+        item_list: [{ type: 1, msg_id: 'POISON-ITEM-1', text_item: { text: '触发毒丸异常的消息' } }]
+    });
+
+    let poisonFails = 0;
+    const originalPrepare = db.prepare.bind(db);
+    db.prepare = (sql) => {
+        if (typeof sql === 'string' && sql.includes('bot_chat_turns') && sql.includes('SELECT') && poisonFails < 3) {
+            poisonFails++;
+            throw new Error('D1 unrecoverable poison query crash');
+        }
+        return originalPrepare(sql);
+    };
+
+    const sentReplies = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'CURSOR-NEXT-POISON', msgs: [poisonMsg] } }),
+        '/ilink/bot/sendmessage': (url, body) => {
+            sentReplies.push(body);
+            return { json: { ret: 0 } };
+        }
+    });
+
+    // 第 1 轮：异常抛出，回滚锁以便重试，游标不推进
+    await pollClawAccounts({}, db, st.impl, { budgetMs: 0 });
+    let account = await db.prepare("SELECT cursor FROM bot_claw_accounts WHERE id = 1").first();
+    assert.equal(account.cursor, 'CURSOR-0', '第 1 次失败，游标保持初始状态');
+
+    // 第 2 轮：再次拉取重试
+    await pollClawAccounts({}, db, st.impl, { budgetMs: 0 });
+    account = await db.prepare("SELECT cursor FROM bot_claw_accounts WHERE id = 1").first();
+    assert.equal(account.cursor, 'CURSOR-0', '第 2 次失败，游标保持初始状态');
+
+    // 第 3 轮：触发毒丸熔断！发送兜底提示，吸收致命错误，游标成功推移！
+    await pollClawAccounts({}, db, st.impl, { budgetMs: 0 });
+    account = await db.prepare("SELECT cursor FROM bot_claw_accounts WHERE id = 1").first();
+    assert.equal(account.cursor, 'CURSOR-NEXT-POISON', '第 3 次触发毒丸熔断后强制推进游标，队头死锁解除');
+    assert.ok(sentReplies.length > 0, '向用户发送了兜底提示');
+    assert.match(sentReplies[sentReplies.length - 1].msg.item_list[0].text_item.text, /抱歉，这条消息暂时处理失败/);
+});
+
+integration('ClawBot - [对抗性审查 2] 单槽位待确认指令并发覆盖产生作废告警，且跨领域带参确认精准阻断', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    await db.prepare("INSERT INTO prompts (id, user_id, title, content, project, scene, is_deleted) VALUES (1, 1, '旧提示词', '正文', '项目', '场景', 0)").run();
+    await db.prepare("INSERT INTO bookmarks (id, user_id, title, url, type, is_deleted) VALUES (2, 1, '旧收藏', 'https://example.com', '🌐 网站', 0)").run();
+
+    // 1. 用户发起删提示词
+    const r1 = await buildBotReply({}, db, 1, '删提示词 1');
+    assert.match(r1, /找到提示词 #1「旧提示词」/);
+    assert.match(r1, /确认删除/);
+
+    // 2. 紧接着用户又发起删收藏：前序待确认动作被替换，并输出作废提示
+    const r2 = await buildBotReply({}, db, 1, '删收藏 2');
+    assert.match(r2, /先前的「删除提示词 #1」待确认操作已自动作废/);
+    assert.match(r2, /找到收藏 #2「旧收藏」/);
+
+    // 3. 用户如果回「确认删除提示词」：类型不匹配，被安全阻断，不产生误删
+    const r3 = await buildBotReply({}, db, 1, '确认删除提示词');
+    assert.match(r3, /这次待确认的是收藏，不是提示词/);
+
+    // 验证此时两个项目均完好无损
+    assert.equal((await db.prepare("SELECT is_deleted FROM prompts WHERE id = 1").first()).is_deleted, 0);
+    assert.equal((await db.prepare("SELECT is_deleted FROM bookmarks WHERE id = 2").first()).is_deleted, 0);
+
+    // 4. 用户回「确认」：精确执行当前生效的删收藏 2
+    const r4 = await buildBotReply({}, db, 1, '确认');
+    assert.match(r4, /已删除收藏 #2/);
+    assert.equal((await db.prepare("SELECT is_deleted FROM bookmarks WHERE id = 2").first()).is_deleted, 1);
+    assert.equal((await db.prepare("SELECT is_deleted FROM prompts WHERE id = 1").first()).is_deleted, 0, '提示词绝未被误删');
+});
+
+integration('ClawBot - [对抗性审查 4] 多模态待存消息（图片 vs 链接卡片）槽位替换具备显式提示', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    // 1. 暂存一张图片
+    const imgMsg = imageMessage();
+    const puts = [];
+    const st1 = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'C-IMG', msgs: [imgMsg] } }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } }),
+        'cdn.example/photo.png': () => ({ bytes: PNG_BYTES }),
+        [VISION_ROUTE]: () => ({ json: { choices: [{ message: { content: '海边日出' } }] } })
+    });
+    await pollClawAccounts(visionEnv(db, puts), db, st1.impl, { budgetMs: 0 });
+
+    const savedImg = await db.prepare("SELECT media_url, content FROM bot_pending_media WHERE user_id = 1 AND is_deleted = 0").first();
+    assert.ok(savedImg && savedImg.content, '第 1 步图片已成功暂存');
+
+    // 2. 在确认前，发送一个小宇宙播客链接
+    const linkMsg = clawMessage({
+        item_list: [{ type: 1, msg_id: 'LINK-1', text_item: { text: LZ_EPISODE } }]
+    });
+    const sentReplies = [];
+    const st2 = stubFetch({
+        '/ilink/bot/getupdates': () => ({ json: { ret: 0, get_updates_buf: 'C-LINK', msgs: [linkMsg] } }),
+        '/ilink/bot/sendmessage': (url, body) => {
+            sentReplies.push(body);
+            return { json: { ret: 0 } };
+        },
+        [LZ_ROUTE]: () => ({ bytes: LZ_HTML, status: 200 }),
+        [LZ_COVER]: () => ({ bytes: PNG_BYTES, status: 200 })
+    });
+    await pollClawAccounts(visionEnv(db, puts), db, st2.impl, { budgetMs: 0 });
+
+    assert.ok(sentReplies.length > 0);
+    const linkReplyText = sentReplies[sentReplies.length - 1].msg.item_list[0].text_item.text;
+    assert.match(linkReplyText, /已替换先前待存的图片/, '覆盖旧图片暂存时明确告警用户，杜绝静默数据丢失');
 });
 

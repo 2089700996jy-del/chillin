@@ -580,7 +580,7 @@ async function importBook(file) {
         if (canSync) {
             progressText.textContent = '正在同步到云端...';
             try {
-                await uploadBookToCloud(book, text);
+                await uploadBookToCloud(book, text, { force: true });
                 syncState = 'ok';
             } catch (err) {
                 console.warn('[reader] book upload failed', err);
@@ -610,19 +610,23 @@ async function importBook(file) {
 // ── Bookshelf（本地 + 云端） ──
 // 云端书目缓存：本地没有的书先以「云端卡片」出现，点开时才按需下载正文
 let cloudBooks = [];
+let cloudTombstones = new Set();
 // 只有「确实拉到过云端书目」才允许做本机补传判断——否则离线时 cloudBooks=[] 会被误判成「一本都没上云」
 let cloudBooksSynced = false;
 
-/** 拉取云端书目（未登录或离线时返回空，不影响本地书架） */
+/** 拉取云端书目（含墓碑过滤，未登录或离线时返回空，不影响本地书架） */
 async function fetchCloudBooks() {
-    if (!state.authToken && !state.cookieSession) { cloudBooks = []; cloudBooksSynced = false; return cloudBooks; }
+    if (!state.authToken && !state.cookieSession) { cloudBooks = []; cloudTombstones = new Set(); cloudBooksSynced = false; return cloudBooks; }
     try {
-        const list = await apiRequest('/api/reader/books');
-        cloudBooks = Array.isArray(list) ? list : [];
+        const list = await apiRequest('/api/reader/books?include_deleted=1');
+        const all = Array.isArray(list) ? list : [];
+        cloudBooks = all.filter((b) => !b.is_deleted);
+        cloudTombstones = new Set(all.filter((b) => b.is_deleted).map((b) => b.book_key));
         cloudBooksSynced = true;
     } catch (err) {
         console.warn('[reader] fetch cloud books failed', err);
         cloudBooks = [];
+        cloudTombstones = new Set();
         cloudBooksSynced = false;
     }
     return cloudBooks;
@@ -637,7 +641,7 @@ async function backfillLocalBooks(localBooks) {
     const cloudKeys = new Set(cloudBooks.map((b) => b.book_key));
     const pending = localBooks.filter((b) => {
         const key = b.bookKey || computeBookKey(b);
-        return key && !cloudKeys.has(key);
+        return key && !cloudKeys.has(key) && !cloudTombstones.has(key);
     });
     if (!pending.length) return;
 
@@ -655,6 +659,15 @@ async function backfillLocalBooks(localBooks) {
             // 记进云端缓存：同一轮渲染里不会再被当成「缺书」
             cloudBooks.push({ book_key: book.bookKey || computeBookKey(book), title: book.title, author: book.author, total_chapters: book.totalChapters || chapters.length });
         } catch (err) {
+            if (err && (err.status === 409 || String(err.message).includes('已在云端被删除'))) {
+                // 该书在云端已被删除，同步清除本机脏副本，杜绝死循环重传
+                try {
+                    await rdbDelete('books', book.id);
+                    const chs = (await rdbGetAll('chapters')).filter((c) => c.bookId === book.id);
+                    for (const c of chs) await rdbDelete('chapters', c.id);
+                } catch (_) {}
+                continue;
+            }
             // 补传失败（多半是离线/超时）：本轮停止、书留在下次再试
             console.warn('[reader] backfill failed, will retry later', err);
             break;
@@ -667,7 +680,7 @@ async function backfillLocalBooks(localBooks) {
 }
 
 /** 把本地导入的正文推到 R2，换设备也能接着读同一本书 */
-async function uploadBookToCloud(book, text) {
+async function uploadBookToCloud(book, text, options = {}) {
     if (!state.authToken && !state.cookieSession) return false;
     const params = new URLSearchParams({
         key: book.bookKey || computeBookKey(book),
@@ -675,6 +688,7 @@ async function uploadBookToCloud(book, text) {
         author: book.author || '',
         chapters: String(book.totalChapters || 0)
     });
+    if (options && options.force) params.set('force', '1');
     // 正文用纯文本直传，避免 JSON 转义带来的体积膨胀；大文件放宽超时
     await apiRequest('/api/reader/books?' + params.toString(), {
         method: 'POST',
@@ -850,7 +864,25 @@ async function renderBookshelf() {
     Promise.all([
         fetchCloudBooks(),
         syncBookshelfProgress(books)
-    ]).then(() => {
+    ]).then(async () => {
+        // 若云端有软删除墓碑，自动清除本机遗留副本，杜绝幽灵复活
+        if (cloudTombstones && cloudTombstones.size > 0 && books.length > 0) {
+            let hasPurged = false;
+            for (const b of books) {
+                const key = b.bookKey || computeBookKey(b);
+                if (key && cloudTombstones.has(key)) {
+                    hasPurged = true;
+                    try {
+                        await rdbDelete('books', b.id);
+                        const chs = (await rdbGetAll('chapters')).filter((c) => c.bookId === b.id);
+                        for (const c of chs) await rdbDelete('chapters', c.id);
+                    } catch (_) { /* audit-ignore: intentional-fallback purge local tombstone cache fail */ }
+                }
+            }
+            if (hasPurged) {
+                books = books.filter((b) => !cloudTombstones.has(b.bookKey || computeBookKey(b)));
+            }
+        }
         paintBookshelf(grid, empty, books);
         // 拉取成功才判断「哪些本机书还没上云」，并把它们补传（每次会话限量）
         backfillLocalBooks(books);

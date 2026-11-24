@@ -432,7 +432,8 @@ export async function handleClawLinkMessage(env, db, userId, text, fetchImpl = f
     }
     const caption = String(text || '').replace(url, ' ').replace(/\s+/g, ' ').trim();
     const content = [caption, url].filter(Boolean).join('\n').slice(0, LINK_MAX_CHARS);
-    await savePendingMedia(db, userId, card.meta.cover || '', content, JSON.stringify(card.meta));
+    const saved = await savePendingMedia(db, userId, card.meta.cover || '', content, JSON.stringify(card.meta));
+    const replaceNotice = (saved && saved.replaced === 'image') ? '（已替换先前待存的图片）\n\n' : '';
     const head = card.meta.icon + ' ' + card.meta.title;
-    return (card.meta.description ? head + '\n' + card.meta.description : head) + PENDING_CONFIRM_HINT;
+    return replaceNotice + (card.meta.description ? head + '\n' + card.meta.description : head) + PENDING_CONFIRM_HINT;
 }

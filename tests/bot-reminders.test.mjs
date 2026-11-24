@@ -508,3 +508,25 @@ sqliteTest('提醒 - [V-05] 提醒支持直接按稳固 #ID 取消，不受数�
     assert.equal(r20.status, 'cancelled');
     assert.equal(r20.is_deleted, 1);
 });
+
+sqliteTest('提醒 - [对抗性审查] 主提醒连续发送失败达到 REMINDER_FOLLOW_UP_MAX_ATTEMPTS 时熔断置为 missed，终结状态振荡', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    // 插入一条已经重试了 4 次（即将达到第 5 次上限）的待发提醒
+    await db.prepare("INSERT INTO bot_reminders (id, user_id, account_id, text, fire_at_ms, follow_up_attempts, follow_up_retry_at_ms, status, is_deleted) VALUES (99, 1, 1, '无限失败的测试提醒', ?1, 4, 0, 'pending', 0)").bind(NOW - 1000).run();
+
+    const st = sentStub(true); // 每次发送都失败
+    const r = await runReminderChecks({}, db, st.impl, { nowMs: NOW });
+    assert.equal(r.due, 1);
+    assert.equal(r.failed, 1);
+
+    const row = await db.prepare('SELECT status, follow_up_status, follow_up_attempts FROM bot_reminders WHERE id = 99').first();
+    assert.equal(row.status, 'missed', '达到重试上限后强行熔断为 missed，防止死循环无限振荡');
+    assert.equal(row.follow_up_status, 'failed');
+    assert.equal(row.follow_up_attempts, 5);
+
+    // 下一轮扫描：SQL 防御过滤，绝不再拉取
+    const r2 = await runReminderChecks({}, db, st.impl, { nowMs: NOW + 10000 });
+    assert.equal(r2.due, 0, '下一轮不再被 pending 队列捞起');
+});

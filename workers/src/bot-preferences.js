@@ -212,7 +212,8 @@ async function stagePreference(db, userId, pref) {
     if (saved === false) {
         return null;
     }
-    return '我理解成一条「' + label + '」偏好：\n\n> ' + content
+    const hint = (saved && saved.hint) || '';
+    return hint + '我理解成一条「' + label + '」偏好：\n\n> ' + content
         + '\n\n要记下来就回「确认」；不想改就回「取消」。';
 }
 
@@ -243,9 +244,10 @@ async function findDeleteMatches(db, userId, query) {
 async function stageDeletePreference(db, userId, query) {
     const matches = await findDeleteMatches(db, userId, query);
     if (!matches.length) return '没有找到匹配「' + flat(query, 40) + '」的交流偏好。发「偏好」看看现有设置。';
-    await savePendingAction(db, userId, 'delete_preference', 'preference', 0, { query: String(query || '').trim() });
+    const saved = await savePendingAction(db, userId, 'delete_preference', 'preference', 0, { query: String(query || '').trim() });
+    const hint = (saved && saved.hint) || '';
     const preview = matches.slice(0, 3).map(it => '「' + (it.label || preferenceLabel(it.pref_key)) + '：' + flat(it.content, 60) + '」').join('、');
-    return '要删掉 ' + matches.length + ' 条交流偏好：' + preview + '。\n\n回「确认」执行，回「取消」不动。';
+    return hint + '要删掉 ' + matches.length + ' 条交流偏好：' + preview + '。\n\n回「确认」执行，回「取消」不动。';
 }
 
 async function confirmSetPreference(db, userId, pending) {
@@ -298,8 +300,9 @@ export async function maybePreferenceCommand(db, userId, text) {
 
     if (LIST_RE.test(raw)) return runListPreferences(db, userId);
     if (CLEAR_ALL_RE.test(raw)) {
-        await savePendingAction(db, userId, 'clear_preferences', 'preference', 0, {});
-        return '要清空所有交流偏好（恢复为系统默认出厂的安静克制 INFP）吗？\n\n回「确认」执行，回「取消」不动。';
+        const saved = await savePendingAction(db, userId, 'clear_preferences', 'preference', 0, {});
+        const hint = (saved && saved.hint) || '';
+        return hint + '要清空所有交流偏好（恢复为系统默认出厂的安静克制 INFP）吗？\n\n回「确认」执行，回「取消」不动。';
     }
     if (DELETE_BARE_RE.test(raw)) return '要删哪条交流偏好？发「忘记偏好 <关键词或编号>」，我会先问一次再删。';
     if (SET_BARE_RE.test(raw)) return '想设成什么？比如「偏好 日常聊天：更自然，不要过度共情」。';
@@ -307,6 +310,7 @@ export async function maybePreferenceCommand(db, userId, text) {
     const wantsConfirm = CONFIRM_RE.test(raw);
     const wantsCancel = CANCEL_RE.test(raw);
     if (wantsConfirm || wantsCancel) {
+        if (/(?:收藏|书签|提示词)/.test(raw)) return null;
         const pending = await readPendingAction(db, userId);
         if (!pending) return null;
         if (pending.action !== 'set_preference' && pending.action !== 'delete_preference' && pending.action !== 'clear_preferences') return null;

@@ -22,7 +22,7 @@ const DELETE_BOOKMARK_RE = /^(?:删除|删掉|删|移除)(?:收藏|书签)\s*[:�
 const DELETE_PROMPT_RE = /^(?:删除|删掉|删|移除)提示词\s*[:：#]?\s*(\d+)[\s。！!～~]*$/i;
 const EDIT_BOOKMARK_RE = /^(?:修改|改|编辑|更新)(?:收藏|书签)\s*[:：#]?\s*(\d+)\s+([\s\S]+)$/i;
 const EDIT_PROMPT_RE = /^(?:修改|改|编辑|更新)提示词\s*[:：#]?\s*(\d+)\s+([\s\S]+)$/i;
-const CONFIRM_RE = /^(?:确认|确定|确认执行|确认删除|确认修改|ok|yes)[\s。！!～~]*$/i;
+const CONFIRM_RE = /^(?:确认|确定)(?:执行|删除|修改)?(?:\s*(?:收藏|书签|提示词|偏好))?[\s。！!～~]*$|^(?:ok|yes)[\s。！!～~]*$/i;
 const CANCEL_RE = /^(?:取消|算了|不要了|不删了|不改了|先不删|先不改|no)[\s。！!～~]*$/i;
 
 const BOOKMARK_KEYS = {
@@ -188,12 +188,13 @@ async function stageDelete(db, userId, kind, id) {
     const row = kind === 'bookmark' ? await loadBookmark(db, userId, targetId) : await loadPrompt(db, userId, targetId);
     if (!row) return '没有找到这条' + (kind === 'bookmark' ? '收藏' : '提示词') + '，可能已经被删了。';
     const label = kind === 'bookmark' ? '收藏' : '提示词';
-    await savePendingAction(
+    const saved = await savePendingAction(
         db, userId,
         kind === 'bookmark' ? 'delete_bookmark' : 'delete_prompt',
         kind, targetId, { title: row.title }
     );
-    return '找到' + label + ' #' + targetId + '「' + flat(row.title, 80) + '」。\n\n'
+    const hint = (saved && saved.hint) || '';
+    return hint + '找到' + label + ' #' + targetId + '「' + flat(row.title, 80) + '」。\n\n'
         + '确认删除？删除只是移出列表和搜索，不会物理清空。\n'
         + '回「确认」继续，回「取消」放弃。';
 }
@@ -227,8 +228,9 @@ async function stageEditBookmark(db, userId, id, body) {
         return '这次没有改动。发「我的收藏」看看当前内容。';
     }
     const proposed = { type, title, url, description };
-    await savePendingAction(db, userId, 'update_bookmark', 'bookmark', targetId, proposed);
-    return '找到收藏 #' + targetId + '「' + flat(row.title, 80) + '」。\n\n'
+    const saved = await savePendingAction(db, userId, 'update_bookmark', 'bookmark', targetId, proposed);
+    const hint = (saved && saved.hint) || '';
+    return hint + '找到收藏 #' + targetId + '「' + flat(row.title, 80) + '」。\n\n'
         + '改后：\n'
         + '标题：' + title + '\n'
         + '链接：' + flat(url, 120) + '\n'
@@ -279,8 +281,9 @@ async function stageEditPrompt(db, userId, id, body) {
         return '这次没有改动。发「我的提示词」看看当前内容。';
     }
     const proposed = { title, content: promptContent, project, scene, description, tags, is_pinned: pinned };
-    await savePendingAction(db, userId, 'update_prompt', 'prompt', targetId, proposed);
-    return '找到提示词 #' + targetId + '「' + flat(row.title, 80) + '」。\n\n'
+    const saved = await savePendingAction(db, userId, 'update_prompt', 'prompt', targetId, proposed);
+    const hint = (saved && saved.hint) || '';
+    return hint + '找到提示词 #' + targetId + '「' + flat(row.title, 80) + '」。\n\n'
         + '改后：\n'
         + '标题：' + title + '\n'
         + '项目/场景：' + project + ' / ' + scene + '\n'
@@ -383,6 +386,12 @@ async function confirmPending(db, userId, pending, text) {
     }
     if (/^确认删除/i.test(text) && !String(pending.action).startsWith('delete_')) {
         return '这次待确认的是修改，不是删除。回「确认」修改，或回「取消」放弃。';
+    }
+    if (/(?:收藏|书签)/.test(text) && pending.target_table !== 'bookmark') {
+        return '这次待确认的是' + (pending.target_table === 'prompt' ? '提示词' : '其他操作') + '，不是收藏。回「确认」继续，或回「取消」放弃。';
+    }
+    if (/提示词/.test(text) && pending.target_table !== 'prompt') {
+        return '这次待确认的是' + (pending.target_table === 'bookmark' ? '收藏' : '其他操作') + '，不是提示词。回「确认」继续，或回「取消」放弃。';
     }
     if (String(pending.action).startsWith('delete_')) return confirmDelete(db, userId, pending);
     if (String(pending.action).startsWith('update_')) return confirmUpdate(db, userId, pending);

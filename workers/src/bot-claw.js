@@ -7,6 +7,7 @@
 import { truncateUtf8, buildBotReply, claimBotMessage, toClawText } from './bot-commands.js';
 import { extractClawImageItems } from './bot-media.js';
 import { handleClawImageMessage } from './bot-image-flow.js';
+import { checkRateLimitShared, rateLimitBuckets } from './security-network.js';
 import { jsonResponse } from './security.js';
 import { renderSVG } from 'uqr';
 
@@ -385,6 +386,8 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
     let polls = 0;
     let consecutiveErrors = 0;
     let successMarked = false;
+    let stalledCursor = null;
+    let stalledCount = 0;
     do {
         polls++;
         let updates;
@@ -431,17 +434,48 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
                     console.error('[bot-claw] 消息处理失败 id=' + account.id + ': ' + (err && err.message));
                 }
             }
-            if (nextCursor && !batchHadError) {
-                cursor = nextCursor;
-                await saveCursor(db, account.id, cursor);
+            if (nextCursor) {
+                if (!batchHadError) {
+                    cursor = nextCursor;
+                    stalledCursor = null;
+                    stalledCount = 0;
+                    await saveCursor(db, account.id, cursor);
+                } else if (nextCursor === stalledCursor) {
+                    stalledCount++;
+                    if (stalledCount >= 3) {
+                        console.error('[bot-claw] 批处理游标连续停滞 3 次，强制跳过毒丸批次 cursor=' + nextCursor);
+                        cursor = nextCursor;
+                        stalledCursor = null;
+                        stalledCount = 0;
+                        await saveCursor(db, account.id, cursor);
+                    }
+                } else {
+                    stalledCursor = nextCursor;
+                    stalledCount = 1;
+                }
             }
         };
         if (updates.msgs.length) {
-            const task = batch();
             if (typeof defer === 'function') {
-                defer(task.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
+                // 后台并发执行模式：游标立即安全推进，耗时的推理与回发移交 waitUntil 后台运行，
+                // 彻底释放轮询主循环，防止长轮询被大模型 API 阻塞数秒导致后续消息积压与调度饥饿
+                if (nextCursor) {
+                    cursor = nextCursor;
+                    await saveCursor(db, account.id, cursor);
+                }
+                const asyncTask = (async () => {
+                    for (const msg of updates.msgs) {
+                        try {
+                            await handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl);
+                        } catch (err) {
+                            console.error('[bot-claw] 后台消息处理失败 id=' + account.id + ': ' + (err && err.message));
+                        }
+                    }
+                })();
+                defer(asyncTask.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
+            } else {
+                await batch();
             }
-            await task;
         } else if (nextCursor) {
             cursor = nextCursor;
             await saveCursor(db, account.id, cursor);
@@ -474,16 +508,33 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
         console.log('[bot-claw] 重复消息已忽略');
         return;
     }
-    if (msg.context_token) await db.prepare("UPDATE bot_claw_accounts SET last_context_token = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(account.id, String(msg.context_token).slice(0, 500)).run();
+    if (msg.context_token) {
+        account.last_context_token = String(msg.context_token).slice(0, 500);
+        await db.prepare("UPDATE bot_claw_accounts SET last_context_token = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1").bind(account.id, account.last_context_token).run();
+    }
     let reply = null;
     try {
         reply = hasImage
             ? await handleClawImageMessage(env, db, userId, msg, text, fetchImpl)
             : await buildBotReply(env, db, userId, text);
     } catch (genErr) {
-        // 回复生成阶段发生异常（尚未产生稳定回复）：回滚排重锁以便重试，并向外抛出
-        try { await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run(); } catch (_) { /* audit-ignore: intentional-fallback 回滚消息去重锁失败继续向外抛出主异常 */ }
-        throw genErr;
+        let isPoisonPill = false;
+        try {
+            const failLimit = await checkRateLimitShared(db, 'claw-retry:' + dedupKey, 2, 3600 * 1000);
+            if (!failLimit.ok) isPoisonPill = true;
+        } catch (_) { /* audit-ignore: counter error fallback */ }
+
+        if (isPoisonPill) {
+            console.error('[bot-claw] 毒丸消息熔断 key=' + dedupKey + ': ' + (genErr && genErr.message));
+            reply = '抱歉，这条消息暂时处理失败，已为您跳过。请换个说法试试。';
+        } else {
+            // 回复生成阶段发生异常（尚未产生稳定回复）：回滚排重锁以便重试，并向外抛出
+            try {
+                rateLimitBuckets.delete('bot-msg:' + dedupKey);
+                await db.prepare("DELETE FROM rate_limits WHERE bucket_key = ?1").bind('bot-msg:' + dedupKey).run();
+            } catch (_) { /* audit-ignore: intentional-fallback 回滚消息去重锁失败继续向外抛出主异常 */ }
+            throw genErr;
+        }
     }
     if (!reply) return;
 
