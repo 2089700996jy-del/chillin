@@ -67,7 +67,8 @@ export async function runScheduled(env, event, pollOptions, ctx) {
             ? Number(pollOptions.nowMs)
             : (event && event.scheduledTime ? Number(event.scheduledTime) : Date.now());
         const east8Date = new Date(scheduledMs + 8 * 3600 * 1000);
-        if (east8Date.getUTCHours() === 8 && east8Date.getUTCMinutes() === 0) {
+        // 允许在 08:00 ~ 08:15 滑动窗口内触发，抗调度抖动；bot_weather_daily.notified 状态机保证每日单发幂等
+        if (east8Date.getUTCHours() === 8 && east8Date.getUTCMinutes() < 15) {
             try { await runMorningWeatherCare(env, env.DB, undefined, pollOptions); }
             catch (err) { console.error('[scheduled] bot weather care failed:', err); }
         }

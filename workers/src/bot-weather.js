@@ -324,6 +324,7 @@ export async function resolveUserCity(db, userId, text = '') {
 
 /** 每天早上 8:00 执行的智能晨报关怀 */
 export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options = {}) {
+    const fetcher = (options && options.fetchImpl) || fetchImpl || fetch;
     const nowMs = Number.isFinite(options.nowMs) ? Number(options.nowMs) : Date.now();
     if (!db || !env) return { state: 'no-env' };
     const auth = await getQWeatherToken(env, nowMs);
@@ -342,7 +343,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
     for (const acct of accounts) {
         summary.checked++;
         const city = await resolveUserCity(db, acct.user_id);
-        const cityInfo = await lookupCity(env, city, fetchImpl, nowMs);
+        const cityInfo = await lookupCity(env, city, fetcher, nowMs);
         if (!cityInfo) continue;
 
         // 读今日记录：若今日已发送过晨报，避免重复推送（幂等保证）
@@ -365,7 +366,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         } catch (_) { /* audit-ignore: intentional-fallback 查询昨日温差基准异常跳过温差对比 */ }
 
         // 抓取并分析今日
-        const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
+        const raw = await fetchFullWeatherData(env, cityInfo.id, fetcher, nowMs);
         if (!raw.daily.length && !raw.hourly.length) {
             console.error(`[bot-weather] 8:00 ${city} 无法获取有效天气数据 (API 失败: ${lastApiError})，跳过今日记录 user=${acct.user_id}`);
             continue;
@@ -396,7 +397,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
                 toUserId: acct.ilink_user_id,
                 contextToken: acct.last_context_token || '',
                 text: msg,
-                fetchImpl
+                fetchImpl: fetcher
             });
             await saveChatTurn(db, acct.user_id, 'assistant', msg);
             await db.prepare('UPDATE bot_weather_daily SET notified = 1 WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, today).run();
@@ -474,7 +475,9 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
     const reply = formatWeatherMessage(city, a, false, dateTarget.label);
 
     if (weatherCache.size > 30) weatherCache.clear();
-    weatherCache.set(cacheKey, { reply, exp: nowMs + 30 * 60 * 1000 });
+    const endOfDayMs = new Date(targetDateStr + 'T23:59:59.999+08:00').getTime();
+    const exp = Math.min(nowMs + 30 * 60 * 1000, Number.isFinite(endOfDayMs) ? endOfDayMs : (nowMs + 30 * 60 * 1000));
+    weatherCache.set(cacheKey, { reply, exp });
     return reply;
 }
 

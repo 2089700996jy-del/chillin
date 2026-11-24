@@ -117,6 +117,16 @@ export function truncateUtf8(text, maxBytes) {
     return decoder.decode(bytes.subarray(0, maxBytes - ellipsisBytes)).replace(/\uFFFD+$/, '') + '…';
 }
 
+/** 针对列表/多条记忆聚合回答做确定性微信气泡排版规整，避免文字挤成一大坨 */
+export function formatListOutput(text) {
+    if (!text || typeof text !== 'string') return text;
+    let s = text;
+    s = s.replace(/([^\n])\s*(【\d{1,4}[-/.年]\d{1,2}(?:[-/.月]\d{1,2})?日?】)/g, '$1\n\n$2\n');
+    s = s.replace(/(【[^】]+】)\s*[·•]\s*/g, '$1\n- ');
+    s = s.replace(/([^\n])\s+[·•]\s+/g, '$1\n- ');
+    return s.replace(/\n{3,}/g, '\n\n').trim();
+}
+
 export const EVIDENCE_RE = /(依据|来源|出处|根据什么|凭什么|怎么知道|怎么查|怎么来|哪里知道|哪儿知道|哪看到的|哪来的|哪查的|证据|原始记录|引用|source|references?)/i;
 
 export function wantsEvidence(text) {
@@ -411,6 +421,9 @@ async function runChat(env, db, userId, text, history, options = {}) {
     const moderated = moderateText(answer, env);
     if (!moderated.ok) return '这个话题我不太方便展开，我们换个轻松的聊？';
     let output = moderated.text;
+    if (isListOrRange) {
+        output = formatListOutput(output);
+    }
     const { cleanText, proposal } = parseProposeMemory(output);
     if (proposal && proposal.content) {
         output = cleanText;

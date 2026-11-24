@@ -21,7 +21,7 @@ import {
     handleClawApi,
     pollClawAccounts
 } from '../workers/src/bot-claw.js';
-import { toClawText } from '../workers/src/bot-commands.js';
+import { toClawText, formatListOutput } from '../workers/src/bot-commands.js';
 import {
     extractClawImageItems,
     resolveClawImageUrl,
@@ -2831,5 +2831,15 @@ integration('ClawBot - [V-06] 超过 10MB 的多图或大图在视觉分析前�
     assert.equal(puts.length, 3, '3 张图片都正常存入 R2');
     const visionCalls = st3.calls.filter(c => c.url.includes(VISION_ROUTE));
     assert.equal(visionCalls.length, 2, '第 3 张图片因超过 10MB 总视觉预算，被安全截断不出站调用视觉模型，防止 128MB OOM');
+});
+
+test('formatListOutput 针对列表/多条记忆聚合回答做确定性微信气泡排版规整', () => {
+    const raw = '上次漏了，道个歉。11-16 到 11-22 完整是这样：【11-18】· 弄了那么久的 chillin，终于背了网址 · web 端功能 【11-19】· 🌧 疲惫·今日情绪打卡 · 蛋白质统计表 【11-20】· 学习第一性原则';
+    const formatted = formatListOutput(raw);
+    assert.match(formatted, /【11-18】\n- 弄了那么久的 chillin/);
+    assert.match(formatted, /\n- web 端功能/);
+    assert.match(formatted, /\n\n【11-19】\n- 🌧 疲惫·今日情绪打卡/);
+    assert.match(formatted, /\n- 蛋白质统计表/);
+    assert.match(formatted, /\n\n【11-20】\n- 学习第一性原则/);
 });
 

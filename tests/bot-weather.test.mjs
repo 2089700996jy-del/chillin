@@ -8,6 +8,7 @@ import {
     maybeWeatherAnswer, isWeatherQuery, diagnoseWeatherConfig,
     extractCityFromText, resolveUserCity
 } from '../workers/src/bot-weather.js';
+import { runScheduled } from '../workers/src/maintenance.js';
 
 const integration = sqliteTest;
 
@@ -446,5 +447,55 @@ test('天气 - [V-04] 明天/后天自然语言天气准确提取对应日期预
 
     const replyMulti = await maybeWeatherAnswer(env, null, 1, '未来三天厦门天气', mockFetch);
     assert.equal(replyMulti, null, '跨多天预报返回 null 放行给联网检索');
+});
+
+integration('runScheduled 支持 08:00~08:15 滑动窗口容错触发晨报关怀（抗边缘调度抖动）', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, cursor, bound_at_ms, is_deleted, outreach_enabled) VALUES (1, 'bound', 'token', 'https://ilink', 'bot', 'user', '', 0, 0, 1)"
+    ).run();
+
+    const fetcher = mockFetch({
+        '/v2/city/lookup': { code: '200', location: [{ id: '101230101', name: '福州', adm1: '福建省' }] },
+        '/weather/24h': {
+            code: '200',
+            hourly: [
+                { fxTime: '2026-11-24T14:00+08:00', temp: '22', precip: '5.0', text: '大雨' }
+            ]
+        },
+        '/weather/3d': { code: '200', daily: [{ fxDate: '2026-11-24', tempMax: '22', tempMin: '15', textDay: '大雨', uvIndex: '1' }] },
+        '/weather/warning/now': { code: '200', warning: [] },
+        '/indices/1d': { code: '200', daily: [] },
+        '/ilink/bot/getupdates': { ret: 0, msgs: [] },
+        '/ilink/bot/sendmessage': { ret: 0 }
+    });
+
+    const env = mockWeatherEnv({ DB: db });
+    // 模拟 08:06 (调度抖动或前置任务耗时穿透分针边界)
+    const jitteredMs = Date.parse('2026-11-24T08:06:30+08:00');
+    await runScheduled(env, { cron: '* * * * *' }, { nowMs: jitteredMs, fetchImpl: fetcher.impl, budgetMs: 0 }, null);
+
+    const row = await db.prepare("SELECT * FROM bot_weather_daily WHERE user_id = 1 AND date = '2026-11-24'").first();
+    assert.ok(row, '在 08:06 触发时依然能够成功执行晨报任务');
+    assert.equal(row.notified, 1);
+});
+
+test('maybeWeatherAnswer 内存缓存的过期时间不得跨越当日午夜（避免昨日天气缓存污染）', async () => {
+    const env = {
+        QWEATHER_KEY: 'test-key',
+        QWEATHER_API_HOST: 'devapi.qweather.com'
+    };
+    const mockFetch = async () => new Response(JSON.stringify({
+        code: '200',
+        location: [{ id: '101230101', name: '福州' }],
+        daily: [{ fxDate: '2026-11-24', tempMax: '20', tempMin: '15', textDay: '晴', uvIndex: '1' }],
+        hourly: []
+    }));
+
+    // 23:50:00 (距离午夜仅剩 10 分钟)
+    const lateNightMs = Date.parse('2026-11-24T23:50:00+08:00');
+    const reply = await maybeWeatherAnswer(env, null, 1, '今天福州天气', mockFetch, lateNightMs);
+    assert.match(reply, /【福州天气】今天晴/);
 });
 

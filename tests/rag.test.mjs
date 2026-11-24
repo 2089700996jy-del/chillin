@@ -368,3 +368,32 @@ integration('RAG - 时段内主题实体提问精准命中（修复我上周对c
     assert.ok(!returnedIds.includes(1795099123707), '非 chillin 记录不应被误召回');
     assert.ok(!returnedIds.includes(1794406563312), '非 chillin 记录不应被误召回');
 });
+
+integration('RAG - 多轮对话下全局范围检索不受上一轮实体词污染', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+
+    const feeds = [
+        { id: 1795099123707, content: '今天学习了第一性原则和对抗性审查', created_at: '2026-11-20 11:00:52', updated_at: '2026-11-20 11:00:52' },
+        { id: 1794406563316, content: 'chillin开发进度 1.许愿式vibe coding 2.整体项目结构优化 瘦身', created_at: '2026-11-19 17:17:38', updated_at: '2026-11-19 17:17:38' },
+        { id: 1794406563312, content: '工作之后感觉时间过的好快 今天是gta6发布的日子', created_at: '2026-11-18 17:59:55', updated_at: '2026-11-18 17:59:55' }
+    ];
+
+    for (const f of feeds) {
+        await db.prepare('INSERT INTO quick_feeds (id, user_id, content, created_at, updated_at, is_deleted) VALUES (?, 1, ?, ?, ?, 0)')
+            .bind(f.id, f.content, f.created_at, f.updated_at).run();
+    }
+
+    const history = [
+        { role: 'user', content: '我上周对chillin有什么思路吗' },
+        { role: 'assistant', content: '找到了相关的记录...' }
+    ];
+
+    // 第二轮：要求列出上周所有随手记，即使上一轮问了 chillin，也不得污染本轮全量查询
+    const res = await retrieveGardenMemories(db, 1, '上周发的随手记给我都列出来', { history });
+    assert.equal(res.sources.length, 3, '必须全量召回上周的 3 条随手记，不得因继承上一轮 chillin 实体而丢弃非 chillin 记录');
+    const returnedIds = res.sources.map(s => s.id);
+    assert.ok(returnedIds.includes(1795099123707));
+    assert.ok(returnedIds.includes(1794406563316));
+    assert.ok(returnedIds.includes(1794406563312));
+});

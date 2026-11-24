@@ -363,8 +363,15 @@ export async function retrieveGardenMemories(db, userId, question, opts = {}) {
     const maxChars = opts.maxChars || (isListOrRange ? 3600 : 1600);
     let tokens = tokenizeQuery(question, { timeRange, targetType }).slice(0, 12);
 
-    // 多轮对话主题继承：短问（如“还有吗”“详细说说”）没有独立主题时，从历史追问。
-    if (tokens.length < 2 && Array.isArray(opts.history) && opts.history.length > 0) {
+    // 全量范围枚举意图：当用户要求列出全部、汇总或限定容器/时段检索（如“随手记都列出来”“上周记了什么”）时，
+    // 不应盲目继承上一轮的特定实体词，避免硬过滤淘汰掉其他无该实体的有效记忆
+    const isBroadScopeEnum = Boolean(
+        (targetType && (timeRange || /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|清单|发过|发的|写过|写的|记过|记的)/.test(question))) ||
+        (timeRange && /(?:列出|全部|所有|都有|哪些|汇总|盘点|梳理|清单|发过|发的|写过|写的|记过|记的|记了什么|发了什么|做了什么)/.test(question))
+    );
+
+    // 多轮对话主题继承：短问（如“还有吗”“详细说说”“那这周呢”）没有独立主题时，从历史追问。
+    if (!isBroadScopeEnum && tokens.length < 2 && Array.isArray(opts.history) && opts.history.length > 0) {
         const prevUserMessages = opts.history.filter(h => h && h.role === 'user' && typeof h.content === 'string');
         if (prevUserMessages.length > 0) {
             const inheritedTokens = tokenizeQuery(prevUserMessages[prevUserMessages.length - 1].content).slice(0, 8);
