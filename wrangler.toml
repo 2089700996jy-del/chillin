@@ -31,6 +31,7 @@ VISION_MODEL = "deepseek-flash"
 # 私钥与 Key ID 建议在 Cloudflare Dashboard「机密 (Secret)」中维护，或运行 wrangler secret put
 QWEATHER_PROJECT_ID = "45E5WDY7H8"
 QWEATHER_DEVELOPER_ID = "Q9838E560C"
+QWEATHER_KEY_ID = "CGPNHGVCQP"
 QWEATHER_API_HOST = "kn359j8pjc.re.qweatherapi.com"
 
 # 定时任务：两条 —— 每分钟那条只跑微信 ClawBot 长轮询（消息实时性），

@@ -267,6 +267,26 @@ integration('runMorningWeatherCare 查重 SQL 异常时安全跳过，绝不发�
     assert.equal(fetcher.calls.filter((c) => c.url.includes('/ilink/bot/sendmessage')).length, 0, '不可调用微信推送接口');
 });
 
+integration('runMorningWeatherCare 接口异常拉取为空时不写入虚假基准数据', async () => {
+    const db = await createTestDb();
+    await seedUser(db, 1);
+    await db.prepare("INSERT INTO bot_claw_accounts (user_id, ilink_bot_id, ilink_user_id, bot_token, baseurl, status, outreach_enabled) VALUES (1, 'bot-1', 'user-wx-1', 'tok-1', 'https://api.test', 'bound', 1)").run();
+
+    // 模拟天气接口返回 404/500，导致拉取为空
+    const fetcher = mockFetch({
+        '/v2/city/lookup': { code: '200', location: [{ id: '101230101', name: '福州', adm1: '福建省' }] }
+        // 没有 24h 和 3d 响应，mockFetch 将返回 404
+    });
+
+    const env = mockWeatherEnv();
+    const res = await runMorningWeatherCare(env, db, fetcher.impl, { nowMs: Date.parse('2026-11-11T08:00:00+08:00') });
+    assert.equal(res.notified, 0);
+
+    // 确认不会在数据库里伪造 20℃/15℃ 的虚假天气记录
+    const row = await db.prepare("SELECT * FROM bot_weather_daily WHERE user_id = 1 AND date = '2026-11-11'").first();
+    assert.equal(row, null, '接口异常时严禁向数据库写入默认伪造温差');
+});
+
 integration('maybeWeatherAnswer 白天随手查天气秒回', async () => {
     const db = await createTestDb();
     await seedUser(db, 1);

@@ -42,7 +42,10 @@ export function pemToDer(pem) {
 /** 生成和风天气 Ed25519 JWT 凭据（有效时长 1 小时，内存缓存 50 分钟） */
 export async function getQWeatherToken(env, nowMs = Date.now()) {
     if (!env) return null;
-    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID;
+    let keyId = String(env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID || '').trim();
+    if (!keyId || keyId.startsWith('-----')) {
+        keyId = 'CGPNHGVCQP';
+    }
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKeyPem = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
 
@@ -129,7 +132,7 @@ export async function fetchFullWeatherData(env, locationId, fetchImpl = fetch, n
     const [h24, d3, warning, indices] = await Promise.all([
         fetchQWeather(env, base + '/weather/24h?location=' + locationId, fetchImpl, nowMs),
         fetchQWeather(env, base + '/weather/3d?location=' + locationId, fetchImpl, nowMs),
-        fetchQWeather(env, base + '/weather/warning/now?location=' + locationId, fetchImpl, nowMs),
+        fetchQWeather(env, base + '/warning/now?location=' + locationId, fetchImpl, nowMs),
         fetchQWeather(env, base + '/indices/1d?type=3,5&location=' + locationId, fetchImpl, nowMs)
     ]);
     return {
@@ -363,6 +366,10 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
 
         // 抓取并分析今日
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
+        if (!raw.daily.length && !raw.hourly.length) {
+            console.error(`[bot-weather] 8:00 ${city} 无法获取有效天气数据 (API 失败: ${lastApiError})，跳过今日记录 user=${acct.user_id}`);
+            continue;
+        }
         const a = analyzeWeatherData(raw, yRow);
 
         // 写入今日基准记录
@@ -473,7 +480,10 @@ export async function maybeWeatherAnswer(env, db, userId, text, fetchImpl = fetc
 
 /** 天气服务诊断工具：排查变量配置、密钥签名与 API 联通性 */
 export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, nowMs = Date.now()) {
-    const keyId = env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID;
+    let keyId = String(env.QWEATHER_KEY_ID || env.KEY_ID || env['Key ID'] || env['凭据ID'] || env['凭据'] || env.QWEATHER_KID || '').trim();
+    if (!keyId || keyId.startsWith('-----')) {
+        keyId = 'CGPNHGVCQP';
+    }
     const projectId = env.QWEATHER_PROJECT_ID || env.PROJECT_ID || env['Project ID'] || env['项目ID'] || env.QWEATHER_SUB || '45E5WDY7H8';
     const privKey = env.QWEATHER_PRIVATE_KEY || env.PRIVATE_KEY || env['私钥'] || env.QWEATHER_PRIV_KEY || env.QWEATHER_SECRET;
     const host = env.QWEATHER_API_HOST || env.API_HOST || DEFAULT_API_HOST;
@@ -485,7 +495,7 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
         lines.push(`• 模式: 普通 API Key (尾号 ${String(apiKey).slice(-4)})`);
     } else {
         lines.push(`• 模式: Ed25519 JWT`);
-        lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${String(keyId).slice(-4)})` : '❌ 未检测到'}`);
+        lines.push(`• Key ID: ${keyId ? `已配置 (尾号 ${keyId.slice(-4)})` : '❌ 未检测到'}`);
         lines.push(`• 凭据: Project ${String(projectId || '').slice(-4)}, 开发者 ${String(iss || '').slice(-4)}, 私钥长 ${String(privKey || '').length}`);
     }
     lines.push(`• API Host: ${host}`);
@@ -515,8 +525,8 @@ export async function diagnoseWeatherConfig(env, db, userId, fetchImpl = fetch, 
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetchImpl, nowMs);
         if (!raw.hourly.length && !raw.daily.length) {
             lines.push(`• 天气数据: ❌ 未拉取到预报 (${lastApiError || '返回为空'})`);
-            if (tokenResult.type === 'bearer') {
-                lines.push('• 凭据校验: Ed25519 Token 签发正常（已脱敏隐藏）');
+            if (String(lastApiError).includes('401')) {
+                lines.push('• 解决指引: 和风接口鉴权失败(401)。可能原因：\n  1. Key ID 与私钥不匹配，或控制台凭据已被重建；\n  2. 方案 A(极简稳定)：在 Cloudflare 密钥添加 QWEATHER_KEY 填入 32 位普通 API Key；\n  3. 方案 B(JWT)：在控制台项目「凭据」中复制对应的 10 位凭据 ID (如尾号 VCQP) 填入 QWEATHER_KEY_ID。');
             }
         } else {
             lines.push(`• 天气数据: ✅ 正常获取 (${raw.hourly.length} 小时预报, 气温 ${raw.daily[0]?.tempMin || ''}~${raw.daily[0]?.tempMax || ''}℃)`);

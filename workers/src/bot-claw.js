@@ -344,6 +344,11 @@ export async function handleClawApi(request, env, url, db, userId) {
         if (path === '/api/bot/claw/status' && request.method === 'GET') {
             return jsonResponse(publicStatus(await readAccount(db, userId)), 200);
         }
+        if (path === '/api/bot/claw/weather-diagnose' && request.method === 'GET') {
+            const { diagnoseWeatherConfig } = await import('./bot-weather.js');
+            const report = await diagnoseWeatherConfig(env, db, userId);
+            return jsonResponse({ report }, 200);
+        }
         if (path === '/api/bot/claw/qrcode' && request.method === 'POST') {
             const current = await readAccount(db, userId);
             if (current && current.status === 'bound') {
