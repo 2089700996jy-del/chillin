@@ -17,6 +17,7 @@ import {
     deleteGoal,
     updateGoal,
     cancelGoal,
+    replanGoal,
     handleAgentGoalApi,
     planPrompt,
     coalesceGoalDescriptions
@@ -36,7 +37,7 @@ import { checkpointAfterTask, replanRemaining } from '../workers/src/agent-check
 import { runWebTool, safePublicUrl, isPrivateOrReservedIp, verifyHostDns, distillWebText, wrapUntrustedContent } from '../workers/src/agent-web.js';
 import { savePreference } from '../workers/src/bot-preferences.js';
 import { buildBotReply } from '../workers/src/bot-commands.js';
-import { nextReadyTask, allReadyTasks, formatGoal, listTasks } from '../workers/src/agent-store.js';
+import { nextReadyTask, allReadyTasks, formatGoal, listTasks, listApprovalInbox } from '../workers/src/agent-store.js';
 import { claimDueAgentRun, runAutoResume } from '../workers/src/agent-scheduler.js';
 
 const TASK_PLAN = JSON.stringify({
@@ -1956,5 +1957,131 @@ sqliteTest('Autoloop 架构 - [对抗性审查 3] startGoal 在 waiting_approval
         () => startGoal({ db, userId: 1, goalId }),
         (err) => err && err.code === 'GOAL_WAITING_APPROVAL' && err.message.includes('正在等待审批')
     );
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 4] replanGoal 在 waiting_approval 状态下严密拦截，防止越权旁路前置审批', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '任务1', description: '第一步', depends_on: [] }]
+        })
+    });
+    await db.prepare("UPDATE agent_goals SET status = 'waiting_approval' WHERE id = ?1").bind(goalId).run();
+
+    await assert.rejects(
+        () => replanGoal(db, 1, goalId, { planModel: async () => JSON.stringify({ tasks: [] }) }),
+        (err) => err && err.code === 'GOAL_RUNNING' && err.message.includes('等待审批')
+    );
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 5] runNextTask 在 waiting_approval 状态下严密拦截，防止并发或直接调用冲掉审批锁', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '任务1', description: '第一步', depends_on: [] }]
+        })
+    });
+    await db.prepare("UPDATE agent_goals SET status = 'waiting_approval' WHERE id = ?1").bind(goalId).run();
+
+    await assert.rejects(
+        () => runNextTask({ db, userId: 1, goalId, agentRunner: async () => ({ reply: 'done' }) }),
+        (err) => err && err.code === 'GOAL_WAITING_APPROVAL' && err.message.includes('正在等待审批')
+    );
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 6] retryTask 在 cancelled/completed 目标上严格拦截，防止已结束目标僵尸复活', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '任务1', description: '第一步', depends_on: [] }]
+        })
+    });
+    const tasks = await listTasks(db, 1, goalId);
+    const taskId = tasks[0].id;
+    await db.prepare("UPDATE agent_tasks SET status = 'failed' WHERE id = ?1").bind(taskId).run();
+    await db.prepare("UPDATE agent_goals SET status = 'cancelled' WHERE id = ?1").bind(goalId).run();
+
+    await assert.rejects(
+        () => retryTask(db, 1, goalId, taskId),
+        (err) => err && err.code === 'GOAL_CLOSED' && err.message.includes('已结束的目标')
+    );
+
+    // 同样验证 completed 状态
+    await db.prepare("UPDATE agent_goals SET status = 'completed' WHERE id = ?1").bind(goalId).run();
+    await assert.rejects(
+        () => retryTask(db, 1, goalId, taskId),
+        (err) => err && err.code === 'GOAL_CLOSED' && err.message.includes('已结束的目标')
+    );
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 7] cancelGoal 自动作废 pending 审批，且已取消/删除目标的审批禁止同意以防止僵尸复活', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '高危任务', description: '待审批', depends_on: [] }]
+        })
+    });
+    const { approval } = await requestAgentProposal(db, 1, goalId, null, {
+        action: 'choose_option',
+        question: '选方案 A 还是方案 B？',
+        options: ['方案 A', '方案 B']
+    }, {});
+    assert.equal(approval.status, 'pending');
+
+    // 用户在等待审批期间取消目标
+    await cancelGoal(db, 1, goalId);
+
+    // 验证审批项已被级联置为 expired
+    const expiredApproval = await db.prepare('SELECT status FROM agent_approvals WHERE id = ?1').bind(approval.id).first();
+    assert.equal(expiredApproval.status, 'expired', 'cancelGoal 必须主动将 pending 审批标记为 expired');
+
+    // 若恶意请求试图对已取消目标的审批进行 decideApproval
+    await db.prepare("UPDATE agent_approvals SET status = 'pending' WHERE id = ?1").bind(approval.id).run();
+    await assert.rejects(
+        () => decideApproval(db, 1, approval.id, { decision: 'approve' }),
+        (err) => err && err.code === 'GOAL_CLOSED' && err.message.includes('目标已结束或已删除')
+    );
+
+    // 验证目标绝对没有被复活为 active
+    const goalRow = await db.prepare('SELECT status FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goalRow.status, 'cancelled');
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 8] listApprovalInbox 自动过滤已取消目标的待决审批，防止失效审批外溢', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '任务', description: '描述', depends_on: [] }]
+        })
+    });
+    const { approval } = await requestAgentProposal(db, 1, goalId, null, {
+        action: 'choose_option',
+        question: '方案选择',
+        options: ['1', '2']
+    }, {});
+    assert.equal(approval.status, 'pending');
+
+    // 目标活跃时在收件箱可见
+    let inbox = await listApprovalInbox(db, 1);
+    assert.equal(inbox.pending_count, 1);
+    assert.equal(inbox.approvals.length, 1);
+
+    // 取消目标，但假设某种原因审批仍为 pending
+    await db.prepare("UPDATE agent_goals SET status = 'cancelled' WHERE id = ?1").bind(goalId).run();
+
+    // 收件箱必须完全过滤掉 cancelled 目标的审批
+    inbox = await listApprovalInbox(db, 1);
+    assert.equal(inbox.pending_count, 0, '已取消目标的审批总数必须为 0');
+    assert.equal(inbox.approvals.length, 0, '已取消目标的审批列表必须为空');
 });
 

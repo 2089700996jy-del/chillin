@@ -193,6 +193,7 @@ export async function runNextTask(options) {
     if (goalRow.status === 'completed') throw new AgentError(409, '目标已经完成', 'GOAL_COMPLETED');
     if (goalRow.status === 'cancelled') throw new AgentError(409, '目标已取消', 'GOAL_CANCELLED');
     if (goalRow.status === 'failed') throw new AgentError(409, '目标已失败，请先重试失败任务或重新规划', 'GOAL_FAILED');
+    if (goalRow.status === 'waiting_approval') throw new AgentError(409, '目标正在等待审批，请先处理审批', 'GOAL_WAITING_APPROVAL');
     if (goalRow.status === 'draft') throw new AgentError(409, '请先生成计划', 'GOAL_NO_PLAN');
     if (['active', 'planned'].includes(goalRow.status) && budgetExceeded(goalRow)) {
         await failForBudget(db, userId, goalId, goalRow, env);

@@ -300,6 +300,19 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
     if (row.status !== 'pending') {
         return { approval: formatApproval(row), already_decided: true };
     }
+    const goal = await getGoalRow(db, userId, row.goal_id);
+    if (!goal || goal.is_deleted || goal.status === 'cancelled') {
+        await db.prepare(
+            "UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'pending'"
+        ).bind(approvalId, userId).run();
+        throw new AgentError(410, '审批所属目标已结束或已删除', 'GOAL_CLOSED');
+    }
+    if (row.action_type === 'choose_option' && goal.status !== 'waiting_approval') {
+        await db.prepare(
+            "UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'pending'"
+        ).bind(approvalId, userId).run();
+        throw new AgentError(410, '目标当前未在等待选择题审批', 'GOAL_NOT_WAITING_APPROVAL');
+    }
     const expired = await db.prepare(
         "SELECT CASE WHEN datetime('now', '+8 hours') > expires_at THEN 1 ELSE 0 END AS expired FROM agent_approvals WHERE id = ?1"
     ).bind(approvalId).first();
@@ -399,7 +412,7 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
             const chosenOption = options[chosenIdx] || '已确认';
             result = { question: body.question, chosen_index: chosenIdx, chosen_option: chosenOption };
             await db.prepare(
-                "UPDATE agent_goals SET status = 'active', error = '', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2"
+                "UPDATE agent_goals SET status = 'active', error = '', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
             ).bind(row.goal_id, userId).run();
             await db.prepare(
                 "UPDATE agent_runs SET status = 'queued', next_run_at = datetime('now', '+8 hours', '-1 seconds'), updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"

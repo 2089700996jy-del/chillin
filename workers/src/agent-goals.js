@@ -221,15 +221,29 @@ export async function cancelGoal(db, userId, goalId) {
         `UPDATE agent_tasks SET status = 'skipped', updated_at = ${now}
          WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('pending', 'ready')`
     ).bind(goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_approvals SET status = 'expired', decided_at = ${now}
+         WHERE goal_id = ?1 AND user_id = ?2 AND status = 'pending'`
+    ).bind(goalId, userId).run();
     return getSnapshot(db, userId, goalId);
 }
 
 export async function deleteGoal(db, userId, goalId) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
+    const now = "datetime('now', '+8 hours')";
     await db.prepare(
-        `UPDATE agent_goals SET is_deleted = 1, updated_at = datetime('now', '+8 hours')
+        `UPDATE agent_goals SET is_deleted = 1, updated_at = ${now}
          WHERE id = ?1 AND user_id = ?2`
+    ).bind(goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_runs SET status = 'cancelled', current_task_id = NULL, lease_until = NULL,
+            next_run_at = NULL, updated_at = ${now}
+         WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running', 'waiting_approval', 'paused')`
+    ).bind(goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_approvals SET status = 'expired', decided_at = ${now}
+         WHERE goal_id = ?1 AND user_id = ?2 AND status = 'pending'`
     ).bind(goalId, userId).run();
     return { deleted: true };
 }
@@ -248,7 +262,9 @@ export async function replanGoal(db, userId, goalId, env = null) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
-    if (goal.status === 'active') throw new AgentError(409, '执行中的目标不能重新规划，请先暂停', 'GOAL_RUNNING');
+    if (['active', 'waiting_approval'].includes(goal.status)) {
+        throw new AgentError(409, '执行中或等待审批的目标不能重新规划，请先处理审批或暂停', 'GOAL_RUNNING');
+    }
     const result = await replanRemaining({ env, db, userId, goalId, reason: '用户手动重新规划剩余任务' });
     if (!result.replanned) throw new AgentError(409, '没有可重规划的剩余任务', 'GOAL_NO_REPLAN');
     return getSnapshot(db, userId, goalId);

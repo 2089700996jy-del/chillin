@@ -258,6 +258,7 @@ export async function listApprovalInbox(db, userId, limit = 20) {
          WHERE a.user_id = ?1
            AND a.status = 'pending'
            AND COALESCE(g.is_deleted, 0) = 0
+           AND g.status != 'cancelled'
            AND (a.expires_at IS NULL OR a.expires_at > datetime('now', '+8 hours'))
          ORDER BY a.id DESC LIMIT ?2`
     ).bind(userId, safeLimit).all();
@@ -268,6 +269,7 @@ export async function listApprovalInbox(db, userId, limit = 20) {
          WHERE a.user_id = ?1
            AND a.status = 'pending'
            AND COALESCE(g.is_deleted, 0) = 0
+           AND g.status != 'cancelled'
            AND (a.expires_at IS NULL OR a.expires_at > datetime('now', '+8 hours'))`
     ).bind(userId).first();
     const approvals = ((rows && rows.results) || []).map((row) => {

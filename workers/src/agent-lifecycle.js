@@ -108,6 +108,7 @@ export async function completeGoal(db, userId, goalId) {
 export async function retryTask(db, userId, goalId, taskId) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
+    if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '已结束的目标不能重试任务', 'GOAL_CLOSED');
     const row = await db.prepare('SELECT * FROM agent_tasks WHERE id = ?1 AND goal_id = ?2 AND user_id = ?3').bind(taskId, goalId, userId).first();
     if (!row) throw new AgentError(404, '任务不存在', 'TASK_NOT_FOUND');
     if (!['failed', 'blocked'].includes(row.status)) throw new AgentError(409, '只有失败的任务可以重试', 'TASK_NOT_FAILED');
