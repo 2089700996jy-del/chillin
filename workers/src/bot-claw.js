@@ -155,7 +155,7 @@ export async function sendClawText(options) {
     if (data && data.ret != null && Number(data.ret) !== 0) throw new Error('sendmessage ret=' + data.ret + (data.errmsg ? ' ' + data.errmsg : ''));
     return true;
 }
-// ─────────────────────────── 报文解析 ───────────────────────────
+// ─────────────────────────── 报文解析与收件箱 ───────────────────────────
 /** 取纯文本：item_list 里 type=1 的 text_item（多条拼接） */
 export function extractClawText(msg) {
     if (!msg || !Array.isArray(msg.item_list)) return '';
@@ -166,6 +166,18 @@ export function extractClawText(msg) {
         .trim();
 }
 
+/** 校验一条消息是否值得入收件箱队列处理 */
+export function isClawMessageProcessable(account, msg, boundAt) {
+    if (!msg || Number(msg.message_type) !== 1) return false;
+    const from = String(msg.from_user_id || '');
+    if (account && account.ilink_user_id && from !== String(account.ilink_user_id)) return false;
+    const createdMs = Number(msg.create_time_ms) || 0;
+    if (boundAt && createdMs && createdMs < boundAt - REPLAY_SLACK_MS) return false;
+    const text = extractClawText(msg);
+    const hasImage = extractClawImageItems(msg).length > 0;
+    if (!text && !hasImage) return false;
+    return true;
+}
 
 /**
  * 排重键。message_id 是 uint64，JSON.parse 会丢精度，所以再叠上 item_list[0].msg_id
@@ -176,6 +188,137 @@ export function clawDedupKey(msg) {
     const items = Array.isArray(msg.item_list) ? msg.item_list : [];
     const itemId = items.length && items[0] && items[0].msg_id ? String(items[0].msg_id) : '';
     return String(msg.message_id || '') + '|' + itemId + '|' + String(msg.client_id || '');
+}
+
+/** 将微信消息持久化写入 D1 收件箱（保证 At-least-once） */
+export async function enqueueClawMessage(db, accountId, userId, dedupKey, msg) {
+    if (!db || !dedupKey || !msg) return null;
+    const msgJson = JSON.stringify(msg);
+    return await db.prepare(
+        "INSERT INTO bot_claw_inbox (account_id, user_id, dedup_key, msg_json, status, attempts, created_at, updated_at) "
+        + "VALUES (?1, ?2, ?3, ?4, 'pending', 0, datetime('now', '+8 hours'), datetime('now', '+8 hours')) "
+        + "ON CONFLICT(dedup_key) DO NOTHING"
+    ).bind(accountId, userId, dedupKey, msgJson).run();
+}
+
+/** 用户级串行消费队列（内存互斥锁，确保同一用户消息严格 FIFO 消费，避免大模型并发时序错乱） */
+const userDrainingQueues = new Map();
+
+/**
+ * 串行消费 D1 收件箱队列（用户级严格 FIFO 保护）：
+ * 同一用户在同一实例内保证单消费者串行推进，避免大模型并发调用导致上下文倒错、
+ * 待存卡片/图片状态被覆盖等时序混乱；跨实例依赖 D1 租约锁与 status 状态机保证安全。
+ */
+export async function drainClawInbox(env, db, account, userId, fetchImpl = fetch) {
+    if (!db || !account || !userId) return;
+    const prev = userDrainingQueues.get(userId) || Promise.resolve();
+    let resolveCurrent;
+    const currentPromise = new Promise(resolve => { resolveCurrent = resolve; });
+    userDrainingQueues.set(userId, prev.then(() => currentPromise).catch(() => currentPromise));
+
+    await prev;
+    try {
+        await drainClawInboxLoop(env, db, account, userId, fetchImpl);
+    } finally {
+        resolveCurrent();
+        if (userDrainingQueues.get(userId) === currentPromise) {
+            userDrainingQueues.delete(userId);
+        }
+    }
+}
+
+/** 单用户收件箱核心消费循环 */
+async function drainClawInboxLoop(env, db, account, userId, fetchImpl) {
+    // 恢复超时租约（超过 60s 仍处于 processing 的记录重置为 pending，防止 Worker 异常中断导致死锁）
+    try {
+        await db.prepare(
+            "UPDATE bot_claw_inbox SET status = 'pending', updated_at = datetime('now', '+8 hours') "
+            + "WHERE user_id = ?1 AND status = 'processing' AND updated_at < datetime('now', '+8 hours', '-60 seconds')"
+        ).bind(userId).run();
+    } catch (_) { /* ignore */ }
+
+    const boundAt = Number(account.bound_at_ms) || 0;
+
+    while (true) {
+        const item = await db.prepare(
+            "SELECT * FROM bot_claw_inbox WHERE user_id = ?1 AND status = 'pending' ORDER BY id ASC LIMIT 1"
+        ).bind(userId).first();
+
+        if (!item) break;
+
+        // 原子抢占该条消息并自增 attempts
+        const claim = await db.prepare(
+            "UPDATE bot_claw_inbox SET status = 'processing', attempts = attempts + 1, updated_at = datetime('now', '+8 hours') "
+            + "WHERE id = ?1 AND status = 'pending'"
+        ).bind(item.id).run();
+
+        if (!claim || !claim.meta || claim.meta.changes === 0) continue;
+
+        let msg = null;
+        try {
+            msg = JSON.parse(item.msg_json);
+        } catch (jsonErr) {
+            console.error('[bot-claw] 收件箱非法 JSON id=' + item.id);
+            await db.prepare(
+                "UPDATE bot_claw_inbox SET status = 'failed', last_error = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1"
+            ).bind(item.id, 'Invalid JSON: ' + (jsonErr && jsonErr.message)).run();
+            continue;
+        }
+
+        const currentAttempts = (item.attempts || 0) + 1;
+        try {
+            await handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl, {
+                skipDedup: currentAttempts > 1
+            });
+            await db.prepare(
+                "UPDATE bot_claw_inbox SET status = 'completed', last_error = '', updated_at = datetime('now', '+8 hours') WHERE id = ?1"
+            ).bind(item.id).run();
+        } catch (err) {
+            const errMsg = String(err && err.message || err || '').slice(0, 500);
+            console.error('[bot-claw] 收件箱消息处理失败 id=' + item.id + ' attempts=' + currentAttempts + ': ' + errMsg);
+
+            if (currentAttempts >= 3) {
+                // 连续 3 次失败触发毒丸熔断：标记 failed，向用户发送兜底回执，解除阻塞
+                await db.prepare(
+                    "UPDATE bot_claw_inbox SET status = 'failed', last_error = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1"
+                ).bind(item.id, 'Poison pill熔断(3次): ' + errMsg).run();
+
+                const from = String(msg.from_user_id || account.ilink_user_id || '');
+                if (from && account.bot_token) {
+                    try {
+                        await sendClawText({
+                            token: String(account.bot_token || ''),
+                            baseurl: account.baseurl,
+                            botId: account.ilink_bot_id,
+                            toUserId: from,
+                            contextToken: msg.context_token || account.last_context_token || '',
+                            text: '抱歉，这条消息暂时处理失败，已为您跳过。请换个说法试试。',
+                            fetchImpl
+                        });
+                    } catch (replyErr) {
+                        console.error('[bot-claw] 毒丸兜底消息发送失败 id=' + item.id + ': ' + (replyErr && replyErr.message));
+                    }
+                }
+                // 毒丸消息已熔断，继续处理队列中下一条
+            } else {
+                // 瞬时失败：置回 pending，中断本轮串行处理，保持严格 FIFO 并在下个轮询周期接续重试
+                await db.prepare(
+                    "UPDATE bot_claw_inbox SET status = 'pending', last_error = ?2, updated_at = datetime('now', '+8 hours') WHERE id = ?1"
+                ).bind(item.id, errMsg).run();
+                break;
+            }
+        }
+    }
+}
+
+/** 定时清理收件箱已完成/已失败的终态记录（保留 2 天供审计与追溯） */
+export async function cleanupClawInbox(db, maxAgeDays = 2) {
+    if (!db) return { deleted: 0 };
+    const days = Math.max(1, Number(maxAgeDays) || 2);
+    const r = await db.prepare(
+        "DELETE FROM bot_claw_inbox WHERE status IN ('completed', 'failed') AND updated_at < datetime('now', '+8 hours', '-' || ?1 || ' days')"
+    ).bind(days).run();
+    return { deleted: (r && r.meta && r.meta.changes) || 0 };
 }
 
 // ─────────────────────────── 扫码登录与 API ───────────────────────────
@@ -388,6 +531,19 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
     let successMarked = false;
     let stalledCursor = null;
     let stalledCount = 0;
+
+    // 每次开始轮询该账号时，若有上一轮残留的待处理消息，立即触发后台消费
+    if (typeof defer === 'function') {
+        const hasPending = await db.prepare(
+            "SELECT 1 FROM bot_claw_inbox WHERE user_id = ?1 AND status IN ('pending', 'processing') LIMIT 1"
+        ).bind(userId).first().catch(() => null);
+        if (hasPending) {
+            defer(drainClawInbox(env, db, account, userId, fetchImpl).catch(err => {
+                console.error('[bot-claw] 启动收件箱消费失败 id=' + account.id + ': ' + (err && err.message));
+            }));
+        }
+    }
+
     do {
         polls++;
         let updates;
@@ -457,22 +613,23 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
         };
         if (updates.msgs.length) {
             if (typeof defer === 'function') {
-                // 后台并发执行模式：游标立即安全推进，耗时的推理与回发移交 waitUntil 后台运行，
-                // 彻底释放轮询主循环，防止长轮询被大模型 API 阻塞数秒导致后续消息积压与调度饥饿
+                // 后台并发执行模式：
+                // 1. 先将本批合法消息全部持久化到 D1 收件箱（保证 At-least-once）
+                for (const msg of updates.msgs) {
+                    if (isClawMessageProcessable(account, msg, boundAt)) {
+                        const dedupKey = 'claw:' + clawDedupKey(msg);
+                        await enqueueClawMessage(db, account.id, userId, dedupKey, msg);
+                    }
+                }
+                // 2. 消息已安全落库 D1，立即推进游标，彻底解放轮询主循环
                 if (nextCursor) {
                     cursor = nextCursor;
                     await saveCursor(db, account.id, cursor);
                 }
-                const asyncTask = (async () => {
-                    for (const msg of updates.msgs) {
-                        try {
-                            await handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl);
-                        } catch (err) {
-                            console.error('[bot-claw] 后台消息处理失败 id=' + account.id + ': ' + (err && err.message));
-                        }
-                    }
-                })();
-                defer(asyncTask.catch(err => console.error('[bot-claw] 后台回复失败 id=' + account.id + ': ' + (err && err.message))));
+                // 3. 将串行消费队列托付给 waitUntil 后台运行（用户级严格 FIFO 保护）
+                defer(drainClawInbox(env, db, account, userId, fetchImpl).catch(err => {
+                    console.error('[bot-claw] 后台收件箱消费失败 id=' + account.id + ': ' + (err && err.message));
+                }));
             } else {
                 await batch();
             }
@@ -485,7 +642,7 @@ async function pollAccountUntilDeadline(env, db, account, fetchImpl, accountDead
 }
 
 /** 单条入站消息：绑定身份校验 → 排重 → 共享指令大脑 → 原会话回复 */
-async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl) {
+export async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchImpl, options = {}) {
     if (!msg || Number(msg.message_type) !== 1) return;
     const from = String(msg.from_user_id || '');
     // 绑定的微信身份之外的消息一律忽略：这台机器人只为绑定它的主人服务
@@ -504,7 +661,7 @@ async function handleClawMessage(env, db, account, msg, userId, boundAt, fetchIm
     // 语音等其它类型仍不支持：既不回复也不声称保存，静默丢弃
     if (!text && !hasImage) return;
     const dedupKey = 'claw:' + clawDedupKey(msg);
-    if (!(await claimBotMessage(db, dedupKey))) {
+    if (!options.skipDedup && !(await claimBotMessage(db, dedupKey))) {
         console.log('[bot-claw] 重复消息已忽略');
         return;
     }

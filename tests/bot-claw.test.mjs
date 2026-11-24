@@ -19,7 +19,10 @@ import {
     checkClawLogin,
     unbindClaw,
     handleClawApi,
-    pollClawAccounts
+    pollClawAccounts,
+    enqueueClawMessage,
+    drainClawInbox,
+    cleanupClawInbox
 } from '../workers/src/bot-claw.js';
 import { toClawText, formatListOutput } from '../workers/src/bot-commands.js';
 import {
@@ -2963,4 +2966,168 @@ integration('ClawBot - [对抗性审查 4] 多模态待存消息（图片 vs 链
     const linkReplyText = sentReplies[sentReplies.length - 1].msg.item_list[0].text_item.text;
     assert.match(linkReplyText, /已替换先前待存的图片/, '覆盖旧图片暂存时明确告警用户，杜绝静默数据丢失');
 });
+
+integration('ClawBot - [盲区覆盖] defer 模式下后台任务瞬时异常：游标已推移且消息在 D1 Inbox 保持 pending，次轮轮询接续重试并成功发送', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+    const msg = clawMessage({
+        message_id: 'DEFER-FAIL-1',
+        item_list: [{ type: 1, msg_id: 'ITEM-1', text_item: { text: '测试 defer 失败重试' } }]
+    });
+
+    let sendAttempts = 0;
+    const sentReplies = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({
+            json: { ret: 0, get_updates_buf: 'CURSOR-ROUND-1', msgs: sendAttempts === 0 ? [msg] : [] }
+        }),
+        '/ilink/bot/sendmessage': (url, body) => {
+            sendAttempts++;
+            if (sendAttempts === 1) {
+                // 模拟第 1 轮后台发送或模型超时异常
+                throw new Error('LLM or Network transient timeout on attempt 1');
+            }
+            sentReplies.push(body);
+            return { json: { ret: 0 } };
+        }
+    });
+
+    // ── 第 1 轮：defer 模式拉取 ──
+    const round1Tasks = [];
+    await pollClawAccounts({ DB: db }, db, st.impl, {
+        budgetMs: 0,
+        defer: (task) => round1Tasks.push(task)
+    });
+    assert.equal(round1Tasks.length, 1, '第 1 轮注册了 1 个 waitUntil 任务');
+
+    // 游标必须已经安全推移（解放长轮询主循环）
+    const accountRound1 = await db.prepare("SELECT cursor FROM bot_claw_accounts WHERE id = 1").first();
+    assert.equal(accountRound1.cursor, 'CURSOR-ROUND-1', '消息已存入 D1，游标立即推移');
+
+    // 等待后台任务执行完毕（捕获异常）
+    await Promise.allSettled(round1Tasks);
+
+    // 验证消息绝未丢失：D1 收件箱中状态为 pending，attempts = 1
+    const inboxRound1 = await db.prepare("SELECT * FROM bot_claw_inbox WHERE user_id = 1").first();
+    assert.ok(inboxRound1, '消息必须持久化在 bot_claw_inbox 中');
+    assert.equal(inboxRound1.status, 'pending', '失败后重置为 pending 等待重试');
+    assert.equal(inboxRound1.attempts, 1, '尝试次数记录为 1');
+    assert.match(inboxRound1.last_error, /LLM or Network transient timeout/);
+    assert.equal(sentReplies.length, 0, '第 1 轮未成功发送');
+
+    // ── 第 2 轮：次轮轮询启动 ──
+    const round2Tasks = [];
+    // 此时 iLink 已无新消息（getupdates 返回空 msgs），但上一轮残留的 pending 消息被启动检测捕获
+    await pollClawAccounts({ DB: db }, db, st.impl, {
+        budgetMs: 0,
+        defer: (task) => round2Tasks.push(task)
+    });
+    assert.equal(round2Tasks.length, 1, '第 2 轮启动时发现了未完结 pending 消息并派发 drain 任务');
+
+    await Promise.allSettled(round2Tasks);
+
+    // 验证重试成功：消息状态流转为 completed，发送完成
+    const inboxRound2 = await db.prepare("SELECT * FROM bot_claw_inbox WHERE user_id = 1").first();
+    assert.equal(inboxRound2.status, 'completed', '第 2 轮重试成功，标记为 completed');
+    assert.equal(sentReplies.length, 1, '成功完成回推');
+});
+
+integration('ClawBot - [时序保护] 用户级串行消费保证 FIFO：多条并发到达的消息按序处理，对话时序绝不错乱', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    const msg1 = clawMessage({
+        message_id: 'FIFO-1',
+        item_list: [{ type: 1, msg_id: 'ITEM-FIFO-1', text_item: { text: '第一句：我喜欢喝拿铁' } }]
+    });
+    const msg2 = clawMessage({
+        message_id: 'FIFO-2',
+        item_list: [{ type: 1, msg_id: 'ITEM-FIFO-2', text_item: { text: '第二句：我刚才说喜欢喝什么？' } }]
+    });
+
+    const executionLog = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({
+            json: { ret: 0, get_updates_buf: 'CURSOR-FIFO', msgs: [msg1, msg2] }
+        }),
+        '/ilink/bot/sendmessage': (url, body) => {
+            const txt = body.msg.item_list[0].text_item.text;
+            executionLog.push(txt);
+            return { json: { ret: 0 } };
+        }
+    });
+
+    const tasks = [];
+    await pollClawAccounts({ DB: db }, db, st.impl, {
+        budgetMs: 0,
+        defer: (task) => tasks.push(task)
+    });
+    await Promise.allSettled(tasks);
+
+    // 检查对话记录 turns
+    const turns = await db.prepare("SELECT role, content FROM bot_chat_turns WHERE user_id = 1 ORDER BY id ASC").all();
+    assert.equal(turns.results.length, 4, '两条消息及各自的回复共 4 个回合');
+    assert.equal(turns.results[0].content, '第一句：我喜欢喝拿铁');
+    assert.equal(turns.results[2].content, '第二句：我刚才说喜欢喝什么？');
+
+    // 检查 inbox 状态
+    const inboxes = await db.prepare("SELECT dedup_key, status FROM bot_claw_inbox WHERE user_id = 1 ORDER BY id ASC").all();
+    assert.equal(inboxes.results.length, 2);
+    assert.equal(inboxes.results[0].status, 'completed');
+    assert.equal(inboxes.results[1].status, 'completed');
+});
+
+integration('ClawBot - [毒丸与清理] 连续 3 次失败触发熔断与兜底通知，cleanupClawInbox 依保留期安全归档', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    const msg = clawMessage({
+        message_id: 'POISON-INBOX-1',
+        item_list: [{ type: 1, msg_id: 'ITEM-P1', text_item: { text: '致命毒丸' } }]
+    });
+
+    const sentReplies = [];
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({
+            json: { ret: 0, get_updates_buf: 'CURSOR-POISON-1', msgs: [msg] }
+        }),
+        '/ilink/bot/sendmessage': (url, body) => {
+            if (body && body.msg && body.msg.item_list && body.msg.item_list[0].text_item.text.includes('抱歉，这条消息暂时处理失败')) {
+                sentReplies.push(body);
+                return { json: { ret: 0 } };
+            }
+            throw new Error('Unrecoverable LLM crash');
+        }
+    });
+
+    // 连续触发 3 轮消费
+    for (let round = 1; round <= 3; round++) {
+        const tasks = [];
+        await pollClawAccounts({ DB: db }, db, st.impl, {
+            budgetMs: 0,
+            defer: (task) => tasks.push(task)
+        });
+        await Promise.allSettled(tasks);
+    }
+
+    const inbox = await db.prepare("SELECT * FROM bot_claw_inbox WHERE user_id = 1").first();
+    assert.equal(inbox.status, 'failed', '第 3 次失败后状态流转为 failed 熔断');
+    assert.equal(inbox.attempts, 3);
+    assert.match(inbox.last_error, /Poison pill熔断/);
+    assert.ok(sentReplies.length > 0, '向用户发送了毒丸兜底通知');
+
+    // 验证清理逻辑：模拟时间推移至 3 天前
+    await db.prepare("UPDATE bot_claw_inbox SET updated_at = datetime('now', '+8 hours', '-3 days') WHERE id = ?1")
+        .bind(inbox.id).run();
+
+    const cleaned = await cleanupClawInbox(db, 2);
+    assert.equal(cleaned.deleted, 1, '成功删除超过 2 天的终态记录');
+
+    const remaining = await db.prepare("SELECT COUNT(*) AS c FROM bot_claw_inbox").first();
+    assert.equal(remaining.c, 0);
+});
+
 

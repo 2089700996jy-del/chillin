@@ -16,7 +16,7 @@ import { scanAndAudit, cleanupAuditLogs } from './audit.js';
 import { cleanExpiredSessions } from './auth.js';
 import { cleanupRateLimits } from './security-network.js';
 import { pruneOldBackups } from './garden-media.js';
-import { pollClawAccounts } from './bot-claw.js';
+import { pollClawAccounts, cleanupClawInbox } from './bot-claw.js';
 import { runOutreachChecks } from './bot-outreach.js';
 import { runReminderChecks } from './bot-reminders.js';
 import { runMorningWeatherCare } from './bot-weather.js';
@@ -38,6 +38,10 @@ export async function runHourlyMaintenance(env) {
         ['rate-limit cleanup', async () => {
             const removed = await cleanupRateLimits(env.DB);
             console.log('[rate-limit] scheduled cleanup: removed=' + removed);
+        }],
+        ['bot-claw inbox retention', async () => {
+            const r = await cleanupClawInbox(env.DB);
+            console.log('[bot-claw] inbox cleanup: deleted=' + r.deleted);
         }],
         ['r2 backup retention', async () => {
             const r = await pruneOldBackups(env);
