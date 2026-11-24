@@ -953,6 +953,71 @@ test('Sync - 云端已复活数据自动清除本地旧墓碑并顺利合入（�
     assert.equal(merged[0].title, '💰 转正');
 });
 
+test('Sync - [P1 对抗性测试] 跨资源同 ID 墓碑隔离：删除随手记 ID 12 绝不影响周记/笔记同 ID 12 的合并与同步', async () => {
+    const {
+        addDeletedId,
+        removeDeletedId,
+        isTombstoned,
+        mergeDataLists,
+        processApiSyncResult,
+    } = await import('../public/js/sync.js');
+
+    localStorage.clear();
+    const targetId = 12;
+
+    // 1. 用户删除了随手记 (feeds) 中的第 12 条记录
+    addDeletedId(targetId, 'feeds');
+
+    // 验证墓碑状态：feeds 处于墓碑中，而 weeklies 和 notes 绝不能被判定为墓碑
+    assert.equal(isTombstoned(targetId, 'feeds'), true, '随手记 12 必须处于已删除墓碑状态');
+    assert.equal(isTombstoned(targetId, 'weeklies'), false, '周记 12 绝不能被随手记墓碑污染');
+    assert.equal(isTombstoned(targetId, 'notes'), false, '笔记 12 绝不能被随手记墓碑污染');
+    assert.equal(isTombstoned(targetId, 'bookmarks'), false, '收藏 12 绝不能被随手记墓碑污染');
+    assert.equal(isTombstoned(targetId, 'prompts'), false, '提示词 12 绝不能被随手记墓碑污染');
+
+    // 2. 本地与云端分别存在 feeds(12), weeklies(12), notes(12)
+    const localFeeds = [{ id: 12, content: '随手记内容 12', updated_at: '2026-11-24 10:00:00' }];
+    const cloudFeeds = [{ id: 12, content: '随手记云端 12', updated_at: '2026-11-24 09:00:00' }];
+
+    const localWeeklies = [{ id: 12, title: '周记标题 12', content: '周记正文 12', updated_at: '2026-11-24 10:00:00' }];
+    const cloudWeeklies = [{ id: 12, title: '周记云端 12', content: '周记云端正文 12', updated_at: '2026-11-24 09:00:00' }];
+
+    const localNotes = [{ id: 12, title: '笔记标题 12', content: '笔记正文 12', updated_at: '2026-11-24 10:00:00' }];
+    const cloudNotes = [{ id: 12, title: '笔记云端 12', content: '笔记云端正文 12', updated_at: '2026-11-24 09:00:00' }];
+
+    // 3. 执行 mergeDataLists
+    const mergedFeeds = mergeDataLists(localFeeds, cloudFeeds, { resource: 'feeds' });
+    const mergedWeeklies = mergeDataLists(localWeeklies, cloudWeeklies, { resource: 'weeklies' });
+    const mergedNotes = mergeDataLists(localNotes, cloudNotes, { resource: 'notes' });
+
+    // feeds 应该被墓碑过滤（已删除）
+    assert.equal(mergedFeeds.length, 0, '随手记 12 已删除，merge 后必须为空');
+
+    // weeklies 和 notes 拥有完全相同的 ID 12，但必须完整保留！
+    assert.equal(mergedWeeklies.length, 1, '周记 12 绝不能被删除');
+    assert.equal(mergedWeeklies[0].id, 12);
+    assert.equal(mergedWeeklies[0].title, '周记标题 12');
+
+    assert.equal(mergedNotes.length, 1, '笔记 12 绝不能被删除');
+    assert.equal(mergedNotes[0].id, 12);
+    assert.equal(mergedNotes[0].title, '笔记标题 12');
+
+    // 4. 执行 processApiSyncResult：模拟增量下拉
+    const syncResWeeklies = processApiSyncResult(localWeeklies, cloudWeeklies, true, 'weeklies');
+    assert.equal(syncResWeeklies.merged.length, 1, '增量同步周记时，ID 12 不能被丢弃');
+    assert.equal(syncResWeeklies.merged[0].id, 12);
+
+    const syncResNotes = processApiSyncResult(localNotes, cloudNotes, true, 'notes');
+    assert.equal(syncResNotes.merged.length, 1, '增量同步笔记时，ID 12 不能被丢弃');
+    assert.equal(syncResNotes.merged[0].id, 12);
+
+    // 5. 测试 removeDeletedId 针对性清除
+    removeDeletedId(targetId, 'feeds');
+    assert.equal(isTombstoned(targetId, 'feeds'), false, '清除 feeds 墓碑后应该不再处于墓碑状态');
+
+    localStorage.clear();
+});
+
 
 
 

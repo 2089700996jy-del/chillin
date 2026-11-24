@@ -20,6 +20,9 @@ export {
 
 export {
     addDeletedId,
+    removeDeletedId,
+    isTombstoned,
+    tombstoneKey,
     stampLocalUpdate,
     setSyncStatus,
     loadLocalData,

@@ -139,7 +139,14 @@ function addSyncedIds(ids) {
     }
 }
 
-function getDeletedIds() {
+export function tombstoneKey(resource, id) {
+    if (id == null) return '';
+    const str = String(id);
+    if (!resource || str.startsWith(resource + ':')) return str;
+    return `${resource}:${str}`;
+}
+
+export function getDeletedIds() {
     try {
         return readJsonValue(getLocalKey('gardenDeletedIds')) || [];
     } catch (e) { return []; }
@@ -171,24 +178,74 @@ export function removePendingDeletedItem(resource, id) {
     }
 }
 
+export function isTombstoned(id, resource = null, tombstones = null, pendingItems = null) {
+    if (id == null) return false;
+    const strId = String(id);
+    const deletedList = tombstones || getDeletedIds();
+    const compound = resource ? `${resource}:${strId}` : null;
+
+    if (compound && deletedList.includes(compound)) {
+        return true;
+    }
+
+    const pending = pendingItems || getPendingDeletedItems();
+    if (resource && pending.some((e) => e.resource === resource && String(e.id) === strId)) {
+        return true;
+    }
+
+    if (deletedList.includes(strId)) {
+        if (resource && pending.some((e) => e.resource && e.resource !== resource && String(e.id) === strId)) {
+            return false;
+        }
+        return true;
+    }
+
+    return false;
+}
+
 export function addDeletedId(id, resource = null) {
     if (!id) return;
     const current = getDeletedIds();
     const str = String(id);
-    if (!current.includes(str)) {
-        current.push(str);
+    const key = resource ? `${resource}:${str}` : str;
+    let changed = false;
+    if (!current.includes(key)) {
+        current.push(key);
+        changed = true;
+    }
+    if (resource && current.includes(str)) {
+        const idx = current.indexOf(str);
+        current.splice(idx, 1);
+        changed = true;
+    }
+    if (changed) {
         localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(current));
     }
     if (resource) {
         addPendingDeletedItem(resource, id);
     }
 }
+
 export function removeDeletedId(id, resource = null) {
     if (!id) return;
     const current = getDeletedIds();
     const str = String(id);
-    const next = current.filter((entry) => String(entry) !== str);
-    if (next.length !== current.length) localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(next));
+    const compound = resource ? `${resource}:${str}` : null;
+    const next = current.filter((entry) => {
+        const s = String(entry);
+        if (compound && s === compound) return false;
+        if (resource && s === `${resource}:${str}`) return false;
+        if (!resource && s === str) return false;
+        if (resource && s === str) {
+            const pending = getPendingDeletedItems();
+            const belongsToOther = pending.some((e) => e.resource && e.resource !== resource && String(e.id) === str);
+            if (!belongsToOther) return false;
+        }
+        return true;
+    });
+    if (next.length !== current.length) {
+        localStorage.setItem(getLocalKey('gardenDeletedIds'), JSON.stringify(next));
+    }
     if (resource) {
         removePendingDeletedItem(resource, id);
     }
@@ -416,20 +473,22 @@ export function removeSyncConflict(resource, id) {
 export function mergeDataLists(localList, apiList, options = {}) {
     if (!Array.isArray(localList)) localList = [];
     if (!Array.isArray(apiList)) apiList = [];
-    const protectKeys = options.protectKeys || new Set();
+    const protectKeys = options?.protectKeys || new Set();
+    const resource = typeof options === 'string' ? options : (options?.resource || '');
 
-    const pendingDeletedSet = new Set(getPendingDeletedItems().map(e => String(e.id)));
-    const deletedIds = getDeletedIds().filter(id => pendingDeletedSet.has(String(id)));
+    const pendingItems = getPendingDeletedItems();
+    const tombstones = getDeletedIds();
+    const isDeleted = (id) => isTombstoned(id, resource, tombstones, pendingItems);
     const map = new Map();
 
     for (const item of apiList) {
-        if (item && item.id != null && !deletedIds.includes(String(item.id))) {
+        if (item && item.id != null && !isDeleted(item.id)) {
             map.set(String(item.id), item);
         }
     }
 
     for (const item of localList) {
-        if (!item || item.id == null || deletedIds.includes(String(item.id))) continue;
+        if (!item || item.id == null || isDeleted(item.id)) continue;
         const key = String(item.id);
         if (!map.has(key)) {
             map.set(key, item);
@@ -470,7 +529,7 @@ export function processApiSyncResult(localList, apiData, isIncremental = false, 
                 continue;
             }
             if (cloud.is_deleted) {
-                removeDeletedId(local.id);
+                removeDeletedId(local.id, resource);
                 protectKeys.add(key);
                 addSyncConflict(resource, local, cloud);
                 conflicts++;
@@ -507,7 +566,7 @@ export function processApiSyncResult(localList, apiData, isIncremental = false, 
     // 本地仍有未推送改动时不吞掉它：冲突条目会先把它保留在冲突中心。
     for (const item of apiData) {
         if (item && item.is_deleted && item.id != null && !protectKeys.has(String(item.id))) {
-            addDeletedId(item.id);
+            addDeletedId(item.id, resource);
         }
     }
 
@@ -515,16 +574,17 @@ export function processApiSyncResult(localList, apiData, isIncremental = false, 
     const pendingDeletedSet = new Set(getPendingDeletedItems().filter(e => !resource || e.resource === resource).map(e => String(e.id)));
     for (const item of validApiData) {
         if (item && item.id != null && !pendingDeletedSet.has(String(item.id))) {
-            removeDeletedId(item.id);
+            removeDeletedId(item.id, resource);
         }
     }
 
-    const deletedIdSet = new Set(getDeletedIds().map(String));
+    const tombstones = getDeletedIds();
+    const pendingItems = getPendingDeletedItems();
 
     const activeLocal = (localList || []).filter(item => {
         if (!item || item.id == null) return false;
         const strId = String(item.id);
-        if (deletedIdSet.has(strId)) return false;
+        if (isTombstoned(strId, resource, tombstones, pendingItems)) return false;
         const cloudItem = apiData.find(a => String(a.id) === strId);
         if (cloudItem && cloudItem.is_deleted && !protectKeys.has(strId)) return false;
         if (item._dirty) return true;
@@ -532,7 +592,7 @@ export function processApiSyncResult(localList, apiData, isIncremental = false, 
         return true;
     });
 
-    const merged = mergeDataLists(activeLocal, validApiData, { protectKeys });
+    const merged = mergeDataLists(activeLocal, validApiData, { protectKeys, resource });
     if (resource) rememberCloudBases(resource, validApiData, protectKeys);
 
     const needsUpload = activeLocal.some(item => {
@@ -916,11 +976,11 @@ export function loadLocalData() {
     const currentBookmarks = readJsonValue('gardenBookmarks') || readJsonValue(getLocalKey('gardenBookmarks')) || [];
     const currentPrompts = readJsonValue(getLocalKey('gardenPrompts')) || [];
 
-    state.weeklies = mergeDataLists(currentWeeklies, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY);
-    state.notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES);
-    state.bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS);
-    state.promptsDatabase = mergeDataLists(currentPrompts, rescued.prompts.length > 0 ? rescued.prompts : DEFAULT_PROMPTS);
-    state.feedsDatabase = mergeDataLists(currentFeeds, rescued.feeds.length > 0 ? rescued.feeds : DEFAULT_FEEDS);
+    state.weeklies = mergeDataLists(currentWeeklies, rescued.weeklies.length > 0 ? rescued.weeklies : DEFAULT_WEEKLY, { resource: 'weeklies' });
+    state.notesDatabase = mergeDataLists(currentNotes, rescued.notes.length > 0 ? rescued.notes : DEFAULT_NOTES, { resource: 'notes' });
+    state.bookmarksDatabase = mergeDataLists(currentBookmarks, rescued.bookmarks.length > 0 ? rescued.bookmarks : DEFAULT_BOOKMARKS, { resource: 'bookmarks' });
+    state.promptsDatabase = mergeDataLists(currentPrompts, rescued.prompts.length > 0 ? rescued.prompts : DEFAULT_PROMPTS, { resource: 'prompts' });
+    state.feedsDatabase = mergeDataLists(currentFeeds, rescued.feeds.length > 0 ? rescued.feeds : DEFAULT_FEEDS, { resource: 'feeds' });
     state.echoCardsDatabase = readJsonValue(getLocalKey('gardenEchoCards')) || [];
 
     // [P0 修复] 严禁在异步注水 hydrateFromIndexedDb 完成前同步回写 IndexedDB，
@@ -1181,7 +1241,7 @@ function retireLocalMockItem(resource, item) {
     item.id = generateUniqueId();
     item._dirty = true;
     removeSyncConflict(resource, oldId);
-    addDeletedId(oldId);
+    addDeletedId(oldId, resource);
     if (state.authToken || state.cookieSession) {
         apiRequest(`/api/${resource}/${oldId}`, { method: 'DELETE' }).catch(() => { });
     }
@@ -1315,17 +1375,17 @@ export async function hydrateFromIndexedDb() {
         const idbFeeds = dataMap[getLocalKey('gardenFeeds')];
         const idbEchoCards = dataMap[getLocalKey('gardenEchoCards')];
 
-        const mergeResource = (curr, idb) => {
+        const mergeResource = (curr, idb, res) => {
             if (!Array.isArray(idb) || idb.length === 0) return curr;
-            const next = mergeDataLists(curr, idb);
+            const next = mergeDataLists(curr, idb, { resource: res });
             if (hasResourceListChanged(curr, next)) hasNewData = true;
             return next;
         };
-        state.weeklies = mergeResource(state.weeklies, idbWeeklies);
-        state.notesDatabase = mergeResource(state.notesDatabase, idbNotes);
-        state.bookmarksDatabase = mergeResource(state.bookmarksDatabase, idbBookmarks);
-        state.promptsDatabase = mergeResource(state.promptsDatabase, idbPrompts);
-        state.feedsDatabase = mergeResource(state.feedsDatabase, idbFeeds);
+        state.weeklies = mergeResource(state.weeklies, idbWeeklies, 'weeklies');
+        state.notesDatabase = mergeResource(state.notesDatabase, idbNotes, 'notes');
+        state.bookmarksDatabase = mergeResource(state.bookmarksDatabase, idbBookmarks, 'bookmarks');
+        state.promptsDatabase = mergeResource(state.promptsDatabase, idbPrompts, 'prompts');
+        state.feedsDatabase = mergeResource(state.feedsDatabase, idbFeeds, 'feeds');
         if (Array.isArray(idbEchoCards) && idbEchoCards.length > 0) {
             if (!state.echoCardsDatabase || state.echoCardsDatabase.length < idbEchoCards.length) {
                 state.echoCardsDatabase = idbEchoCards;
@@ -1531,11 +1591,30 @@ export async function syncFromApi() {
         // 2. 增量脏数据推送（Delta Push：仅上传本地改动 _dirty=true 项，不刷全表时间戳）
         if (needsBatchUpload) {
             try {
-                const deleted = new Set(getDeletedIds().map(String));
+                const pendingItems = getPendingDeletedItems();
+                const tombstones = getDeletedIds();
                 const conflicted = new Set(getSyncConflicts().map(conflictIdentity));
+                const getResourceDeletedSet = (res) => {
+                    const set = new Set();
+                    for (const item of tombstones) {
+                        const s = String(item);
+                        if (s.includes(':')) {
+                            const [r, id] = s.split(':');
+                            if (r === res) set.add(id);
+                        } else {
+                            if (!pendingItems.some(p => p.resource && p.resource !== res && String(p.id) === s)) {
+                                set.add(s);
+                            }
+                        }
+                    }
+                    for (const p of pendingItems) {
+                        if (p.resource === res && p.id != null) set.add(String(p.id));
+                    }
+                    return set;
+                };
                 // 缺 id 的本地改动会就地补 id 后照常推送（此前会被静默丢弃）；
                 // 已进入冲突中心的记录不再自动上传，等待用户选择。
-                const dirtyOnly = (list, resource) => selectDirtyItems(list, deleted)
+                const dirtyOnly = (list, resource) => selectDirtyItems(list, getResourceDeletedSet(resource))
                     .filter((item) => !conflicted.has(resource + ':' + String(item.id)))
                     .map((item) => {
                         if (resource === 'weeklies' && Number(item.id) === 1) {
@@ -1619,7 +1698,7 @@ export async function syncFromApi() {
                     if (res && Array.isArray(res.deleted)) {
                         for (const del of res.deleted) {
                             removePendingDeletedItem(del.resource, del.id);
-                            removeDeletedId(del.id);
+                            removeDeletedId(del.id, del.resource);
                         }
                     }
 
