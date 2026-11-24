@@ -141,6 +141,10 @@ export async function replanRemaining({ env, db, userId, goalId, reason, planMod
         `DELETE FROM agent_tasks WHERE goal_id = ?1 AND user_id = ?2
          AND status IN ('pending', 'ready', 'failed', 'skipped', 'blocked')`
     ).bind(goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours')
+         WHERE goal_id = ?1 AND user_id = ?2 AND status = 'pending'`
+    ).bind(goalId, userId).run();
     const retained = await listTasks(db, userId, goalId);
     const offset = retained.length ? Math.max(...retained.map((item) => Number(item.seq) || 0)) + 1 : 0;
     const inserts = nextTasks.map((task, index) => db.prepare(

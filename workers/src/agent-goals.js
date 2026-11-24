@@ -193,7 +193,17 @@ export async function updateGoal(db, userId, goalId, payload = {}) {
     const autoSend = payload.auto_send === undefined
         ? Number(goal.auto_send || 0)
         : (payload.auto_send === false || Number(payload.auto_send) === 0 || payload.auto_send === 'false' || payload.auto_send === 0 ? 0 : 1);
+    const now = "datetime('now', '+8 hours')";
     await db.prepare('DELETE FROM agent_tasks WHERE goal_id = ?1 AND user_id = ?2').bind(goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_runs SET status = 'cancelled', current_task_id = NULL, lease_until = NULL,
+            next_run_at = NULL, updated_at = ${now}
+         WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('queued', 'running', 'waiting_approval', 'paused', 'failed')`
+    ).bind(goalId, userId).run();
+    await db.prepare(
+        `UPDATE agent_approvals SET status = 'expired', decided_at = ${now}
+         WHERE goal_id = ?1 AND user_id = ?2 AND status = 'pending'`
+    ).bind(goalId, userId).run();
     await db.prepare(
         `UPDATE agent_goals SET title = ?1, description = ?2, auto_send = ?5, status = 'draft', plan_version = 0,
             result_md = '', error = '', completed_at = NULL, updated_at = datetime('now', '+8 hours')

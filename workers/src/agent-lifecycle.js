@@ -62,6 +62,7 @@ export async function startGoal(options) {
     const goal = await getGoalRow(db, userId, goalId);
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
+    if (goal.status === 'paused') throw new AgentError(409, '目标已暂停，请使用继续操作恢复', 'GOAL_PAUSED');
     if (goal.status === 'failed') throw new AgentError(409, '目标已失败，请先重试失败任务或重新规划', 'GOAL_FAILED');
     if (goal.status === 'waiting_approval') throw new AgentError(409, '目标正在等待审批，请先处理审批', 'GOAL_WAITING_APPROVAL');
     const tasks = await listTasks(db, userId, goalId);

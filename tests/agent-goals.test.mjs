@@ -2085,3 +2085,54 @@ sqliteTest('Autoloop 架构 - [对抗性审查 8] listApprovalInbox 自动过滤
     assert.equal(inbox.approvals.length, 0, '已取消目标的审批列表必须为空');
 });
 
+sqliteTest('Autoloop 架构 - [对抗性审查 9] startGoal 在 paused 状态下拦截，强制引导使用 continueGoal 恢复', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '任务', description: '描述', depends_on: [] }]
+        })
+    });
+    await pauseGoal(db, 1, goalId);
+
+    await assert.rejects(
+        () => startGoal({ db, userId: 1, goalId }),
+        (err) => err && err.code === 'GOAL_PAUSED' && err.message.includes('已暂停')
+    );
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 10] updateGoal 修改暂停/失败目标为草稿时，级联作废旧审批并取消旧运行', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '待更新任务', description: '描述', depends_on: [] }]
+        })
+    });
+    const { approval } = await requestAgentProposal(db, 1, goalId, null, {
+        action: 'choose_option',
+        question: '选择方案',
+        options: ['方案1', '方案2']
+    }, {});
+    assert.equal(approval.status, 'pending');
+
+    await pauseGoal(db, 1, goalId);
+    await db.prepare("INSERT INTO agent_runs (goal_id, user_id, status) VALUES (?1, 1, 'paused')").bind(goalId).run();
+    const runBefore = await db.prepare("SELECT status FROM agent_runs WHERE goal_id = ?1").bind(goalId).first();
+    assert.equal(runBefore.status, 'paused');
+
+    // 用户编辑目标为草稿
+    const updated = await updateGoal(db, 1, goalId, { title: '全新标题', description: '全新说明' });
+    assert.equal(updated.goal.status, 'draft');
+
+    // 验证旧待决审批已被级联作废为 expired
+    const approvalAfter = await db.prepare("SELECT status FROM agent_approvals WHERE id = ?1").bind(approval.id).first();
+    assert.equal(approvalAfter.status, 'expired');
+
+    // 验证旧 run 已被级联置为 cancelled
+    const runAfter = await db.prepare("SELECT status FROM agent_runs WHERE goal_id = ?1").bind(goalId).first();
+    assert.equal(runAfter.status, 'cancelled');
+});
+
