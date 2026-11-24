@@ -63,6 +63,7 @@ export async function startGoal(options) {
     if (!goal) throw new AgentError(404, '目标不存在', 'GOAL_NOT_FOUND');
     if (['completed', 'cancelled'].includes(goal.status)) throw new AgentError(409, '目标已经结束', 'GOAL_CLOSED');
     if (goal.status === 'failed') throw new AgentError(409, '目标已失败，请先重试失败任务或重新规划', 'GOAL_FAILED');
+    if (goal.status === 'waiting_approval') throw new AgentError(409, '目标正在等待审批，请先处理审批', 'GOAL_WAITING_APPROVAL');
     const tasks = await listTasks(db, userId, goalId);
     if (!tasks.length) throw new AgentError(409, '请先生成计划', 'GOAL_NO_PLAN');
     await touchGoal(db, userId, goalId, { status: 'active', error: '' });
@@ -112,6 +113,9 @@ export async function retryTask(db, userId, goalId, taskId) {
     if (!['failed', 'blocked'].includes(row.status)) throw new AgentError(409, '只有失败的任务可以重试', 'TASK_NOT_FAILED');
     await db.prepare("UPDATE agent_tasks SET status = 'pending', attempts = 0, error = '', started_at = NULL, finished_at = NULL, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(taskId, userId).run();
     await touchGoal(db, userId, goalId, { status: 'active', error: '' });
+    await db.prepare(
+        "UPDATE agent_runs SET status = 'queued', next_run_at = datetime('now', '+8 hours', '-1 seconds'), error = '', updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status IN ('failed', 'paused')"
+    ).bind(goalId, userId).run();
     return getSnapshot(db, userId, goalId);
 }
 

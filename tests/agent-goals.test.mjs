@@ -1864,3 +1864,97 @@ sqliteTest('Autoloop 架构 - 审批卡片升级为选择题表单（Choice Form
     assert.equal(appResult.chosen_index, 1);
     assert.equal(appResult.chosen_option, 'SQLite');
 });
+
+sqliteTest('Autoloop 架构 - [对抗性审查 1] 拒绝选择题审批优雅解除挂起死锁，目标流转为 paused 并允许继续', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '选定技术栈', description: '抉择数据库', depends_on: [] }]
+        })
+    });
+    await db.prepare("UPDATE agent_goals SET status = 'active' WHERE id = ?1").bind(goalId).run();
+    await db.prepare("INSERT INTO agent_runs (goal_id, user_id, status) VALUES (?1, 1, 'running')").bind(goalId).run();
+
+    const toolRes = await runProposalTool(db, 1, goalId, 1, {
+        action: 'choose_option',
+        question: '请选择数据库方案',
+        options: ['PostgreSQL', 'SQLite', 'DuckDB']
+    }, {});
+    const approvalId = toolRes.data.approval_id;
+
+    // 目标和 run 进入 waiting_approval 挂起
+    let goal = await db.prepare('SELECT status FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goal.status, 'waiting_approval');
+
+    // 拒绝该选择题审批
+    const botDecision = await maybeRunAgentCommand({}, db, 1, `拒绝 ${approvalId}`);
+    assert.match(botDecision, /已拒绝这条审批/);
+
+    // 目标与 run 必须优雅解除 waiting_approval 死锁，流转为 paused 状态
+    goal = await db.prepare('SELECT status, error FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goal.status, 'paused', '目标必须流转为 paused，杜绝永久死锁');
+    assert.match(goal.error, /用户拒绝了选择题拍板/);
+
+    const run = await db.prepare('SELECT status, error FROM agent_runs WHERE goal_id = ?1').bind(goalId).first();
+    assert.equal(run.status, 'paused');
+
+    // 验证用户可以正常从 paused 恢复继续，不再被 409 GOAL_NOT_CONTINUABLE 阻断
+    await continueGoal({ env: {}, db, userId: 1, goalId, agentRunner: async () => ({ reply: '已手动指定方案' }) });
+    const goalAfter = await db.prepare('SELECT status FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goalAfter.status, 'completed');
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 2] retryTask 重置失败任务后唤醒 agent_runs 为 queued，后台 Cron 自动拾起续跑', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '复杂爬虫任务', description: '抓取外部数据', depends_on: [] }]
+        })
+    });
+
+    const tasks = await listTasks(db, 1, goalId);
+    const taskId = tasks[0].id;
+
+    // 模拟任务失败导致目标和 run 均标记为 failed
+    await db.prepare("UPDATE agent_tasks SET status = 'failed', attempts = 3, error = 'Network timeout' WHERE id = ?1").bind(taskId).run();
+    await db.prepare("UPDATE agent_goals SET status = 'failed', error = '任务执行失败' WHERE id = ?1").bind(goalId).run();
+    await db.prepare("INSERT INTO agent_runs (goal_id, user_id, status, error) VALUES (?1, 1, 'failed', '任务执行失败')").bind(goalId).run();
+
+    // 用户重试该失败任务
+    await retryTask(db, 1, goalId, taskId);
+
+    const goal = await db.prepare('SELECT status FROM agent_goals WHERE id = ?1').bind(goalId).first();
+    assert.equal(goal.status, 'active');
+
+    // 验证 agent_runs 已被唤醒为 queued
+    const run = await db.prepare('SELECT status, next_run_at FROM agent_runs WHERE goal_id = ?1').bind(goalId).first();
+    assert.equal(run.status, 'queued', 'agent_runs 必须流转为 queued，后台调度器才能感知');
+    assert.ok(run.next_run_at, '排期时间已更新');
+
+    // 验证后台 Cron claimDueAgentRun 能够成功认领此 run
+    const claimed = await claimDueAgentRun(db);
+    assert.ok(claimed, '后台 Cron 必须能够成功认领重试后的 run');
+    assert.equal(claimed.status, 'running');
+});
+
+sqliteTest('Autoloop 架构 - [对抗性审查 3] startGoal 在 waiting_approval 状态下严密拦截，防止越权旁路前置审批', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    const goalId = await makeGoal(db);
+    await generatePlan(db, 1, goalId, {
+        planModel: async () => JSON.stringify({
+            tasks: [{ title: '高危写入任务', description: '待审批写入', depends_on: [] }]
+        })
+    });
+    await db.prepare("UPDATE agent_goals SET status = 'waiting_approval' WHERE id = ?1").bind(goalId).run();
+
+    await assert.rejects(
+        () => startGoal({ db, userId: 1, goalId }),
+        (err) => err && err.code === 'GOAL_WAITING_APPROVAL' && err.message.includes('正在等待审批')
+    );
+});
+

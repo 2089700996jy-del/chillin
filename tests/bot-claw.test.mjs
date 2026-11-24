@@ -22,7 +22,8 @@ import {
     pollClawAccounts,
     enqueueClawMessage,
     drainClawInbox,
-    cleanupClawInbox
+    cleanupClawInbox,
+    userDrainingQueues
 } from '../workers/src/bot-claw.js';
 import { toClawText, formatListOutput } from '../workers/src/bot-commands.js';
 import {
@@ -3129,5 +3130,34 @@ integration('ClawBot - [毒丸与清理] 连续 3 次失败触发熔断与兜底
     const remaining = await db.prepare("SELECT COUNT(*) AS c FROM bot_claw_inbox").first();
     assert.equal(remaining.c, 0);
 });
+
+integration('ClawBot - [对抗性审查 5] userDrainingQueues 内存互斥锁在消费完成后完全清空，杜绝内存泄露', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedAccount(db);
+
+    const msg = clawMessage({
+        message_id: 'MEM-LEAK-TEST',
+        item_list: [{ type: 1, msg_id: 'ITEM-MEM-1', text_item: { text: '测试互斥锁内存清理' } }]
+    });
+
+    const st = stubFetch({
+        '/ilink/bot/getupdates': () => ({
+            json: { ret: 0, get_updates_buf: 'CURSOR-MEM', msgs: [msg] }
+        }),
+        '/ilink/bot/sendmessage': () => ({ json: { ret: 0 } })
+    });
+
+    const tasks = [];
+    await pollClawAccounts({ DB: db }, db, st.impl, {
+        budgetMs: 0,
+        defer: (task) => tasks.push(task)
+    });
+    await Promise.allSettled(tasks);
+
+    // 关键断言：消费完成后，该 userId 的条目必须被从 userDrainingQueues Map 中安全清除！
+    assert.equal(userDrainingQueues.has(1), false, '消费完成后 userDrainingQueues 必须自动清理，杜绝内存泄露');
+});
+
 
 

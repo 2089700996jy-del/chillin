@@ -68,6 +68,21 @@ export async function notifyAgentUser(env, db, userId, payload = {}) {
 }
 
 async function expireStale(db, userId, goalId, actionType) {
+    if (actionType === 'choose_option') {
+        const staleChoice = await db.prepare(
+            `SELECT id FROM agent_approvals
+             WHERE goal_id = ?1 AND user_id = ?2 AND action_type = 'choose_option' AND status = 'pending'
+               AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+8 hours')`
+        ).bind(goalId, userId).first();
+        if (staleChoice) {
+            await db.prepare(
+                "UPDATE agent_goals SET status = 'paused', error = '选择题拍板超时过期，目标已暂停', updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(goalId, userId).run();
+            await db.prepare(
+                "UPDATE agent_runs SET status = 'paused', error = '选择题拍板超时过期，目标已暂停', lease_until = NULL, next_run_at = NULL, updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(goalId, userId).run();
+        }
+    }
     await db.prepare(
         `UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours')
          WHERE goal_id = ?1 AND user_id = ?2 AND action_type = ?3 AND status = 'pending'
@@ -292,6 +307,15 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
         await db.prepare(
             "UPDATE agent_approvals SET status = 'expired', decided_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'pending'"
         ).bind(approvalId, userId).run();
+        if (row.action_type === 'choose_option') {
+            const errNote = '选择题拍板超时过期，目标已暂停';
+            await db.prepare(
+                "UPDATE agent_goals SET status = 'paused', error = ?3, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(row.goal_id, userId, errNote).run();
+            await db.prepare(
+                "UPDATE agent_runs SET status = 'paused', error = ?3, lease_until = NULL, next_run_at = NULL, updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(row.goal_id, userId, errNote).run();
+        }
         throw new AgentError(410, '审批已过期，请重新发起', 'APPROVAL_EXPIRED');
     }
 
@@ -380,6 +404,15 @@ export async function decideApproval(db, userId, approvalId, payload = {}, deps 
             await db.prepare(
                 "UPDATE agent_runs SET status = 'queued', next_run_at = datetime('now', '+8 hours', '-1 seconds'), updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
             ).bind(row.goal_id, userId).run();
+        } else if (decision === 'reject' && row.action_type === 'choose_option') {
+            const note = cleanText(payload.note, 200) || '用户拒绝了选择题拍板，已暂停目标';
+            result = { rejected: true, note };
+            await db.prepare(
+                "UPDATE agent_goals SET status = 'paused', error = ?3, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(row.goal_id, userId, note).run();
+            await db.prepare(
+                "UPDATE agent_runs SET status = 'paused', error = ?3, lease_until = NULL, next_run_at = NULL, updated_at = datetime('now', '+8 hours') WHERE goal_id = ?1 AND user_id = ?2 AND status = 'waiting_approval'"
+            ).bind(row.goal_id, userId, note).run();
         }
         await db.prepare(
             `UPDATE agent_approvals SET status = ?1, result_json = ?2, decision_note = ?3,

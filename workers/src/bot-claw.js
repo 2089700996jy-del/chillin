@@ -202,7 +202,7 @@ export async function enqueueClawMessage(db, accountId, userId, dedupKey, msg) {
 }
 
 /** 用户级串行消费队列（内存互斥锁，确保同一用户消息严格 FIFO 消费，避免大模型并发时序错乱） */
-const userDrainingQueues = new Map();
+export const userDrainingQueues = new Map();
 
 /**
  * 串行消费 D1 收件箱队列（用户级严格 FIFO 保护）：
@@ -211,17 +211,19 @@ const userDrainingQueues = new Map();
  */
 export async function drainClawInbox(env, db, account, userId, fetchImpl = fetch) {
     if (!db || !account || !userId) return;
-    const prev = userDrainingQueues.get(userId) || Promise.resolve();
-    let resolveCurrent;
-    const currentPromise = new Promise(resolve => { resolveCurrent = resolve; });
-    userDrainingQueues.set(userId, prev.then(() => currentPromise).catch(() => currentPromise));
+    const currentTask = (async () => {
+        const prev = userDrainingQueues.get(userId);
+        if (prev) {
+            try { await prev; } catch (_) { /* 吞掉前序任务的异常，保证后续任务继续消费 */ }
+        }
+        return await drainClawInboxLoop(env, db, account, userId, fetchImpl);
+    })();
+    userDrainingQueues.set(userId, currentTask);
 
-    await prev;
     try {
-        await drainClawInboxLoop(env, db, account, userId, fetchImpl);
+        await currentTask;
     } finally {
-        resolveCurrent();
-        if (userDrainingQueues.get(userId) === currentPromise) {
+        if (userDrainingQueues.get(userId) === currentTask) {
             userDrainingQueues.delete(userId);
         }
     }
