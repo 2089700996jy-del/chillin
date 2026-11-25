@@ -256,6 +256,9 @@ export function initPwaUpdates() {
 
     const setup = async () => {
         let reg = null;
+        // 首次安装没有旧 controller 时，clients.claim() 也会触发 controllerchange；
+        // 只在「已有 controller 被新版替换」时才弹横幅并软刷新，避免首访 ~8 秒莫名重刷页面。
+        let hadController = Boolean(navigator.serviceWorker.controller);
         try {
             const swUrl = getScriptUrl('/sw.js');
             reg = await navigator.serviceWorker.register(swUrl, {
@@ -275,6 +278,10 @@ export function initPwaUpdates() {
             });
 
             navigator.serviceWorker.addEventListener('controllerchange', () => {
+                if (!hadController) {
+                    hadController = true;
+                    return;
+                }
                 if (!justReloadedForUpdate) {
                     ensureBanner('新版本已激活');
                 }

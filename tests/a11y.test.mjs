@@ -92,3 +92,31 @@ test('A11y - 阅读器章节目录是可聚焦的滚动区域', () => {
     assert.match(sidebar, /tabindex="0"/, '章节列表可滚动，键盘用户必须能聚焦它，否则 axe 报 scrollable-region-focusable');
     assert.match(sidebar, /aria-label="章节列表"/, '可聚焦的滚动区域需要可访问名称，读屏才知道这是目录');
 });
+
+test('A11y - 密码显隐图标 SVG path 合法，#btn-chip-todo 浅/深主题满足 WCAG AA 对比度', () => {
+    assert.match(html, /d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/, 'eye-on SVG path 必须闭合完整，不得触发 Console <path> d 解析错误');
+
+    const css = fs.readFileSync(path.join(root, 'public/style.css'), 'utf8');
+    const lightRule = (css.match(/\.btn-chip-todo\s*\{[\s\S]*?\}/) || [''])[0];
+    const darkRule = (css.match(/:root\[data-theme="dark"\]\s*\.btn-chip-todo\s*\{[\s\S]*?\}/) || [''])[0];
+    const lightHex = (lightRule.match(/color:\s*(#[0-9a-fA-F]{6})/) || [])[1];
+    const darkHex = (darkRule.match(/color:\s*(#[0-9a-fA-F]{6})/) || [])[1];
+    assert.ok(lightHex && darkHex, '.btn-chip-todo 在浅色与深色主题下都必须显式声明高对比度十六进制色值');
+
+    const toLum = (r, g, b) => [r, g, b].map((c) => {
+        const s = c / 255;
+        return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+    }).reduce((acc, v, i) => acc + v * [0.2126, 0.7152, 0.0722][i], 0);
+    const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
+    const blend = (fg, bg, a) => fg.map((v, i) => v * a + bg[i] * (1 - a));
+    const ratio = (c1, c2) => {
+        const l1 = toLum(...c1);
+        const l2 = toLum(...c2);
+        return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+    };
+
+    const lightBg = blend([52, 199, 89], [255, 255, 255], 0.12);
+    const darkBg = blend([48, 209, 88], [26, 29, 35], 0.16);
+    assert.ok(ratio(hexRgb(lightHex), lightBg) >= 4.5, '浅色主题下 #btn-chip-todo 对比度必须 >= 4.5');
+    assert.ok(ratio(hexRgb(darkHex), darkBg) >= 4.5, '深色主题下 #btn-chip-todo 对比度必须 >= 4.5');
+});

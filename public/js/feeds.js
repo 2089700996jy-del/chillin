@@ -420,6 +420,10 @@ if (chipTodo && feedInputText) {
 
 async function sendFeed() {
     if (!feedInputText) return;
+    if (feedMediaUrlInput?.dataset?.uploading === '1') {
+        showToast('图片还在上传中，请稍候…', 'info');
+        return;
+    }
     const content = feedInputText.value.trim();
     const mediaUrl = feedMediaUrlInput ? feedMediaUrlInput.value.trim() : '';
     if (!content && !mediaUrl) return;
@@ -467,6 +471,10 @@ async function sendFeed() {
 
     btnSendFeed.disabled = false;
     btnSendFeed.innerText = '发送';
+    actions.resetBottomNav?.();
+    if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => actions.resetBottomNav?.());
+    }
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         showToast('已暂存本地，恢复网络后将自动同步', 'info');

@@ -150,11 +150,12 @@ export function initSearch() {
 
     function openGlobalSearch(initialQuery = '') {
         if (!globalSearchModal) return;
+        const safeQuery = typeof initialQuery === 'string' ? initialQuery : '';
         globalSearchModal.classList.add('show');
         if (globalSearchInput) {
-            globalSearchInput.value = initialQuery || '';
+            globalSearchInput.value = safeQuery;
             globalSearchInput.focus();
-            renderGlobalSearchResults(initialQuery || '');
+            renderGlobalSearchResults(safeQuery);
         }
     }
 
@@ -163,7 +164,7 @@ export function initSearch() {
         globalSearchModal.classList.remove('show');
     }
 
-    if (btnOpenGlobalSearch) btnOpenGlobalSearch.addEventListener('click', openGlobalSearch);
+    if (btnOpenGlobalSearch) btnOpenGlobalSearch.addEventListener('click', () => openGlobalSearch());
     if (btnCloseGlobalSearch) btnCloseGlobalSearch.addEventListener('click', closeGlobalSearch);
     if (globalSearchModal) {
         globalSearchModal.addEventListener('click', (e) => {
@@ -238,8 +239,9 @@ export function initSearch() {
         });
     }
 
-    function renderGlobalSearchResults(query) {
+    function renderGlobalSearchResults(query = '') {
         if (!globalSearchResults) return;
+        query = typeof query === 'string' ? query : '';
         currentItems = [];
         selectedIndex = 0;
 

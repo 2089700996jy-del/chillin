@@ -8,6 +8,7 @@ import { apiRequest } from './api.js';
 import { escapeHtml, showToast, markdownToHtml, confirmDialog } from './utils.js';
 import { setHtml } from './trusted-types.js';
 import { actions } from './actions.js';
+import { state } from './state.js';
 
 const STATUS_LABELS = {
     draft: '草稿',
@@ -1346,10 +1347,12 @@ export function initAgentGoals() {
     bindEvents();
     actions.refreshAgentInbox = refreshInbox;
     actions.renderAgentCockpit = renderCockpit;
-    refreshInbox().catch(() => { });
+    if (state.authToken || state.cookieSession) {
+        refreshInbox().catch(() => { });
+    }
     if (!badgeTimer) {
         badgeTimer = setInterval(() => {
-            if (!document.hidden) refreshInbox().catch(() => { });
+            if (!document.hidden && (state.authToken || state.cookieSession)) refreshInbox().catch(() => { });
         }, 60000);
     }
 }

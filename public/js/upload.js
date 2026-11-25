@@ -141,6 +141,18 @@ function postUploadWithProgress(formData, onProgress) {
 export async function uploadSingleImage(file, { targetInput = null, mode = 'value', btn = null } = {}) {
     if (!file) return;
 
+    if (targetInput?.dataset) {
+        targetInput.dataset.uploading = '1';
+    }
+    const feedSendBtn = targetInput?.id === 'feed-media-url' ? document.getElementById('btn-send-feed') : null;
+    if (feedSendBtn) {
+        feedSendBtn.dataset.uploadLocked = '1';
+        feedSendBtn.disabled = true;
+        if (feedSendBtn.textContent === '发送') {
+            feedSendBtn.textContent = '上传中...';
+        }
+    }
+
     let originalBtnHtml = '';
     if (btn) {
         if (!btn.dataset.originalHtml) btn.dataset.originalHtml = btn.innerHTML;
@@ -324,6 +336,16 @@ export async function uploadSingleImage(file, { targetInput = null, mode = 'valu
         pendingRetry = { file: uploadFile, targetInput, mode, btn };
         showToast('图片上传失败：' + (err.message || '未知错误') + '，可点击「重试上传」', 'error');
     } finally {
+        if (targetInput?.dataset) {
+            delete targetInput.dataset.uploading;
+        }
+        if (feedSendBtn && feedSendBtn.dataset.uploadLocked === '1') {
+            delete feedSendBtn.dataset.uploadLocked;
+            feedSendBtn.disabled = false;
+            if (feedSendBtn.textContent === '上传中...') {
+                feedSendBtn.textContent = '发送';
+            }
+        }
         cleanupTempPreview();
         if (btn) {
             if (pendingRetry && pendingRetry.btn === btn) {

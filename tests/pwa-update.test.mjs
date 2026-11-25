@@ -166,6 +166,7 @@ test('PWA - 同一次更新只出现一条提示，自动刷新不再叠 toast',
         globalThis.fetch = realFetch;
         delete globalThis.document;
         delete globalThis.window;
+        delete globalThis.requestAnimationFrame;
         delete globalThis.sessionStorage;
         try { delete globalThis.navigator; } catch (_) {}
     }
@@ -274,6 +275,105 @@ test('PWA - 切回前台时 visibilitychange 与 focus 并发触发防抖消抖�
         globalThis.fetch = realFetch;
         delete globalThis.document;
         delete globalThis.window;
+        delete globalThis.requestAnimationFrame;
+        delete globalThis.sessionStorage;
+        try { delete globalThis.navigator; } catch (_) {}
+    }
+});
+
+test('PWA - 首次安装无旧 controller 时 clients.claim() 不触发更新横幅与自动重刷', async () => {
+    const realSetTimeout = globalThis.setTimeout;
+    const realSetInterval = globalThis.setInterval;
+    const realFetch = globalThis.fetch;
+
+    const timers = [];
+    let reloads = 0;
+    const swListeners = {};
+    const body = {
+        children: [],
+        appendChild(el) {
+            this.children.push(el);
+            return el;
+        }
+    };
+    const makeEl = (tag = 'div') => ({
+        tagName: String(tag).toUpperCase(),
+        id: '',
+        className: '',
+        textContent: '',
+        style: { cssText: '' },
+        children: [],
+        classList: { add() {}, remove() {}, toggle() {}, contains: () => false },
+        setAttribute() {},
+        querySelector: () => makeEl(),
+        appendChild(c) { this.children.push(c); return c; },
+        addEventListener() {},
+        remove() {
+            const idx = body.children.indexOf(this);
+            if (idx >= 0) body.children.splice(idx, 1);
+        }
+    });
+
+    globalThis.setTimeout = (fn, ms) => {
+        timers.push({ fn, ms });
+        return timers.length;
+    };
+    globalThis.setInterval = () => 1;
+    globalThis.fetch = async () => ({ ok: true, json: async () => ({ version: '2.5.0' }) });
+    globalThis.sessionStorage = {
+        _m: new Map(),
+        getItem(k) { return this._m.get(k) || null; },
+        setItem(k, v) { this._m.set(k, String(v)); },
+        removeItem(k) { this._m.delete(k); }
+    };
+    globalThis.document = {
+        readyState: 'complete',
+        visibilityState: 'visible',
+        body,
+        createElement: (tag) => makeEl(tag),
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener() {}
+    };
+    globalThis.window = {
+        addEventListener() {},
+        location: { reload() { reloads += 1; } }
+    };
+    globalThis.requestAnimationFrame = (fn) => fn();
+    try {
+        Object.defineProperty(globalThis, 'navigator', {
+            configurable: true,
+            value: {
+                serviceWorker: {
+                    controller: null,
+                    register: async () => ({ waiting: null, update: async () => {}, addEventListener() {} }),
+                    addEventListener: (ev, fn) => { swListeners[ev] = fn; }
+                }
+            }
+        });
+
+        const { initPwaUpdates } = await import('../public/js/pwa-update.js');
+        initPwaUpdates({ currentVersion: '2.5.0', showToast: () => {} });
+        await new Promise((resolve) => setImmediate(resolve));
+
+        assert.equal(typeof swListeners.controllerchange, 'function', '应注册 controllerchange 监听');
+        // 首次安装 clients.claim() 触发 controllerchange：不得弹横幅也不得安排自动 reload
+        swListeners.controllerchange();
+        assert.equal(body.children.length, 0, '首次接管不应弹出「新版本已激活」横幅');
+        assert.equal(reloads, 0, '首次接管不应触发页面刷新');
+        assert.equal(timers.some((t) => t.ms >= 8000), false, '首次接管不得调度 8s 自动重刷定时器');
+
+        // 若同一会话后续真正有新版接管（第二次 controllerchange），则应正常提示更新
+        swListeners.controllerchange();
+        assert.equal(body.children.length, 1, '后续新版替换旧 controller 时应正常弹出更新横幅');
+    } finally {
+        globalThis.setTimeout = realSetTimeout;
+        globalThis.setInterval = realSetInterval;
+        globalThis.fetch = realFetch;
+        delete globalThis.document;
+        delete globalThis.window;
+        delete globalThis.requestAnimationFrame;
         delete globalThis.sessionStorage;
         try { delete globalThis.navigator; } catch (_) {}
     }

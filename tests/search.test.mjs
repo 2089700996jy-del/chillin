@@ -199,3 +199,71 @@ test('Feeds - 待办 Markdown 一键点选与今日闭环渲染（Interactive Ch
     assert.ok(!plainHtml.includes('feed-todo-checkbox'));
     assert.match(plainHtml, /<a href="https:\/\/example\.com"/);
 });
+
+test('Search - 点击搜索按钮传入 PointerEvent 时不崩溃且清空输入', async () => {
+    const prevDoc = globalThis.document;
+    const prevActions = (await import('../public/js/actions.js')).actions;
+    const listeners = new Map();
+    const classes = new Set();
+    const modal = {
+        addEventListener: () => {},
+        classList: {
+            add: (c) => classes.add(c),
+            remove: (c) => classes.delete(c),
+            contains: (c) => classes.has(c)
+        }
+    };
+    const input = {
+        value: 'old',
+        focused: false,
+        focus() { this.focused = true; },
+        addEventListener: () => {}
+    };
+    const results = { innerHTML: '', addEventListener: () => {}, querySelectorAll: () => [] };
+    const btnOpen = {
+        addEventListener: (type, fn) => listeners.set(type, fn)
+    };
+    const els = {
+        'global-search-modal': modal,
+        'global-search-input': input,
+        'global-search-results': results,
+        'btn-open-global-search': btnOpen
+    };
+    globalThis.document = {
+        getElementById: (id) => els[id] || null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: () => {}
+    };
+    try {
+        const { initSearch } = await import('../public/js/search.js');
+        initSearch();
+        const onClick = listeners.get('click');
+        assert.equal(typeof onClick, 'function', 'btn-open-global-search 必须绑定点击事件');
+        // 模拟浏览器传入 PointerEvent（没有 startsWith 方法）
+        assert.doesNotThrow(() => onClick({ type: 'click', pointerType: 'touch' }));
+        assert.equal(classes.has('show'), true, '点击搜索按钮应打开全局搜索弹窗');
+        assert.equal(input.value, '', '非字符串入参不得写入 [object Object]');
+        assert.doesNotThrow(() => prevActions.openGlobalSearch({ type: 'pointerdown' }));
+        assert.equal(input.value, '', 'openGlobalSearch 收到事件对象时必须回退为空字符串');
+    } finally {
+        globalThis.document = prevDoc;
+    }
+});
+
+test('Feeds & Upload - 随手记传图未完成前锁定发送且发送后解锁底栏 inert', () => {
+    const uploadSrc = fs.readFileSync(path.join(root, 'public/js/upload.js'), 'utf8');
+    const feedsSrc = fs.readFileSync(path.join(root, 'public/js/feeds.js'), 'utf8');
+    const appSrc = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
+    const actionsSrc = fs.readFileSync(path.join(root, 'public/js/actions.js'), 'utf8');
+
+    assert.match(uploadSrc, /targetInput\.dataset\.uploading = '1'/, 'uploadSingleImage 开始时必须标记上传中');
+    assert.match(uploadSrc, /feedSendBtn\.disabled = true/, '随手记上传图片期间必须禁用发送按钮防丢图');
+    assert.match(uploadSrc, /delete targetInput\.dataset\.uploading/, 'uploadSingleImage finally 必须清理上传标记');
+    assert.match(feedsSrc, /feedMediaUrlInput\?\.dataset\?\.uploading === '1'/, 'sendFeed 必须兜底拦截仍在上传的图片提交');
+    assert.match(feedsSrc, /actions\.resetBottomNav\?\.\(\)/, 'sendFeed 完成后必须复位底部导航防止 inert 锁死');
+    assert.match(actionsSrc, /resetBottomNav: null/, 'actions 注册表必须声明 resetBottomNav');
+    assert.match(appSrc, /actions\.resetBottomNav = resetBottomNav/, 'app.js 必须注册 resetBottomNav');
+    assert.match(appSrc, /maxScroll <= 96 \|\| Date\.now\(\) < bottomNavRevealLockUntil/, '底栏隐藏判断必须避开短页面与复位保护期');
+    assert.match(appSrc, /await refreshSession\(\)\.catch\(\(\) => \{\}\)/, '启动恢复会话后必须先完成 refreshSession 再并发拉取数据');
+});

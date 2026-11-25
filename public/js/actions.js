@@ -43,6 +43,7 @@ export const actions = {
     renderTopicShelves: null,
     openTopicDetailSheet: null,
     refreshAgentInbox: null,
+    resetBottomNav: null,
     clearPendingRetry: null,
     triggerImageUpload: null,
 };

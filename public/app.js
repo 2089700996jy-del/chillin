@@ -190,12 +190,19 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 只切 class，不动 display：编辑器/键盘/弹层的既有 display:none 逻辑仍然优先。
     // inert 让收起后的导航同时退出 Tab 序列与读屏树，避免「看不见但还能聚焦」。
+    let bottomNavRevealLockUntil = 0;
     const setBottomNavScrollHidden = (hidden) => {
         if (!bottomNav) return;
         if (bottomNav.classList.contains('scroll-hidden') === hidden) return;
         bottomNav.classList.toggle('scroll-hidden', hidden);
         bottomNav.toggleAttribute('inert', hidden);
     };
+    const resetBottomNav = () => {
+        bottomNavRevealLockUntil = Date.now() + 450;
+        lastScrollY = Math.max(0, window.scrollY || window.pageYOffset || 0);
+        setBottomNavScrollHidden(false);
+    };
+    actions.resetBottomNav = resetBottomNav;
 
     if (backToTopBtn) {
         backToTopBtn.addEventListener('click', () => {
@@ -211,7 +218,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 顶部始终显示；向下超过 96px 才收起，向上 6px 即恢复。
         // 阈值避免一点抖动就切换；停下后保持当前状态，不参与滚动惯性判断。
-        if (y <= 48) {
+        const maxScroll = Math.max(0, (document.documentElement?.scrollHeight || 0) - window.innerHeight);
+        if (y <= 48 || maxScroll <= 96 || Date.now() < bottomNavRevealLockUntil) {
             setBottomNavScrollHidden(false);
             lastScrollY = y;
         } else {
@@ -343,15 +351,18 @@ document.addEventListener('DOMContentLoaded', () => {
     // 会话恢复：优先本地 Bearer（旧版），其次服务端 HttpOnly Cookie（新版）
     restoreCookieSession()
         .catch(() => false)
-        .then((restored) => {
+        .then(async (restored) => {
             if (restored) {
                 checkAuth();
             }
             if (state.authToken || state.cookieSession) {
-                // 滑动续期：静默换新令牌，避免固定 7 天到期被强制登出
-                refreshSession().catch(() => {});
-                syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
-                refreshInsights(true);
+                // 滑动续期：先完成令牌轮换再并发拉取业务接口，避免旧 Cookie 并发竞态触发 401
+                await refreshSession().catch(() => {});
+                if (state.authToken || state.cookieSession) {
+                    syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
+                    refreshInsights(true);
+                    actions.refreshAgentInbox?.().catch(() => {});
+                }
             }
         });
 

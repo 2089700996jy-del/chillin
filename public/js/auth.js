@@ -425,7 +425,15 @@ export function initAuthUI() {
     });
 }
 
+let activeRefreshPromise = null;
+
 export async function apiRequest(path, options = {}) {
+    const isAuthEndpoint = path === '/api/auth/refresh' || path === '/api/auth/login' || path === '/api/auth/register' || path === '/api/auth/logout';
+    // Cookie 令牌轮换期间若并发发出旧 Cookie 请求，旧会话已被后端撤销会触发误报 401；
+    // 先等待在途的 /api/auth/refresh 写回新 Cookie，再发出业务请求。
+    if (activeRefreshPromise && !isAuthEndpoint) {
+        await activeRefreshPromise.catch(() => {});
+    }
     const timeoutMs = options.timeout || 25000;
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
@@ -446,7 +454,15 @@ export async function apiRequest(path, options = {}) {
 
         if (res.status === 401 && path !== '/api/auth/login' && path !== '/api/auth/register' && path !== '/api/auth/logout') {
             if (!options._isRetry) {
-                await new Promise(r => setTimeout(r, 300));
+                const hadSession = !!(state.authToken || state.cookieSession);
+                if (activeRefreshPromise && path !== '/api/auth/refresh') {
+                    await activeRefreshPromise.catch(() => {});
+                    if (hadSession && !state.authToken && !state.cookieSession) {
+                        throw new Error('未登录或登录状态已过期，请重新登录');
+                    }
+                } else {
+                    await new Promise(r => setTimeout(r, 300));
+                }
                 return await apiRequest(path, { ...options, _isRetry: true });
             }
             logout({ reason: 'expired' });
@@ -585,12 +601,18 @@ async function changePassword() {
 /** 滑动续期：启动时静默换新令牌（Cookie 模式），避免固定 7 天到期被强制登出 */
 export async function refreshSession() {
     if (!state.authToken && !state.cookieSession) return false;
-    try {
-        const res = await apiRequest('/api/auth/refresh', { method: 'POST' });
-        return !!(res && res.success);
-    } catch (_) {
-        return false;
-    }
+    if (activeRefreshPromise) return activeRefreshPromise;
+    activeRefreshPromise = (async () => {
+        try {
+            const res = await apiRequest('/api/auth/refresh', { method: 'POST' });
+            return !!(res && res.success);
+        } catch (_) {
+            return false;
+        } finally {
+            activeRefreshPromise = null;
+        }
+    })();
+    return activeRefreshPromise;
 }
 
 function formatSessionTime(ms) {

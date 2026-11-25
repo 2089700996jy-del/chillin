@@ -401,3 +401,99 @@ test('Auth ClawBot - 扫码等待中切后台暂停定时器，切回前台未�
 
     stopBotClawPolling();
 });
+
+test('Auth - refreshSession 在途期间并发 apiRequest 等待轮换完成再发请求，且未登录不盲请求 agent-goals', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const agentGoalsSrc = fs.readFileSync(path.join(rootDir, 'public/js/agent-goals.js'), 'utf8');
+    assert.match(agentGoalsSrc, /if \(state\.authToken \|\| state\.cookieSession\) \{\s*refreshInbox\(\)/, 'initAgentGoals 未登录时不得盲发 /api/agent/approvals');
+
+    const prevWindow = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevStorage = globalThis.localStorage;
+    const prevLocation = globalThis.location;
+    const prevNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const prevFetch = globalThis.fetch;
+
+    const store = new Map();
+    globalThis.localStorage = {
+        getItem: (k) => store.get(k) ?? null,
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+        clear: () => store.clear()
+    };
+    globalThis.location = { protocol: 'https:', hostname: 'chillin.local', host: 'chillin.local', origin: 'https://chillin.local', href: 'https://chillin.local/' };
+    globalThis.window = globalThis;
+    globalThis.document = {
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: () => {}
+    };
+    Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { onLine: true, userAgent: 'node-test' }
+    });
+
+    const callOrder = [];
+    let releaseRefresh;
+    const refreshGate = new Promise((resolve) => { releaseRefresh = resolve; });
+
+    globalThis.fetch = async (url) => {
+        const u = String(url);
+        callOrder.push(`start:${u}`);
+        const headers = { get: (k) => (String(k).toLowerCase() === 'content-type' ? 'application/json' : null) };
+        if (u.includes('/api/auth/refresh')) {
+            await refreshGate;
+            callOrder.push('end:/api/auth/refresh');
+            return {
+                ok: true,
+                status: 200,
+                headers,
+                json: async () => ({ success: true }),
+                text: async () => '{"success":true}'
+            };
+        }
+        return {
+            ok: true,
+            status: 200,
+            headers,
+            json: async () => ({ ok: true }),
+            text: async () => '{"ok":true}'
+        };
+    };
+
+    try {
+        const { state } = await import('../public/js/state.js');
+        const { refreshSession, apiRequest } = await import('../public/js/auth.js');
+        state.cookieSession = true;
+        state.authToken = '';
+
+        const pRefresh = refreshSession();
+        // 让 refreshSession 先进入 fetch('/api/auth/refresh')
+        await new Promise((r) => setImmediate(r));
+        const pSync = apiRequest('/api/sync/pull');
+        await new Promise((r) => setImmediate(r));
+
+        assert.equal(callOrder.some((c) => c.includes('/api/sync/pull')), false, 'refresh 未落盘前不得并发发出旧 Cookie 业务请求');
+
+        releaseRefresh();
+        const [refreshed, syncRes] = await Promise.all([pRefresh, pSync]);
+        assert.equal(refreshed, true);
+        assert.deepEqual(syncRes, { ok: true });
+        assert.ok(
+            callOrder.indexOf('end:/api/auth/refresh') < callOrder.indexOf('start:https://chillin.local/api/sync/pull')
+            || callOrder.indexOf('end:/api/auth/refresh') < callOrder.findIndex((c) => c.startsWith('start:') && c.includes('/api/sync/pull')),
+            '业务请求必须在 refresh 完成后再发出'
+        );
+    } finally {
+        globalThis.fetch = prevFetch;
+        globalThis.window = prevWindow;
+        globalThis.document = prevDoc;
+        globalThis.localStorage = prevStorage;
+        globalThis.location = prevLocation;
+        if (prevNavDesc) Object.defineProperty(globalThis, 'navigator', prevNavDesc);
+    }
+});

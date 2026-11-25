@@ -4413,7 +4413,7 @@ body.keyboard-open .fab-btn {
 /* 待办项目与一键打勾交互 */
 .btn-chip-todo {
   background: rgba(52, 199, 89, 0.12);
-  color: var(--ios-green);
+  color: #146C2E;
   font-weight: 600;
 }
 
@@ -10829,6 +10829,12 @@ body.dark-reader-body .k-directory-arrow {
    底栏玻璃上的对比度 5.18，优于亮色蓝 #007AFF 的 4.70（wcag 小字标准 4.5）。 */
 :root[data-theme="dark"] .mobile-tab-item.active {
   color: var(--ios-blue-dark);
+}
+
+/* 深色下待办标签绿文字提亮，确保在半透绿底上满足 WCAG AA 对比度 */
+:root[data-theme="dark"] .btn-chip-todo {
+  background: rgba(48, 209, 88, 0.16);
+  color: #4ADE80;
 }
 
 :root[data-theme="dark"] .editor-actions-dock {
