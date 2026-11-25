@@ -12,9 +12,9 @@
      这样所有 alpha（0.04~0.95）的 rgba() 用法都能随主题自动反转，不必逐条写深色覆盖 */
   --label-rgb: 60, 60, 67;
   --neutral-rgb: 120, 120, 128;
-  --ios-secondary-label: rgba(var(--label-rgb), 0.75);
-  /* 4.82:1 on nav / 5.20:1 on card（0.65 只有 3.83/4.04） */
-  --placeholder-color: rgba(var(--label-rgb), 0.75);
+  --ios-secondary-label: rgba(var(--label-rgb), 0.85);
+  /* 6.5+:1 on card / pill, 避免浅灰胶囊叠加时跌破 WCAG 4.5:1 */
+  --placeholder-color: rgba(var(--label-rgb), 0.78);
 
   --bg-color: var(--ios-bg);
   --text-color: #1A1A1A;
@@ -44,7 +44,7 @@
      --bg-rgb 必须与 --ios-bg 同值，由 tests/css.test.mjs 机器校验。 */
   --bg-rgb: 248, 249, 250;
   --nav-glass-scrolled: rgba(var(--bg-rgb), 0.94);
-  --nav-scrolled-bg: rgba(var(--bg-rgb), 0.88);
+  --nav-scrolled-bg: rgba(var(--bg-rgb), 0.94);
   --input-bg: rgba(255, 255, 255, 0.75);
   --input-bg-focus: #ffffff;
   --hover-bg: rgba(0, 0, 0, 0.04);
@@ -10786,7 +10786,7 @@ body.dark-reader-body .k-directory-arrow {
   --nav-bg: #14161b;
   --bg-rgb: 15, 17, 21;
   --nav-glass-scrolled: rgba(var(--bg-rgb), 0.94);
-  --nav-scrolled-bg: rgba(var(--bg-rgb), 0.88);
+  --nav-scrolled-bg: rgba(var(--bg-rgb), 0.94);
   --input-bg: rgba(255, 255, 255, 0.08);
   --input-bg-focus: rgba(255, 255, 255, 0.14);
   --hover-bg: rgba(255, 255, 255, 0.08);

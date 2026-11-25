@@ -266,4 +266,10 @@ test('Feeds & Upload - 随手记传图未完成前锁定发送且发送后解锁
     assert.match(appSrc, /actions\.resetBottomNav = resetBottomNav/, 'app.js 必须注册 resetBottomNav');
     assert.match(appSrc, /maxScroll <= 96 \|\| Date\.now\(\) < bottomNavRevealLockUntil/, '底栏隐藏判断必须避开短页面与复位保护期');
     assert.match(appSrc, /await refreshSession\(\)\.catch\(\(\) => \{\}\)/, '启动恢复会话后必须先完成 refreshSession 再并发拉取数据');
+    assert.ok(
+        appSrc.indexOf('setSessionInitPromise(sessionGate)') !== -1 &&
+        appSrc.indexOf('setSessionInitPromise(sessionGate)') < appSrc.indexOf("safeInit('insights'"),
+        '启动期会话门闩必须在 initInsights 之前注册，防止并发 401 竞态'
+    );
+    assert.match(appSrc, /checkAuth\(\{ skipInboxRefresh: true \}\)/, '启动恢复期间 checkAuth 不得抢跑 refreshAgentInbox');
 });

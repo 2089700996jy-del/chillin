@@ -152,7 +152,7 @@ function clearSyncCursorsForUser(userId) {
     }
 }
 
-export function checkAuth() {
+export function checkAuth(opts = {}) {
     const authOverlay = document.getElementById('auth-overlay');
     const navUsername = document.getElementById('nav-username');
     const agentBadge = document.getElementById('agent-pending-badge');
@@ -168,7 +168,7 @@ export function checkAuth() {
     authOverlay?.classList.add('hidden');
     document.body.classList.remove('not-authenticated');
     if (state.authUser && navUsername) navUsername.innerText = `Hi, ${state.authUser.username}`;
-    if (actions.refreshAgentInbox) actions.refreshAgentInbox().catch(() => {});
+    if (!opts.skipInboxRefresh && actions.refreshAgentInbox) actions.refreshAgentInbox().catch(() => {});
     return true;
 }
 

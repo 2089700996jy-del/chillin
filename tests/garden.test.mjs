@@ -844,3 +844,44 @@ integration('Garden Isolation - 越权 PUT 他人笔记/周记/随手记返回 4
     assert.equal((await handlePutFeed(feedA.id, req({ content: 'hack' }), db, 2)).status, 403);
     assert.equal((await handlePutFeed(999999, req({ content: 'missing' }), db, 2)).status, 404);
 });
+
+integration('Garden Isolation - 越权 DELETE 他人笔记/周记/收藏/提示词/随手记返回 403，不存在返回 404', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    const {
+        handlePostNote, handleDeleteNote,
+        handlePostWeekly, handleDeleteWeekly,
+        handlePostBookmark, handleDeleteBookmark,
+        handlePostPrompt, handleDeletePrompt,
+        handlePostFeed, handleDeleteFeed
+    } = await import('../workers/src/garden-resources.js');
+
+    const req = (body) => new Request('https://x/api/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    const noteA = await (await handlePostNote(req({ title: 'A note', content: 'secret', date: '2026-11-25' }), db, 1)).json();
+    assert.equal((await handleDeleteNote(noteA.id, db, 2)).status, 403, '越权 DELETE 他人笔记必须返回 403');
+    assert.equal((await handleDeleteNote(999999, db, 2)).status, 404, 'DELETE 不存在的笔记应返回 404');
+    assert.equal((await handleDeleteNote(noteA.id, db, 1)).status, 200, '本人 DELETE 笔记应返回 200');
+
+    const weeklyA = await (await handlePostWeekly(req({ title: 'A weekly', content: 'secret', date: '2026-11-25' }), db, 1)).json();
+    assert.equal((await handleDeleteWeekly(weeklyA.id, db, 2)).status, 403);
+    assert.equal((await handleDeleteWeekly(999999, db, 2)).status, 404);
+
+    const bmA = await (await handlePostBookmark(req({ type: '网页', title: 'A bm', url: 'https://example.com' }), db, 1)).json();
+    assert.equal((await handleDeleteBookmark(bmA.id, db, 2)).status, 403);
+    assert.equal((await handleDeleteBookmark(999999, db, 2)).status, 404);
+
+    const promptA = await (await handlePostPrompt(req({ title: 'A prompt', content: 'hello' }), db, 1)).json();
+    assert.equal((await handleDeletePrompt(promptA.id, db, 2)).status, 403);
+    assert.equal((await handleDeletePrompt(999999, db, 2)).status, 404);
+
+    const feedA = await (await handlePostFeed(req({ content: 'A feed' }), db, 1)).json();
+    assert.equal((await handleDeleteFeed(feedA.id, db, 2)).status, 403);
+    assert.equal((await handleDeleteFeed(999999, db, 2)).status, 404);
+});

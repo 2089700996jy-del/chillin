@@ -319,8 +319,15 @@ document.addEventListener('DOMContentLoaded', () => {
             if (kind === 'heatmap') actions.renderHeatmap?.();
         }
     });
+    // 在任何模块初始化前注册启动期会话门闩，防止 initInsights / 懒加载模块抢跑触发 401 竞态
+    let releaseSessionGate;
+    const sessionGate = new Promise((resolve) => {
+        releaseSessionGate = resolve;
+    });
+    setSessionInitPromise(sessionGate);
+
     safeInit('authUI', initAuthUI);
-    checkAuth();
+    checkAuth({ skipInboxRefresh: true });
 
     safeInit('weeklies', initWeeklies);
     safeInit('notes', initNotes);
@@ -350,23 +357,25 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 会话恢复：优先本地 Bearer（旧版），其次服务端 HttpOnly Cookie（新版）
-    const sessionInit = restoreCookieSession()
+    restoreCookieSession()
         .catch(() => false)
         .then(async (restored) => {
             if (restored) {
-                checkAuth();
+                checkAuth({ skipInboxRefresh: true });
             }
             if (state.authToken || state.cookieSession) {
-                // 滑动续期：先完成令牌轮换再并发拉取业务接口，避免旧 Cookie 并发竞态触发 401
+                // 滑动续期：先完成令牌轮换再释放门闩并并发拉取业务接口，避免旧 Cookie 并发竞态触发 401
                 await refreshSession().catch(() => {});
-                if (state.authToken || state.cookieSession) {
-                    syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
-                    refreshInsights(true);
-                    actions.refreshAgentInbox?.().catch(() => {});
-                }
+            }
+        })
+        .finally(() => {
+            releaseSessionGate();
+            if (state.authToken || state.cookieSession) {
+                syncFromApi().catch((e) => console.warn('[init] syncFromApi', e));
+                refreshInsights(true);
+                actions.refreshAgentInbox?.().catch(() => {});
             }
         });
-    setSessionInitPromise(sessionInit);
 
     safeInit('mergeGuest', checkAndMergeGuestData);
     safeInit('autoSync', startAutoSyncEngine);

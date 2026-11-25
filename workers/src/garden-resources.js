@@ -18,6 +18,20 @@ import {
     isSoftDeletedRecord
 } from './garden-shared.js';
 
+/**
+ * 统一软删除归属校验：禁止跨账号返回 200 伪成功，不存在返回 404，跨账号返回 403。
+ */
+async function softDeleteOwnedRecord(db, table, id, userId) {
+    if (!isValidRecordId(id)) return jsonResponse({ error: '无效的记录 ID' }, 400);
+    const existing = await db.prepare(`SELECT user_id, IFNULL(is_deleted, 0) AS is_deleted FROM ${table} WHERE id = ?1`).bind(id).first();
+    if (!existing) return jsonResponse({ error: '记录不存在' }, 404);
+    if (Number(existing.user_id) !== Number(userId)) return jsonResponse({ error: '无权操作该记录' }, 403);
+    if (Number(existing.is_deleted) === 0) {
+        await db.prepare(`UPDATE ${table} SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2`).bind(id, userId).run();
+    }
+    return jsonResponse({ success: true }, 200);
+}
+
 // 资源 CRUD 的请求体上限：正常一份周记（含批注）远小于此
 const MAX_CRUD_BODY_BYTES = 512 * 1024;
 // 阅读进度只是几个数字与短标题，给个很小的上限
@@ -80,8 +94,7 @@ export async function handlePutWeekly(id, request, db, userId) {
 }
 
 export async function handleDeleteWeekly(id, db, userId) {
-    await db.prepare("UPDATE weeklies SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
-    return jsonResponse({ success: true }, 200);
+    return softDeleteOwnedRecord(db, 'weeklies', id, userId);
 }
 
 // ── Notes Handlers ──
@@ -140,8 +153,7 @@ export async function handlePutNote(id, request, db, userId) {
 }
 
 export async function handleDeleteNote(id, db, userId) {
-    await db.prepare("UPDATE notes SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
-    return jsonResponse({ success: true }, 200);
+    return softDeleteOwnedRecord(db, 'notes', id, userId);
 }
 
 // ── Bookmarks Handlers ──
@@ -186,8 +198,7 @@ export async function handlePostBookmark(request, db, userId) {
 }
 
 export async function handleDeleteBookmark(id, db, userId) {
-    await db.prepare("UPDATE bookmarks SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
-    return jsonResponse({ success: true }, 200);
+    return softDeleteOwnedRecord(db, 'bookmarks', id, userId);
 }
 
 // ── Prompts Handlers ──
@@ -255,8 +266,7 @@ export async function handlePostPrompt(request, db, userId) {
 }
 
 export async function handleDeletePrompt(id, db, userId) {
-    await db.prepare("UPDATE prompts SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
-    return jsonResponse({ success: true }, 200);
+    return softDeleteOwnedRecord(db, 'prompts', id, userId);
 }
 
 // ── Feeds Handlers ──
@@ -326,8 +336,7 @@ export async function handlePutFeed(id, request, db, userId) {
 }
 
 export async function handleDeleteFeed(id, db, userId) {
-    await db.prepare("UPDATE quick_feeds SET is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2").bind(id, userId).run();
-    return jsonResponse({ success: true }, 200);
+    return softDeleteOwnedRecord(db, 'quick_feeds', id, userId);
 }
 
 // ── Reader Reading Progress (Sync) ──
