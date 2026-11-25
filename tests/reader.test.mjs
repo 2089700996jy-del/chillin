@@ -844,3 +844,61 @@ test('Reader Adversarial 7: 云端书目 updated_at / size / 章节数跨端比�
     assert.match(readerSrc, /avoidBookId/, '替换本地书籍时必须传 avoidBookId 防同毫秒 ID 碰撞被误删');
     assert.match(readerSrc, /btn-reader-resplit/, 'reader.js 必须绑定侧栏重新切章按钮');
 });
+
+test('Reader Adversarial 8: 章节标题含引号/问号/括号/部分不被误杀，且已同步云端快照后不再死循环提示更新', () => {
+    const text = [
+        '第一章 外乡人',
+        '第一章正文内容。',
+        '第二章 “恶作剧”',
+        '第二章正文内容。',
+        '第六十九章 他？',
+        '第六十九章正文内容。',
+        '第一百三十六章 关键部分',
+        '第一百三十六章正文内容。',
+        '第一百八十五章 画的力量（附录）',
+        '第一百八十五章正文内容。',
+        '第200章 这只是正文句子，不是章节标题。',
+        '正文继续。'
+    ].join('\n');
+
+    const chapters = parseChapters(text);
+    assert.deepEqual(
+        chapters.map((c) => c.title),
+        [
+            '第一章 外乡人',
+            '第二章 “恶作剧”',
+            '第六十九章 他？',
+            '第一百三十六章 关键部分',
+            '第一百八十五章 画的力量（附录）'
+        ],
+        '包含引号、问号、括号或“部分”的真实章名必须完整保留，句末带句号的正文句子应排除'
+    );
+
+    const cloudBook = {
+        book_key: '宿命之环::1191',
+        title: '宿命之环',
+        total_chapters: 1191,
+        size: 12058828,
+        updated_at: '2026-10-19 00:31:04',
+        is_deleted: 0
+    };
+
+    // 更新前本地旧版仅 1016 章且尚未同步快照：应提示更新
+    assert.equal(
+        isCloudBookNewer({ bookKey: '宿命之环::1016', title: '宿命之环', totalChapters: 1016, createdAt: 1000 }, cloudBook),
+        true
+    );
+
+    // 拉取云端更新后本地按新规则切成 1180 章并记录了 syncedCloudChapters=1191：不应再死循环提示更新
+    const syncedLocal = {
+        bookKey: '宿命之环::1191',
+        title: '宿命之环',
+        totalChapters: 1180,
+        cloudSize: 12058828,
+        cloudUpdatedAt: '2026-10-19 00:31:04',
+        syncedCloudChapters: 1191
+    };
+    assert.equal(isCloudBookNewer(syncedLocal, cloudBook), false, '已同步同时间戳与同大小快照后不得因历史总章数差异死循环提示');
+    assert.equal(isCloudBookNewer(syncedLocal, { ...cloudBook, size: 12059999 }), true, '云端 size 变化时仍须提示更新');
+    assert.equal(isCloudBookNewer(syncedLocal, { ...cloudBook, updated_at: '2026-11-25 11:00:00' }), true, '云端 updated_at 变新时仍须提示更新');
+});

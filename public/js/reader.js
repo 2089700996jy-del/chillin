@@ -203,12 +203,6 @@ export function findMatchingCloudBook(localBook, cloudList) {
 export function isCloudBookNewer(localBook, cloudBook) {
     if (!localBook || !cloudBook || cloudBook.is_deleted) return false;
 
-    const remoteChapters = Number(cloudBook.total_chapters || 0);
-    const localChapters = Number(localBook.totalChapters || 0);
-    if (remoteChapters > 0 && localChapters > 0 && remoteChapters !== localChapters) {
-        return true;
-    }
-
     const remoteSize = Number(cloudBook.size || 0);
     const localSize = Number(localBook.cloudSize || 0);
     if (remoteSize > 0 && localSize > 0 && remoteSize !== localSize) {
@@ -217,8 +211,24 @@ export function isCloudBookNewer(localBook, cloudBook) {
 
     const remoteTs = parseReaderTimestampMs(cloudBook.updated_at);
     const localCloudTs = parseReaderTimestampMs(localBook.cloudUpdatedAt);
+    const remoteChapters = Number(cloudBook.total_chapters || 0);
+    const localChapters = Number(localBook.totalChapters || 0);
+    const syncedCloudChapters = Number(localBook.syncedCloudChapters || 0);
+
     if (localCloudTs > 0) {
-        return remoteTs > localCloudTs;
+        if (remoteTs > localCloudTs) return true;
+        // 已拉取过该时间点/大小一致的云端快照：即使新版切章规则算出的本地章数与历史 D1 元数据不同，也不再循环提示更新
+        if (remoteTs > 0 && remoteTs <= localCloudTs && syncedCloudChapters > 0 && syncedCloudChapters === remoteChapters) {
+            return false;
+        }
+        if (remoteChapters > 0 && localChapters > 0 && remoteChapters !== localChapters) {
+            return true;
+        }
+        return false;
+    }
+
+    if (remoteChapters > 0 && localChapters > 0 && remoteChapters !== localChapters) {
+        return true;
     }
 
     // 历史本地副本尚未记录 cloudUpdatedAt/cloudSize：若云端更新时间明显晚于本地创建时间（>60秒），判定云端有更新
@@ -267,7 +277,8 @@ export async function showReaderSyncDiagnostic() {
 export const reVolume = /^(?:【\s*)?(?:第[一二三四五六七八九十百千万零\d\s]+[卷部]|卷[一二三四五六七八九十\d\s]+|分卷[一二三四五六七八九十\d\s]*)(?:\s*】)?(?:\s*[:：\s]\s*([^\n]{0,40}))?$/i;
 export const reChapter = /^(?:【\s*)?(?:第[一二三四五六七八九十百千万零\d\s]+[章节回折集篇]|Chapter\s*\d+|CHAPTER\s*\d+)(?:\s*】)?(?:\s+[^\n]*)?$/i;
 export const reSpecial = /^(?:【\s*)?(?:序章|序言|引子|楔子|尾声|后记|番外\s*[^\n]*|番外篇\s*[^\n]*|终章|结语)(?:\s*】)?(?:\s+[^\n]*)?$/i;
-export const prosePunctuation = /[，。；！？、“”‘’…\(\)（）—]/;
+// 只用句号、分号排除整段正文；保留章节标题里常见的引号、问号、叹号、括号、逗号、破折号等
+export const prosePunctuation = /[。；]/;
 
 export function parseChapters(text) {
     if (!text || typeof text !== 'string') return [];
@@ -290,8 +301,8 @@ export function parseChapters(text) {
             continue;
         }
 
-        // 排除正文段落（含常见断句标点、包含“部分”或单行过长）
-        const isProse = prosePunctuation.test(line) || line.includes('部分') || line.length > 50;
+        // 排除正文段落（含句末/分句标点或单行过长）
+        const isProse = prosePunctuation.test(line) || line.length > 50;
 
         if (!isProse) {
             if (reVolume.test(line)) {
@@ -598,7 +609,8 @@ export function initReader() {
             groupCount: Math.ceil(totalChapters / 100),
             createdAt: Number(meta.createdAt) || Date.now(),
             cloudUpdatedAt: meta.cloudUpdatedAt || '',
-            cloudSize: Number(meta.cloudSize) || 0
+            cloudSize: Number(meta.cloudSize) || 0,
+            syncedCloudChapters: Number(meta.syncedCloudChapters) || 0
         };
         await rdbPut('books', bookRecord);
 
@@ -734,6 +746,7 @@ export function initReader() {
             if (stored) {
                 stored.cloudSize = cloudSize;
                 stored.cloudUpdatedAt = cloudUpdatedAt;
+                stored.syncedCloudChapters = Number(localBook.totalChapters) || Number(stored.syncedCloudChapters) || 0;
                 await rdbPut('books', stored);
             }
         } catch (_) { /* audit-ignore: intentional-fallback 元数据落库失败不影响上传成功状态 */ }
@@ -756,7 +769,7 @@ export function initReader() {
         const cloudKeys = new Set(cloudBooks.map((b) => b.book_key));
         const pending = localBooks.filter((b) => {
             const key = b.bookKey || computeBookKey(b);
-            return key && !cloudKeys.has(key) && !cloudTombstones.has(key);
+            return key && !cloudKeys.has(key) && !cloudTombstones.has(key) && !findMatchingCloudBook(b, cloudBooks);
         });
         if (!pending.length) return;
 
@@ -841,7 +854,8 @@ export function initReader() {
             avoidBookId: oldBook.id,
             createdAt: oldBook.createdAt || Date.now(),
             cloudUpdatedAt: meta.cloudUpdatedAt || '',
-            cloudSize: Number(meta.cloudSize) || 0
+            cloudSize: Number(meta.cloudSize) || 0,
+            syncedCloudChapters: Number(meta.syncedCloudChapters) || 0
         }, onProgress);
         if (!newBook) return null;
 
@@ -852,7 +866,18 @@ export function initReader() {
 
         try {
             await rdbDelete('books', oldBook.id);
-            for (const ch of oldChapters) await rdbDelete('chapters', ch.id);
+            // 整书替换时按单事务批量清理旧章节，避免 1000+ 次串行 IndexedDB 事务在 iOS Safari 卡顿或中途中断
+            if (oldChapters.length) {
+                const db = await openReaderDB();
+                const tx = db.transaction('chapters', 'readwrite');
+                const store = tx.objectStore('chapters');
+                for (const ch of oldChapters) store.delete(ch.id);
+                await new Promise((resolve, reject) => {
+                    tx.oncomplete = resolve;
+                    tx.onerror = () => reject(tx.error);
+                    tx.onabort = () => reject(tx.error);
+                });
+            }
             deleteReaderProgress(oldBook.id);
         } catch (cleanupErr) {
             console.warn('[reader] cleanup replaced book failed', cleanupErr);
@@ -897,7 +922,8 @@ export function initReader() {
                     fileName: meta.title + '.txt',
                     bookKey: actualKey,
                     cloudUpdatedAt: meta.updated_at || '',
-                    cloudSize: Number(meta.size) || 0
+                    cloudSize: Number(meta.size) || 0,
+                    syncedCloudChapters: Number(meta.total_chapters) || 0
                 }, onProgress)
                 : await saveBookToLocalDB(text, {
                     title: meta.title,
@@ -905,7 +931,8 @@ export function initReader() {
                     fileName: meta.title + '.txt',
                     bookKey: actualKey,
                     cloudUpdatedAt: meta.updated_at || '',
-                    cloudSize: Number(meta.size) || 0
+                    cloudSize: Number(meta.size) || 0,
+                    syncedCloudChapters: Number(meta.total_chapters) || 0
                 }, onProgress);
             if (progressEl) progressEl.style.display = 'none';
             if (!book) return null;
@@ -944,7 +971,8 @@ export function initReader() {
                 author: oldBook.author,
                 fileName: oldBook.fileName,
                 cloudUpdatedAt: oldBook.cloudUpdatedAt || '',
-                cloudSize: Number(oldBook.cloudSize) || 0
+                cloudSize: Number(oldBook.cloudSize) || 0,
+                syncedCloudChapters: Number(oldBook.syncedCloudChapters) || 0
             });
             if (!newBook) return null;
             await renderBookshelf();
