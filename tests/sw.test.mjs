@@ -34,6 +34,9 @@ test('PWA - every shipped module is precached, every precached asset exists', as
     for (const file of modules) {
         assert.ok(assets.includes(`/js/${file}`), `js/${file} is not listed in sw.js ASSETS (offline would break)`);
     }
+    for (const lazy of ['reader', 'prompts', 'upload', 'agent-goals']) {
+        assert.ok(sw.includes(`\`/js/${lazy}.js?v=\${APP_V}\``), `sw.js ASSETS 应同步预缓存带版本参数的 /js/${lazy}.js?v=\${APP_V}`);
+    }
 
     // 3) manifest 引用的图标也要存在
     const manifest = JSON.parse(await fs.readFile(path.join(root, SITE, 'manifest.json'), 'utf8'));

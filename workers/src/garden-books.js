@@ -85,7 +85,16 @@ export async function handlePutReaderBook(request, env, db, userId) {
             updated_at = excluded.updated_at`
     ).bind(userId, bookKey, title, author, totalChapters, size, r2Key).run();
 
-    return jsonResponse({ ok: true, book_key: bookKey, size });
+    const saved = await db.prepare(
+        'SELECT updated_at FROM reader_books WHERE user_id = ?1 AND book_key = ?2'
+    ).bind(userId, bookKey).first();
+
+    return jsonResponse({
+        ok: true,
+        book_key: bookKey,
+        size,
+        updated_at: (saved && saved.updated_at) || ''
+    });
 }
 
 export async function handleGetReaderBook(rawKey, env, db, userId) {
@@ -101,7 +110,7 @@ export async function handleGetReaderBook(rawKey, env, db, userId) {
 
     const headers = applySecurityHeaders(new Headers({
         'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'private, max-age=86400',
+        'Cache-Control': 'no-cache, must-revalidate',
         'X-Robots-Tag': 'noindex, nofollow, noarchive'
     }));
     return new Response(obj.body, { status: 200, headers });

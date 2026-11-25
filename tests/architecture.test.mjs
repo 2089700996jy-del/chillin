@@ -109,9 +109,14 @@ test('Architecture - reader/upload/prompts/agent-goals 走路由级动态 import
     assert.match(app, /loadFeature\(feature\)/, '首击兜底应显式加载对应 feature');
 
     const loader = await fs.readFile(path.join(root, 'public', 'js', 'feature-loader.js'), 'utf8');
+    assert.match(loader, /from\s+['"]\.\/version\.js['"]/, 'feature-loader 必须引入 version.js 获取版本号');
     for (const name of ['reader', 'upload', 'prompts', 'agent-goals']) {
-        assert.ok(loader.includes("import('./" + name + ".js')"), 'feature-loader 缺少 ' + name + ' 的动态 import');
+        assert.ok(
+            loader.includes("import(`./" + name + ".js${versionQuery}`)") || loader.includes("import('./" + name + ".js')"),
+            'feature-loader 缺少 ' + name + ' 的动态 import'
+        );
     }
+    assert.ok(loader.includes('import(`./reader.js${versionQuery}`)'), 'reader.js 动态加载必须带版本参数防 iOS 命中旧缓存');
     assert.match(loader, /const pending = new Map\(\)/, '并发导航必须复用同一个加载 Promise');
     assert.match(loader, /pending\.delete\(name\)/, '加载失败要允许重试');
 

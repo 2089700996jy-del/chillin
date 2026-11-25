@@ -22,6 +22,11 @@ test('Reader books - upload keeps the text in R2 and the metadata in D1', { skip
 
     const res = await handlePutReaderBook(putRequest(BOOK_TEXT), { MEDIA: r2 }, db, 3);
     assert.equal(res.status, 200);
+    const putBody = await res.json();
+    assert.equal(putBody.ok, true);
+    assert.equal(putBody.book_key, BOOK_KEY);
+    assert.ok(putBody.size > 0);
+    assert.ok(typeof putBody.updated_at === 'string' && putBody.updated_at.length > 0, '上传接口应返回 updated_at 供多端比对版本');
 
     const row = await db.prepare('SELECT book_key, title, author, total_chapters, size, r2_key, is_deleted FROM reader_books').first();
     assert.equal(row.book_key, BOOK_KEY);
@@ -45,6 +50,7 @@ test('Reader books - list, download and delete round-trip', { skip: sqliteSkip }
     const download = await handleGetReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 3);
     assert.equal(download.status, 200);
     assert.match(download.headers.get('Content-Type'), /text\/plain/);
+    assert.match(download.headers.get('Cache-Control') || '', /no-cache|no-store/, '下载书籍正文不得长缓存，防止重传修改后备用机拿旧缓存');
     assert.equal(await download.text(), BOOK_TEXT);
 
     const deleted = await handleDeleteReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 3);

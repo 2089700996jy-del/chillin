@@ -9,11 +9,15 @@
  * The promise is cached (not the module value) so two quick navigations cannot
  * run init twice; a failed import drops the cache entry and can be retried.
  */
+import { APP_VERSION } from './version.js';
+
+const versionQuery = APP_VERSION ? `?v=${encodeURIComponent(APP_VERSION)}` : '';
+
 const LOADERS = {
-    reader: () => import('./reader.js').then((m) => m.initReader),
-    prompts: () => import('./prompts.js').then((m) => m.initPrompts),
-    upload: () => import('./upload.js').then((m) => m.initUpload),
-    'agent-goals': () => import('./agent-goals.js').then((m) => m.initAgentGoals),
+    reader: () => import(`./reader.js${versionQuery}`).then((m) => m.initReader),
+    prompts: () => import(`./prompts.js${versionQuery}`).then((m) => m.initPrompts),
+    upload: () => import(`./upload.js${versionQuery}`).then((m) => m.initUpload),
+    'agent-goals': () => import(`./agent-goals.js${versionQuery}`).then((m) => m.initAgentGoals),
 };
 
 const pending = new Map();

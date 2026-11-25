@@ -30,6 +30,7 @@ const {
     decodeBuffer,
     rebuildBookText,
     cloudProgressTs,
+    parseReaderTimestampMs,
     shouldAcceptCloudProgress,
     shouldPushLocalProgress,
     pullCloudProgressForCurrentBook,
@@ -37,7 +38,10 @@ const {
     parseChapters,
     extractChapterContent,
     findChapterIndexByTitle,
-    findCloudProgressForBook
+    findCloudProgressForBook,
+    findMatchingCloudBook,
+    isCloudBookNewer,
+    computeMigratedProgress
 } = await import('../public/js/reader.js');
 
 test('Reader - decodeBuffer prioritizes UTF-8 and avoids GBK mojibake on Chinese text', () => {
@@ -754,4 +758,89 @@ test('Reader Adversarial 6: 历史遗留《宿命之环》旧数据（分卷名�
     assert.equal(groups[1].chapters.length, 1);
     assert.equal(groups[1].chapters[0].title, '第一章 新的旅程');
     assert.equal(groups[1].chapters[0].idx, 4);
+});
+
+test('Reader Adversarial 7: 云端书目 updated_at / size / 章节数跨端比对与进度迁移', async () => {
+    // 1. parseReaderTimestampMs 解析 CST 与非法输入
+    const cstTs = parseReaderTimestampMs('2026-11-25 09:30:00');
+    assert.equal(cstTs, Date.UTC(2026, 10, 25, 1, 30, 0), '东八区时间应准确转为 UTC 毫秒');
+    assert.equal(parseReaderTimestampMs('invalid-date'), 0);
+    assert.equal(parseReaderTimestampMs(null), 0);
+    assert.equal(parseReaderTimestampMs(-5), 0);
+
+    // 2. findMatchingCloudBook：精确匹配优先，章数变化时按书名（含书名号）匹配最新活跃副本，跳过软删墓碑
+    const cloudList = [
+        { book_key: '三体::1', title: '三体', total_chapters: 1, updated_at: '2026-11-24 10:00:00', is_deleted: 1 },
+        { book_key: '三体::30', title: '《三体》', total_chapters: 30, size: 120000, updated_at: '2026-11-25 08:00:00', is_deleted: 0 },
+        { book_key: '三体::38', title: '三体', total_chapters: 38, size: 150000, updated_at: '2026-11-25 09:00:00', is_deleted: 0 }
+    ];
+    const legacyIphoneBook = { id: 'b1', bookKey: '三体::1', title: '三体', totalChapters: 1, createdAt: Date.UTC(2026, 10, 24, 2, 0, 0) };
+    const matchedByTitle = findMatchingCloudBook(legacyIphoneBook, cloudList);
+    assert.ok(matchedByTitle);
+    assert.equal(matchedByTitle.book_key, '三体::38', '旧 key 被软删或变更时应匹配最新活跃的云端副本');
+
+    // 3. isCloudBookNewer 判定矩阵
+    const upToDateBook = {
+        bookKey: '三体::38',
+        title: '三体',
+        totalChapters: 38,
+        cloudSize: 150000,
+        cloudUpdatedAt: '2026-11-25 09:00:00',
+        createdAt: Date.UTC(2026, 10, 25, 1, 0, 0)
+    };
+    assert.equal(isCloudBookNewer(upToDateBook, cloudList[2]), false, '版本、大小、章数一致时不误报更新');
+
+    // 同秒修改导致 size 变化（哪怕 updated_at 秒级相同）也必须检测出更新
+    assert.equal(
+        isCloudBookNewer(upToDateBook, { ...cloudList[2], size: 150420 }),
+        true,
+        '同一秒内重传导致 size 变化必须触发更新提示'
+    );
+
+    // 云端时间戳更新（size 恰好相同）
+    assert.equal(
+        isCloudBookNewer(upToDateBook, { ...cloudList[2], updated_at: '2026-11-25 09:00:05' }),
+        true,
+        '云端 updated_at 更晚必须触发更新提示'
+    );
+
+    // 历史本地旧书（无 cloudUpdatedAt/cloudSize）刚在主设备上传（2秒后）不应误报；备用机昨天下载则应提示更新
+    const justUploadedLegacy = {
+        bookKey: '三体::38',
+        title: '三体',
+        totalChapters: 38,
+        createdAt: parseReaderTimestampMs('2026-11-25 09:00:00') - 2000
+    };
+    assert.equal(isCloudBookNewer(justUploadedLegacy, cloudList[2]), false, '主设备刚上传完不应对自己误报云端有更新');
+
+    const yesterdayBackupLegacy = {
+        bookKey: '三体::38',
+        title: '三体',
+        totalChapters: 38,
+        createdAt: parseReaderTimestampMs('2026-11-24 09:00:00')
+    };
+    assert.equal(isCloudBookNewer(yesterdayBackupLegacy, cloudList[2]), true, '备用机昨天缓存的老副本应感知到今天的云端更新');
+    assert.equal(isCloudBookNewer(yesterdayBackupLegacy, { ...cloudList[2], is_deleted: 1 }), false, '已软删书目不得提示更新');
+
+    // 4. computeMigratedProgress：重新切章后按章节标题精准保留进度
+    const oldChapters = [
+        { index: 0, title: '第一章 起风' },
+        { index: 1, title: '第二章 暗涌' }
+    ];
+    const newChapters = [
+        { index: 0, title: '前言 / 序幕' },
+        { index: 1, title: '第一章 起风' },
+        { index: 2, title: '第二章 暗涌' }
+    ];
+    const migrated = computeMigratedProgress({ chapterIdx: 1, scrollPct: 65, timestamp: 123456 }, oldChapters, newChapters);
+    assert.deepEqual(migrated, { chapterIdx: 2, scrollPct: 65, timestamp: 123456 }, '新增序幕导致序号顺移时应按章节标题对齐到新索引');
+    assert.equal(computeMigratedProgress(null, oldChapters, newChapters), null);
+
+    // 5. 契约检查：downloadBookFromCloud 绕过 iOS HTTP 缓存且具备防同毫秒 ID 碰撞保护
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const readerSrc = await fs.readFile(path.join(process.cwd(), 'public', 'js', 'reader.js'), 'utf8');
+    assert.match(readerSrc, /cache:\s*['"]no-store['"]/, 'downloadBookFromCloud 必须传 cache: no-store 防 iOS 缓存旧正文');
+    assert.match(readerSrc, /avoidBookId/, '替换本地书籍时必须传 avoidBookId 防同毫秒 ID 碰撞被误删');
+    assert.match(readerSrc, /btn-reader-resplit/, 'reader.js 必须绑定侧栏重新切章按钮');
 });

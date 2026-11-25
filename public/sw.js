@@ -1,6 +1,6 @@
 // Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
-const CACHE_NAME = 'chillin-v322';
-const APP_V = '2.5.275';
+const CACHE_NAME = 'chillin-v323';
+const APP_V = '2.5.276';
 const ASSETS = [
     '/',
     '/index.html',
@@ -32,8 +32,10 @@ const ASSETS = [
     '/js/insights.js',
     '/js/notes.js',
     '/js/prompts.js',
+    `/js/prompts.js?v=${APP_V}`,
     '/js/pwa-update.js',
     '/js/reader.js',
+    `/js/reader.js?v=${APP_V}`,
     '/js/router.js',
     '/js/search.js',
     '/js/state.js',
@@ -41,10 +43,12 @@ const ASSETS = [
     '/js/trusted-types.js',
     '/js/ui.js',
     '/js/upload.js',
+    `/js/upload.js?v=${APP_V}`,
     '/js/utils.js',
     '/js/version.js',
     '/js/weeklies.js',
-    '/js/wikilinks.js'
+    '/js/wikilinks.js',
+    `/js/agent-goals.js?v=${APP_V}`
 ];
 
 self.addEventListener('install', (e) => {

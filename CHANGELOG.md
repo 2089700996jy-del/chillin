@@ -1,12 +1,17 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-24T07:05:09.461Z · 提交数：557
+> 生成时间：2026-11-25T01:43:01.197Z · 提交数：562
 
 ## 2026-11-24
 
 ### 🐛 缺陷修复
 
+- cascade expire approvals on updateGoal and guard paused startGoal v2.5.275
+- agent state machine hardening and anti-zombie guards v2.5.274
+- isolate deletion tombstones with compound resource-id keys (v2.5.273)
+- **agent-goals,bot-claw**: resolve choice proposal deadlock, retryTask cron unblocking, and mutex memory leak (v2.5.272)
+- **bot-claw**: introduce D1 inbox queue with user-level FIFO ordering (v2.5.271)
 - **bot,reader,security**: 修复微信 ClawBot 毒丸死锁与并发、SSRF IPv6 绕过与阅读器跨端软删同步 (v2.5.270)
 - **bot**: 修复晨报滑动容错窗、多轮RAG范围隔离与列表规整
 - **weather**: 绑定正式Key ID (CGPNHGVCQP) 并修复预警路由与空数据假象
