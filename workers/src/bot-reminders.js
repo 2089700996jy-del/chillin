@@ -98,9 +98,9 @@ function dayWordOffset(text) {
 
 function periodAdjust(text, hour) {
     let h = hour;
-    if (/凌晨|早上|早晨|清晨|上午/.test(text)) { if (h === 12) h = 0; return h; }
+    if (/凌晨|早上|早晨|清晨|上午|早间|今早|明早|(?:^|[\s，,])早\s*\d/.test(text)) { if (h === 12) h = 0; return h; }
     if (/中午/.test(text)) return h < 12 ? h + 12 : h;
-    if (/下午|傍晚|晚上|夜里|今晚|明晚/.test(text)) return h < 12 ? h + 12 : h;
+    if (/下午|傍晚|晚上|夜里|晚间|今晚|明晚|(?:^|[\s，,])晚\s*\d/.test(text)) return h < 12 ? h + 12 : h;
     return h;
 }
 
@@ -162,7 +162,7 @@ const DIRECTIVE_BEFORE_RE = /(?:记得|记着|到时候|到时|到点|等会|待
 /** 「提醒我妈吃药」这类第三人在后，不能当指令 */
 const THIRD_PARTY_RE = /^(?:自己|妈|爸|爸|他|她|它|您|们|同学|同事|朋友|老公|老婆|孩子|儿子|女儿)/;
 
-const TIME_TOKEN_RE = /(?:今天|今日|今晚|今夜|今早|明天|明日|明早|明晚|明儿|后天|大后天|凌晨|早上|早晨|清晨|上午|中午|下午|傍晚|晚上|夜里|等会|待会|一会儿|等下|到时候|到时|到点|记得|记着|\d{1,3}\s*(?:个)?\s*(?:小时|分钟|分)\s*(?:之?后|以后)|\d{1,2}\s*[点時时]\s*(?:\d{1,2}|半|一刻)?\s*分?|半(?:个)?小时|\d{1,2}\s*[:：]\s*\d{1,2})/g;
+const TIME_TOKEN_RE = /(?:今天|今日|今晚|今夜|今早|明天|明日|明早|明晚|明儿|后天|大后天|凌晨|早上|早晨|清晨|上午|中午|下午|傍晚|晚上|夜里|早间|晚间|(?:早|晚)(?=\s*\d)|等会|待会|一会儿|等下|到时候|到时|到点|记得|记着|\d{1,3}\s*(?:个)?\s*(?:小时|分钟|分)\s*(?:之?后|以后)|\d{1,2}\s*[点時时]\s*(?:\d{1,2}|半|一刻)?\s*分?|半(?:个)?小时|\d{1,2}\s*[:：]\s*\d{1,2})/g;
 const TRIGGER_WORD_RE = /(?:提醒我一下|提醒一下我|提醒下我|提醒我)/g;
 const POLITE_PREFIX_RE = /^(?:帮我|麻烦(?:你)?|请|给我|麻烦|一下|下|还要|还得|要|去|再|\s|[，,。：:、;；\-—])+/;
 
@@ -208,8 +208,8 @@ export function isReminderList(text) {
     return /^(?:我的提醒|提醒列表|待办|待办事项|有哪些提醒|提醒有什么|\/reminders?)[\s。！!～~]*$/i.test(String(text == null ? '' : text).trim());
 }
 
-const NON_REMINDER_TARGET_RE = /(?:收藏|书签|提示词|目标|任务|偏好|档案|关注|订单|预约|订阅|会员)/;
-const CANCEL_FILLER_RE = /(?:早上的|晚上的|上午的|下午的|今天的|明天的|后天的|刚才的|刚刚的|刚才|刚刚|那条|那个|这条|这个|提醒|一下|下|的|吧|呀|呢|了)/g;
+const NON_REMINDER_TARGET_RE = /(?:收藏|书签|提示词|目标|任务|偏好|档案|关注|订单|预约|订阅|会员|周记|笔记|随手记|图片|照片|记录|打卡|草稿|对话|上下文|账号|密码|标题|正文|链接|操作|确认|编辑|修改|删除)/;
+const CANCEL_FILLER_RE = /(?:早上的|晚上的|上午的|下午的|今天的|明天的|后天的|刚才的|刚刚的|刚才|刚刚|那条|那个|这条|这个|提醒我|提醒|一下|下|的|吧|呀|呢|了|钟|整|左右)/g;
 const DEICTIC_RECENT_RE = /^(?:刚才|刚刚|上一条|最后一条|这条|这个|那条|那个|它)(?:提醒)?$/;
 const CANCEL_ALL_RE = /^(?:全部|所有|全都|全部提醒|所有提醒)$/;
 
@@ -220,19 +220,31 @@ export function parseCancelReminder(text) {
     // 1. 显式「取消提醒 / 删除提醒 ...」（含光杆「取消提醒」）
     const explicit = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:取消提醒|删除提醒|取消这条提醒|删掉提醒)\s*[:：]?\s*([\s\S]{0,60}?)[\s。！!～~]*$/.exec(raw);
     if (explicit) {
-        return { arg: String(explicit[1] || '').trim() };
+        const arg = String(explicit[1] || '').trim().replace(/^我(?=\S)/, '');
+        return { arg };
     }
 
-    // 2. 自然口语「取消早上的8点的那个 / 删掉手帕纸那个 / 取消刚才那个」（绝不拦截光杆「取消」与非提醒资产）
-    const natural = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:取消|删掉|删除|撤回|撤销|作废|去掉)(?:掉)?\s*(?:一下|下)?\s*([\s\S]{1,60}?)[\s。！!～~]*$/.exec(raw);
-    if (natural) {
-        const arg = String(natural[1] || '').trim();
-        if (arg && !(NON_REMINDER_TARGET_RE.test(arg) && !arg.includes('提醒'))) {
+    // 2. 把字句取消：「把早上8点那个取消 / 把手帕纸删掉」
+    const baCancel = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*把\s*([\s\S]{1,50}?)\s*(?:的?提醒)?\s*(?:取消|删掉|删除|撤回|撤销|作废|去掉)(?:掉|了)?[\s。！!～~]*$/.exec(raw);
+    if (baCancel) {
+        const arg = String(baCancel[1] || '').trim();
+        const explicitReminder = raw.includes('提醒');
+        if (arg && !(NON_REMINDER_TARGET_RE.test(arg) && !explicitReminder)) {
             return { arg };
         }
     }
 
-    // 3. 「不用提醒我洗保温杯了 / 手帕纸不用提醒了 / 别提醒我了」
+    // 3. 自然口语「取消早上的8点的那个 / 删掉手帕纸那个 / 取消刚才那个」（绝不拦截光杆「取消 / 取消一下」与非提醒资产）
+    const natural = /^(?:请|帮我|麻烦(?:你)?|帮)?\s*(?:取消|删掉|删除|撤回|撤销|作废|去掉)(?:掉)?\s*(?:一下|下)?\s*([\s\S]{1,60}?)[\s。！!～~]*$/.exec(raw);
+    if (natural) {
+        const arg = String(natural[1] || '').trim();
+        const explicitReminder = raw.includes('提醒');
+        if (arg && !/^(?:一下|下|吧|呀|呢|了)$/.test(arg) && !(NON_REMINDER_TARGET_RE.test(arg) && !explicitReminder)) {
+            return { arg };
+        }
+    }
+
+    // 4. 「不用提醒我洗保温杯了 / 手帕纸不用提醒了 / 别提醒我了」
     const noNeedPrefix = /^(?:算了[，,\s]*)?(?:不用|不需要|别|不要)(?:再)?提醒(?:我|一下|下)?(?:了)?\s*([\s\S]{0,60}?)[\s。！!～~]*$/.exec(raw);
     if (noNeedPrefix) {
         const arg = String(noNeedPrefix[1] || '').trim();
@@ -292,7 +304,11 @@ export function parseRescheduleReminder(text, nowMs, options = {}) {
         if (newFireAtMs) {
             return { matched: true, ok: true, targetArg, deltaMs: 0, newFireAtMs };
         }
-        return { matched: true, ok: false, reply: '想改到几点？比如「改到晚上8点」或「改到 20:30」。' };
+        // 非提醒场景的「把这段话改成英文 / 把标题设为公开」绝不抢答「想改到几点」
+        if (raw.includes('提醒')) {
+            return { matched: true, ok: false, reply: '想改到几点？比如「改到晚上8点」或「改到 20:30」。' };
+        }
+        return null;
     }
 
     const explicitId = /^(?:修改|改)提醒\s*(#?\d+)\s*(?:时间)?(?:为|到|成)?\s*([\s\S]{1,40}?)[\s。！!～~]*$/.exec(raw);
@@ -330,9 +346,9 @@ export function parseRescheduleReminder(text, nowMs, options = {}) {
 function extractTimeAndKeywordFilter(raw) {
     const s = String(raw == null ? '' : raw).trim();
     let period = null;
-    if (/凌晨|早上|早晨|清晨|上午|今早|明早/.test(s)) period = 'morning';
+    if (/凌晨|早上|早晨|清晨|上午|早间|今早|明早|(?:^|[\s，,])早\s*\d/.test(s)) period = 'morning';
     else if (/中午/.test(s)) period = 'noon';
-    else if (/下午|傍晚|晚上|夜里|今晚|明晚/.test(s)) period = 'evening';
+    else if (/下午|傍晚|晚上|夜里|晚间|今晚|明晚|(?:^|[\s，,])晚\s*\d/.test(s)) period = 'evening';
 
     const dayOffset = dayWordOffset(s);
 
@@ -363,9 +379,11 @@ function extractTimeAndKeywordFilter(raw) {
 
     const keyword = s
         .replace(TIME_TOKEN_RE, ' ')
+        .replace(/(?:^|[\s，,])(?:早|晚)(?=\s*$|\s*[的个条\d])/g, ' ')
         .replace(CANCEL_FILLER_RE, ' ')
         .replace(/[\s，,。：:、;；\-—]+/g, ' ')
-        .trim();
+        .trim()
+        .replace(/^我(?=\S)/, '');
 
     return {
         isDeicticRecent: DEICTIC_RECENT_RE.test(s) || (!keyword && hour === null && period === null && dayOffset === null && /(?:刚才|刚刚|那条|那个|这条|这个)/.test(s)),
@@ -586,6 +604,14 @@ export async function rescheduleReminder(db, userId, parsed, nowMs) {
         : Number(parsed.newFireAtMs);
     if (!Number.isFinite(newFireAtMs) || newFireAtMs <= now + REMINDER_MIN_LEAD_MS || newFireAtMs > now + REMINDER_MAX_LEAD_MS) {
         return '改后的时间要在未来 1 分钟到 1 年之间。';
+    }
+
+    const dup = await db.prepare("SELECT id, text, fire_at_ms FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND id != ?2 AND text = ?3 AND ABS(fire_at_ms - ?4) <= 60000 LIMIT 1")
+        .bind(userId, target.id, target.text, newFireAtMs).first();
+    if (dup) {
+        await db.prepare("UPDATE bot_reminders SET status = 'cancelled', follow_up_retry_at_ms = 0, is_deleted = 1, updated_at = datetime('now', '+8 hours') WHERE id = ?1 AND user_id = ?2 AND status = 'pending'")
+            .bind(target.id, userId).run();
+        return formatReminderTime(dup.fire_at_ms, now) + ' 已经有「' + dup.text + '」了，已把多余那条合并取消 ✅';
     }
 
     const upd = await db.prepare("UPDATE bot_reminders SET fire_at_ms = ?1, updated_at = datetime('now', '+8 hours') WHERE id = ?2 AND user_id = ?3 AND status = 'pending'")

@@ -19,7 +19,7 @@ import { checkRateLimitShared } from './security.js';
 import {
     saveChatTurn, loadChatContext, clearChatContext,
     addProfileItem, listProfile, forgetProfile, clearProfile, loadProfilePrompt, PROFILE_MAX_ITEMS,
-    PROFILE_ITEM_MAX_CHARS, parseProposeMemory, savePendingAction, formatProfileTimeTag
+    PROFILE_ITEM_MAX_CHARS, parseProposeMemory, savePendingAction, readPendingAction, formatProfileTimeTag
 } from './bot-memory.js';
 export { formatProfileTimeTag };
 import { handleClawLinkMessage } from './bot-links.js';
@@ -532,7 +532,12 @@ async function dispatchReminderCommand(db, userId, text, nowMs) {
     if (directReschedule) return rescheduleReminder(db, userId, directReschedule, nowMs);
 
     const cancelArg = parseCancelReminder(text);
-    if (cancelArg) return cancelReminder(db, userId, cancelArg.arg, nowMs);
+    if (cancelArg) {
+        if (!text.includes('提醒') && await readPendingAction(db, userId)) {
+            return null;
+        }
+        return cancelReminder(db, userId, cancelArg.arg, nowMs);
+    }
 
     // 对话纠偏（「是晚上8点我说错了」「不对，是20:00」）：先纯同步匹配句式，命中后再核验近期提醒语境
     const corrReschedule = parseRescheduleReminder(text, nowMs, { allowConversationalCorrection: true });

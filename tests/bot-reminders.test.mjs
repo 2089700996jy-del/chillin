@@ -612,3 +612,44 @@ sqliteTest('提醒 - [同时间点并发与旧fired自动归档] 同分钟两条
     const recent = await recentFiredReminders(db, 1, at20 + REMINDER_FOLLOW_UP_MS + 1);
     assert.equal(recent.length, 2);
 });
+
+sqliteTest('提醒 - [对抗性审查] 跨领域防劫持、早8点/8点整匹配、把字句取消与改期防重复合并', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+    const noon = Date.parse('2026-10-23T04:06:00+00:00'); // 东八区 12:06
+
+    // 1. 绝不劫持闲聊与其他领域指令
+    for (const nonReminder of [
+        '把这段话改成更安静的语气',
+        '把标题改为今天的心情',
+        '把这个项目设为公开',
+        '取消一下',
+        '取消删除',
+        '取消修改',
+        '删除笔记 3',
+        '删掉周记',
+        '取消目标 1',
+        '取消收藏 3'
+    ]) {
+        assert.equal(parseCancelReminder(nonReminder), null, '不应把非提醒句识别为取消提醒: ' + nonReminder);
+        assert.equal(parseRescheduleReminder(nonReminder, noon), null, '不应把非提醒句识别为改期: ' + nonReminder);
+    }
+
+    // 2. 「早8点」「8点整」「取消提醒我喝水」「把早上8点那个取消」均能精准命中
+    await runRemind(db, 1, parseRemindCommand('提醒我 早8点 喝水', noon), noon);
+    await runRemind(db, 1, parseRemindCommand('提醒我 晚8点 吃药', noon), noon);
+    const cancelDrink = await cancelReminder(db, 1, parseCancelReminder('取消提醒我喝水').arg, noon);
+    assert.match(cancelDrink, /取消了：明天 08:00 — 喝水/);
+
+    await runRemind(db, 1, parseRemindCommand('提醒我 明天8点 浇花', noon), noon);
+    const cancelBa = await cancelReminder(db, 1, parseCancelReminder('把早8点整那个取消').arg, noon);
+    assert.match(cancelBa, /取消了：明天 08:00 — 浇花/);
+
+    // 3. 改期后若与已有相同文案同分钟提醒冲突，应自动合并去重而不是留下两条一样提醒
+    await runRemind(db, 1, parseRemindCommand('提醒我 明天早上8点 吃药', noon), noon);
+    const dupMerge = await rescheduleReminder(db, 1, parseRescheduleReminder('把早8点那个改到晚8点', noon), noon);
+    assert.match(dupMerge, /合并取消/);
+    const leftCount = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = 1 AND is_deleted = 0 AND status = 'pending'").first();
+    assert.equal(leftCount.n, 1, '合并去重后只应保留一条「吃药」提醒');
+});

@@ -3192,5 +3192,30 @@ integration('Bot - 提醒口语纠偏、同时间双提醒与批量「完成」�
     assert.equal(leftFired.n, 0, '同批次触发的 2 条提醒应一并标为完成');
 });
 
+integration('Bot - [对抗性审查] 存在待确认槽位时，「取消这个」与非提醒改写句绝不误删/误改提醒', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, cursor, bound_at_ms) "
+        + "VALUES (1, 'bound', 'TOKEN', 'https://ilinkai.weixin.qq.com', 'bot@im.bot', 'owner@im.wechat', 'C0', ?1)"
+    ).bind(Date.now()).run();
+
+    await buildBotReply({}, db, 1, '提醒我 23:00 喝水');
+    // 存入一条待确认的删除收藏动作
+    await db.prepare(
+        "INSERT INTO bot_pending_actions (user_id, action, target_table, target_id, payload, created_at_ms, is_deleted) VALUES (1, 'delete_bookmark', 'bookmarks', 9, '{}', ?1, 0)"
+    ).bind(Date.now()).run();
+
+    // 说「取消这个」时，绝不能误删刚才的提醒
+    await buildBotReply({}, db, 1, '取消这个');
+    const reminder = await db.prepare("SELECT status, is_deleted FROM bot_reminders WHERE user_id = 1 AND text = '喝水'").first();
+    assert.equal(reminder.status, 'pending');
+    assert.equal(reminder.is_deleted, 0, '待确认槽位存在时不得误删提醒');
+
+    // 普通聊天「把这段话改成英文」绝不回「想改到几点」
+    const chatReply = await buildBotReply({}, db, 1, '把这段话改成英文');
+    assert.ok(!chatReply.includes('想改到几点'), '非提醒改写句绝不能被提醒路由劫持: ' + chatReply);
+});
+
 
 
