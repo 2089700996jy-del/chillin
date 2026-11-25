@@ -3159,5 +3159,38 @@ integration('ClawBot - [对抗性审查 5] userDrainingQueues 内存互斥锁在
     assert.equal(userDrainingQueues.has(1), false, '消费完成后 userDrainingQueues 必须自动清理，杜绝内存泄露');
 });
 
+integration('Bot - 提醒口语纠偏、同时间双提醒与批量「完成」端到端闭环', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await db.prepare(
+        "INSERT INTO bot_claw_accounts (user_id, status, bot_token, baseurl, ilink_bot_id, ilink_user_id, cursor, bound_at_ms) "
+        + "VALUES (1, 'bound', 'TOKEN', 'https://ilinkai.weixin.qq.com', 'bot@im.bot', 'owner@im.wechat', 'C0', ?1)"
+    ).bind(Date.now()).run();
+
+    // 1. 设置两个不同时间的提醒
+    const r1 = await buildBotReply({}, db, 1, '提醒我 23:00 洗保温杯');
+    assert.match(r1, /已记下/);
+    const r2 = await buildBotReply({}, db, 1, '提醒我 23:30 检查手帕纸');
+    assert.match(r2, /已记下/);
+
+    // 2. 口语纠偏到同一时间点 23:00
+    const fixReply = await buildBotReply({}, db, 1, '是23:00我说错了');
+    assert.match(fixReply, /改好了/);
+    assert.match(fixReply, /检查手帕纸/);
+
+    // 3. 查看「我的提醒」：两条均在同一时间点排队，且没有已提醒过的陈旧条目
+    const listReply = await buildBotReply({}, db, 1, '我的提醒');
+    assert.match(listReply, /洗保温杯/);
+    assert.match(listReply, /检查手帕纸/);
+
+    // 4. 模拟两条同一时间点触发后，用户回复「完成」一起核销
+    const now = Date.now();
+    await db.prepare("UPDATE bot_reminders SET status = 'fired', fired_at_ms = ?1 WHERE user_id = 1").bind(now - 60000).run();
+    const doneReply = await buildBotReply({}, db, 1, '完成');
+    assert.match(doneReply, /这 2 条提醒/);
+    const leftFired = await db.prepare("SELECT COUNT(*) AS n FROM bot_reminders WHERE user_id = 1 AND status = 'fired'").first();
+    assert.equal(leftFired.n, 0, '同批次触发的 2 条提醒应一并标为完成');
+});
+
 
 

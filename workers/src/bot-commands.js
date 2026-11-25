@@ -27,8 +27,8 @@ import { maybeClawImageFollowUp } from './bot-image-flow.js';
 import { maybeWebAnswer, sourcesFootnote, stripSourcesFootnote } from './bot-web.js';
 import { maybeWeatherAnswer, diagnoseWeatherConfig } from './bot-weather.js';
 import {
-    parseRemindCommand, isReminderList, parseCancelReminder, parseDoneReply, parseNotYetReply,
-    runRemind, listReminders, cancelReminder, recentFiredReminder, completeReminder, skipReminderFollowUp,
+    parseRemindCommand, isReminderList, parseCancelReminder, parseRescheduleReminder, parseDoneReply, parseNotYetReply,
+    runRemind, listReminders, cancelReminder, rescheduleReminder, recentFiredReminder, recentFiredReminders, completeReminder, skipReminderFollowUp,
     parseReminderTime, cleanReminderText, formatReminderTime, createReminderAt
 } from './bot-reminders.js';
 import { maybeRunHealthCommand } from './bot-health.js';
@@ -70,8 +70,8 @@ export const CHAT_SYSTEM_PROMPT = `你是 Chillin 数字花园的守护者，也
 3. 花园涵盖随手记、笔记、周记、收藏、提示词与书架阅读记录。遇到跨模块关联时，自然结合背景作答。
 
 【长期记忆提议与边界准则】：
-1. 你自己没有写入能力：普通对话中绝不要直接声称「已为你记下」或「已保存」，因为系统会弹出确认由用户决定。
-2. 指令通道执行真实操作：「记录：<内容>」存入随手记。定点提醒到点必达，不受日限约束。不编造事实。
+1. 你自己没有写入能力：普通对话中绝不要直接声称「已为你记下」「已更正」或「已保存/已取消」，因为系统会弹出确认或由指令通道执行真实写入。
+2. 指令通道执行真实操作：「记录：<内容>」存入随手记。定点提醒支持自然语言设提醒、改时间（如「改到晚上8点」）和取消（如「取消早上8点那个」），到点必达，不受日限约束。绝不编造已改动或已取消，也不要让用户死板地去查编号再手输「取消提醒 <编号>」。
 3. 自然感知对话中具有长期价值的稳定事实（如常住地/城市、职业/岗位、饮食禁忌、核心习惯、重要偏好等）。
 4. 当发现值得长期记住的稳定事实时，在自然回复最后附带且仅附带一条提议标签：
    <propose_memory label="分类" content="核心事实"/>
@@ -509,17 +509,36 @@ async function dispatchSystemCommand(env, db, userId, text) {
     return null;
 }
 
+async function hasRecentReminderContext(db, userId) {
+    const recentRow = await db.prepare("SELECT id FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND created_at >= datetime('now', '+8 hours', '-15 minutes') LIMIT 1")
+        .bind(userId).first();
+    if (recentRow) return true;
+    const history = await loadChatContext(db, userId);
+    const lastAssistant = [...history].reverse().find((t) => t.role === 'assistant');
+    return Boolean(lastAssistant && /(?:已记下|已设待办提醒|我的提醒|改好了|几点提醒你|已经在排队了)/.test(String(lastAssistant.content || '')));
+}
+
 /**
  * 2. 定点提醒与待办事项指令 (Reminders & Tasks)
  */
 async function dispatchReminderCommand(db, userId, text, nowMs) {
     // 定点提醒：解析是纯同步的，执行要查库。
-    // 顺序讲究——「我的提醒 / 取消提醒 / 完成」都排在普通记录指令之前，否则「待办」会被当成闲聊。
+    // 顺序讲究——「我的提醒 / 改期 / 取消提醒 / 完成」都排在普通记录指令之前，否则会被当成闲聊。
     const remind = parseRemindCommand(text, nowMs);
     if (remind.matched) return runRemind(db, userId, remind, nowMs);
     if (isReminderList(text)) return listReminders(db, userId, nowMs);
+
+    const directReschedule = parseRescheduleReminder(text, nowMs, { allowConversationalCorrection: false });
+    if (directReschedule) return rescheduleReminder(db, userId, directReschedule, nowMs);
+
     const cancelArg = parseCancelReminder(text);
     if (cancelArg) return cancelReminder(db, userId, cancelArg.arg, nowMs);
+
+    // 对话纠偏（「是晚上8点我说错了」「不对，是20:00」）：先纯同步匹配句式，命中后再核验近期提醒语境
+    const corrReschedule = parseRescheduleReminder(text, nowMs, { allowConversationalCorrection: true });
+    if (corrReschedule && await hasRecentReminderContext(db, userId)) {
+        return rescheduleReminder(db, userId, corrReschedule, nowMs);
+    }
 
     // 待办指令：带时间词自动转定时提醒；无时间词自动写 [ ] 待办随手记
     const todoText = parseTodoCommand(text);
@@ -556,15 +575,20 @@ async function dispatchReminderCommand(db, userId, text, nowMs) {
         }
     }
 
-    // 「完成 / 还没」回执（优先响应 12 小时内到期提醒；无提醒时划掉最近一条待办）
+    // 「完成 / 还没」回执（优先响应 12 小时内到期提醒；同时间点批量触发的一起收尾；无提醒时划掉最近一条待办）
     if (parseDoneReply(text) || parseNotYetReply(text)) {
-        const fired = await recentFiredReminder(db, userId, nowMs);
-        if (fired) {
+        const firedAll = await recentFiredReminders(db, userId, nowMs);
+        if (firedAll.length) {
+            const latestTs = Number(firedAll[0].fired_at_ms || 0);
+            const batch = firedAll.filter((r) => Math.abs(Number(r.fired_at_ms || 0) - latestTs) <= 60000);
             if (parseDoneReply(text)) {
-                await completeReminder(db, userId, fired);
-                return '搞定啦 ✅ 提醒「' + fired.text + '」已标为完成。';
+                for (const r of batch) await completeReminder(db, userId, r);
+                if (batch.length === 1) return '搞定啦 ✅ 提醒「' + batch[0].text + '」已标为完成。';
+                return '搞定啦 ✅ 这 ' + batch.length + ' 条提醒（' + batch.map((r) => r.text).join('、') + '）已标为完成。';
             }
-            try { await skipReminderFollowUp(db, userId, fired); } catch (err) { console.error('[reminder] 取消失败追问: ' + (err && err.message)); }
+            for (const r of batch) {
+                try { await skipReminderFollowUp(db, userId, r); } catch (err) { console.error('[reminder] 取消失败追问: ' + (err && err.message)); }
+            }
             return '好，那就不催了。做完了随时跟我说一声。';
         }
         if (parseDoneReply(text)) {

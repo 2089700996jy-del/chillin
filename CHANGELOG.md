@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-25T01:43:01.197Z · 提交数：562
+> 生成时间：2026-11-25T01:55:30.668Z · 提交数：563
+
+## 2026-11-25
+
+### 🐛 缺陷修复
+
+- **reader,pwa**: add cloud book update detection, resplit, and versioned lazy loading (v2.5.276)
 
 ## 2026-11-24
 

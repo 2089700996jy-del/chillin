@@ -19,12 +19,15 @@ import {
     parseRemindCommand,
     isReminderList,
     parseCancelReminder,
+    parseRescheduleReminder,
     parseDoneReply,
     parseNotYetReply,
     runRemind,
     listReminders,
     cancelReminder,
+    rescheduleReminder,
     recentFiredReminder,
+    recentFiredReminders,
     completeReminder,
     runReminderChecks,
     followUpMsForText,
@@ -214,7 +217,7 @@ sqliteTest('提醒 - 列表与按编号取消：只动 pending，一律软删', 
     assert.match(await cancelReminder(db, 1, '交电费', NOW), /没找到待提醒里含/);
 });
 
-sqliteTest('提醒 - 列表与取消对 fired 与 pending 保持一致序号，取消 fired 停止追问', async () => {
+sqliteTest('提醒 - 列表不堆砌已提醒过的条目，但按 #ID / 关键词 / 刚才仍可取消 fired 提醒并停止追问', async () => {
     const db = createTestDb();
     await seedUser(db, 1);
     await seedClawAccount(db);
@@ -225,18 +228,18 @@ sqliteTest('提醒 - 列表与取消对 fired 与 pending 保持一致序号，�
         .bind(NOW + 3600000).run();
 
     const list = await listReminders(db, 1, NOW);
-    assert.match(list, /1\. .* — 敷面膜（刚提醒过）/);
-    assert.match(list, /2\. .* — 给电动牙刷充电/);
+    assert.ok(!list.includes('敷面膜'), '「我的提醒」不再列出已经提醒过的条目：' + list);
+    assert.match(list, /1\. .* — 给电动牙刷充电/, '待提醒从 1 开始顺排');
 
-    // 按编号取消第 1 条（fired）
-    const cancelRes = await cancelReminder(db, 1, '1', NOW);
+    // 通过关键词直接取消仍在追问中的 fired 提醒
+    const cancelRes = await cancelReminder(db, 1, '敷面膜', NOW);
     assert.match(cancelRes, /取消了：.*敷面膜/);
     const row = await db.prepare("SELECT status, follow_up_retry_at_ms, is_deleted FROM bot_reminders WHERE text = '敷面膜'").first();
     assert.equal(row.status, 'cancelled');
     assert.equal(row.follow_up_retry_at_ms, 0, '取消 fired 提醒必须清空追问重试时间');
     assert.equal(row.is_deleted, 1);
 
-    // 取消后，第 2 条升为第 1 条，按编号取消依然严丝合缝
+    // 待提醒序号不受 fired 影响，1 号依然是给电动牙刷充电
     const listAfter = await listReminders(db, 1, NOW);
     assert.match(listAfter, /1\. .* — 给电动牙刷充电/);
     assert.ok(!listAfter.includes('敷面膜'));
@@ -529,4 +532,83 @@ sqliteTest('提醒 - [对抗性审查] 主提醒连续发送失败达到 REMINDE
     // 下一轮扫描：SQL 防御过滤，绝不再拉取
     const r2 = await runReminderChecks({}, db, st.impl, { nowMs: NOW + 10000 });
     assert.equal(r2.due, 0, '下一轮不再被 pending 队列捞起');
+});
+
+sqliteTest('提醒 - [口语化取消与改期] 支持按时间/关键词/刚才取消及「是晚上8点我说错了」即时改期', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+
+    const noon = Date.parse('2026-10-23T04:06:00+00:00'); // 东八区 12:06
+    // 1. 先有两条提醒：今天 20:00 洗保温杯，以及 8点还要提醒我补充跟检查手帕纸（落成明天 08:00）
+    await runRemind(db, 1, parseRemindCommand('提醒我 晚上8点 洗保温杯', noon), noon);
+    const created2 = parseRemindCommand('8点还要提醒我补充跟检查手帕纸', noon);
+    assert.equal(created2.text, '补充跟检查手帕纸', '「还要」前置虚词应被清洗掉');
+    await runRemind(db, 1, created2, noon);
+
+    // 2. 用自然口语按时间取消早上的那条：「取消早上的8点的那个」
+    const cParsed = parseCancelReminder('取消早上的8点的那个');
+    assert.ok(cParsed);
+    const cReply = await cancelReminder(db, 1, cParsed.arg, noon);
+    assert.match(cReply, /取消了：明天 08:00 — 补充跟检查手帕纸/);
+
+    // 3. 重新设回早上8点，然后口语纠偏：「是晚上8点我说错了」
+    await runRemind(db, 1, parseRemindCommand('8点提醒我补充跟检查手帕纸', noon), noon);
+    const reschedParsed = parseRescheduleReminder('是晚上8点我说错了', noon, { allowConversationalCorrection: true });
+    assert.ok(reschedParsed && reschedParsed.ok);
+    const reschedReply = await rescheduleReminder(db, 1, reschedParsed, noon);
+    assert.match(reschedReply, /改好了/);
+    assert.match(reschedReply, /今天 20:00 — 补充跟检查手帕纸/);
+
+    // 4. 再测试「把洗保温杯改到明天9点」与「手帕纸不用提醒了」
+    const moveRes = await rescheduleReminder(db, 1, parseRescheduleReminder('把洗保温杯改到明天9点', noon), noon);
+    assert.match(moveRes, /明天 09:00 — 洗保温杯/);
+
+    const cancelKw = parseCancelReminder('手帕纸不用提醒了');
+    assert.ok(cancelKw);
+    const cancelKwReply = await cancelReminder(db, 1, cancelKw.arg, noon);
+    assert.match(cancelKwReply, /取消了：今天 20:00 — 补充跟检查手帕纸/);
+
+    // 5. 防误伤：非提醒资产指令绝不抢跑
+    assert.equal(parseCancelReminder('取消收藏 3'), null);
+    assert.equal(parseCancelReminder('取消'), null);
+    assert.equal(parseRescheduleReminder('改收藏 3 标题=测试', noon), null);
+});
+
+sqliteTest('提醒 - [同时间点并发与旧fired自动归档] 同分钟两条提醒合并稳达不漏，超过12小时旧fired自动归档', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedClawAccount(db);
+
+    const at20 = Date.parse('2026-10-23T12:00:00+00:00'); // 东八区 20:00
+    await db.prepare("INSERT INTO bot_reminders (id, user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (10, 1, 1, '洗保温杯', ?1, 'pending', 0)").bind(at20).run();
+    await db.prepare("INSERT INTO bot_reminders (id, user_id, account_id, text, fire_at_ms, status, is_deleted) VALUES (11, 1, 1, '补充跟检查手帕纸', ?1, 'pending', 0)").bind(at20).run();
+    // 再塞一条 3 天前遗留的旧 fired 提醒
+    await db.prepare("INSERT INTO bot_reminders (id, user_id, account_id, text, fire_at_ms, fired_at_ms, status, follow_up_status, is_deleted) VALUES (3, 1, 1, '买优酸乳', ?1, ?1, 'fired', 'sent', 0)")
+        .bind(at20 - 3 * 86400 * 1000).run();
+
+    const st = sentStub();
+    const res = await runReminderChecks({}, db, st.impl, { nowMs: at20 });
+    assert.equal(res.due, 2);
+    assert.equal(res.sent, 2, '两条同时间提醒都必须成功送达并转为 fired');
+    assert.equal(st.calls.length, 1, '同一用户同时间点两条合并为一次推送，防止微信端连发被限流吞掉第二条');
+    const pushedText = st.calls[0].body.msg.item_list[0].text_item.text;
+    assert.match(pushedText, /洗保温杯/);
+    assert.match(pushedText, /补充跟检查手帕纸/);
+
+    // 旧 fired 自动归档为 done
+    const oldRow = await db.prepare('SELECT status FROM bot_reminders WHERE id = 3').first();
+    assert.equal(oldRow.status, 'done', '超过12小时的历史 fired 提醒应自动归档为 done');
+
+    // 10 分钟后追问也合并送达
+    const askRes = await runReminderChecks({}, db, st.impl, { nowMs: at20 + REMINDER_FOLLOW_UP_MS + 1 });
+    assert.equal(askRes.asked, 2);
+    assert.equal(st.calls.length, 2);
+    const askText = st.calls[1].body.msg.item_list[0].text_item.text;
+    assert.match(askText, /洗保温杯/);
+    assert.match(askText, /补充跟检查手帕纸/);
+
+    // 批量触发的提醒在 recentFiredReminders 中可一起查到
+    const recent = await recentFiredReminders(db, 1, at20 + REMINDER_FOLLOW_UP_MS + 1);
+    assert.equal(recent.length, 2);
 });
