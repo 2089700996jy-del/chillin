@@ -426,11 +426,27 @@ export function initAuthUI() {
 }
 
 let activeRefreshPromise = null;
+let sessionInitPromise = null;
+
+/** 注册启动期会话恢复与首轮续期 Promise，避免懒加载/事件监听抢跑发出未带新 Cookie 的业务请求 */
+export function setSessionInitPromise(promise) {
+    if (!promise) {
+        sessionInitPromise = null;
+        return;
+    }
+    const wrapped = Promise.resolve(promise).finally(() => {
+        if (sessionInitPromise === wrapped) sessionInitPromise = null;
+    });
+    sessionInitPromise = wrapped;
+}
 
 export async function apiRequest(path, options = {}) {
     const isAuthEndpoint = path === '/api/auth/refresh' || path === '/api/auth/login' || path === '/api/auth/register' || path === '/api/auth/logout';
-    // Cookie 令牌轮换期间若并发发出旧 Cookie 请求，旧会话已被后端撤销会触发误报 401；
-    // 先等待在途的 /api/auth/refresh 写回新 Cookie，再发出业务请求。
+    // 启动恢复（/api/auth/me -> /api/auth/refresh）或 Cookie 令牌轮换期间，
+    // 先等待在途握手写回新 Cookie，再发出业务请求，杜绝并发 401 竞态。
+    if (sessionInitPromise && !isAuthEndpoint) {
+        await sessionInitPromise.catch(() => {});
+    }
     if (activeRefreshPromise && !isAuthEndpoint) {
         await activeRefreshPromise.catch(() => {});
     }

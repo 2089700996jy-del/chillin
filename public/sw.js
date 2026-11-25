@@ -1,6 +1,6 @@
 // Chillin Service Worker — 网络优先，离线回退缓存，防模块语法崩溃
-const CACHE_NAME = 'chillin-v327';
-const APP_V = '2.5.280';
+const CACHE_NAME = 'chillin-v328';
+const APP_V = '2.5.281';
 const ASSETS = [
     '/',
     '/index.html',

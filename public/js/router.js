@@ -155,7 +155,10 @@ const switchView = (targetViewId, opts = {}) => {
             loadFeature('reader')
                 .then(() => setTimeout(() => actions.renderBookshelf?.(), 100))
                 .catch(warnLazy('reader'));
+        } else if (targetViewId === 'notes') {
+            actions.renderNotes?.();
         } else if (targetViewId === 'bookmarks') {
+            actions.renderBookmarks?.();
             loadFeature('prompts').catch(warnLazy('prompts'));
         } else if (targetViewId === 'feeds') {
             actions.renderFeeds();

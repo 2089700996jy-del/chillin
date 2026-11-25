@@ -1487,7 +1487,7 @@ export async function syncFromApi() {
             getList: () => state.weeklies,
             setList: (list) => { state.weeklies = list; },
             save: saveDatabase,
-            shouldRefresh: () => getActiveViewId() === 'view-home',
+            shouldRefresh: () => true,
             refresh: () => refresh('weeklies', {
                 filter: document.querySelector('.filter-btn.active')?.dataset.filter || 'all'
             }),
@@ -1498,7 +1498,7 @@ export async function syncFromApi() {
             getList: () => state.notesDatabase,
             setList: (list) => { state.notesDatabase = list; },
             save: saveNotesDatabase,
-            shouldRefresh: () => getActiveViewId() === 'view-notes',
+            shouldRefresh: () => true,
             refresh: () => refresh('notes'),
         },
         {
@@ -1512,7 +1512,7 @@ export async function syncFromApi() {
                 });
             },
             save: saveBookmarksDatabase,
-            shouldRefresh: () => getActiveViewId() === 'view-bookmarks',
+            shouldRefresh: () => true,
             refresh: () => refresh('bookmarks'),
         },
         {
@@ -1521,7 +1521,7 @@ export async function syncFromApi() {
             getList: () => state.promptsDatabase,
             setList: (list) => { state.promptsDatabase = list; },
             save: savePromptsDatabase,
-            shouldRefresh: () => getActiveViewId() === 'view-bookmarks',
+            shouldRefresh: () => true,
             refresh: () => actions.renderPrompts?.(),
         },
         {

@@ -497,3 +497,68 @@ test('Auth - refreshSession 在途期间并发 apiRequest 等待轮换完成再�
         if (prevNavDesc) Object.defineProperty(globalThis, 'navigator', prevNavDesc);
     }
 });
+
+test('Auth - setSessionInitPromise 阻塞启动握手完成前的并发 apiRequest，杜绝 401 竞态', async () => {
+    const prevWindow = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevStorage = globalThis.localStorage;
+    const prevLocation = globalThis.location;
+    const prevNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const prevFetch = globalThis.fetch;
+
+    const store = new Map();
+    globalThis.localStorage = {
+        getItem: (k) => store.get(k) ?? null,
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+        clear: () => store.clear()
+    };
+    globalThis.location = { protocol: 'https:', hostname: 'chillin.local', host: 'chillin.local', origin: 'https://chillin.local', href: 'https://chillin.local/' };
+    globalThis.window = globalThis;
+    globalThis.document = {
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: () => {}
+    };
+    Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { onLine: true, userAgent: 'node-test' }
+    });
+
+    const events = [];
+    globalThis.fetch = async (url) => {
+        events.push(`fetch:${url}`);
+        return {
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ ok: true }),
+            text: async () => '{"ok":true}'
+        };
+    };
+
+    try {
+        const { setSessionInitPromise, apiRequest } = await import('../public/js/auth.js');
+        let releaseInit;
+        setSessionInitPromise(new Promise((resolve) => { releaseInit = resolve; }));
+
+        const pendingReq = apiRequest('/api/insights/threads');
+        await new Promise((r) => setImmediate(r));
+        assert.equal(events.length, 0, '启动会话恢复与续期握手未完成前，不得并发发出业务请求');
+
+        events.push('init-done');
+        releaseInit();
+        await pendingReq;
+        assert.equal(events.length, 2);
+        assert.equal(events[0], 'init-done');
+        assert.match(events[1], /^fetch:.*\/api\/insights\/threads$/);
+    } finally {
+        globalThis.fetch = prevFetch;
+        globalThis.window = prevWindow;
+        globalThis.document = prevDoc;
+        globalThis.localStorage = prevStorage;
+        globalThis.location = prevLocation;
+        if (prevNavDesc) Object.defineProperty(globalThis, 'navigator', prevNavDesc);
+    }
+});

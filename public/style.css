@@ -2785,16 +2785,18 @@ body.hide-bottom-nav .nav-brand-mobile {
     display: block;
     font-size: 17px;
     font-weight: 600;
-    color: var(--text-color, var(--slate-900));
+    color: var(--ios-label, var(--slate-900));
     letter-spacing: -0.4px;
     opacity: 0;
+    visibility: hidden;
     transform: translateY(4px);
-    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
     pointer-events: none;
   }
 
   .super-navbar.scrolled .nav-brand-mobile {
     opacity: 1;
+    visibility: visible;
     transform: translateY(0);
     pointer-events: auto;
   }
@@ -4181,7 +4183,7 @@ body.keyboard-open .fab-btn {
   font-weight: 500;
   border: 1px solid transparent;
   background: rgba(var(--neutral-rgb), 0.08);
-  color: var(--text-color-light, rgba(var(--label-rgb), 0.75));
+  color: rgba(var(--label-rgb), 0.86);
   cursor: pointer;
   transition: transform, opacity, background-color, color, border-color, box-shadow, outline-color 0.18s cubic-bezier(0.16, 1, 0.3, 1);
   user-select: none;
@@ -10772,11 +10774,11 @@ body.dark-reader-body .k-directory-arrow {
   --ios-bg: #0f1115;
   --ios-card-bg: #1a1d23;
   --ios-label: #f2f2f7;
-  --ios-secondary-label: rgba(235, 235, 245, 0.6);
+  --ios-secondary-label: rgba(235, 235, 245, 0.74);
   --bg-color: var(--ios-bg);
   --card-bg: var(--ios-card-bg);
   --text-color: #f2f2f7;
-  --text-color-light: rgba(235, 235, 245, 0.6);
+  --text-color-light: rgba(235, 235, 245, 0.74);
   --callout-bg: rgba(0, 122, 255, 0.18);
   --card-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 28px rgba(0, 0, 0, 0.38);
   --card-hover-shadow: 0 12px 32px rgba(0, 0, 0, 0.5);

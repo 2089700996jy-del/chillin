@@ -816,3 +816,31 @@ integration('Garden export - 覆盖 D1 专属数据且不泄露凭据或越权�
     assert.ok(!raw.includes('SECRET_CURSOR'), '轮询游标不得进入导出');
     assert.ok(!raw.includes('别人的笔记'), '导出必须按用户隔离');
 });
+
+integration('Garden Isolation - 越权 PUT 他人笔记/周记/随手记返回 403，不存在返回 404（绝不 500）', async () => {
+    const db = createTestDb();
+    await seedUser(db, 1);
+    await seedUser(db, 2);
+
+    const { handlePostNote, handlePutNote, handlePostWeekly, handlePutWeekly, handlePostFeed, handlePutFeed } =
+        await import('../workers/src/garden-resources.js');
+
+    const req = (body) => new Request('https://x/api/test', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    });
+
+    const noteA = await (await handlePostNote(req({ title: 'A note', content: 'secret', date: '2026-11-25' }), db, 1)).json();
+    const resNoteB = await handlePutNote(noteA.id, req({ title: 'hack', content: 'x', date: '2026-11-25' }), db, 2);
+    assert.equal(resNoteB.status, 403, '越权 PUT 他人笔记应返回 403 而非 500');
+    assert.equal((await handlePutNote(999999, req({ title: 'missing', content: 'x', date: '2026-11-25' }), db, 2)).status, 404);
+
+    const weeklyA = await (await handlePostWeekly(req({ title: 'A weekly', content: 'secret', date: '2026-11-25' }), db, 1)).json();
+    assert.equal((await handlePutWeekly(weeklyA.id, req({ title: 'hack' }), db, 2)).status, 403);
+    assert.equal((await handlePutWeekly(999999, req({ title: 'missing' }), db, 2)).status, 404);
+
+    const feedA = await (await handlePostFeed(req({ content: 'A feed' }), db, 1)).json();
+    assert.equal((await handlePutFeed(feedA.id, req({ content: 'hack' }), db, 2)).status, 403);
+    assert.equal((await handlePutFeed(999999, req({ content: 'missing' }), db, 2)).status, 404);
+});

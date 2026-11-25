@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-25T02:50:51.976Z · 提交数：566
+> 生成时间：2026-11-25T07:14:27.104Z · 提交数：567
 
 ## 2026-11-25
 
 ### 🐛 缺陷修复
 
+- **reader**: preserve punctuated chapter titles and prevent cloud update loop (v2.5.280)
 - **frontend**: fix search PointerEvent, auth refresh race, PWA claim reload, bottom nav inert, upload lock, contrast and SVG (v2.5.279)
 - **bot-reminders**: harden adversarial regex isolation, reschedule dedup, and pending-action guard (v2.5.278)
 - **bot-reminders**: support natural-language cancel/reschedule, batch same-time delivery, and hide fired items in list (v2.5.277)

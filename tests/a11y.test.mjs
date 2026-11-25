@@ -120,3 +120,14 @@ test('A11y - 密码显隐图标 SVG path 合法，#btn-chip-todo 浅/深主题�
     assert.ok(ratio(hexRgb(lightHex), lightBg) >= 4.5, '浅色主题下 #btn-chip-todo 对比度必须 >= 4.5');
     assert.ok(ratio(hexRgb(darkHex), darkBg) >= 4.5, '深色主题下 #btn-chip-todo 对比度必须 >= 4.5');
 });
+
+test('A11y - .nav-brand-mobile 静止隐藏与滚动显隐，.btn-chip 与深色次要文本满足 WCAG AA', () => {
+    const css = fs.readFileSync(path.join(root, 'public/style.css'), 'utf8');
+    assert.match(css, /\.nav-brand-mobile\s*\{[\s\S]*?opacity:\s*0;[\s\S]*?visibility:\s*hidden;/, '.nav-brand-mobile 在未滚动隐藏态须设置 visibility: hidden');
+    assert.match(css, /\.super-navbar\.scrolled\s+\.nav-brand-mobile\s*\{[\s\S]*?opacity:\s*1;[\s\S]*?visibility:\s*visible;/, '滚动后 .nav-brand-mobile 须恢复 visibility: visible');
+    assert.match(css, /\.btn-chip\s*\{[\s\S]*?color:\s*rgba\(var\(--label-rgb\),\s*0\.86\)/, '.btn-chip 须使用高对比度 label-rgb 文本色');
+
+    const darkBlock = (css.match(/:root\[data-theme="dark"\]\s*\{[\s\S]*?\}/) || [''])[0];
+    const alphaMatch = darkBlock.match(/--ios-secondary-label:\s*rgba\(235,\s*235,\s*245,\s*([\d.]+)\)/);
+    assert.ok(alphaMatch && Number(alphaMatch[1]) >= 0.72, '深色主题下 --ios-secondary-label 透明度须 >= 0.72 以确保笔记预览与日期满足 WCAG AA');
+});

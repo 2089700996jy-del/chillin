@@ -15,6 +15,7 @@ export {
     restoreCookieSession,
     logoutAllDevices,
     refreshSession,
+    setSessionInitPromise,
     openSecurityModal,
 } from './auth.js';
 

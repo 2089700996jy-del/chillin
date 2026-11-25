@@ -1018,6 +1018,21 @@ test('Sync - [P1 对抗性测试] 跨资源同 ID 墓碑隔离：删除随手记
     localStorage.clear();
 });
 
+test('Sync & Router - 设备 B 首页拉取笔记后立即刷新渲染，切至笔记页也触发 renderNotes', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+    const syncSrc = fs.readFileSync(path.join(rootDir, 'public/js/sync.js'), 'utf8');
+    const routerSrc = fs.readFileSync(path.join(rootDir, 'public/js/router.js'), 'utf8');
+
+    const notesSpec = syncSrc.match(/resource:\s*'notes'[\s\S]*?refresh:\s*\(\)\s*=>\s*refresh\('notes'\)/);
+    assert.ok(notesSpec, 'sync.js 应包含 notes pullSpec');
+    assert.match(notesSpec[0], /shouldRefresh:\s*\(\)\s*=>\s*true/, 'notes 同步拉取后无论当前是否在笔记页都应更新 DOM 列表');
+    assert.match(routerSrc, /targetViewId === 'notes'\)\s*\{\s*actions\.renderNotes\?\.\(\)/, '切到 notes 视图时必须重绘笔记列表');
+    assert.match(routerSrc, /targetViewId === 'bookmarks'\)\s*\{\s*actions\.renderBookmarks\?\.\(\)/, '切到 bookmarks 视图时必须重绘收藏列表');
+});
+
 
 
 

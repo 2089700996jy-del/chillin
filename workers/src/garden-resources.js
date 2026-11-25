@@ -63,6 +63,7 @@ export async function handlePostWeekly(request, db, userId) {
 }
 
 export async function handlePutWeekly(id, request, db, userId) {
+    if (!(await isOwnedRecord(db, 'weeklies', id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
     if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
     const body = parsed.value;
@@ -73,7 +74,8 @@ export async function handlePutWeekly(id, request, db, userId) {
          WHERE id=?9 AND user_id=?10 AND IFNULL(is_deleted, 0) = 0`
     ).bind(body.category || '🌸', body.title || '', body.summary || '', body.date || '', body.cover || body.cover_image || '', weeklyData, body.content || '', annotations, id, userId).run();
     const row = await db.prepare('SELECT * FROM weeklies WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
-    if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+    if (!row) return jsonResponse({ error: '记录不存在' }, 404);
+    if (Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     return jsonResponse(formatWeekly(row), 200);
 }
 
@@ -123,6 +125,7 @@ export async function handlePostNote(request, db, userId) {
 }
 
 export async function handlePutNote(id, request, db, userId) {
+    if (!(await isOwnedRecord(db, 'notes', id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
     if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
     const body = parsed.value;
@@ -131,7 +134,8 @@ export async function handlePutNote(id, request, db, userId) {
         `UPDATE notes SET title=?1, content=?2, date=?3, annotations=?4, updated_at=datetime('now', '+8 hours') WHERE id=?5 AND user_id=?6 AND IFNULL(is_deleted, 0) = 0`
     ).bind(body.title, body.content || '', body.date, annotations, id, userId).run();
     const row = await db.prepare('SELECT * FROM notes WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
-    if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+    if (!row) return jsonResponse({ error: '记录不存在' }, 404);
+    if (Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     return jsonResponse(formatNote(row), 200);
 }
 
@@ -302,6 +306,7 @@ export async function handlePostFeed(request, db, userId) {
 }
 
 export async function handlePutFeed(id, request, db, userId) {
+    if (!(await isOwnedRecord(db, 'quick_feeds', id, userId))) return jsonResponse({ error: '无权操作该记录' }, 403);
     const parsed = await readJsonCapped(request, MAX_CRUD_BODY_BYTES);
     if (!parsed.ok) return jsonResponse({ error: parsed.error }, parsed.status);
     const body = parsed.value;
@@ -315,7 +320,8 @@ export async function handlePutFeed(id, request, db, userId) {
         `UPDATE quick_feeds SET content=?1, type=?2, media_url=?3, summary=?4, tags=?5, updated_at=datetime('now', '+8 hours') WHERE id=?6 AND user_id=?7 AND IFNULL(is_deleted, 0) = 0`
     ).bind(content, type, mediaUrl, summary, tagsJson, id, userId).run();
     const row = await db.prepare('SELECT * FROM quick_feeds WHERE id = ?1 AND user_id = ?2').bind(id, userId).first();
-    if (row && Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
+    if (!row) return jsonResponse({ error: '记录不存在' }, 404);
+    if (Number(row.is_deleted) === 1) return jsonResponse({ error: '记录已删除，无法覆盖', skipped: true }, 409);
     return jsonResponse(formatFeed(row), 200);
 }
 

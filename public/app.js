@@ -17,6 +17,7 @@ import {
     bindApiHooks,
     restoreCookieSession,
     refreshSession,
+    setSessionInitPromise,
 } from './js/api.js';
 import { initRouter } from './js/router.js';
 import { initWeeklies } from './js/weeklies.js';
@@ -349,7 +350,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 会话恢复：优先本地 Bearer（旧版），其次服务端 HttpOnly Cookie（新版）
-    restoreCookieSession()
+    const sessionInit = restoreCookieSession()
         .catch(() => false)
         .then(async (restored) => {
             if (restored) {
@@ -365,6 +366,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
+    setSessionInitPromise(sessionInit);
 
     safeInit('mergeGuest', checkAndMergeGuestData);
     safeInit('autoSync', startAutoSyncEngine);
