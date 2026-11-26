@@ -467,16 +467,20 @@ export async function createReminderAt(db, userId, text, fireAtMs, nowMs, follow
     const dup = await db.prepare("SELECT id, text, fire_at_ms FROM bot_reminders WHERE user_id = ?1 AND is_deleted = 0 AND status = 'pending' AND text = ?2 AND ABS(fire_at_ms - ?3) <= 60000 LIMIT 1")
         .bind(userId, body, fire).first();
     if (dup) {
-        return { ok: true, id: dup.id, text: dup.text, fireAtMs: dup.fire_at_ms, duplicated: true,
-            reply: '这条提醒已经在排队了 🙂\n> ' + formatReminderTime(dup.fire_at_ms, now) + ' — ' + dup.text };
+        return {
+            ok: true, id: dup.id, text: dup.text, fireAtMs: dup.fire_at_ms, duplicated: true,
+            reply: '这条提醒已经在排队了 🙂\n> ' + formatReminderTime(dup.fire_at_ms, now) + ' — ' + dup.text
+        };
     }
     const account = await loadBoundAccount(db, userId);
     if (!account) return { ok: false, reply: '我这边还没有绑定的微信通道，设了也送不到——去花园「设置 → 微信 Bot」扫码绑定后再发一次。' };
     const follow = normalizeFollowUpMs(followUpMs) || followUpMsForText(body);
     const res = await db.prepare("INSERT INTO bot_reminders (user_id, account_id, text, fire_at_ms, follow_up_ms, status, is_deleted) VALUES (?1, ?2, ?3, ?4, ?5, 'pending', 0)")
         .bind(userId, account.id, body, fire, follow).run();
-    return { ok: true, id: (res && res.meta && res.meta.last_row_id) || 0, text: body, fireAtMs: fire,
-        reply: '已记下 ✅\n> ' + formatReminderTime(fire, now) + ' — ' + body + '\n\n到点我会在微信里叫你；要改时间或取消，直接跟我说就行。' };
+    return {
+        ok: true, id: (res && res.meta && res.meta.last_row_id) || 0, text: body, fireAtMs: fire,
+        reply: '已记下 ✅\n> ' + formatReminderTime(fire, now) + ' — ' + body + '\n\n到点我会在微信里叫你；要改时间或取消，直接跟我说就行。'
+    };
 }
 /** 设提醒：限流 → 上限 → 通道 → 落库，回执里一定写清「我理解的时间」 */
 export async function runRemind(db, userId, parsed, nowMs) {

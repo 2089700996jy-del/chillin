@@ -249,6 +249,7 @@ async function doLogin() {
             localStorage.setItem('chillin_token', state.authToken);
         }
         localStorage.setItem('chillin_user', JSON.stringify(state.authUser));
+        try { localStorage.setItem(LAST_REFRESH_KEY, String(Date.now())); } catch (_) { /* audit-ignore: intentional-fallback */ }
 
         checkAuth();
         try { window.dispatchEvent(new CustomEvent('chillin:auth-ready')); } catch (_) { /* audit-ignore: intentional-fallback 派发 auth-ready 事件异常降级 */ }
@@ -614,14 +615,29 @@ async function changePassword() {
     }
 }
 
+const LAST_REFRESH_KEY = 'chillin_last_refresh_at';
+const REFRESH_COOLDOWN_MS = 30 * 60 * 1000;
+
 /** 滑动续期：启动时静默换新令牌（Cookie 模式），避免固定 7 天到期被强制登出 */
-export async function refreshSession() {
+export async function refreshSession({ onlyIfStale = false } = {}) {
     if (!state.authToken && !state.cookieSession) return false;
+    if (onlyIfStale) {
+        try {
+            const last = Number(localStorage.getItem(LAST_REFRESH_KEY) || 0);
+            if (last > 0 && Date.now() - last < REFRESH_COOLDOWN_MS) {
+                return true;
+            }
+        } catch (_) { /* audit-ignore: intentional-fallback */ }
+    }
     if (activeRefreshPromise) return activeRefreshPromise;
     activeRefreshPromise = (async () => {
         try {
             const res = await apiRequest('/api/auth/refresh', { method: 'POST' });
-            return !!(res && res.success);
+            if (res && res.success) {
+                try { localStorage.setItem(LAST_REFRESH_KEY, String(Date.now())); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                return true;
+            }
+            return false;
         } catch (_) {
             return false;
         } finally {

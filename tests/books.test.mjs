@@ -72,8 +72,9 @@ test('Reader books - one user can never read another user\'s book', { skip: sqli
     const other = await (await handleListReaderBooks(db, 4)).json();
     assert.equal(other.length, 0);
     assert.equal((await handleGetReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 4)).status, 404);
-    // 别人的指纹不能通过删除接口把书删掉
-    await handleDeleteReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 4);
+    // 别人的指纹不能通过删除接口把书删掉，且必须明确返回 403 拒绝
+    const delOther = await handleDeleteReaderBook(encodeURIComponent(BOOK_KEY), { MEDIA: r2 }, db, 4);
+    assert.equal(delOther.status, 403, '越权删除他人书籍应返回 403');
     const stillThere = await (await handleListReaderBooks(db, 3)).json();
     assert.equal(stillThere.length, 1);
 });

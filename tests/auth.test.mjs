@@ -562,3 +562,60 @@ test('Auth - setSessionInitPromise 阻塞启动握手完成前的并发 apiReque
         if (prevNavDesc) Object.defineProperty(globalThis, 'navigator', prevNavDesc);
     }
 });
+
+test('Auth - refreshSession({ onlyIfStale: true }) 在刚登录冷却期内跳过无谓轮换，杜绝刷新 401', async () => {
+    const prevWindow = globalThis.window;
+    const prevDoc = globalThis.document;
+    const prevStorage = globalThis.localStorage;
+    const prevLocation = globalThis.location;
+    const prevNavDesc = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+    const prevFetch = globalThis.fetch;
+
+    const store = new Map([['chillin_last_refresh_at', String(Date.now())]]);
+    globalThis.localStorage = {
+        getItem: (k) => store.get(k) ?? null,
+        setItem: (k, v) => store.set(k, String(v)),
+        removeItem: (k) => store.delete(k),
+        clear: () => store.clear()
+    };
+    globalThis.location = { protocol: 'https:', hostname: 'chillin.local', host: 'chillin.local', origin: 'https://chillin.local', href: 'https://chillin.local/' };
+    globalThis.window = globalThis;
+    globalThis.document = {
+        getElementById: () => null,
+        querySelector: () => null,
+        querySelectorAll: () => [],
+        addEventListener: () => {}
+    };
+    Object.defineProperty(globalThis, 'navigator', {
+        configurable: true,
+        value: { onLine: true, userAgent: 'node-test' }
+    });
+
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+        fetchCount += 1;
+        return {
+            ok: true,
+            status: 200,
+            headers: { get: () => 'application/json' },
+            json: async () => ({ success: true }),
+            text: async () => '{"success":true}'
+        };
+    };
+
+    try {
+        const { state } = await import('../public/js/state.js');
+        const { refreshSession } = await import('../public/js/auth.js');
+        state.cookieSession = true;
+        const ok = await refreshSession({ onlyIfStale: true });
+        assert.equal(ok, true);
+        assert.equal(fetchCount, 0, '刚登录冷却期内不得重复发 POST /api/auth/refresh 引发并发 401');
+    } finally {
+        globalThis.fetch = prevFetch;
+        globalThis.window = prevWindow;
+        globalThis.document = prevDoc;
+        globalThis.localStorage = prevStorage;
+        globalThis.location = prevLocation;
+        if (prevNavDesc) Object.defineProperty(globalThis, 'navigator', prevNavDesc);
+    }
+});

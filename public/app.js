@@ -364,8 +364,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 checkAuth({ skipInboxRefresh: true });
             }
             if (state.authToken || state.cookieSession) {
-                // 滑动续期：先完成令牌轮换再释放门闩并并发拉取业务接口，避免旧 Cookie 并发竞态触发 401
-                await refreshSession().catch(() => {});
+                // 滑动续期：仅在距上次刷新超过冷却期时轮换令牌，避免登录后立刻刷新无谓轮换引发 401 竞态
+                await refreshSession({ onlyIfStale: true }).catch(() => {});
             }
         })
         .finally(() => {

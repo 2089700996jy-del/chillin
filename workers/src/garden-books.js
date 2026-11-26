@@ -121,7 +121,13 @@ export async function handleDeleteReaderBook(rawKey, env, db, userId) {
     const row = await db.prepare(
         'SELECT r2_key FROM reader_books WHERE user_id = ?1 AND book_key = ?2'
     ).bind(userId, bookKey).first();
-    if (!row) return jsonResponse({ ok: true, deleted: 0 });
+    if (!row) {
+        const otherOwned = await db.prepare(
+            'SELECT 1 FROM reader_books WHERE book_key = ?1 AND user_id != ?2 AND is_deleted = 0 LIMIT 1'
+        ).bind(bookKey, userId).first();
+        if (otherOwned) return jsonResponse({ error: '无权操作该记录' }, 403);
+        return jsonResponse({ ok: true, deleted: 0 });
+    }
 
     // 软删除墓碑：其它设备才能在增量拉取时看到「这本书已被删除」
     await db.prepare(

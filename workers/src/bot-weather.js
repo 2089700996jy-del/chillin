@@ -326,9 +326,9 @@ export async function resolveUserCity(db, userId, text = '') {
 export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options = {}) {
     const fetcher = (options && options.fetchImpl) || fetchImpl || fetch;
     const nowMs = Number.isFinite(options.nowMs) ? Number(options.nowMs) : Date.now();
-    if (!db || !env) return { state: 'no-env' };
+    if (!db || !env) return { state: 'no-env', checked: 0, notified: 0, silent: 0, failed: 1 };
     const auth = await getQWeatherToken(env, nowMs);
-    if (!auth) return { state: 'no-auth' };
+    if (!auth) return { state: 'no-auth', checked: 0, notified: 0, silent: 0, failed: 1 };
 
     const { today, yesterday } = east8Dates(nowMs);
     let accounts = [];
@@ -336,15 +336,18 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         const res = await db.prepare("SELECT * FROM bot_claw_accounts WHERE is_deleted = 0 AND status = 'bound' AND outreach_enabled = 1 ORDER BY id LIMIT 5").all();
         accounts = (res && res.results) || [];
     } catch (err) {
-        return { state: 'error' };
+        return { state: 'error', checked: 0, notified: 0, silent: 0, failed: 1 };
     }
 
-    const summary = { checked: 0, notified: 0, silent: 0 };
+    const summary = { checked: 0, notified: 0, silent: 0, failed: 0 };
     for (const acct of accounts) {
         summary.checked++;
         const city = await resolveUserCity(db, acct.user_id);
         const cityInfo = await lookupCity(env, city, fetcher, nowMs);
-        if (!cityInfo) continue;
+        if (!cityInfo) {
+            summary.failed++;
+            continue;
+        }
 
         // 读今日记录：若今日已发送过晨报，避免重复推送（幂等保证）
         let todayRow = null;
@@ -352,6 +355,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
             todayRow = await db.prepare('SELECT notified FROM bot_weather_daily WHERE user_id = ?1 AND date = ?2').bind(acct.user_id, today).first();
         } catch (err) {
             console.error('[bot-weather] 查询今日晨报记录失败，跳过该用户以避免重复推送 user=' + acct.user_id + ':', err);
+            summary.failed++;
             continue;
         }
         if (todayRow && todayRow.notified === 1) {
@@ -369,6 +373,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
         const raw = await fetchFullWeatherData(env, cityInfo.id, fetcher, nowMs);
         if (!raw.daily.length && !raw.hourly.length) {
             console.error(`[bot-weather] 8:00 ${city} 无法获取有效天气数据 (API 失败: ${lastApiError})，跳过今日记录 user=${acct.user_id}`);
+            summary.failed++;
             continue;
         }
         const a = analyzeWeatherData(raw, yRow);
@@ -404,6 +409,7 @@ export async function runMorningWeatherCare(env, db, fetchImpl = fetch, options 
             summary.notified++;
             console.log(`[weather] 8:00 已向 user=${acct.user_id} 发送天气关怀晨报`);
         } catch (err) {
+            summary.failed++;
             console.error(`[weather] 晨报推送失败 user=${acct.user_id}: ` + (err && err.message));
         }
     }

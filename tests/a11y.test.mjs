@@ -131,3 +131,9 @@ test('A11y - .nav-brand-mobile 静止隐藏与滚动显隐，.btn-chip 与深色
     const alphaMatch = darkBlock.match(/--ios-secondary-label:\s*rgba\(235,\s*235,\s*245,\s*([\d.]+)\)/);
     assert.ok(alphaMatch && Number(alphaMatch[1]) >= 0.72, '深色主题下 --ios-secondary-label 透明度须 >= 0.72 以确保笔记预览与日期满足 WCAG AA');
 });
+
+test('A11y & Hit-Test - <aside hidden id="offline-bar"> 彻底隐藏且不拦截 #btn-edit-article 点击', () => {
+    const css = fs.readFileSync(path.join(root, 'public/style.css'), 'utf8');
+    assert.match(css, /\.offline-banner\[hidden\]\s*\{\s*display:\s*none;\s*\}/, '.offline-banner[hidden] 必须真正 display: none，不能被 display: flex 覆盖导致遮挡顶部编辑按钮');
+    assert.match(css, /\.offline-banner\[hidden\]\s+\.offline-banner-content[\s\S]*?pointer-events:\s*none;/, '隐藏态子容器必须禁用 pointer-events');
+});
