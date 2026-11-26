@@ -1,12 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-26T07:34:54.758Z · 提交数：570
+> 生成时间：2026-11-26T08:20:20.712Z · 提交数：571
 
 ## 2026-11-26
 
 ### 🐛 缺陷修复
 
+- **a11y**: resolve bookmark, dark mode tab/badge, and nav-brand contrast issues
 - offline-bar hidden pointer block, delete book 403, startup refresh cooldown, and WCAG contrast (v2.5.282)
 
 ## 2026-11-25

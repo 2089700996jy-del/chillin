@@ -115,7 +115,7 @@
     --ios-orange: #FF9500;
     --garden-green-dark: #1B5E20;
     --green-500: #22C55E;
-    --dark-link-blue: #58A6FF;
+    --dark-link-blue: #79C0FF;
     --dark-gray-500: #8B949E;
     --gray-100: #F3F4F6;
 }
@@ -10834,13 +10834,13 @@ body.dark-reader-body .k-directory-arrow {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* 深色下底栏选中色用 iOS 系统深色蓝 #0A84FF（图标），小字标签提亮至 #58A6FF 确保叠加选中胶囊后仍稳超 WCAG 4.5:1 */
+/* 深色下底栏选中色用 iOS 系统深色蓝 #0A84FF（图标），小字标签提亮至 #79C0FF 确保叠加选中胶囊后仍稳超 WCAG 4.5:1 */
 :root[data-theme="dark"] .mobile-tab-item.active {
   color: var(--ios-blue-dark);
 }
 :root[data-theme="dark"] .mobile-tab-item.active > .tab-label,
 body.dark-reader-body .mobile-tab-item.active > .tab-label {
-  color: var(--dark-link-blue, #58A6FF);
+  color: var(--dark-link-blue, #79C0FF);
 }
 
 /* 深色下待办标签绿文字提亮，确保在半透绿底上满足 WCAG AA 对比度 */
