@@ -7116,7 +7116,7 @@ body.dark-reader-body .mobile-bottom-nav {
 }
 
 body.dark-reader-body .mobile-tab-item {
-  color: var(--ios-gray);
+  color: #AEAEB2;
 }
 
 body.dark-reader-body .mobile-tab-item.active {
@@ -10800,7 +10800,7 @@ body.dark-reader-body .k-directory-arrow {
   --hairline: rgba(255, 255, 255, 0.12);
   /* 分段控件的选中胶囊：亮色是白底，深色必须比轨道更亮，否则会出现「选中的比未选中的更暗」 */
   --segment-active-bg: rgba(255, 255, 255, 0.16);
-  --tab-inactive: rgba(235, 235, 245, 0.5);
+  --tab-inactive: #AEAEB2;
   --accent-text: #4A9EFF;
   --focus-ring-color: var(--accent-text);
   --danger-color: #FF453A;
