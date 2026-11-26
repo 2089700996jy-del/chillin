@@ -1,6 +1,6 @@
 # Chillin 项目进度记录
 
-> 更新时间：2026-11-26。当前前端/Worker：**v2.5.282**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0044` 已应用、R2 桶 `chillin-media` 已建（21 张））。
+> 更新时间：2026-11-26。当前前端/Worker：**v2.5.283**（Worker/Pages 已部署、D1 迁移 `migrations/0001`–`0044` 已应用、R2 桶 `chillin-media` 已建（21 张））。
 
 ## 项目是什么
 

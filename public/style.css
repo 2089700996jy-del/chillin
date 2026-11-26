@@ -764,8 +764,8 @@ body.eyecare-reader-body #btn-back {
 }
 
 @keyframes viewSnapIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
+  from { transform: translateY(4px); }
+  to { transform: translateY(0); }
 }
 
 /* ========================================== */
@@ -2790,7 +2790,7 @@ body.hide-bottom-nav .nav-brand-mobile {
     opacity: 0;
     visibility: hidden;
     transform: translateY(4px);
-    transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.2s;
+    transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1);
     pointer-events: none;
   }
 
@@ -5677,7 +5677,6 @@ html.ios-pwa body.eyecare-reader-body .mobile-bottom-nav {
 
 .bookmarks-subview.active {
   display: block;
-  animation: modalFadeIn 0.2s ease;
 }
 
 /* Konsta iOS HIG Searchbar */
@@ -7658,8 +7657,8 @@ body.is-offline .sync-status {
 }
 
 body.dark-reader-body .heatmap-streak-badge {
-  color: var(--ios-green-bright);
-  background: rgba(48, 209, 88, 0.18);
+  color: #6EE7B7;
+  background: rgba(48, 209, 88, 0.15);
 }
 
 body.eyecare-reader-body .heatmap-streak-badge {
@@ -10835,10 +10834,13 @@ body.dark-reader-body .k-directory-arrow {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
 }
 
-/* 深色下底栏选中色用 iOS 系统深色蓝 #0A84FF：
-   底栏玻璃上的对比度 5.18，优于亮色蓝 #007AFF 的 4.70（wcag 小字标准 4.5）。 */
+/* 深色下底栏选中色用 iOS 系统深色蓝 #0A84FF（图标），小字标签提亮至 #58A6FF 确保叠加选中胶囊后仍稳超 WCAG 4.5:1 */
 :root[data-theme="dark"] .mobile-tab-item.active {
   color: var(--ios-blue-dark);
+}
+:root[data-theme="dark"] .mobile-tab-item.active > .tab-label,
+body.dark-reader-body .mobile-tab-item.active > .tab-label {
+  color: var(--dark-link-blue, #58A6FF);
 }
 
 /* 深色下待办标签绿文字提亮，确保在半透绿底上满足 WCAG AA 对比度 */
@@ -10894,10 +10896,10 @@ body.dark-reader-body .k-directory-arrow {
 
 
 
-/* 应用级深色主题下的连续记录徽章：亮绿字 + 深绿底（夜间/护眼底色另有两套覆盖） */
+/* 应用级深色主题下的连续记录徽章：高对比浅绿字 + 深绿底 */
 :root[data-theme="dark"] .heatmap-streak-badge {
-  color: var(--ios-green-bright);
-  background: rgba(48, 209, 88, 0.18);
+  color: #6EE7B7;
+  background: rgba(48, 209, 88, 0.15);
 }
 
 /* 键盘聚焦输入框时同样给出焦点环（部分模块自带 outline:none；组合胶囊/无缝卡片/拟物纸张等无缝排版由外层或专用焦点光晕呈现） */

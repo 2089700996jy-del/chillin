@@ -1,12 +1,19 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-25T09:17:55.489Z · 提交数：568
+> 生成时间：2026-11-26T07:34:54.758Z · 提交数：570
+
+## 2026-11-26
+
+### 🐛 缺陷修复
+
+- offline-bar hidden pointer block, delete book 403, startup refresh cooldown, and WCAG contrast (v2.5.282)
 
 ## 2026-11-25
 
 ### 🐛 缺陷修复
 
+- block cross-account DELETE, improve light contrast, and gate init session refresh
 - resolve BUG-007 sync render, BUG-006 PUT 500, BUG-002 401 init race, BUG-005 contrast (v2.5.281)
 - **reader**: preserve punctuated chapter titles and prevent cloud update loop (v2.5.280)
 - **frontend**: fix search PointerEvent, auth refresh race, PWA claim reload, bottom nav inert, upload lock, contrast and SVG (v2.5.279)
