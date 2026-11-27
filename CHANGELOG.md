@@ -1,7 +1,7 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-26T08:30:36.691Z · 提交数：572
+> 生成时间：2026-11-27T02:19:01.142Z · 提交数：573
 
 ## 2026-11-26
 
@@ -12,6 +12,7 @@
 
 ### 🎨 样式
 
+- **a11y**: raise dark mode inactive tab contrast to #AEAEB2
 - **a11y**: brighten dark mode link/tab blue to #79C0FF
 
 ## 2026-11-25

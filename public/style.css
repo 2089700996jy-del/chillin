@@ -275,6 +275,17 @@ body.eyecare-reader-body {
   gap: 12px;
 }
 
+.nav-right .btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.nav-right .nav-svg-icon {
+  display: block;
+}
+
 .nav-right .btn-text {
   font-size: 13px;
 }
@@ -5167,7 +5178,8 @@ body.keyboard-open .fab-btn {
     width: 8.5px;
     height: 8.5px;
     min-width: 8.5px;
-    margin: 0 5px 0 0;
+    margin: 0 6px 0 0;
+    align-self: center;
   }
 }
 
