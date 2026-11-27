@@ -18,7 +18,18 @@ import { assertSafeR2Key, readManifest, safeResolve, verifyBackup } from './back
 import { createWrangler, resetD1Database } from './d1-export.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const argv = process.argv.slice(2).filter((a) => a !== '--');
+const rawArgv = process.argv.slice(2).filter((a) => a !== '--');
+let persistTo = process.env.CHILLIN_WRANGLER_PERSIST_TO || '';
+const argv = [];
+for (let i = 0; i < rawArgv.length; i++) {
+    if (rawArgv[i] === '--persist-to' && rawArgv[i + 1]) {
+        persistTo = rawArgv[++i];
+    } else if (rawArgv[i].startsWith('--persist-to=')) {
+        persistTo = rawArgv[i].slice('--persist-to='.length);
+    } else {
+        argv.push(rawArgv[i]);
+    }
+}
 const fileArg = argv.find((a) => !a.startsWith('--'));
 const local = argv.includes('--local');
 const confirmed = argv.includes('--yes');
@@ -27,6 +38,10 @@ const skipR2 = argv.includes('--skip-r2');
 const skipD1 = argv.includes('--skip-d1');
 const allowIncomplete = argv.includes('--allow-incomplete');
 const resetD1 = !argv.includes('--no-reset');
+if (persistTo && !local) {
+    console.error('[restore-full] --persist-to 仅允许与 --local 一起使用。');
+    process.exit(1);
+}
 
 if (!fileArg) {
     console.error('用法：npm run restore:full -- <backups/full-<时间戳>> [--local] [--yes] [--dry-run]');
@@ -46,7 +61,8 @@ function wrangler(args) {
     const bypass = '.r2.cloudflarestorage.com,cloudflarestorage.com';
     env.NO_PROXY = env.NO_PROXY ? env.NO_PROXY + ',' + bypass : bypass;
     env.no_proxy = env.no_proxy ? env.no_proxy + ',' + bypass : bypass;
-    return execFileSync('npx', ['wrangler', ...args], {
+    const finalArgs = (local && persistTo) ? [...args, '--persist-to', persistTo] : args;
+    return execFileSync('npx', ['wrangler', ...finalArgs], {
         cwd: root, env, stdio: 'inherit', shell: process.platform === 'win32'
     });
 }
@@ -112,12 +128,16 @@ async function main() {
     if (!skipD1) {
         if (resetD1) {
             const run = createWrangler(root);
-            const dropped = resetD1Database(run, d1Binding, local ? '--local' : '--remote');
+            const runWithPersist = (local && persistTo)
+                ? (args, capture) => run([...args, '--persist-to', persistTo], capture)
+                : run;
+            const dropped = resetD1Database(runWithPersist, d1Binding, local ? '--local' : '--remote');
             console.log('[restore-full] D1 已清理 ' + dropped + ' 张旧表，开始导入备份。');
         }
         const script = path.join(root, 'scripts', 'restore-d1.mjs');
         const args = [script, d1File];
         if (local) args.push('--local'); else args.push('--yes');
+        if (local && persistTo) args.push('--persist-to', persistTo);
         execFileSync(process.execPath, args, { cwd: root, stdio: 'inherit' });
     }
     console.log('[restore-full] 完成。建议再跑一次 npm run backup:verify -- ' + path.relative(root, backupRoot));

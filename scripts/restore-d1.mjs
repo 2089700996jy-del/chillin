@@ -15,10 +15,25 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 const binding = process.env.CHILLIN_D1_BINDING || 'DB';
-const argv = process.argv.slice(2).filter((a) => a !== '--');
+const rawArgv = process.argv.slice(2).filter((a) => a !== '--');
+let persistTo = process.env.CHILLIN_WRANGLER_PERSIST_TO || '';
+const argv = [];
+for (let i = 0; i < rawArgv.length; i++) {
+    if (rawArgv[i] === '--persist-to' && rawArgv[i + 1]) {
+        persistTo = rawArgv[++i];
+    } else if (rawArgv[i].startsWith('--persist-to=')) {
+        persistTo = rawArgv[i].slice('--persist-to='.length);
+    } else {
+        argv.push(rawArgv[i]);
+    }
+}
 const file = argv.find((a) => !a.startsWith('--'));
 const local = argv.includes('--local');
 const confirmed = argv.includes('--yes');
+if (persistTo && !local) {
+    console.error('[restore] --persist-to 仅允许与 --local 一起使用。');
+    process.exit(1);
+}
 
 if (!file) {
     console.error('用法：npm run restore -- <backups/chillin-d1-<时间戳>.sql.gz> [--local] [--yes]');
@@ -46,7 +61,9 @@ const tmpFile = path.join(os.tmpdir(), `chillin-restore-${Date.now()}.sql`);
 fs.writeFileSync(tmpFile, sql);
 console.log(`[restore] ${local ? 'local' : 'remote'} ← ${file}（${(sql.length / 1024).toFixed(1)} KB）`);
 try {
-    execFileSync('npx', ['wrangler', 'd1', 'execute', binding, local ? '--local' : '--remote', '--file', tmpFile], {
+    const execArgs = ['wrangler', 'd1', 'execute', binding, local ? '--local' : '--remote', '--file', tmpFile];
+    if (local && persistTo) execArgs.push('--persist-to', persistTo);
+    execFileSync('npx', execArgs, {
         stdio: 'inherit',
         shell: process.platform === 'win32'
     });
