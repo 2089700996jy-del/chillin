@@ -1,7 +1,13 @@
 # 更新日志 (CHANGELOG)
 
 > 本文件由 `npm run changelog` 从 git 提交历史自动生成，请勿手工编辑。
-> 生成时间：2026-11-27T02:19:01.142Z · 提交数：573
+> 生成时间：2026-11-27T02:26:14.485Z · 提交数：574
+
+## 2026-11-27
+
+### 🐛 缺陷修复
+
+- **ui**: align sync-status breathing dot vertically with nav-right icons (v2.5.283)
 
 ## 2026-11-26
 

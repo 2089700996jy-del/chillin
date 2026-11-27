@@ -1055,7 +1055,6 @@ export function initReader() {
                 ? '<button type="button" class="book-card-update-badge" data-update-book="' + escapeHtml(b.id) + '" data-cloud-key="' + encodeURIComponent(cloudMatch.book_key) + '" title="从云端下载最新版并重新切章">' + escapeHtml(cloudChLabel) + '</button>'
                 : '';
             return '<div class="book-card" data-bookid="' + escapeHtml(b.id) + '">' +
-                '<button type="button" class="book-card-resplit" data-resplit-book="' + escapeHtml(b.id) + '" title="从云端更新或重新切章" aria-label="重新切章">↻</button>' +
                 '<span class="book-card-delete" data-delete="' + escapeHtml(b.id) + '">✕</span>' +
                 '<span class="book-card-icon">📖</span>' +
                 '<div class="book-card-title" title="' + escapeHtml(b.title) + '">' + escapeHtml(b.title) + '</div>' +
@@ -1076,10 +1075,57 @@ export function initReader() {
         });
         setHtml(grid, localCards.concat(cloudCards).join(''));
 
-        // Attach event listeners
+        // Attach event listeners (长按 500ms 才显示删除按钮，防日常误触)
         grid.querySelectorAll('.book-card').forEach(card => {
+            let pressTimer = null;
+            let startX = 0;
+            let startY = 0;
+            const cancelLongPress = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+            card.addEventListener('pointerdown', (e) => {
+                if (e.button && e.button !== 0) return;
+                if (e.target.closest('.book-card-delete, .book-card-update-badge')) return;
+                cancelLongPress();
+                startX = e.clientX;
+                startY = e.clientY;
+                pressTimer = setTimeout(() => {
+                    pressTimer = null;
+                    grid.querySelectorAll('.book-card.show-actions').forEach((other) => {
+                        if (other !== card) other.classList.remove('show-actions');
+                    });
+                    card.classList.add('show-actions');
+                    card.dataset.suppressClick = '1';
+                    try { navigator.vibrate?.(15); } catch (_) { /* audit-ignore: intentional-fallback */ }
+                }, 500);
+            });
+            card.addEventListener('pointermove', (e) => {
+                if (!pressTimer) return;
+                if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) {
+                    cancelLongPress();
+                }
+            });
+            card.addEventListener('pointerup', cancelLongPress);
+            card.addEventListener('pointercancel', cancelLongPress);
+            card.addEventListener('contextmenu', (e) => {
+                if (card.classList.contains('show-actions')) e.preventDefault();
+            });
+
             card.addEventListener('click', function (e) {
-                if (e.target.closest('.book-card-delete, .book-card-resplit, .book-card-update-badge')) return;
+                if (this.dataset.suppressClick === '1') {
+                    delete this.dataset.suppressClick;
+                    e.preventDefault();
+                    return;
+                }
+                if (e.target.closest('.book-card-delete, .book-card-update-badge')) return;
+                if (this.classList.contains('show-actions')) {
+                    this.classList.remove('show-actions');
+                    return;
+                }
+                grid.querySelectorAll('.book-card.show-actions').forEach((other) => other.classList.remove('show-actions'));
                 const bookId = this.dataset.bookid || '';
                 // 云端卡片：先把正文下载到本机再打开
                 if (bookId.indexOf('cloud:') === 0) { downloadBookFromCloud(decodeURIComponent(bookId.slice(6))); return; }
@@ -1096,17 +1142,6 @@ export function initReader() {
                     downloadBookFromCloud(cloudKey, { replaceBookId: bookId, openAfter: true });
                 } else if (bookId) {
                     refreshOrResplitBook(bookId, { preferCloud: true, openAfter: true });
-                }
-            });
-        });
-        grid.querySelectorAll('.book-card-resplit').forEach(btn => {
-            btn.addEventListener('click', async function (e) {
-                e.preventDefault();
-                e.stopPropagation();
-                const bookId = this.dataset.resplitBook;
-                if (!bookId) return;
-                if (await confirmDialog('将优先从云端拉取最新版重新切章（若云端无副本则按本地正文重切），原阅读进度将按章节标题保留。是否继续？')) {
-                    refreshOrResplitBook(bookId, { preferCloud: true, openAfter: false });
                 }
             });
         });

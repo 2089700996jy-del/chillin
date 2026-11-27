@@ -902,3 +902,15 @@ test('Reader Adversarial 8: 章节标题含引号/问号/括号/部分不被误�
     assert.equal(isCloudBookNewer(syncedLocal, { ...cloudBook, size: 12059999 }), true, '云端 size 变化时仍须提示更新');
     assert.equal(isCloudBookNewer(syncedLocal, { ...cloudBook, updated_at: '2026-11-25 11:00:00' }), true, '云端 updated_at 变新时仍须提示更新');
 });
+
+test('Reader Bookshelf UI - 删除按钮默认隐藏防误触（长按显示），移除右上角冗余刷新按钮', async () => {
+    const fs = await import('node:fs/promises');
+    const path = await import('node:path');
+    const readerSrc = await fs.readFile(path.join(process.cwd(), 'public', 'js', 'reader.js'), 'utf8');
+    const cssSrc = await fs.readFile(path.join(process.cwd(), 'public', 'style.css'), 'utf8');
+
+    assert.doesNotMatch(readerSrc, /book-card-resplit/, '书架卡片右上角不再保留冗余的刷新切章按钮，仅保留作品下方更新提示');
+    assert.match(readerSrc, /show-actions/, '长按书架卡片应切换 show-actions 展示删除按钮');
+    assert.match(cssSrc, /\.book-card-delete\s*\{[\s\S]*?opacity:\s*0;\s*pointer-events:\s*none;/, '默认态删除按钮必须隐藏且不可点击防误触');
+    assert.match(cssSrc, /\.book-card\.show-actions\s+\.book-card-delete/, 'show-actions 态必须显式展示删除按钮');
+});
