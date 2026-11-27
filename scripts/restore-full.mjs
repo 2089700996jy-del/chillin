@@ -12,6 +12,7 @@
  */
 import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { assertSafeR2Key, readManifest, safeResolve, verifyBackup } from './backup-kit.mjs';
@@ -107,6 +108,27 @@ async function main() {
     if (skipR2 && skipD1) {
         console.error('[restore-full] --skip-r2 与 --skip-d1 不能同时使用');
         process.exit(1);
+    }
+
+    // 预校验阶段：在独立临时本地 D1 实际执行待恢复 SQL，确认可完整导入后再触碰目标 R2/D1。
+    // 注意：跨 Cloudflare R2 与 D1 无法做原子事务替换/回滚；一旦通过预校验并进入 resetD1Database()，
+    // 若后续目标导入中途因网络或配额失败，需根据本备份包重新执行 restore-full 完成恢复。
+    if (!skipD1) {
+        const preflightBase = persistTo ? path.dirname(path.resolve(root, persistTo)) : os.tmpdir();
+        fs.mkdirSync(preflightBase, { recursive: true });
+        const preflightDir = fs.mkdtempSync(path.join(preflightBase, 'chillin-d1-preflight-'));
+        const preflightArg = path.relative(root, preflightDir) || preflightDir;
+        const script = path.join(root, 'scripts', 'restore-d1.mjs');
+        console.log('[restore-full] D1 SQL 预校验（独立临时库）…');
+        try {
+            execFileSync(process.execPath, [script, d1File, '--local', '--persist-to', preflightArg], {
+                cwd: root,
+                stdio: 'inherit'
+            });
+            console.log('[restore-full] D1 SQL 预校验通过，开始写入目标环境。');
+        } finally {
+            fs.rmSync(preflightDir, { recursive: true, force: true });
+        }
     }
 
     if (!skipR2) {

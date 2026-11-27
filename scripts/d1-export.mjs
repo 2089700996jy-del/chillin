@@ -45,19 +45,19 @@ export function queryD1Json(run, binding, target, sql) {
 
 const SCHEMA_QUERY = "SELECT type, name, sql FROM sqlite_master "
     + "WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' "
-    + "AND name NOT LIKE 'memory_fts_%' AND name != '_cf_KV' "
+    + "AND name NOT LIKE 'memory_fts_%' AND name NOT LIKE '_cf_%' "
     + "ORDER BY CASE type WHEN 'table' THEN 1 WHEN 'index' THEN 2 WHEN 'view' THEN 3 WHEN 'trigger' THEN 4 ELSE 5 END, name";
 
 const DATA_TABLES_QUERY = "SELECT name FROM sqlite_master WHERE type = 'table' "
-    + "AND name NOT LIKE 'sqlite_%' AND name != '_cf_KV' AND name NOT LIKE 'memory_fts_%' "
+    + "AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT LIKE 'memory_fts_%' "
     + "AND UPPER(sql) NOT LIKE 'CREATE VIRTUAL TABLE%' ORDER BY name";
 
-/** 恢复前清空业务表（保留 D1 内部 _cf_KV / sqlite_*），让完整备份可以覆盖非空库。 */
+/** 恢复前清空业务表（保留 D1 内部 _cf_* / sqlite_*），让完整备份可以覆盖非空库。 */
 export function resetD1Database(run, binding, target) {
     const rows = queryD1Json(run, binding, target,
-        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name != '_cf_KV' ORDER BY name");
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' ORDER BY name");
     const names = rows.map((row) => String(row.name || ''))
-        .filter((name) => name && name !== '_cf_KV' && !name.startsWith('sqlite_'));
+        .filter((name) => name && !name.startsWith('_cf_') && !name.startsWith('sqlite_'));
     if (!names.length) return 0;
     const shadows = names.filter((name) => name.startsWith('memory_fts_'));
     const virtuals = names.filter((name) => name === 'memory_fts');
@@ -77,9 +77,12 @@ export function resetD1Database(run, binding, target) {
 }
 
 /** 把远端/本地 D1 导出成可恢复 SQL：schema + 真实表数据。 */
-export function exportD1Full({ run, binding, target, output }) {
-    const schemaRows = queryD1Json(run, binding, target, SCHEMA_QUERY);
-    const tableRows = queryD1Json(run, binding, target, DATA_TABLES_QUERY);
+export function exportD1Full({ run, binding, target, output, persistTo = '', root = '' }) {
+    const queryRun = (target === '--local' && persistTo)
+        ? (args, capture) => run([...args, '--persist-to', persistTo], capture)
+        : run;
+    const schemaRows = queryD1Json(queryRun, binding, target, SCHEMA_QUERY);
+    const tableRows = queryD1Json(queryRun, binding, target, DATA_TABLES_QUERY);
     const tables = tableRows.map((row) => row.name).filter(Boolean);
     if (!tables.length) throw new Error('D1 里没有可导出的真实表');
 
@@ -91,9 +94,22 @@ export function exportD1Full({ run, binding, target, output }) {
     if (!/CREATE\s+TABLE/i.test(schema)) throw new Error('D1 schema 导出为空');
 
     const tmp = path.join(os.tmpdir(), 'chillin-d1-data-' + Date.now() + '-' + process.pid + '.sql');
+    let tmpExportCwd = '';
     try {
         const args = ['d1', 'export', binding, target, '--no-schema', '--skip-confirmation', '--output', tmp];
         for (const table of tables) args.push('--table', table);
+        if (target === '--local' && persistTo) {
+            const baseDir = root || process.cwd();
+            const srcPersist = path.resolve(baseDir, persistTo);
+            const srcD1 = path.join(srcPersist, 'v3', 'd1');
+            if (!fs.existsSync(srcD1)) throw new Error('找不到隔离本地 D1 目录: ' + srcD1);
+            tmpExportCwd = fs.mkdtempSync(path.join(path.dirname(srcPersist), 'chillin-d1-export-'));
+            fs.copyFileSync(path.join(baseDir, 'wrangler.toml'), path.join(tmpExportCwd, 'wrangler.toml'));
+            const dstD1 = path.join(tmpExportCwd, '.wrangler', 'state', 'v3', 'd1');
+            fs.mkdirSync(path.dirname(dstD1), { recursive: true });
+            fs.cpSync(srcD1, dstD1, { recursive: true });
+            args.push('--cwd', tmpExportCwd);
+        }
         run(args);
         const data = fs.readFileSync(tmp, 'utf8');
         const sql = 'PRAGMA defer_foreign_keys=TRUE;\n' + schema + '\n' + data;
@@ -101,5 +117,8 @@ export function exportD1Full({ run, binding, target, output }) {
         return { sql, tables };
     } finally {
         try { fs.unlinkSync(tmp); } catch (_) { /* ignore */ }
+        if (tmpExportCwd) {
+            try { fs.rmSync(tmpExportCwd, { recursive: true, force: true }); } catch (_) { /* ignore */ }
+        }
     }
 }

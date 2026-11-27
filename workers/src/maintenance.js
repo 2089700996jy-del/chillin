@@ -77,6 +77,9 @@ export async function runScheduled(env, event, pollOptions, ctx) {
             catch (err) { console.error('[scheduled] bot weather care failed:', err); }
         }
         const opts = Object.assign({}, pollOptions);
+        if (opts.budgetMs === undefined && env && env.CLAW_POLL_BUDGET_MS != null && env.CLAW_POLL_BUDGET_MS !== '') {
+            opts.budgetMs = Number(env.CLAW_POLL_BUDGET_MS);
+        }
         if (!opts.defer && ctx && typeof ctx.waitUntil === 'function') opts.defer = (task) => ctx.waitUntil(task);
 
         // 并发执行：ClawBot 长轮询（最大 55s）与 Agent 后台续跑（最大 45s）必须并行，

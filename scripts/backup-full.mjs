@@ -31,11 +31,19 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const argv = process.argv.slice(2).filter((a) => a !== '--');
 const flag = (name) => argv.includes(name);
 const value = (name, fallback) => {
+    const eq = argv.find((a) => a.startsWith(name + '='));
+    if (eq) return eq.slice(name.length + 1);
     const i = argv.indexOf(name);
     return i !== -1 && argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[i + 1] : fallback;
 };
 
 const local = flag('--local');
+const persistTo = value('--persist-to', process.env.CHILLIN_WRANGLER_PERSIST_TO || '');
+const outDir = value('--out', '');
+if (persistTo && !local) {
+    console.error('[backup] --persist-to 仅允许与 --local 一起使用。');
+    process.exit(1);
+}
 const withR2 = !flag('--no-r2');
 const upload = !flag('--no-upload') && !local;
 const keep = Math.max(1, Number(value('--keep', '14')) || 14);
@@ -45,7 +53,10 @@ const bucket = process.env.CHILLIN_R2_BUCKET || 'chillin-media';
 const target = local ? '--local' : '--remote';
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 
-const wrangler = createWrangler(root);
+const baseWrangler = createWrangler(root);
+const wrangler = (local && persistTo)
+    ? (args, capture = false) => baseWrangler([...args, '--persist-to', persistTo], capture)
+    : baseWrangler;
 
 const R2_QUERY = "SELECT 'image' AS category, id, r2_key, mime_type, COALESCE(size, 0) AS size "
     + 'FROM files WHERE r2_key IS NOT NULL AND r2_key != \'\' '
@@ -77,14 +88,14 @@ async function uploadFile(key, file, contentType) {
 }
 
 async function main() {
-    const dir = path.join(root, 'backups', 'full-' + stamp);
+    const dir = outDir ? path.resolve(root, outDir) : path.join(root, 'backups', 'full-' + stamp);
     await fsp.mkdir(dir, { recursive: true });
 
     // 1) D1 全量 SQL 快照
     const rawD1 = path.join(dir, '.chillin-d1.sql');
     const d1File = path.join(dir, 'chillin-d1.sql.gz');
     console.log('[backup] D1 export (' + (local ? 'local' : 'remote') + ') …');
-    exportD1Full({ run: wrangler, binding, target, output: rawD1 });
+    exportD1Full({ run: baseWrangler, binding, target, output: rawD1, persistTo: local ? persistTo : '', root });
     if (!fs.existsSync(rawD1)) throw new Error('D1 export 没有生成文件');
     const sql = await fsp.readFile(rawD1);
     await fsp.writeFile(d1File, zlib.gzipSync(sql, { level: 9 }));
@@ -190,14 +201,16 @@ async function main() {
         await uploadFile(prefix + MANIFEST_HASH_NAME, path.join(dir, MANIFEST_HASH_NAME), 'text/plain');
     }
 
-    // 6) 本地保留最近 keep 份完整备份
-    const all = (await fsp.readdir(path.join(root, 'backups')))
-        .filter((name) => name.startsWith('full-')).sort();
-    const excess = all.length - keep;
-    for (const name of all.slice(0, Math.max(0, excess))) {
-        if (path.join(root, 'backups', name) === dir) continue;
-        await fsp.rm(path.join(root, 'backups', name), { recursive: true, force: true });
-        console.log('[backup] pruned ' + name);
+    // 6) 本地保留最近 keep 份完整备份（自定义 --out 目录时不清理 backups/）
+    if (!outDir && fs.existsSync(path.join(root, 'backups'))) {
+        const all = (await fsp.readdir(path.join(root, 'backups')))
+            .filter((name) => name.startsWith('full-')).sort();
+        const excess = all.length - keep;
+        for (const name of all.slice(0, Math.max(0, excess))) {
+            if (path.join(root, 'backups', name) === dir) continue;
+            await fsp.rm(path.join(root, 'backups', name), { recursive: true, force: true });
+            console.log('[backup] pruned ' + name);
+        }
     }
     return check;
 }
